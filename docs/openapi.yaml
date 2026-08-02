@@ -1,0 +1,690 @@
+openapi: 3.0.3
+info:
+  title: Dashboard Redesign API
+  version: 1.0.0
+  description: |
+    Target-product dashboard APIs (Phase 1).
+    Auth resource: DASHBOARD. IDs are strings in JSON.
+servers:
+  - url: /api
+tags:
+  - name: dashboardTree
+  - name: dashboard
+  - name: chartQuery
+
+paths:
+  /dashboardTree/tree:
+    post:
+      tags: [dashboardTree]
+      summary: List dashboard folder tree
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusiNodeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BusiNodeVO'
+
+  /dashboardTree/create:
+    post:
+      tags: [dashboardTree]
+      summary: Create folder or empty dashboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardCreateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardNodeVO'
+
+  /dashboardTree/rename:
+    post:
+      tags: [dashboardTree]
+      summary: Rename node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardRenameRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardNodeVO'
+
+  /dashboardTree/move:
+    post:
+      tags: [dashboardTree]
+      summary: Move node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardMoveRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardNodeVO'
+
+  /dashboardTree/perDelete/{id}:
+    post:
+      tags: [dashboardTree]
+      summary: Check whether delete is allowed
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: true if safe to delete
+          content:
+            application/json:
+              schema:
+                type: boolean
+
+  /dashboardTree/delete/{id}:
+    post:
+      tags: [dashboardTree]
+      summary: Delete node
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+
+  /dashboardTree/barInfo/{id}:
+    get:
+      tags: [dashboardTree]
+      summary: Sidebar summary
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardBarVO'
+
+  /dashboard/{id}:
+    get:
+      tags: [dashboard]
+      summary: Load canvas detail
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [draft, published]
+            default: draft
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardDetailVO'
+
+  /dashboard/{id}/layout:
+    put:
+      tags: [dashboard]
+      summary: Update layout only
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardLayoutUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardLayoutVO'
+
+  /dashboard/{id}/components:
+    put:
+      tags: [dashboard]
+      summary: Batch upsert/delete components
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardComponentsUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DashboardComponentVO'
+
+  /dashboard/{id}/charts/{chartId}:
+    put:
+      tags: [dashboard]
+      summary: Save single chart config
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: chartId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChartViewSaveRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartViewVO'
+
+  /dashboard/{id}/linkages:
+    get:
+      tags: [dashboard]
+      summary: List linkages (draft by default)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [draft, published]
+            default: draft
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DashboardLinkageVO'
+    put:
+      tags: [dashboard]
+      summary: Replace linkages on draft
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/DashboardLinkageVO'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DashboardLinkageVO'
+
+  /dashboard/{id}/publish:
+    post:
+      tags: [dashboard]
+      summary: Publish draft to published copy
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStatusVO'
+
+  /dashboard/{id}/discardDraft:
+    post:
+      tags: [dashboard]
+      summary: Discard draft, restore from published
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStatusVO'
+
+  /dashboard/{id}/status:
+    get:
+      tags: [dashboard]
+      summary: Publish status
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStatusVO'
+
+  /chartQuery/query:
+    post:
+      tags: [chartQuery]
+      summary: Runtime chart query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChartQueryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartQueryResult'
+
+  /chartQuery/explainSql:
+    post:
+      tags: [chartQuery]
+      summary: Explain assembled SQL (Phase C)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChartQueryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sql: { type: string }
+                  dialect: { type: string }
+
+  /dashboard/{id}/share:
+    post:
+      tags: [dashboard]
+      summary: Create share link (Phase A)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                visibility: { type: string, enum: [public, org] }
+                permission: { type: string, enum: [view, edit] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  url: { type: string }
+                  visibility: { type: string }
+                  permission: { type: string }
+
+  /dashboard/{id}/export:
+    post:
+      tags: [dashboard]
+      summary: Export chart CSV or canvas PNG (Phase A)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format: { type: string, enum: [csv, png] }
+                chartId: { type: string }
+      responses:
+        '200':
+          description: file payload
+
+  /dashboard/{id}/alerts:
+    get:
+      tags: [dashboard]
+      summary: List KPI alerts (Phase C)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [dashboard]
+      summary: Replace KPI alerts
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+
+  /dashboard/{id}/jumps:
+    get:
+      tags: [dashboard]
+      summary: List jump configs (Phase C)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [dashboard]
+      summary: Replace jump configs
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+
+  /share/{token}:
+    get:
+      tags: [dashboard]
+      summary: Public/org view by share token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: published dashboard detail
+
+  /embed/{token}:
+    get:
+      tags: [dashboard]
+      summary: Embeddable published view (Phase C)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: HTML embed surface
+
+components:
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    BusiNodeRequest:
+      type: object
+      properties:
+        busiFlag:
+          type: string
+          example: dashboard
+        id:
+          type: string
+
+    BusiNodeVO:
+      type: object
+      properties:
+        id: { type: string }
+        pid: { type: string }
+        name: { type: string }
+        nodeType: { type: string, enum: [folder, dashboard] }
+        leaf: { type: boolean }
+        weight: { type: integer }
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusiNodeVO'
+
+    DashboardCreateRequest:
+      type: object
+      required: [pid, name, nodeType]
+      properties:
+        pid: { type: string }
+        name: { type: string }
+        nodeType: { type: string, enum: [folder, dashboard] }
+        layoutMode: { type: string, enum: [grid, free], default: grid }
+
+    DashboardRenameRequest:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+
+    DashboardMoveRequest:
+      type: object
+      required: [id, pid]
+      properties:
+        id: { type: string }
+        pid: { type: string }
+
+    DashboardNodeVO:
+      type: object
+      properties:
+        id: { type: string }
+        pid: { type: string }
+        name: { type: string }
+        nodeType: { type: string }
+        status: { type: string, enum: [draft, published, publishedWithDraft] }
+        layoutMode: { type: string }
+        contentId: { type: string }
+        version: { type: integer }
+        updateTime: { type: integer, format: int64 }
+
+    DashboardBarVO:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        nodeType: { type: string }
+        status: { type: string }
+        createBy: { type: string }
+        createTime: { type: integer, format: int64 }
+        updateBy: { type: string }
+        updateTime: { type: integer, format: int64 }
+        chartCount: { type: integer }
+
+    DashboardLayoutVO:
+      type: object
+      properties:
+        gridCols: { type: integer }
+        gridRows: { type: integer }
+        themeRef: { type: string }
+        refreshSec: { type: integer }
+        extStyle: { type: object }
+
+    DashboardComponentVO:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [chart, filter, text, image, tabs] }
+        parentId: { type: string }
+        chartViewId: { type: string }
+        x: { type: integer }
+        y: { type: integer }
+        w: { type: integer }
+        h: { type: integer }
+        zIndex: { type: integer }
+        props: { type: object }
+
+    ChartViewVO:
+      type: object
+      properties:
+        id: { type: string }
+        dashboardId: { type: string }
+        datasetId: { type: string }
+        chartType: { type: string }
+        title: { type: string }
+        encode: { type: object }
+        style: { type: object }
+        senior: { type: object }
+
+    DashboardLinkageVO:
+      type: object
+      properties:
+        id: { type: string }
+        sourceChartId: { type: string }
+        sourceField: { type: string }
+        targetChartId: { type: string }
+        targetField: { type: string }
+        enabled: { type: boolean }
+
+    DashboardDetailVO:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/DashboardNodeVO'
+        layout:
+          $ref: '#/components/schemas/DashboardLayoutVO'
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardComponentVO'
+        charts:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ChartViewVO'
+        linkages:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardLinkageVO'
+
+    DashboardLayoutUpdateRequest:
+      type: object
+      required: [contentId]
+      properties:
+        gridCols: { type: integer }
+        gridRows: { type: integer }
+        themeRef: { type: string }
+        refreshSec: { type: integer }
+        extStyle: { type: object }
+        contentId: { type: string }
+
+    DashboardComponentsUpdateRequest:
+      type: object
+      required: [contentId]
+      properties:
+        upsert:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardComponentVO'
+        deleteIds:
+          type: array
+          items: { type: string }
+        contentId: { type: string }
+
+    ChartViewSaveRequest:
+      type: object
+      required: [chartType, encode, contentId]
+      properties:
+        datasetId: { type: string, nullable: true }
+        chartType: { type: string }
+        title: { type: string }
+        encode: { type: object }
+        style: { type: object }
+        senior: { type: object }
+        contentId: { type: string }
+
+    DashboardStatusVO:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [draft, published, publishedWithDraft] }
+        contentId: { type: string }
+        version: { type: integer }
+
+    ChartQueryRequest:
+      type: object
+      required: [dashboardId, context]
+      properties:
+        chartId: { type: string }
+        dashboardId: { type: string }
+        view: { type: string, enum: [draft, published], default: published }
+        inline:
+          type: object
+          properties:
+            datasetId: { type: string }
+            chartType: { type: string }
+            encode: { type: object }
+        context:
+          type: object
+          properties:
+            filters:
+              type: array
+              items:
+                type: object
+                properties:
+                  componentId: { type: string }
+                  field: { type: string }
+                  operator: { type: string }
+                  value: {}
+            linkages:
+              type: array
+              items:
+                type: object
+                properties:
+                  sourceChartId: { type: string }
+                  sourceField: { type: string }
+                  value: {}
+                  targetChartId: { type: string }
+                  targetField: { type: string }
+
+    ChartQueryResult:
+      type: object
+      properties:
+        fields:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              type: { type: string }
+        data:
+          type: array
+          items:
+            type: array
+            items: {}
+        series: { type: object }
+        extra: { type: object }

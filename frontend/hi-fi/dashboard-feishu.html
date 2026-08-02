@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>仪表盘高保交互原型 · 飞书风格</title>
+  <style>
+    :root {
+      --brand: #3370ff;
+      --brand-soft: #e8f0ff;
+      --brand-hover: #2860e1;
+      --text: #1f2329;
+      --text-2: #646a73;
+      --text-3: #8f959e;
+      --line: #dee0e3;
+      --line-soft: #eff0f1;
+      --bg: #f5f6f7;
+      --bg-elev: #ffffff;
+      --success: #00b578;
+      --success-soft: #e3f7ef;
+      --warn-soft: #fff3e0;
+      --warn-text: #c2410c;
+      --radius: 8px;
+      --shadow: 0 1px 2px rgba(31,35,41,.06), 0 2px 8px rgba(31,35,41,.04);
+      --font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      color: var(--text);
+      background: #0f1115;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      min-height: 100%;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .stage-label {
+      width: min(1520px, 100%);
+      color: #c9cdd4;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .stage-label strong { color: #fff; }
+    .tabs {
+      display: flex; gap: 4px; background: #1a1d24; padding: 4px; border-radius: 999px;
+    }
+    .tabs button {
+      border: 0; background: transparent; color: #8f959e;
+      font-weight: 500; font-size: 13px; padding: 8px 14px; border-radius: 999px;
+    }
+    .tabs button.active { background: var(--brand); color: #fff; }
+    .device {
+      width: min(1520px, 100%);
+      height: min(920px, calc(100vh - 88px));
+      background: var(--bg);
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid #2a2f3a;
+      box-shadow: 0 24px 64px rgba(0,0,0,.45);
+      display: none;
+      flex-direction: column;
+    }
+    .device.show { display: flex; }
+    .device.editor-mode { width: min(1680px, 100%); }
+    .app-bar {
+      height: 52px; background: var(--bg-elev); border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; padding: 0 14px; gap: 8px; flex-shrink: 0;
+    }
+    .logo {
+      width: 28px; height: 28px; border-radius: 7px;
+      background: linear-gradient(145deg, #4e83fd, #3370ff);
+      color: #fff; font-weight: 700; font-size: 14px;
+      display: grid; place-items: center;
+    }
+    .crumb { font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+    .crumb b { color: var(--text); font-weight: 600; }
+    .spacer { flex: 1; }
+    .btn {
+      height: 32px; padding: 0 12px; border-radius: 6px;
+      border: 1px solid var(--line); background: var(--bg-elev); color: var(--text);
+      font-weight: 500; font-size: 13px;
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    }
+    .btn:hover { background: var(--bg); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .btn.primary:hover { background: var(--brand-hover); }
+    .btn.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
+    .btn.ghost:hover { background: var(--line-soft); color: var(--text); }
+    .btn.danger { color: #d92d20; border-color: #fecdca; }
+    .tag {
+      display: inline-flex; align-items: center; height: 22px; padding: 0 8px;
+      border-radius: 4px; font-size: 12px; font-weight: 500;
+    }
+    .tag.draft { background: var(--warn-soft); color: var(--warn-text); }
+    .tag.published { background: var(--success-soft); color: #047857; }
+    .tag.dirty { background: #fff7ed; color: var(--warn-text); border: 1px solid #fed7aa; }
+
+    .list-body { display: grid; grid-template-columns: 300px 1fr; flex: 1; min-height: 0; }
+    .tree-pane, .side {
+      background: var(--bg-elev); border-right: 1px solid var(--line);
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .side.right { border-right: 0; border-left: 1px solid var(--line); }
+    .pane-head {
+      padding: 14px 14px 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .pane-head h2 { font-size: 16px; font-weight: 600; }
+    .search-wrap { padding: 0 12px 10px; }
+    .search-wrap input {
+      width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 6px;
+      padding: 0 10px; background: var(--bg); color: var(--text); outline: none;
+    }
+    .search-wrap input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(51,112,255,.15); }
+    .tree { overflow: auto; padding: 4px 8px 16px; flex: 1; }
+    .tree-item {
+      display: flex; align-items: center; gap: 8px; height: 36px;
+      padding: 0 10px; border-radius: 6px; font-size: 13px; cursor: pointer; user-select: none;
+    }
+    .tree-item:hover { background: var(--bg); }
+    .tree-item.active { background: var(--brand-soft); color: var(--brand); font-weight: 550; }
+    .tree-item .ico {
+      width: 18px; height: 18px; border-radius: 4px; background: #f2f3f5; color: var(--text-2);
+      display: grid; place-items: center; font-size: 11px; flex-shrink: 0;
+    }
+    .tree-item.active .ico { background: #d6e4ff; color: var(--brand); }
+    .tree-children { padding-left: 16px; }
+    .tree-empty { padding: 24px 12px; color: var(--text-3); font-size: 12px; text-align: center; }
+
+    .detail-pane { padding: 28px 36px; overflow: auto; }
+    .detail-hero { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+    .detail-hero h1 { font-size: 22px; font-weight: 650; }
+    .detail-hero p { margin-top: 6px; color: var(--text-2); font-size: 13px; }
+    .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+    .meta-card {
+      background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 14px 16px; box-shadow: var(--shadow);
+    }
+    .meta-card .k { color: var(--text-3); font-size: 12px; margin-bottom: 6px; }
+    .meta-card .v { font-size: 15px; font-weight: 600; word-break: break-all; }
+    .preview-card {
+      background: var(--bg-elev); border: 1px solid var(--line); border-radius: 12px;
+      overflow: hidden; box-shadow: var(--shadow);
+    }
+    .preview-card .ph {
+      min-height: 240px; background: linear-gradient(180deg, #f8fafc, #eef2ff);
+      padding: 16px 18px 18px; position: relative;
+    }
+    .mini-board {
+      margin-top: 10px; background: rgba(255,255,255,.9); border: 1px solid #e8ebf0;
+      border-radius: 10px; padding: 14px; display: grid; grid-template-columns: 2fr 1fr; gap: 12px;
+    }
+    .spark { height: 120px; display: flex; align-items: flex-end; gap: 8px; }
+    .spark i {
+      display: block; flex: 1; border-radius: 3px 3px 0 0;
+      background: linear-gradient(180deg, #7aa2ff, #3370ff); cursor: pointer; transition: opacity .15s, transform .15s;
+    }
+    .spark i:hover { opacity: .85; transform: translateY(-2px); }
+    .spark i.active { outline: 2px solid #1d4ed8; outline-offset: 1px; }
+    .preview-card .pf {
+      padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; color: var(--text-2); gap: 8px; flex-wrap: wrap;
+    }
+    .empty-detail {
+      height: 100%; display: grid; place-items: center; color: var(--text-3); font-size: 14px;
+    }
+
+    /* Critical: minmax(0,1fr) prevents fixed-width board from blowing out grid and overlapping inspector */
+    .editor-body {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr) 300px;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .editor-body.inspector-collapsed {
+      grid-template-columns: 220px minmax(0, 1fr) 0;
+    }
+    .editor-body.inspector-collapsed .side.right {
+      display: none;
+    }
+    .side {
+      min-width: 0;
+      overflow: hidden;
+    }
+    .side.left { width: 100%; }
+    .side.right {
+      width: 100%;
+      max-width: 300px;
+      z-index: 2;
+      background: var(--bg-elev);
+    }
+    .side-tabs {
+      display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); height: 40px;
+      flex-shrink: 0;
+    }
+    .side-tabs.three { grid-template-columns: 1fr 1fr 1fr; }
+    .side-tabs button {
+      border: 0; background: transparent; font-weight: 500; font-size: 13px;
+      color: var(--text-2); position: relative;
+    }
+    .side-tabs button.on { color: var(--brand); }
+    .side-tabs button.on::after {
+      content: ""; position: absolute; left: 18%; right: 18%; bottom: 0; height: 2px;
+      background: var(--brand); border-radius: 2px 2px 0 0;
+    }
+    .side-body { padding: 12px; overflow: auto; flex: 1; min-height: 0; }
+    .comp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .comp-card {
+      border: 1px solid var(--line); border-radius: 8px; padding: 12px 10px; text-align: center;
+      background: var(--bg); cursor: pointer; user-select: none;
+    }
+    .comp-card:hover { border-color: #b7cbff; background: var(--brand-soft); }
+    .comp-card .glyph {
+      width: 36px; height: 36px; margin: 0 auto 8px; border-radius: 8px; background: #fff;
+      border: 1px solid var(--line); display: grid; place-items: center; font-size: 15px;
+    }
+    .comp-card .name { font-size: 12px; font-weight: 500; }
+    .layer-row {
+      display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px;
+      border-radius: 6px; font-size: 12px; cursor: pointer;
+    }
+    .layer-row:hover { background: var(--bg); }
+    .layer-row.on { background: var(--brand-soft); color: var(--brand); }
+    .layer-row .del {
+      margin-left: auto; border: 0; background: transparent; color: var(--text-3); font-size: 12px; padding: 2px 4px;
+    }
+    .layer-row .del:hover { color: #d92d20; }
+
+    .canvas-stage {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #e9ebef;
+    }
+    .canvas-toolbar {
+      height: 40px; flex-shrink: 0;
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.92);
+      font-size: 12px; color: var(--text-2);
+    }
+    .canvas-toolbar .zoom { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+    .canvas-wrap {
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+      background-image: linear-gradient(#e3e5ea 1px, transparent 1px), linear-gradient(90deg, #e3e5ea 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .canvas-board {
+      width: 100%;
+      max-width: 100%;
+      min-height: 100%;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 4px;
+      box-shadow: 0 8px 24px rgba(31,35,41,.08);
+      padding: 14px;
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      grid-auto-rows: minmax(48px, auto);
+      gap: 10px;
+      align-content: start;
+    }
+    .widget {
+      border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 12px 14px;
+      overflow: hidden; box-shadow: 0 1px 2px rgba(31,35,41,.04); cursor: pointer; position: relative;
+      min-width: 0;
+    }
+    .widget.selected {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 1px var(--brand), 0 8px 20px rgba(51,112,255,.12);
+      z-index: 1;
+    }
+    .widget.selected::before,
+    .widget.selected::after {
+      content: "";
+      position: absolute;
+      width: 8px; height: 8px;
+      background: #fff;
+      border: 2px solid var(--brand);
+      border-radius: 2px;
+      z-index: 2;
+    }
+    .widget.selected::before { left: -5px; top: -5px; }
+    .widget.selected::after { right: -5px; bottom: -5px; }
+    .inspector-toggle {
+      position: absolute;
+      top: 48px;
+      right: 8px;
+      z-index: 5;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #fff;
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      color: var(--text-2);
+    }
+    .inspector-toggle:hover { color: var(--brand); border-color: #b7cbff; }
+    .widget .wh { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; }
+    .widget .wh b { font-size: 13px; font-weight: 600; }
+    .widget .wh span { font-size: 11px; color: var(--text-3); }
+    .filter-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .chip {
+      height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line);
+      background: #fff; font-size: 12px; color: var(--text-2); display: inline-flex; align-items: center;
+    }
+    .chip.on { background: var(--brand-soft); border-color: #9db7ff; color: var(--brand); font-weight: 550; }
+    .kpi { display: flex; flex-direction: column; justify-content: center; height: calc(100% - 8px); }
+    .kpi .num { font-size: 28px; font-weight: 700; letter-spacing: -.03em; }
+    .kpi .delta { margin-top: 4px; font-size: 12px; color: var(--success); }
+    .table-mini { width: 100%; font-size: 12px; border-collapse: collapse; }
+    .table-mini th, .table-mini td { text-align: left; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
+    .table-mini th { color: var(--text-3); font-weight: 500; }
+    .text-widget { font-size: 18px; font-weight: 650; color: var(--text); line-height: 1.4; }
+    .hint-inline { font-size: 11px; color: var(--text-3); }
+
+    .prop-section { margin-bottom: 16px; }
+    .prop-section h4 { font-size: 12px; color: var(--text-3); font-weight: 600; margin-bottom: 10px; }
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+    .field input, .field select, .field textarea {
+      width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px;
+      color: var(--text); background: #fff; outline: none;
+    }
+    .field input, .field select { height: 32px; }
+    .field textarea { min-height: 72px; padding: 8px 10px; resize: vertical; }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      border-color: var(--brand); box-shadow: 0 0 0 3px rgba(51,112,255,.15);
+    }
+    .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--bg); padding: 3px; border-radius: 6px; }
+    .seg button {
+      height: 28px; border: 0; border-radius: 4px; background: transparent;
+      font-weight: 500; font-size: 12px; color: var(--text-2);
+    }
+    .seg button.on { background: #fff; color: var(--text); box-shadow: var(--shadow); }
+    .link-card {
+      border: 1px dashed #c5d4ff; background: #f7f9ff; border-radius: 8px;
+      padding: 10px; font-size: 12px; color: var(--text-2); line-height: 1.55;
+    }
+    .link-card b { color: var(--brand); }
+    .muted { color: var(--text-3); font-size: 12px; }
+    .prop-empty { padding: 40px 12px; text-align: center; color: var(--text-3); font-size: 13px; }
+
+    .preview-body { flex: 1; overflow: auto; padding: 20px 28px 32px; }
+    .preview-title { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .preview-title h1 { font-size: 20px; font-weight: 650; }
+    .preview-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; grid-auto-rows: minmax(88px, auto); }
+    .p-card {
+      background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow);
+    }
+
+    .toast-wrap {
+      position: fixed; right: 20px; bottom: 20px; z-index: 50; display: flex; flex-direction: column; gap: 8px;
+    }
+    .toast {
+      background: #1f2329; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 13px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.25); animation: in .2s ease;
+    }
+    .toast.ok { background: #067647; }
+    .toast.warn { background: #b54708; }
+    @keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    .modal-mask {
+      position: fixed; inset: 0; background: rgba(15,17,21,.45); display: none;
+      align-items: center; justify-content: center; z-index: 40;
+    }
+    .modal-mask.show { display: flex; }
+    .modal {
+      width: min(420px, calc(100vw - 32px)); background: #fff; border-radius: 12px;
+      padding: 20px; box-shadow: 0 20px 48px rgba(0,0,0,.25);
+    }
+    .modal h3 { font-size: 16px; margin-bottom: 12px; }
+    .modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+    .hint {
+      width: min(1520px, 100%); color: #8b919a; font-size: 12px; line-height: 1.6;
+    }
+    .hint code { background: #1a1d24; color: #c9d4ff; padding: 1px 6px; border-radius: 4px; }
+    .resize-hint {
+      position: absolute; right: 6px; bottom: 4px; font-size: 10px; color: var(--text-3);
+    }
+
+    /* dataset field binding */
+    .field-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      height: 26px; padding: 0 8px; border-radius: 4px;
+      font-size: 12px; cursor: grab; user-select: none;
+      border: 1px solid transparent; margin: 0 6px 6px 0;
+    }
+    .field-chip.dim { background: #e8f3ff; color: #245bdb; border-color: #c2d8ff; }
+    .field-chip.quota { background: #e8f8f0; color: #047857; border-color: #b7e4cc; }
+    .field-chip:hover { filter: brightness(0.97); }
+    .field-chip.dragging { opacity: .5; }
+    .encode-slot {
+      min-height: 36px; border: 1px dashed #c5cdd6; border-radius: 6px;
+      padding: 4px 6px; background: #fafbfc; display: flex; flex-wrap: wrap; align-items: center;
+      gap: 4px; transition: border-color .15s, background .15s;
+    }
+    .encode-slot.active, .encode-slot.drag-over {
+      border-color: var(--brand); background: var(--brand-soft);
+    }
+    .encode-slot .placeholder { font-size: 12px; color: var(--text-3); padding: 4px; }
+    .encode-pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      height: 26px; padding: 0 6px 0 8px; border-radius: 4px; font-size: 12px;
+    }
+    .encode-pill.dim { background: #3370ff; color: #fff; }
+    .encode-pill.quota { background: #00b578; color: #fff; }
+    .encode-pill button {
+      border: 0; background: transparent; color: inherit; opacity: .8; cursor: pointer; font-size: 12px; line-height: 1;
+    }
+    .field-bank {
+      border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fff; margin-bottom: 12px;
+    }
+    .field-bank .bank-h {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; color: var(--text-2); margin-bottom: 8px;
+    }
+    .tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .tpl-card {
+      border: 1px solid var(--line); border-radius: 8px; padding: 12px; cursor: pointer;
+      background: #fff; text-align: left;
+    }
+    .tpl-card:hover { border-color: #b7cbff; background: var(--brand-soft); }
+    .tpl-card.on { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
+    .tpl-card b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .tpl-card span { font-size: 12px; color: var(--text-2); line-height: 1.4; }
+    .canvas-empty {
+      grid-column: 1 / -1; min-height: 360px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; color: var(--text-2); border: 1px dashed #c5cdd6; border-radius: 12px; background: #fafbfc;
+    }
+    .canvas-empty h3 { font-size: 16px; color: var(--text); font-weight: 600; }
+    .canvas-empty p { font-size: 13px; max-width: 360px; text-align: center; line-height: 1.5; }
+    .canvas-empty .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+    .bind-hint {
+      font-size: 11px; color: var(--text-3); margin-top: 6px; line-height: 1.45;
+    }
+    .chart-placeholder {
+      height: 100%; min-height: 80px; display: grid; place-items: center;
+      color: var(--text-3); font-size: 12px; text-align: center; line-height: 1.5; padding: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-label">
+    <div>
+      <strong>可交互高保原型</strong>
+      · 请用 <code style="color:#c9d4ff">http://127.0.0.1:8765/dashboard-feishu.html</code> 打开（勿用 file://）
+    </div>
+    <div class="tabs" id="screenTabs">
+      <button class="active" data-screen="list">① 列表</button>
+      <button data-screen="editor">② 编辑器</button>
+      <button data-screen="preview">③ 预览</button>
+    </div>
+  </div>
+
+  <div class="device show" id="screen-list"></div>
+  <div class="device" id="screen-editor"></div>
+  <div class="device" id="screen-preview"></div>
+
+  <p class="hint">
+    新建可选布局模板 · 空白画布从零搭 · 图表绑定：选数据集 → 点/拖字段进维度·指标槽 → 出数 · 筛选 / 联动 / 发布仍可用。
+  </p>
+
+  <div class="toast-wrap" id="toasts"></div>
+  <div class="modal-mask" id="modalMask"></div>
+
+  <script>
+    const DATASETS = {
+      ds_sales: {
+        id: 'ds_sales',
+        name: '销售明细',
+        fields: [
+          { name: 'region', label: '区域', group: 'dim', type: 'string' },
+          { name: 'product', label: '产品', group: 'dim', type: 'string' },
+          { name: 'channel', label: '渠道', group: 'dim', type: 'string' },
+          { name: 'amount', label: '销售额', group: 'quota', type: 'number', agg: 'SUM' },
+          { name: 'qty', label: '销量', group: 'quota', type: 'number', agg: 'SUM' },
+          { name: 'order_cnt', label: '订单数', group: 'quota', type: 'number', agg: 'COUNT' }
+        ],
+        rows: [
+          { region: '华东', product: 'A', channel: '线上', amount: 120, qty: 30, order_cnt: 12 },
+          { region: '华东', product: 'B', channel: '线下', amount: 80, qty: 20, order_cnt: 8 },
+          { region: '华北', product: 'A', channel: '线上', amount: 60, qty: 15, order_cnt: 6 },
+          { region: '华北', product: 'B', channel: '线下', amount: 40, qty: 10, order_cnt: 4 },
+          { region: '华南', product: 'A', channel: '线上', amount: 90, qty: 22, order_cnt: 9 },
+          { region: '华南', product: 'B', channel: '线下', amount: 110, qty: 28, order_cnt: 11 }
+        ]
+      },
+      ds_ops: {
+        id: 'ds_ops',
+        name: '运营日报',
+        fields: [
+          { name: 'day', label: '日期', group: 'dim', type: 'string' },
+          { name: 'module', label: '模块', group: 'dim', type: 'string' },
+          { name: 'uv', label: 'UV', group: 'quota', type: 'number', agg: 'SUM' },
+          { name: 'pv', label: 'PV', group: 'quota', type: 'number', agg: 'SUM' }
+        ],
+        rows: [
+          { day: '周一', module: '首页', uv: 1200, pv: 3400 },
+          { day: '周一', module: '详情', uv: 800, pv: 2100 },
+          { day: '周二', module: '首页', uv: 1400, pv: 3900 },
+          { day: '周二', module: '详情', uv: 900, pv: 2400 }
+        ]
+      }
+    };
+
+    const uid = (p = 'id') => `${p}_${Math.random().toString(36).slice(2, 8)}`;
+
+    function deepClone(v) { return JSON.parse(JSON.stringify(v)); }
+    function datasetOf(id) { return DATASETS[id] || null; }
+    function fieldMeta(datasetId, fieldName) {
+      return datasetOf(datasetId)?.fields.find(f => f.name === fieldName) || null;
+    }
+
+    function defaultCanvas() {
+      const chartRegion = uid('chart');
+      const chartProduct = uid('chart');
+      const kpi = uid('chart');
+      const filter = uid('comp');
+      const trend = uid('chart');
+      return {
+        layout: { gridCols: 72, themeRef: 'default', refreshSec: 0 },
+        components: [
+          { id: filter, type: 'filter', x: 0, y: 0, w: 12, h: 1, zIndex: 1, props: { field: 'region', label: '区域' } },
+          { id: uid('comp'), type: 'chart', chartViewId: chartRegion, x: 0, y: 1, w: 7, h: 4, zIndex: 2, props: {} },
+          { id: uid('comp'), type: 'chart', chartViewId: kpi, x: 7, y: 1, w: 5, h: 2, zIndex: 3, props: {} },
+          { id: uid('comp'), type: 'chart', chartViewId: chartProduct, x: 7, y: 3, w: 5, h: 2, zIndex: 4, props: {} },
+          { id: uid('comp'), type: 'chart', chartViewId: trend, x: 0, y: 5, w: 12, h: 3, zIndex: 5, props: {} }
+        ],
+        charts: {
+          [chartRegion]: {
+            id: chartRegion, title: '区域销售额', chartType: 'bar', datasetId: 'ds_sales',
+            encode: { category: 'region', value: 'amount' }
+          },
+          [kpi]: {
+            id: kpi, title: '本月 GMV', chartType: 'kpi', datasetId: 'ds_sales',
+            encode: { value: 'amount' }
+          },
+          [chartProduct]: {
+            id: chartProduct, title: '产品明细', chartType: 'table', datasetId: 'ds_sales',
+            encode: { category: 'product', value: 'amount' }
+          },
+          [trend]: {
+            id: trend, title: '趋势', chartType: 'line', datasetId: 'ds_sales',
+            encode: { category: 'region', value: 'amount' }
+          }
+        },
+        linkages: [
+          {
+            id: uid('link'),
+            sourceChartId: chartRegion,
+            sourceField: 'region',
+            targetChartId: chartProduct,
+            targetField: 'region',
+            enabled: true
+          }
+        ]
+      };
+    }
+
+    const state = {
+      screen: 'list',
+      search: '',
+      selectedNodeId: null,
+      leftTab: 'components',
+      rightTab: 'data',
+      selectedComponentId: null,
+      inspectorCollapsed: false,
+      filterRegion: '',
+      linkageHits: [],
+      previewMode: 'published',
+      modal: null,
+      nodes: [
+        { id: 'folder_biz', pid: '0', name: '业务分析', nodeType: 'folder' },
+        {
+          id: 'dash_sales', pid: 'folder_biz', name: '销售概览', nodeType: 'dashboard',
+          status: 'publishedWithDraft', contentId: '3', version: 2,
+          createBy: '沈', updateBy: '沈', updateTime: Date.now(),
+          draft: defaultCanvas(),
+          published: defaultCanvas()
+        },
+        {
+          id: 'dash_funnel', pid: 'folder_biz', name: '渠道漏斗', nodeType: 'dashboard',
+          status: 'draft', contentId: '1', version: 1,
+          createBy: '沈', updateBy: '沈', updateTime: Date.now() - 86400000,
+          draft: emptyCanvas('渠道漏斗'),
+          published: null
+        },
+        { id: 'folder_ops', pid: '0', name: '运营看板', nodeType: 'folder' }
+      ]
+    };
+
+    /** 空白画布：不预置组件，进入编辑后由用户自行搭建 */
+    function emptyCanvas(_title) {
+      return {
+        layout: { gridCols: 72, themeRef: 'default', refreshSec: 0 },
+        components: [],
+        charts: {},
+        linkages: []
+      };
+    }
+
+    /** 新建时可选布局模板（不是唯一布局） */
+    function canvasFromTemplate(tpl, title) {
+      if (tpl === 'blank' || !tpl) return emptyCanvas(title);
+      if (tpl === 'kpi') {
+        const a = uid('chart');
+        const b = uid('chart');
+        const c = uid('chart');
+        return {
+          layout: { gridCols: 72, themeRef: 'default', refreshSec: 0 },
+          components: [
+            { id: uid('comp'), type: 'chart', chartViewId: a, x: 0, y: 0, w: 4, h: 2, zIndex: 1, props: {} },
+            { id: uid('comp'), type: 'chart', chartViewId: b, x: 4, y: 0, w: 4, h: 2, zIndex: 2, props: {} },
+            { id: uid('comp'), type: 'chart', chartViewId: c, x: 8, y: 0, w: 4, h: 2, zIndex: 3, props: {} }
+          ],
+          charts: {
+            [a]: { id: a, title: '指标 A', chartType: 'kpi', datasetId: null, encode: {} },
+            [b]: { id: b, title: '指标 B', chartType: 'kpi', datasetId: null, encode: {} },
+            [c]: { id: c, title: '指标 C', chartType: 'kpi', datasetId: null, encode: {} }
+          },
+          linkages: []
+        };
+      }
+      if (tpl === 'dual') {
+        const c1 = uid('chart');
+        const c2 = uid('chart');
+        return {
+          layout: { gridCols: 72, themeRef: 'default', refreshSec: 0 },
+          components: [
+            { id: uid('comp'), type: 'chart', chartViewId: c1, x: 0, y: 0, w: 6, h: 4, zIndex: 1, props: {} },
+            { id: uid('comp'), type: 'chart', chartViewId: c2, x: 6, y: 0, w: 6, h: 4, zIndex: 2, props: {} }
+          ],
+          charts: {
+            [c1]: { id: c1, title: '图表 1', chartType: 'bar', datasetId: null, encode: {} },
+            [c2]: { id: c2, title: '图表 2', chartType: 'table', datasetId: null, encode: {} }
+          },
+          linkages: []
+        };
+      }
+      if (tpl === 'sales') return defaultCanvas();
+      return emptyCanvas(title);
+    }
+
+    function toast(msg, type = '') {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.textContent = msg;
+      document.getElementById('toasts').appendChild(el);
+      setTimeout(() => el.remove(), 2200);
+    }
+
+    function findNode(id) { return state.nodes.find(n => n.id === id); }
+    function selectedDash() {
+      const n = findNode(state.selectedNodeId);
+      return n && n.nodeType === 'dashboard' ? n : null;
+    }
+    function childrenOf(pid) {
+      return state.nodes.filter(n => n.pid === pid && n.name.includes(state.search.trim()));
+    }
+    function statusTag(status) {
+      if (status === 'published') return '<span class="tag published">已发布</span>';
+      if (status === 'publishedWithDraft') return '<span class="tag dirty">已发布 · 有未发布改动</span>';
+      return '<span class="tag draft">草稿</span>';
+    }
+    function markDirty(dash) {
+      if (dash.status === 'published') dash.status = 'publishedWithDraft';
+      dash.contentId = String(Number(dash.contentId || '0') + 1);
+      dash.updateTime = Date.now();
+      dash.updateBy = '沈';
+    }
+
+    function aggregate(rows, categoryField, valueField) {
+      const map = new Map();
+      for (const r of rows) {
+        const k = String(r[categoryField] ?? 'unknown');
+        map.set(k, (map.get(k) || 0) + Number(r[valueField] || 0));
+      }
+      return [...map.entries()].map(([name, value]) => ({ name, value }));
+    }
+
+    function queryRows(dash, chart, view) {
+      const ds = datasetOf(chart.datasetId);
+      let rows = ds ? ds.rows.slice() : [];
+      const region = state.filterRegion;
+      if (region && rows[0] && 'region' in rows[0]) {
+        rows = rows.filter(r => r.region === region);
+      }
+      for (const hit of state.linkageHits) {
+        if (hit.targetChartId === chart.id) {
+          rows = rows.filter(r => String(r[hit.targetField]) === String(hit.value));
+        }
+      }
+      void dash; void view;
+      return rows;
+    }
+
+    function chartNeedsBind(chart) {
+      if (!chart.datasetId) return '请先选择数据集';
+      if (chart.chartType === 'kpi') {
+        if (!chart.encode?.value) return '请将「指标」字段拖入下方指标槽';
+      } else if (!chart.encode?.category || !chart.encode?.value) {
+        return '请绑定维度 + 指标后出数';
+      }
+      return '';
+    }
+
+    function formatTime(ts) {
+      const d = new Date(ts);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    /* ---------- LIST ---------- */
+    function renderList() {
+      const root = document.getElementById('screen-list');
+      const dash = selectedDash();
+      const folders = state.nodes.filter(n => n.pid === '0');
+
+      root.innerHTML = `
+        <div class="app-bar">
+          <div class="logo">D</div>
+          <div class="crumb">工作台 <span>/</span> <b>仪表盘</b></div>
+          <div class="spacer"></div>
+          <button class="btn ghost" data-action="toast-recent">最近</button>
+          <button class="btn ghost" data-action="toast-fav">收藏</button>
+          <button class="btn primary" data-action="create-dash">+ 新建仪表盘</button>
+        </div>
+        <div class="list-body">
+          <aside class="tree-pane">
+            <div class="pane-head">
+              <h2>全部仪表盘</h2>
+              <button class="btn ghost" data-action="create-folder" title="新建文件夹">📁+</button>
+            </div>
+            <div class="search-wrap"><input id="treeSearch" placeholder="搜索名称" value="${escapeHtml(state.search)}" /></div>
+            <div class="tree" id="treeList"></div>
+          </aside>
+          <section class="detail-pane" id="listDetail"></section>
+        </div>
+      `;
+
+      const treeEl = root.querySelector('#treeList');
+      let treeHtml = '';
+      for (const f of folders) {
+        if (state.search && !f.name.includes(state.search) && !childrenOf(f.id).length) continue;
+        const kids = state.nodes.filter(n => n.pid === f.id && n.name.includes(state.search.trim()));
+        treeHtml += `<div class="tree-folder">
+          <div class="tree-item ${state.selectedNodeId === f.id ? 'active' : ''}" data-select="${f.id}">
+            <span class="ico">▾</span>${escapeHtml(f.name)}
+          </div>
+          <div class="tree-children">
+            ${kids.map(k => `
+              <div class="tree-item ${state.selectedNodeId === k.id ? 'active' : ''}" data-select="${k.id}">
+                <span class="ico">▣</span>${escapeHtml(k.name)}
+              </div>`).join('')}
+          </div>
+        </div>`;
+      }
+      const orphans = state.nodes.filter(n => n.pid === '0' && n.nodeType === 'dashboard' && n.name.includes(state.search.trim()));
+      treeHtml += orphans.map(k => `
+        <div class="tree-item ${state.selectedNodeId === k.id ? 'active' : ''}" data-select="${k.id}">
+          <span class="ico">▣</span>${escapeHtml(k.name)}
+        </div>`).join('');
+      if (!treeHtml) treeHtml = '<div class="tree-empty">无匹配结果</div>';
+      treeEl.innerHTML = treeHtml;
+
+      const detail = root.querySelector('#listDetail');
+      if (!dash && state.selectedNodeId) {
+        const folder = findNode(state.selectedNodeId);
+        detail.innerHTML = `
+          <div class="detail-hero">
+            <div>
+              <h1>${escapeHtml(folder?.name || '')}</h1>
+              <p>文件夹 · ${childrenOf(folder.id).length} 个子项</p>
+            </div>
+            <button class="btn primary" data-action="create-dash-in" data-pid="${folder.id}">在此新建仪表盘</button>
+          </div>`;
+      } else if (!dash) {
+        detail.innerHTML = `<div class="empty-detail">选择左侧仪表盘查看详情，或新建一个</div>`;
+      } else {
+        const canvas = dash.status === 'draft' ? dash.draft : (dash.published || dash.draft);
+        const chartCount = Object.keys(canvas.charts || {}).length;
+        const bars = aggregate(DATASETS.ds_sales.rows, 'region', 'amount');
+        const max = Math.max(...bars.map(b => b.value), 1);
+        detail.innerHTML = `
+          <div class="detail-hero">
+            <div>
+              <h1>${escapeHtml(dash.name)}</h1>
+              <p>绑定数据集 · 草稿与已发布分离 · 观看页永远读 published</p>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              ${statusTag(dash.status)}
+              <button class="btn" data-action="goto-editor">编辑</button>
+              <button class="btn primary" data-action="goto-preview" ${dash.status === 'draft' ? 'disabled' : ''}>打开已发布</button>
+            </div>
+          </div>
+          <div class="meta-grid">
+            <div class="meta-card"><div class="k">状态</div><div class="v">${dash.status}</div></div>
+            <div class="meta-card"><div class="k">图表数</div><div class="v">${chartCount}</div></div>
+            <div class="meta-card"><div class="k">更新人</div><div class="v">${escapeHtml(dash.updateBy)} · ${formatTime(dash.updateTime)}</div></div>
+            <div class="meta-card"><div class="k">布局</div><div class="v">PC 网格 · ${canvas.layout.themeRef}</div></div>
+          </div>
+          <div class="preview-card">
+            <div class="ph">
+              <div style="font-size:12px;color:#646a73">${dash.status === 'draft' ? '草稿缩略（尚未发布）' : '已发布版本缩略'}</div>
+              <div class="mini-board">
+                <div>
+                  <div style="font-size:12px;margin-bottom:8px;font-weight:600">区域销售额</div>
+                  <div class="spark">
+                    ${bars.map(b => `<i style="height:${Math.round(b.value / max * 100)}%" title="${b.name}: ${b.value}"></i>`).join('')}
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:12px;color:var(--text-2)">本月 GMV</div>
+                  <div style="font-size:26px;font-weight:700;margin-top:8px">¥ ${(bars.reduce((s,b)=>s+b.value,0)/10).toFixed(1)}万</div>
+                  <div style="margin-top:6px;font-size:12px;color:var(--success)">↑ 示例数据</div>
+                </div>
+              </div>
+            </div>
+            <div class="pf">
+              <span>双击树节点或点「编辑」进入草稿 · 分享链接走已发布副本</span>
+              <button class="btn ghost" data-action="goto-editor">继续编辑草稿 →</button>
+            </div>
+          </div>
+          <div style="margin-top:16px;display:flex;gap:8px">
+            <button class="btn danger" data-action="delete-node">删除</button>
+            <button class="btn" data-action="rename-node">重命名</button>
+          </div>
+        `;
+      }
+
+      root.querySelector('#treeSearch').oninput = (e) => {
+        state.search = e.target.value;
+        render();
+        const input = document.getElementById('treeSearch');
+        if (input) { input.focus(); input.selectionStart = input.selectionEnd = input.value.length; }
+      };
+
+      root.querySelectorAll('[data-select]').forEach(el => {
+        el.onclick = () => {
+          state.selectedNodeId = el.getAttribute('data-select');
+          render();
+        };
+        el.ondblclick = () => {
+          const n = findNode(el.getAttribute('data-select'));
+          if (n?.nodeType === 'dashboard') {
+            state.selectedNodeId = n.id;
+            state.screen = 'editor';
+            state.selectedComponentId = n.draft.components[0]?.id || null;
+            render();
+          }
+        };
+      });
+
+      bindCommonActions(root);
+    }
+
+    /* ---------- EDITOR ---------- */
+    function renderEditor() {
+      const root = document.getElementById('screen-editor');
+      const dash = selectedDash();
+      if (!dash) {
+        root.innerHTML = `
+          <div class="app-bar">
+            <button class="btn ghost" data-action="goto-list">←</button>
+            <div class="crumb"><b>未选择仪表盘</b></div>
+          </div>
+          <div class="empty-detail">请先在列表中选择一个仪表盘</div>`;
+        bindCommonActions(root);
+        return;
+      }
+
+      const canvas = dash.draft;
+      const selected = canvas.components.find(c => c.id === state.selectedComponentId) || null;
+      const selectedChart = selected?.chartViewId ? canvas.charts[selected.chartViewId] : null;
+
+      root.innerHTML = `
+        <div class="app-bar">
+          <button class="btn ghost" data-action="goto-list">←</button>
+          <div class="crumb"><b contenteditable="true" id="dashTitleEdit">${escapeHtml(dash.name)}</b></div>
+          ${statusTag(dash.status)}
+          <div class="spacer"></div>
+          <button class="btn ghost" data-action="toggle-inspector">${state.inspectorCollapsed ? '显示配置' : '收起配置'}</button>
+          <button class="btn ghost" data-action="toast-undo">撤销</button>
+          <button class="btn ghost" data-action="toast-redo">重做</button>
+          <button class="btn" data-action="preview-draft">预览草稿</button>
+          <button class="btn" data-action="discard" ${dash.status === 'draft' ? 'disabled' : ''}>丢弃草稿</button>
+          <button class="btn primary" data-action="publish">发布</button>
+        </div>
+        <div class="editor-body ${state.inspectorCollapsed ? 'inspector-collapsed' : ''}">
+          <aside class="side left">
+            <div class="side-tabs">
+              <button class="${state.leftTab === 'components' ? 'on' : ''}" data-left="components">组件</button>
+              <button class="${state.leftTab === 'layers' ? 'on' : ''}" data-left="layers">图层</button>
+            </div>
+            <div class="side-body" id="leftBody"></div>
+          </aside>
+          <section class="canvas-stage">
+            <div class="canvas-toolbar">
+              <span>空白可自建 · 字段在右侧「数据」里拖到维度/指标槽</span>
+              <div class="zoom">
+                <span>${canvas.components.length} 个组件</span>
+                <button class="btn ghost" data-action="toggle-inspector" style="height:26px;padding:0 8px">
+                  ${state.inspectorCollapsed ? '》配置' : '《收起'}
+                </button>
+              </div>
+            </div>
+            <main class="canvas-wrap" id="canvasWrap"></main>
+          </section>
+          <aside class="side right">
+            <div class="side-tabs three">
+              <button class="${state.rightTab === 'data' ? 'on' : ''}" data-right="data">数据</button>
+              <button class="${state.rightTab === 'style' ? 'on' : ''}" data-right="style">样式</button>
+              <button class="${state.rightTab === 'senior' ? 'on' : ''}" data-right="senior">高级</button>
+            </div>
+            <div class="side-body" id="rightBody"></div>
+          </aside>
+        </div>
+      `;
+
+      // left panel
+      const leftBody = root.querySelector('#leftBody');
+      if (state.leftTab === 'components') {
+        leftBody.innerHTML = `
+          <div class="prop-section">
+            <h4>图表</h4>
+            <div class="comp-grid">
+              <div class="comp-card" data-add="bar"><div class="glyph">▮</div><div class="name">柱状图</div></div>
+              <div class="comp-card" data-add="line"><div class="glyph">╱</div><div class="name">折线图</div></div>
+              <div class="comp-card" data-add="kpi"><div class="glyph">#</div><div class="name">指标卡</div></div>
+              <div class="comp-card" data-add="table"><div class="glyph">☰</div><div class="name">明细表</div></div>
+            </div>
+          </div>
+          <div class="prop-section">
+            <h4>控件</h4>
+            <div class="comp-grid">
+              <div class="comp-card" data-add="filter"><div class="glyph">▽</div><div class="name">筛选器</div></div>
+              <div class="comp-card" data-add="text"><div class="glyph">T</div><div class="name">文本</div></div>
+            </div>
+          </div>
+          <p class="muted">点击即可添加到画布并选中</p>
+        `;
+      } else {
+        leftBody.innerHTML = canvas.components
+          .slice()
+          .sort((a, b) => a.zIndex - b.zIndex)
+          .map(c => {
+            const title = c.type === 'chart'
+              ? (canvas.charts[c.chartViewId]?.title || '图表')
+              : (c.type === 'filter' ? (c.props.label || '筛选器') : (c.props.content || '文本'));
+            return `<div class="layer-row ${c.id === state.selectedComponentId ? 'on' : ''}" data-select-comp="${c.id}">
+              <span>${c.type === 'filter' ? '▽' : c.type === 'text' ? 'T' : '▣'}</span>
+              <span>${escapeHtml(title)}</span>
+              <button class="del" data-del-comp="${c.id}" title="删除">✕</button>
+            </div>`;
+          }).join('') || '<p class="muted">暂无组件</p>';
+      }
+
+      // canvas — fills middle column only; never underlaps inspector
+      const canvasWrap = root.querySelector('#canvasWrap');
+      canvasWrap.innerHTML = `<div class="canvas-board" id="board"></div>`;
+      const board = root.querySelector('#board');
+      if (!canvas.components.length) {
+        board.innerHTML = `
+          <div class="canvas-empty">
+            <h3>从左侧添加组件开始搭建</h3>
+            <p>空白画布不预置布局。也可返回列表「新建」时选择 KPI / 双图 / 销售概览等模板。</p>
+            <div class="actions">
+              <button class="btn primary" data-add="bar">+ 柱状图</button>
+              <button class="btn" data-add="kpi">+ 指标卡</button>
+              <button class="btn" data-add="filter">+ 筛选器</button>
+            </div>
+          </div>`;
+      } else {
+        board.innerHTML = canvas.components.map(c => renderWidget(dash, c, 'draft')).join('');
+      }
+      board.onclick = (e) => {
+        if (e.target === board || e.target.closest('.canvas-empty')) {
+          if (!e.target.closest('[data-add]')) {
+            state.selectedComponentId = null;
+            render();
+          }
+        }
+      };
+      requestAnimationFrame(() => {
+        const sel = board.querySelector('.widget.selected');
+        if (sel) sel.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      });
+
+      // right panel
+      const rightBody = root.querySelector('#rightBody');
+      if (!rightBody) {
+        // inspector collapsed
+      } else if (!selected) {
+        rightBody.innerHTML = `<div class="prop-empty">点选画布中的图表<br/>在此配置数据 / 样式<br/><br/><span class="muted">配置栏与画布并列，不会遮挡</span></div>`;
+      } else if (state.rightTab === 'data') {
+        if (selected.type === 'chart' && selectedChart) {
+          const links = canvas.linkages.filter(l => l.sourceChartId === selectedChart.id);
+          const ds = datasetOf(selectedChart.datasetId);
+          const catMeta = fieldMeta(selectedChart.datasetId, selectedChart.encode?.category);
+          const valMeta = fieldMeta(selectedChart.datasetId, selectedChart.encode?.value);
+          const dims = ds ? ds.fields.filter(f => f.group === 'dim') : [];
+          const quotas = ds ? ds.fields.filter(f => f.group === 'quota') : [];
+          rightBody.innerHTML = `
+            <div class="prop-section">
+              <h4>图表</h4>
+              <div class="field"><label>标题</label><input id="fTitle" value="${escapeHtml(selectedChart.title)}" /></div>
+              <div class="field"><label>图表类型</label>
+                <div class="seg" id="chartTypeSeg">
+                  ${['bar','line','kpi','table'].map(t => `<button data-ctype="${t}" class="${selectedChart.chartType===t?'on':''}">${({bar:'柱状',line:'折线',kpi:'指标',table:'表格'})[t]}</button>`).join('')}
+                </div>
+              </div>
+            </div>
+            <div class="prop-section">
+              <h4>1. 选择数据集</h4>
+              <div class="field">
+                <select id="fDataset">
+                  <option value="" ${!selectedChart.datasetId?'selected':''}>请选择数据集</option>
+                  ${Object.values(DATASETS).map(d => `
+                    <option value="${d.id}" ${selectedChart.datasetId===d.id?'selected':''}>${escapeHtml(d.name)}</option>
+                  `).join('')}
+                </select>
+              </div>
+            </div>
+            ${ds ? `
+            <div class="prop-section">
+              <h4>2. 字段（点击或拖到下方槽位）</h4>
+              <div class="field-bank">
+                <div class="bank-h"><span>维度</span><span class="muted">蓝色</span></div>
+                <div>
+                  ${dims.map(f => `<span class="field-chip dim" draggable="true" data-field="${f.name}" data-group="dim" title="${f.name}">${escapeHtml(f.label)}</span>`).join('')}
+                </div>
+                <div class="bank-h" style="margin-top:8px"><span>指标</span><span class="muted">绿色</span></div>
+                <div>
+                  ${quotas.map(f => `<span class="field-chip quota" draggable="true" data-field="${f.name}" data-group="quota" title="${f.name}">${escapeHtml(f.label)}${f.agg ? ' · ' + f.agg : ''}</span>`).join('')}
+                </div>
+              </div>
+              ${selectedChart.chartType !== 'kpi' ? `
+              <div class="field">
+                <label>维度槽 <span class="muted">category</span></label>
+                <div class="encode-slot" data-slot="category" data-accept="dim">
+                  ${catMeta
+                    ? `<span class="encode-pill dim">${escapeHtml(catMeta.label)} <button type="button" data-clear-slot="category" title="移除">×</button></span>`
+                    : `<span class="placeholder">拖入维度字段，如「区域」</span>`}
+                </div>
+              </div>` : ''}
+              <div class="field">
+                <label>指标槽 <span class="muted">value</span></label>
+                <div class="encode-slot" data-slot="value" data-accept="quota">
+                  ${valMeta
+                    ? `<span class="encode-pill quota">${escapeHtml(valMeta.label)}${valMeta.agg ? ' · ' + valMeta.agg : ''} <button type="button" data-clear-slot="value" title="移除">×</button></span>`
+                    : `<span class="placeholder">拖入指标字段，如「销售额」</span>`}
+                </div>
+              </div>
+              <p class="bind-hint">流程：选数据集 → 点/拖字段进槽 → 画布自动聚合出数。换数据集会清空已绑字段。</p>
+            </div>` : `<p class="muted" style="margin-bottom:12px">选择数据集后，将出现可绑定的维度 / 指标字段</p>`}
+            <div class="prop-section">
+              <h4>联动（源 → 目标）</h4>
+              <div class="link-card" id="linkBox">
+                ${links.length
+                  ? links.map(l => {
+                      const targetTitle = canvas.charts[l.targetChartId]?.title || l.targetChartId;
+                      return `点击本图 <b>${escapeHtml(l.sourceField)}</b><br/>过滤「${escapeHtml(targetTitle)}」的 <b>${escapeHtml(l.targetField)}</b>`;
+                    }).join('<hr style="border:none;border-top:1px solid #d6e4ff;margin:8px 0">')
+                  : '暂无联动，可添加'}
+              </div>
+              <button class="btn" style="width:100%;margin-top:8px;justify-content:center" data-action="add-linkage">+ 添加联动到另一张表</button>
+              ${state.linkageHits.length ? `<button class="btn ghost" style="width:100%;margin-top:6px;justify-content:center" data-action="clear-linkage">清除联动过滤</button>` : ''}
+            </div>
+            <div class="prop-section">
+              <h4>布局</h4>
+              <div class="field"><label>网格 (x y w h)</label>
+                <input id="fLayout" value="${selected.x} ${selected.y} ${selected.w} ${selected.h}" />
+              </div>
+            </div>
+          `;
+        } else if (selected.type === 'filter') {
+          rightBody.innerHTML = `
+            <div class="prop-section">
+              <h4>筛选器</h4>
+              <div class="field"><label>显示名</label><input id="fLabel" value="${escapeHtml(selected.props.label || '')}" /></div>
+              <div class="field"><label>字段</label>
+                <select id="fField">
+                  <option value="region" ${selected.props.field==='region'?'selected':''}>region</option>
+                  <option value="product" ${selected.props.field==='product'?'selected':''}>product</option>
+                </select>
+              </div>
+              <p class="muted">筛选值写入统一 filterState，所有图表 chartQuery 共用</p>
+            </div>`;
+        } else if (selected.type === 'text') {
+          rightBody.innerHTML = `
+            <div class="prop-section">
+              <h4>文本</h4>
+              <div class="field"><label>内容</label><textarea id="fText">${escapeHtml(selected.props.content || '')}</textarea></div>
+            </div>`;
+        }
+      } else if (state.rightTab === 'style') {
+        rightBody.innerHTML = `
+          <div class="prop-section">
+            <h4>画布主题</h4>
+            <div class="field"><label>主题</label>
+              <select id="fTheme">
+                <option value="default" ${canvas.layout.themeRef==='default'?'selected':''}>默认</option>
+                <option value="dark" ${canvas.layout.themeRef==='dark'?'selected':''}>深色</option>
+              </select>
+            </div>
+            <p class="muted">样式改动会标记为「有未发布改动」</p>
+          </div>`;
+      } else {
+        rightBody.innerHTML = `
+          <div class="prop-section">
+            <h4>高级</h4>
+            <div class="field"><label>自动刷新（秒）</label>
+              <input id="fRefresh" type="number" min="0" value="${canvas.layout.refreshSec || 0}" />
+            </div>
+            <p class="muted">contentId = ${dash.contentId} · version = ${dash.version}</p>
+          </div>`;
+      }
+
+      // events
+      root.querySelector('#dashTitleEdit').onblur = (e) => {
+        const name = e.target.textContent.trim();
+        if (name && name !== dash.name) {
+          dash.name = name;
+          markDirty(dash);
+          toast('已重命名', 'ok');
+          render();
+        }
+      };
+
+      root.querySelectorAll('[data-left]').forEach(btn => {
+        btn.onclick = () => { state.leftTab = btn.dataset.left; render(); };
+      });
+      root.querySelectorAll('[data-right]').forEach(btn => {
+        btn.onclick = () => { state.rightTab = btn.dataset.right; render(); };
+      });
+      root.querySelectorAll('[data-add]').forEach(card => {
+        card.onclick = () => addComponent(dash, card.dataset.add);
+      });
+      const selectComp = (id) => {
+        state.selectedComponentId = id;
+        // 选中组件时自动展开配置栏，避免「有配置却看不见」
+        if (state.inspectorCollapsed) state.inspectorCollapsed = false;
+        render();
+      };
+      root.querySelectorAll('[data-select-comp]').forEach(row => {
+        row.onclick = (e) => {
+          if (e.target.closest('[data-del-comp]')) return;
+          selectComp(row.dataset.selectComp);
+        };
+      });
+      root.querySelectorAll('[data-del-comp]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          deleteComponent(dash, btn.dataset.delComp);
+        };
+      });
+      root.querySelectorAll('[data-select-comp-canvas]').forEach(el => {
+        el.onclick = (e) => {
+          if (e.target.closest('[data-bar]') || e.target.closest('[data-chip]')) return;
+          selectComp(el.dataset.selectCompCanvas);
+        };
+      });
+      root.querySelectorAll('[data-chip]').forEach(chip => {
+        chip.onclick = (e) => {
+          e.stopPropagation();
+          state.filterRegion = chip.dataset.chip;
+          state.selectedComponentId = chip.closest('[data-select-comp-canvas]')?.dataset.selectCompCanvas || state.selectedComponentId;
+          toast(state.filterRegion ? `筛选：${state.filterRegion}` : '已清除区域筛选', 'ok');
+          render();
+        };
+      });
+      root.querySelectorAll('[data-bar]').forEach(bar => {
+        bar.onclick = (e) => {
+          e.stopPropagation();
+          const sourceChartId = bar.dataset.source;
+          const value = bar.dataset.bar;
+          const links = canvas.linkages.filter(l => l.enabled && l.sourceChartId === sourceChartId);
+          if (!links.length) {
+            toast('当前图未配置联动', 'warn');
+            return;
+          }
+          state.linkageHits = links.map(l => ({
+            sourceChartId,
+            sourceField: l.sourceField,
+            value,
+            targetChartId: l.targetChartId,
+            targetField: l.targetField
+          }));
+          toast(`联动：${value} → 目标图已过滤`, 'ok');
+          render();
+        };
+      });
+
+      // property bindings
+      const bind = (id, fn) => {
+        const el = root.querySelector(id);
+        if (!el) return;
+        el.onchange = el.oninput = () => { fn(el); markDirty(dash); };
+      };
+      if (selectedChart) {
+        bind('#fTitle', el => { selectedChart.title = el.value; softRerenderTitles(); });
+        bind('#fDataset', el => {
+          const next = el.value || null;
+          if (next !== selectedChart.datasetId) {
+            selectedChart.datasetId = next;
+            selectedChart.encode = {};
+            toast(next ? '已切换数据集，请重新绑定字段' : '已解除数据集', 'ok');
+          }
+          render();
+        });
+        bind('#fLayout', el => {
+          const [x,y,w,h] = el.value.split(/\s+/).map(Number);
+          if ([x,y,w,h].every(n => !Number.isNaN(n))) {
+            selected.x = x; selected.y = y; selected.w = w; selected.h = h;
+            render();
+          }
+        });
+        root.querySelectorAll('[data-ctype]').forEach(btn => {
+          btn.onclick = () => {
+            selectedChart.chartType = btn.dataset.ctype;
+            markDirty(dash);
+            render();
+          };
+        });
+        wireFieldBinding(root, dash, selectedChart);
+      }
+      if (selected?.type === 'filter') {
+        bind('#fLabel', el => { selected.props.label = el.value; render(); });
+        bind('#fField', el => { selected.props.field = el.value; render(); });
+      }
+      if (selected?.type === 'text') {
+        bind('#fText', el => { selected.props.content = el.value; render(); });
+      }
+      bind('#fTheme', el => { canvas.layout.themeRef = el.value; toast('主题已更新', 'ok'); render(); });
+      bind('#fRefresh', el => { canvas.layout.refreshSec = Number(el.value) || 0; });
+
+      bindCommonActions(root);
+    }
+
+    function softRerenderTitles() {
+      render();
+    }
+
+    /** 字段点击 / 拖拽 → 维度槽 / 指标槽 */
+    function wireFieldBinding(root, dash, chart) {
+      let activeSlot = null;
+      const slots = [...root.querySelectorAll('.encode-slot')];
+      const chips = [...root.querySelectorAll('.field-chip')];
+
+      const applyField = (slot, fieldName, group) => {
+        const accept = slot.dataset.accept;
+        if (accept && group && accept !== group) {
+          toast(accept === 'dim' ? '维度槽只能放维度字段' : '指标槽只能放指标字段', 'warn');
+          return;
+        }
+        if (!chart.encode) chart.encode = {};
+        chart.encode[slot.dataset.slot] = fieldName;
+        // kpi only needs value
+        if (chart.chartType === 'kpi' && slot.dataset.slot === 'category') {
+          delete chart.encode.category;
+        }
+        markDirty(dash);
+        toast(`已绑定到${slot.dataset.slot === 'category' ? '维度' : '指标'}`, 'ok');
+        render();
+      };
+
+      slots.forEach(slot => {
+        slot.onclick = (e) => {
+          if (e.target.closest('[data-clear-slot]')) return;
+          slots.forEach(s => s.classList.toggle('active', s === slot));
+          activeSlot = slot;
+          toast(`已选中${slot.dataset.slot === 'category' ? '维度' : '指标'}槽，请点击字段`, '');
+        };
+        slot.ondragover = (e) => { e.preventDefault(); slot.classList.add('drag-over'); };
+        slot.ondragleave = () => slot.classList.remove('drag-over');
+        slot.ondrop = (e) => {
+          e.preventDefault();
+          slot.classList.remove('drag-over');
+          const field = e.dataTransfer.getData('field');
+          const group = e.dataTransfer.getData('group');
+          if (field) applyField(slot, field, group);
+        };
+      });
+
+      root.querySelectorAll('[data-clear-slot]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          if (!chart.encode) chart.encode = {};
+          delete chart.encode[btn.dataset.clearSlot];
+          markDirty(dash);
+          render();
+        };
+      });
+
+      chips.forEach(chip => {
+        chip.ondragstart = (e) => {
+          chip.classList.add('dragging');
+          e.dataTransfer.setData('field', chip.dataset.field);
+          e.dataTransfer.setData('group', chip.dataset.group);
+        };
+        chip.ondragend = () => chip.classList.remove('dragging');
+        chip.onclick = () => {
+          const group = chip.dataset.group;
+          let slot = activeSlot;
+          if (!slot) {
+            // auto pick: dim → category, quota → value
+            const prefer = group === 'dim' ? 'category' : 'value';
+            slot = root.querySelector(`.encode-slot[data-slot="${prefer}"]`)
+              || root.querySelector(`.encode-slot[data-accept="${group}"]`);
+          }
+          if (!slot) {
+            toast('当前图表类型无需该字段槽', 'warn');
+            return;
+          }
+          applyField(slot, chip.dataset.field, group);
+        };
+      });
+    }
+
+    function renderWidget(dash, c, view) {
+      const canvas = view === 'published' ? (dash.published || dash.draft) : dash.draft;
+      const selected = c.id === state.selectedComponentId && view === 'draft';
+      const style = `grid-column: ${c.x + 1} / span ${c.w}; grid-row: ${c.y + 1} / span ${c.h}`;
+      if (c.type === 'filter') {
+        const field = c.props.field || 'region';
+        const options = field === 'product' ? ['', 'A', 'B'] : ['', '华东', '华北', '华南'];
+        const labels = { '': '全部', '华东': '华东', '华北': '华北', '华南': '华南', A: '产品 A', B: '产品 B' };
+        const current = field === 'region' ? state.filterRegion : '';
+        return `<div class="widget ${selected ? 'selected' : ''}" style="${style}" data-select-comp-canvas="${c.id}">
+          <div class="filter-row">
+            <span style="font-size:12px;color:var(--text-2)">${escapeHtml(c.props.label || field)}</span>
+            ${options.map(v => `<span class="chip ${current===v?'on':''}" data-chip="${v}">${labels[v] || v}</span>`).join('')}
+            <span class="hint-inline" style="margin-left:auto">写入 filterState</span>
+          </div>
+        </div>`;
+      }
+      if (c.type === 'text') {
+        return `<div class="widget ${selected ? 'selected' : ''}" style="${style}" data-select-comp-canvas="${c.id}">
+          <div class="text-widget">${escapeHtml(c.props.content || '文本')}</div>
+        </div>`;
+      }
+      const chart = canvas.charts[c.chartViewId];
+      if (!chart) {
+        return `<div class="widget ${selected ? 'selected' : ''}" style="${style}" data-select-comp-canvas="${c.id}">缺失图表</div>`;
+      }
+      const need = chartNeedsBind(chart);
+      if (need) {
+        return `<div class="widget ${selected ? 'selected' : ''}" style="${style}" data-select-comp-canvas="${c.id}">
+          <div class="wh"><b>${escapeHtml(chart.title)}</b><span>待配置</span></div>
+          <div class="chart-placeholder">${escapeHtml(need)}<br/><span style="color:var(--brand)">在右侧「数据」面板操作</span></div>
+        </div>`;
+      }
+      const rows = queryRows(dash, chart, view);
+      if (chart.chartType === 'kpi') {
+        const sum = rows.reduce((s, r) => s + Number(r[chart.encode.value || 'amount'] || 0), 0);
+        return `<div class="widget ${selected ? 'selected' : ''}" style="${style}" data-select-comp-canvas="${c.id}">
+          <div class="kpi">
+            <div style="font-size:12px;color:var(--text-2)">${escapeHtml(chart.title)}</div>
+            <div class="num">¥ ${(sum / 10).toFixed(1)}万</div>
+            <div class="delta">基于当前筛选 · ${rows.length} 行</div>
+          </div>
+        </div>`;
+      }
+      if (chart.chartType === 'table') {
+        const data = aggregate(rows, chart.encode.category || 'product', chart.encode.value || 'amount');
+        return `<div class="widget ${selected ? 'selected' : ''}" style="${style}" data-select-comp-canvas="${c.id}">
+          <div class="wh"><b>${escapeHtml(chart.title)}</b><span>${state.linkageHits.some(h=>h.targetChartId===chart.id)?'被联动':''}</span></div>
+          <table class="table-mini">
+            <thead><tr><th>${escapeHtml(chart.encode.category||'维度')}</th><th>${escapeHtml(chart.encode.value||'指标')}</th></tr></thead>
+            <tbody>${data.map(d => `<tr><td>${escapeHtml(d.name)}</td><td>${d.value}</td></tr>`).join('') || '<tr><td colspan="2">无数据</td></tr>'}</tbody>
+          </table>
+        </div>`;
+      }
+      if (chart.chartType === 'line') {
+        const data = aggregate(rows, chart.encode.category || 'region', chart.encode.value || 'amount');
+        const max = Math.max(...data.map(d => d.value), 1);
+        const pts = data.map((d, i) => {
+          const x = data.length === 1 ? 300 : (i / (data.length - 1)) * 600;
+          const y = 90 - (d.value / max) * 70;
+          return `${x},${y}`;
+        }).join(' ');
+        return `<div class="widget ${selected ? 'selected' : ''}" style="${style}" data-select-comp-canvas="${c.id}">
+          <div class="wh"><b>${escapeHtml(chart.title)}</b><span>view=${view}</span></div>
+          <svg width="100%" height="110" viewBox="0 0 600 100" preserveAspectRatio="none">
+            <polyline fill="none" stroke="#3370ff" stroke-width="2.5" points="${pts}" />
+          </svg>
+        </div>`;
+      }
+      // bar default
+      const data = aggregate(rows, chart.encode.category || 'region', chart.encode.value || 'amount');
+      const max = Math.max(...data.map(d => d.value), 1);
+      return `<div class="widget ${selected ? 'selected' : ''}" style="${style}" data-select-comp-canvas="${c.id}">
+        <div class="wh"><b>${escapeHtml(chart.title)}</b><span>点击柱可联动</span></div>
+        <div class="spark">
+          ${data.map(d => `<i class="${state.linkageHits.some(h=>h.value===d.name)?'active':''}" style="height:${Math.round(d.value/max*100)}%" data-bar="${escapeHtml(d.name)}" data-source="${chart.id}" title="${escapeHtml(d.name)}: ${d.value}"></i>`).join('')}
+        </div>
+        <div class="resize-hint">${data.map(d => d.name).join(' · ')}</div>
+      </div>`;
+    }
+
+    function addComponent(dash, kind) {
+      const canvas = dash.draft;
+      const y = canvas.components.reduce((m, c) => Math.max(m, c.y + c.h), 0);
+      if (kind === 'filter') {
+        const id = uid('comp');
+        canvas.components.push({
+          id, type: 'filter', x: 0, y, w: 12, h: 1, zIndex: canvas.components.length + 1,
+          props: { field: 'region', label: '区域' }
+        });
+        state.selectedComponentId = id;
+      } else if (kind === 'text') {
+        const id = uid('comp');
+        canvas.components.push({
+          id, type: 'text', x: 0, y, w: 6, h: 1, zIndex: canvas.components.length + 1,
+          props: { content: '双击右侧改文案' }
+        });
+        state.selectedComponentId = id;
+      } else {
+        const chartId = uid('chart');
+        const compId = uid('comp');
+        const titles = { bar: '新柱状图', line: '新折线图', kpi: '新指标卡', table: '新明细表' };
+        canvas.charts[chartId] = {
+          id: chartId,
+          title: titles[kind] || '新图表',
+          chartType: kind,
+          datasetId: null,
+          encode: {}
+        };
+        canvas.components.push({
+          id: compId, type: 'chart', chartViewId: chartId,
+          x: 0, y, w: kind === 'kpi' ? 4 : 8, h: kind === 'kpi' ? 2 : 3,
+          zIndex: canvas.components.length + 1, props: {}
+        });
+        state.selectedComponentId = compId;
+        state.rightTab = 'data';
+      }
+      markDirty(dash);
+      toast('已添加组件', 'ok');
+      render();
+    }
+
+    function deleteComponent(dash, compId) {
+      const canvas = dash.draft;
+      const comp = canvas.components.find(c => c.id === compId);
+      if (!comp) return;
+      canvas.components = canvas.components.filter(c => c.id !== compId);
+      if (comp.chartViewId) delete canvas.charts[comp.chartViewId];
+      canvas.linkages = canvas.linkages.filter(l => l.sourceChartId !== comp.chartViewId && l.targetChartId !== comp.chartViewId);
+      if (state.selectedComponentId === compId) state.selectedComponentId = canvas.components[0]?.id || null;
+      markDirty(dash);
+      toast('已删除', 'ok');
+      render();
+    }
+
+    /* ---------- PREVIEW ---------- */
+    function renderPreview() {
+      const root = document.getElementById('screen-preview');
+      const dash = selectedDash();
+      if (!dash) {
+        root.innerHTML = `<div class="empty-detail">未选择仪表盘</div>`;
+        return;
+      }
+      const canPub = dash.status === 'published' || dash.status === 'publishedWithDraft';
+      const view = state.previewMode === 'draft' ? 'draft' : 'published';
+      if (view === 'published' && !canPub) {
+        root.innerHTML = `
+          <div class="app-bar">
+            <button class="btn ghost" data-action="goto-editor">← 返回编辑</button>
+            <div class="crumb"><b>${escapeHtml(dash.name)}</b></div>
+          </div>
+          <div class="empty-detail">尚未发布，无可预览的 published 副本<br/><br/>
+            <button class="btn primary" data-action="publish">先发布</button>
+          </div>`;
+        bindCommonActions(root);
+        return;
+      }
+      const canvas = view === 'published' ? dash.published : dash.draft;
+      root.innerHTML = `
+        <div class="app-bar">
+          <button class="btn ghost" data-action="goto-editor">← 返回编辑</button>
+          <div class="crumb"><b>${escapeHtml(dash.name)}</b></div>
+          ${view === 'published' ? '<span class="tag published">已发布</span>' : '<span class="tag draft">草稿预览</span>'}
+          <div class="spacer"></div>
+          <button class="btn ghost ${view==='draft'?'primary':''}" data-action="preview-draft">草稿</button>
+          <button class="btn ghost ${view==='published'?'primary':''}" data-action="goto-preview" ${canPub?'':'disabled'}>已发布</button>
+          <button class="btn" data-action="toast-share">分享</button>
+        </div>
+        <div class="preview-body">
+          <div class="preview-title">
+            <div>
+              <h1>${escapeHtml(dash.name)}</h1>
+              <div style="margin-top:4px;font-size:12px;color:var(--text-3)">只读 · chartQuery view=${view} · 筛选/联动仍可交互</div>
+            </div>
+            <div class="filter-row" id="previewFilters"></div>
+          </div>
+          <div class="preview-grid" id="previewGrid"></div>
+        </div>
+      `;
+
+      // reuse widget renderer into preview grid with 12-col mapping already in components
+      const grid = root.querySelector('#previewGrid');
+      // temporarily map draft selection off
+      const prevSel = state.selectedComponentId;
+      state.selectedComponentId = null;
+      grid.innerHTML = canvas.components.map(c => {
+        // wrap widget into p-card-like by replacing class in string
+        return renderWidget(dash, c, view).replace('class="widget', 'class="p-card widget').replace('data-select-comp-canvas', 'data-preview-comp');
+      }).join('');
+      state.selectedComponentId = prevSel;
+
+      const filterComp = canvas.components.find(c => c.type === 'filter');
+      const pf = root.querySelector('#previewFilters');
+      if (filterComp) {
+        pf.innerHTML = ['', '华东', '华北', '华南'].map(v =>
+          `<span class="chip ${state.filterRegion===v?'on':''}" data-chip="${v}">${v || '全部区域'}</span>`
+        ).join('');
+      }
+
+      root.querySelectorAll('[data-chip]').forEach(chip => {
+        chip.onclick = () => {
+          state.filterRegion = chip.dataset.chip;
+          render();
+        };
+      });
+      root.querySelectorAll('[data-bar]').forEach(bar => {
+        bar.onclick = () => {
+          const sourceChartId = bar.dataset.source;
+          const value = bar.dataset.bar;
+          const links = canvas.linkages.filter(l => l.enabled && l.sourceChartId === sourceChartId);
+          state.linkageHits = links.map(l => ({
+            sourceChartId, sourceField: l.sourceField, value,
+            targetChartId: l.targetChartId, targetField: l.targetField
+          }));
+          toast(`联动：${value}`, 'ok');
+          render();
+        };
+      });
+      bindCommonActions(root);
+    }
+
+    /* ---------- ACTIONS ---------- */
+    function bindCommonActions(root) {
+      const act = (name, fn) => {
+        root.querySelectorAll(`[data-action="${name}"]`).forEach(el => {
+          el.onclick = fn;
+        });
+      };
+      act('goto-list', () => { state.screen = 'list'; render(); });
+      act('toggle-inspector', () => {
+        state.inspectorCollapsed = !state.inspectorCollapsed;
+        toast(state.inspectorCollapsed ? '已收起配置栏，画布加宽' : '已展开配置栏', 'ok');
+        render();
+      });
+      act('goto-editor', () => {
+        if (!selectedDash()) { toast('请先选择仪表盘', 'warn'); return; }
+        state.screen = 'editor';
+        state.inspectorCollapsed = false;
+        state.selectedComponentId = selectedDash().draft.components[0]?.id || null;
+        render();
+      });
+      act('goto-preview', () => {
+        if (!selectedDash()) { toast('请先选择仪表盘', 'warn'); return; }
+        state.previewMode = 'published';
+        state.screen = 'preview';
+        render();
+      });
+      act('preview-draft', () => {
+        if (!selectedDash()) return;
+        state.previewMode = 'draft';
+        state.screen = 'preview';
+        render();
+      });
+      act('create-dash', () => openCreateModal('dashboard', '0'));
+      act('create-folder', () => openCreateModal('folder', '0'));
+      act('create-dash-in', (e) => openCreateModal('dashboard', e.currentTarget.dataset.pid));
+      act('publish', () => {
+        const dash = selectedDash();
+        if (!dash) return;
+        dash.published = deepClone(dash.draft);
+        dash.status = 'published';
+        dash.version += 1;
+        dash.contentId = String(Number(dash.contentId || '0') + 1);
+        dash.updateTime = Date.now();
+        toast('已发布，观看页将读取 published 副本', 'ok');
+        render();
+      });
+      act('discard', () => {
+        const dash = selectedDash();
+        if (!dash || !dash.published) { toast('没有已发布版本可恢复', 'warn'); return; }
+        dash.draft = deepClone(dash.published);
+        dash.status = 'published';
+        dash.contentId = String(Number(dash.contentId || '0') + 1);
+        state.filterRegion = '';
+        state.linkageHits = [];
+        toast('已丢弃草稿，恢复为已发布', 'ok');
+        render();
+      });
+      act('delete-node', () => {
+        const id = state.selectedNodeId;
+        const n = findNode(id);
+        if (!n) return;
+        if (n.nodeType === 'folder' && state.nodes.some(x => x.pid === id)) {
+          toast('请先删除文件夹内仪表盘', 'warn');
+          return;
+        }
+        state.nodes = state.nodes.filter(x => x.id !== id);
+        state.selectedNodeId = null;
+        toast('已删除', 'ok');
+        render();
+      });
+      act('rename-node', () => {
+        const n = findNode(state.selectedNodeId);
+        if (!n) return;
+        const name = prompt('新名称', n.name);
+        if (!name?.trim()) return;
+        n.name = name.trim();
+        if (n.nodeType === 'dashboard') markDirty(n);
+        toast('已重命名', 'ok');
+        render();
+      });
+      act('add-linkage', () => {
+        const dash = selectedDash();
+        const canvas = dash.draft;
+        const selected = canvas.components.find(c => c.id === state.selectedComponentId);
+        const source = selected?.chartViewId && canvas.charts[selected.chartViewId];
+        if (!source) return;
+        const target = Object.values(canvas.charts).find(c => c.chartType === 'table') || Object.values(canvas.charts).find(c => c.id !== source.id);
+        if (!target) { toast('需要另一张图作为联动目标', 'warn'); return; }
+        canvas.linkages = canvas.linkages.filter(l => !(l.sourceChartId === source.id && l.targetChartId === target.id));
+        canvas.linkages.push({
+          id: uid('link'),
+          sourceChartId: source.id,
+          sourceField: source.encode.category || 'region',
+          targetChartId: target.id,
+          targetField: 'region',
+          enabled: true
+        });
+        markDirty(dash);
+        toast(`已配置联动到「${target.title}」`, 'ok');
+        render();
+      });
+      act('clear-linkage', () => {
+        state.linkageHits = [];
+        toast('已清除联动过滤', 'ok');
+        render();
+      });
+      act('toast-recent', () => toast('最近访问（示意）'));
+      act('toast-fav', () => toast('已加入收藏（示意）', 'ok'));
+      act('toast-undo', () => toast('撤销栈示意：一期可接 snapshot store'));
+      act('toast-redo', () => toast('重做栈示意'));
+      act('toast-share', () => toast('分享链接将指向 published 副本', 'ok'));
+    }
+
+    function openCreateModal(nodeType, pid) {
+      const mask = document.getElementById('modalMask');
+      mask.classList.add('show');
+      let tpl = 'blank';
+      mask.innerHTML = `
+        <div class="modal" style="width:min(520px, calc(100vw - 32px))">
+          <h3>${nodeType === 'folder' ? '新建文件夹' : '新建仪表盘'}</h3>
+          <div class="field"><label>名称</label><input id="modalName" value="${nodeType === 'folder' ? '新文件夹' : '未命名仪表盘'}" /></div>
+          ${nodeType === 'dashboard' ? `
+          <div class="field">
+            <label>起始布局（可稍后随意改）</label>
+            <div class="tpl-grid" id="tplGrid">
+              <div class="tpl-card on" data-tpl="blank"><b>空白画布</b><span>不预置组件，从零搭建</span></div>
+              <div class="tpl-card" data-tpl="kpi"><b>指标卡行</b><span>三个 KPI 占位，再绑字段</span></div>
+              <div class="tpl-card" data-tpl="dual"><b>双图对比</b><span>左右各一图，适合对比</span></div>
+              <div class="tpl-card" data-tpl="sales"><b>销售概览示例</b><span>含筛选/柱图/联动的完整示例</span></div>
+            </div>
+          </div>` : ''}
+          <div class="actions">
+            <button class="btn ghost" id="modalCancel">取消</button>
+            <button class="btn primary" id="modalOk">创建</button>
+          </div>
+        </div>`;
+      const close = () => { mask.classList.remove('show'); mask.innerHTML = ''; };
+      mask.querySelector('#modalCancel').onclick = close;
+      mask.onclick = (e) => { if (e.target === mask) close(); };
+      mask.querySelectorAll('[data-tpl]').forEach(card => {
+        card.onclick = () => {
+          tpl = card.dataset.tpl;
+          mask.querySelectorAll('[data-tpl]').forEach(c => c.classList.toggle('on', c === card));
+        };
+      });
+      mask.querySelector('#modalOk').onclick = () => {
+        const name = mask.querySelector('#modalName').value.trim();
+        if (!name) return;
+        const id = uid(nodeType === 'folder' ? 'folder' : 'dash');
+        const node = {
+          id, pid: pid || '0', name, nodeType,
+          status: 'draft', contentId: '1', version: 1,
+          createBy: '沈', updateBy: '沈', updateTime: Date.now(),
+          draft: nodeType === 'dashboard' ? canvasFromTemplate(tpl, name) : undefined,
+          published: null
+        };
+        state.nodes.push(node);
+        state.selectedNodeId = id;
+        close();
+        toast(nodeType === 'dashboard' ? `已创建（${({blank:'空白',kpi:'指标卡',dual:'双图',sales:'销售示例'})[tpl]}）` : '创建成功', 'ok');
+        if (nodeType === 'dashboard') {
+          state.screen = 'editor';
+          state.rightTab = 'data';
+          state.selectedComponentId = node.draft.components.find(c => c.type === 'chart')?.id
+            || node.draft.components[0]?.id
+            || null;
+        }
+        render();
+      };
+      setTimeout(() => mask.querySelector('#modalName')?.focus(), 0);
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[c]);
+    }
+
+    function render() {
+      document.querySelectorAll('.device').forEach(el => {
+        el.classList.remove('show', 'editor-mode');
+      });
+      const current = document.getElementById('screen-' + state.screen);
+      current.classList.add('show');
+      if (state.screen === 'editor') current.classList.add('editor-mode');
+      document.querySelectorAll('#screenTabs button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.screen === state.screen);
+      });
+      if (state.screen === 'list') renderList();
+      else if (state.screen === 'editor') renderEditor();
+      else renderPreview();
+    }
+
+    document.getElementById('screenTabs').onclick = (e) => {
+      const btn = e.target.closest('button[data-screen]');
+      if (!btn) return;
+      if ((btn.dataset.screen === 'editor' || btn.dataset.screen === 'preview') && !selectedDash()) {
+        // auto pick first dashboard
+        const first = state.nodes.find(n => n.nodeType === 'dashboard');
+        if (first) state.selectedNodeId = first.id;
+      }
+      state.screen = btn.dataset.screen;
+      if (state.screen === 'preview') state.previewMode = 'published';
+      render();
+    };
+
+    // default selection
+    state.selectedNodeId = 'dash_sales';
+    render();
+  </script>
+</body>
+</html>
