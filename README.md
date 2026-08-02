@@ -52,6 +52,7 @@ open-dashboard/
 | 文档 | 内容 |
 |------|------|
 | [docs/backend-architecture.md](docs/backend-architecture.md) | **后端怎么接**：表、接口、查询流水线、仪表盘 ACL、数据集行列权限、分享 |
+| [docs/data-query-architecture.md](docs/data-query-architecture.md) | **数据面**：数据源类型 → 数据集 → chartQuery → 用户访问（自研，非 DE getData 照搬） |
 | [docs/domain.md](docs/domain.md) | 领域模型与发布状态机 |
 | [docs/schema.sql](docs/schema.sql) | 双副本表结构 + auth/share |
 | [docs/dashboard-api.md](docs/dashboard-api.md) | REST 契约 |
