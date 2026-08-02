@@ -36,8 +36,12 @@
     .btn { height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line); background: #fff; font-size: 12px; color: var(--text); display: inline-flex; align-items: center; gap: 4px; }
     .btn:hover { background: var(--bg); }
     .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .btn.primary:hover { background: var(--brand-hover); }
     .btn.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
     .btn.danger { color: var(--danger); border-color: #fecdca; }
+    .btn:disabled, .btn.is-disabled {
+      opacity: .45; cursor: not-allowed; pointer-events: none;
+    }
     .tag { height: 22px; padding: 0 8px; border-radius: 4px; font-size: 11px; display: inline-flex; align-items: center; font-weight: 500; }
     .tag.draft { background: #fff3e0; color: #c2410c; }
     .tag.pub { background: #e3f7ef; color: #047857; }
@@ -326,13 +330,400 @@
     .theme-swatch { display: flex; gap: 6px; }
     .theme-swatch button { width: 28px; height: 28px; border-radius: 6px; border: 2px solid transparent; }
     .theme-swatch button.on { border-color: var(--text); }
+    /* ---- manage shell (workbench / datasource / dataset / dashboard list) ---- */
+    .mod-nav { display: flex; gap: 2px; margin-left: 16px; }
+    .mod-nav button {
+      border: 0; background: transparent; color: #8f959e; padding: 6px 12px; border-radius: 6px; font-size: 13px;
+    }
+    .mod-nav button:hover { color: #fff; background: rgba(255,255,255,.06); }
+    .mod-nav button.on { color: #fff; background: rgba(51,112,255,.28); font-weight: 600; }
+    .manage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .manage .bar .crumb { font-size: 12px; color: var(--text-3); }
+    .manage .bar .crumb b { color: var(--text); font-weight: 600; }
+    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    .stat-card {
+      background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+    }
+    .stat-card .k { font-size: 12px; color: var(--text-3); }
+    .stat-card .v { font-size: 22px; font-weight: 700; margin-top: 4px; letter-spacing: -.02em; }
+    .stat-card .s { font-size: 11px; color: var(--text-2); margin-top: 4px; }
+    .panel-card {
+      background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px;
+    }
+    .panel-card h3 { font-size: 13px; margin-bottom: 10px; }
+    .recent-list { display: flex; flex-direction: column; gap: 6px; }
+    .recent-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
+      border: 1px solid transparent; cursor: pointer; background: #fafbfc;
+    }
+    .recent-item:hover { border-color: #c2d8ff; background: var(--brand-soft); }
+    .recent-item .ico {
+      width: 32px; height: 32px; border-radius: 8px; background: #e8f0ff; color: var(--brand);
+      display: grid; place-items: center; font-size: 14px; flex-shrink: 0;
+    }
+    .recent-item .t { font-size: 13px; font-weight: 600; }
+    .recent-item .m { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+    .pipe {
+      display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin-top: 4px;
+    }
+    .pipe-step {
+      flex: 1; min-width: 140px; background: #f7f8fa; border: 1px dashed #c5cdd6; border-radius: 10px;
+      padding: 12px; cursor: pointer; transition: border-color .15s, background .15s;
+    }
+    .pipe-step:hover { border-color: var(--brand); background: var(--brand-soft); }
+    .pipe-step .n { font-size: 11px; color: var(--text-3); margin-bottom: 4px; }
+    .pipe-step .t { font-size: 13px; font-weight: 600; }
+    .pipe-step .d { font-size: 11px; color: var(--text-2); margin-top: 4px; line-height: 1.4; }
+    .pipe-arrow { align-self: center; color: var(--text-3); font-size: 16px; }
+    .grid-2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
+    @media (max-width: 960px) {
+      .stat-row { grid-template-columns: 1fr 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .mtable { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .mtable th, .mtable td { padding: 10px 12px; border-bottom: 1px solid #eff0f1; text-align: left; vertical-align: middle; }
+    .mtable th { color: var(--text-3); font-weight: 500; background: #fafbfc; position: sticky; top: 0; }
+    .mtable tr { cursor: pointer; }
+    .mtable tr:hover td { background: #f7f9fc; }
+    .mtable tr.on td { background: var(--brand-soft); }
+    .pill-soft {
+      display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 500; background: #f0f2f5; color: var(--text-2);
+    }
+    .pill-soft.ok { background: #e3f7ef; color: #047857; }
+    .pill-soft.warn { background: #fff7ed; color: #c2410c; }
+    .pill-soft.err { background: #fef2f2; color: #b42318; }
+    .pill-soft.info { background: #e8f0ff; color: #245bdb; }
+    .tree-sec { font-size: 11px; color: var(--text-3); padding: 10px 10px 4px; font-weight: 600; }
+    .tree-item .sub { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px; font-weight: 400; }
+    .detail-hero { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; }
+    .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    .meta-card { background: #fafbfc; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+    .meta-card .k { font-size: 11px; color: var(--text-3); }
+    .meta-card .v { font-size: 14px; font-weight: 600; margin-top: 4px; }
+    .preview-mini {
+      border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 14px; margin-bottom: 14px;
+    }
+    .spark { display: flex; align-items: flex-end; gap: 6px; height: 72px; margin-top: 8px; }
+    .spark i { flex: 1; background: linear-gradient(180deg, #8fb3ff, #3370ff); border-radius: 3px 3px 0 0; min-width: 8px; }
+    .search-inline { height: 30px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; font-size: 12px; width: 200px; }
+    .field-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .wizard-steps { display: flex; gap: 8px; margin-bottom: 14px; }
+    .wizard-steps span {
+      font-size: 12px; color: var(--text-3); padding: 4px 10px; border-radius: 999px; background: #f0f2f5;
+    }
+    .wizard-steps span.on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+    .sql-box {
+      background: #0f1115; color: #d6e4ff; padding: 12px; border-radius: 8px; font-size: 11px;
+      font-family: ui-monospace, monospace; white-space: pre-wrap; line-height: 1.5; max-height: 160px; overflow: auto;
+    }
+    /* ---- Feishu / Quick BI style asset studio ---- */
+    .studio { flex: 1; min-height: 0; display: flex; flex-direction: column; background:
+      radial-gradient(1200px 420px at 0% -10%, rgba(51,112,255,.08), transparent 55%),
+      radial-gradient(900px 360px at 100% 0%, rgba(14,165,233,.06), transparent 50%),
+      var(--bg); }
+    .studio-bar {
+      height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 20px;
+      background: rgba(255,255,255,.82); backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(222,224,227,.9); flex-shrink: 0;
+    }
+    .studio-bar .title-block { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .studio-bar .title-block strong { font-size: 15px; letter-spacing: -.01em; }
+    .studio-bar .title-block span { font-size: 11px; color: var(--text-3); }
+    .studio-search {
+      display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px;
+      border: 1px solid var(--line); border-radius: 8px; background: #fff; width: min(280px, 36vw);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .studio-search:focus-within { border-color: #9db7ff; box-shadow: 0 0 0 3px rgba(51,112,255,.12); }
+    .studio-search input { border: 0; outline: 0; flex: 1; font-size: 12px; background: transparent; min-width: 0; }
+    .studio-search .ico { color: var(--text-3); font-size: 13px; }
+    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .filter-chip {
+      height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line);
+      background: #fff; font-size: 12px; color: var(--text-2); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 5px; transition: .15s;
+    }
+    .filter-chip:hover { border-color: #c2d8ff; color: var(--brand); }
+    .filter-chip.on { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+    .filter-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .7; }
+    .studio-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0,1fr); }
+    .asset-rail {
+      background: rgba(255,255,255,.9); border-right: 1px solid var(--line);
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .asset-rail .rail-head {
+      padding: 12px 14px 8px; display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; color: var(--text-3); font-weight: 600;
+    }
+    .asset-rail .rail-scroll { flex: 1; overflow: auto; padding: 0 8px 12px; }
+    .asset-item {
+      display: flex; gap: 10px; align-items: flex-start; padding: 10px 10px;
+      border-radius: 10px; cursor: pointer; border: 1px solid transparent;
+      transition: background .15s, border-color .15s, transform .12s;
+      margin-bottom: 4px;
+    }
+    .asset-item:hover { background: #f7f8fa; }
+    .asset-item.on {
+      background: linear-gradient(180deg, #f3f7ff 0%, #eaf1ff 100%);
+      border-color: #c9dbff; box-shadow: 0 1px 0 rgba(51,112,255,.06);
+    }
+    .type-badge {
+      width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+      flex-shrink: 0; font-size: 11px; font-weight: 800; letter-spacing: -.02em;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.55);
+    }
+    .type-badge svg { width: 20px; height: 20px; display: block; }
+    .asset-item .meta { min-width: 0; flex: 1; }
+    .asset-item .name {
+      font-size: 13px; font-weight: 600; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .asset-item .desc {
+      font-size: 11px; color: var(--text-3); margin-top: 3px;
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0;
+    }
+    .status-dot.ok { background: #00b578; box-shadow: 0 0 0 3px rgba(0,181,120,.15); }
+    .status-dot.warn { background: #ff8800; box-shadow: 0 0 0 3px rgba(255,136,0,.15); }
+    .status-dot.err { background: #f54a45; box-shadow: 0 0 0 3px rgba(245,74,69,.15); animation: pulse-err 1.4s ease infinite; }
+    @keyframes pulse-err {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(245,74,69,.12); }
+      50% { box-shadow: 0 0 0 5px rgba(245,74,69,.08); }
+    }
+    .asset-stage { overflow: auto; padding: 20px 24px 28px; min-width: 0; }
+    .hero-card {
+      position: relative; overflow: hidden;
+      background: #fff; border: 1px solid var(--line); border-radius: 14px;
+      padding: 20px 22px; margin-bottom: 14px;
+      box-shadow: 0 1px 2px rgba(31,35,41,.04);
+    }
+    .hero-card::before {
+      content: ""; position: absolute; inset: 0 auto auto 0; width: 100%; height: 3px;
+      background: linear-gradient(90deg, #3370ff, #0ea5e9 55%, transparent);
+    }
+    .hero-top { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+    .hero-icon {
+      width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center;
+      flex-shrink: 0; box-shadow: 0 8px 20px rgba(51,112,255,.12);
+    }
+    .hero-icon svg { width: 28px; height: 28px; }
+    .hero-copy { flex: 1; min-width: 200px; }
+    .hero-copy h2 { font-size: 20px; letter-spacing: -.02em; margin-bottom: 6px; }
+    .hero-copy .sub { font-size: 13px; color: var(--text-2); line-height: 1.5; }
+    .hero-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .metric-strip {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px;
+    }
+    @media (max-width: 1100px) { .metric-strip { grid-template-columns: 1fr 1fr; } .studio-body { grid-template-columns: 260px 1fr; } }
+    .metric-cell {
+      background: linear-gradient(180deg, #fafbff 0%, #f5f7fb 100%);
+      border: 1px solid #e8ebf0; border-radius: 10px; padding: 12px 14px;
+    }
+    .metric-cell .k { font-size: 11px; color: var(--text-3); font-weight: 500; }
+    .metric-cell .v {
+      margin-top: 6px; font-size: 16px; font-weight: 700; letter-spacing: -.02em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .metric-cell .h { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+    .soft-panel {
+      background: #fff; border: 1px solid var(--line); border-radius: 14px;
+      margin-bottom: 14px; overflow: hidden;
+      box-shadow: 0 1px 2px rgba(31,35,41,.03);
+    }
+    .soft-panel .phd {
+      display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+      border-bottom: 1px solid #eff0f1; background: #fbfcfd;
+    }
+    .soft-panel .phd h3 { font-size: 13px; font-weight: 650; }
+    .soft-panel .phd .hint { margin-left: auto; font-size: 11px; color: var(--text-3); }
+    .soft-panel .pbd { padding: 14px 16px; }
+    .kv-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+      border: 1px solid #eef0f3; border-radius: 10px; overflow: hidden;
+    }
+    .kv-grid .kv {
+      display: grid; grid-template-columns: 100px 1fr; gap: 8px;
+      padding: 11px 14px; border-bottom: 1px solid #eef0f3; border-right: 1px solid #eef0f3;
+      font-size: 12px; background: #fff;
+    }
+    .kv-grid .kv:nth-child(2n) { border-right: 0; }
+    .kv-grid .kv:nth-last-child(-n+2) { border-bottom: 0; }
+    .kv-grid .kk { color: var(--text-3); }
+    .kv-grid .vv { color: var(--text); font-weight: 550; word-break: break-all; font-variant-numeric: tabular-nums; }
+    .schema-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .schema-table th {
+      text-align: left; padding: 9px 12px; color: var(--text-3); font-weight: 500;
+      background: #f7f8fa; border-bottom: 1px solid #eef0f3;
+    }
+    .schema-table td { padding: 10px 12px; border-bottom: 1px solid #f0f1f3; }
+    .schema-table tr { cursor: pointer; transition: background .12s; }
+    .schema-table tbody tr:hover { background: #f5f8ff; }
+    .schema-table tr.picked { background: #eef4ff; }
+    .ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .ref-card {
+      border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+      background: linear-gradient(180deg, #fff, #fafbfd); cursor: pointer;
+      transition: border-color .15s, box-shadow .15s, transform .12s;
+    }
+    .ref-card:hover {
+      border-color: #b7cbff; box-shadow: 0 8px 18px rgba(51,112,255,.08); transform: translateY(-1px);
+    }
+    .ref-card .rt { font-size: 13px; font-weight: 650; }
+    .ref-card .rm { font-size: 11px; color: var(--text-3); margin-top: 4px; line-height: 1.4; }
+    .ref-card .rf { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .mini-tag {
+      height: 20px; padding: 0 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
+      background: #f0f2f5; color: var(--text-2); display: inline-flex; align-items: center;
+    }
+    .mini-tag.blue { background: #e8f0ff; color: #245bdb; }
+    .mini-tag.green { background: #e3f7ef; color: #047857; }
+    .studio-tabs {
+      display: flex; gap: 2px; padding: 4px; background: #f0f2f5; border-radius: 10px; width: fit-content;
+    }
+    .studio-tabs button {
+      border: 0; background: transparent; height: 30px; padding: 0 14px; border-radius: 8px;
+      font-size: 12px; color: var(--text-2); font-weight: 500; cursor: pointer;
+    }
+    .studio-tabs button.on { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.06); font-weight: 650; }
+    .field-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .field-table th {
+      text-align: left; padding: 10px 12px; color: var(--text-3); font-weight: 500;
+      background: #f7f8fa; border-bottom: 1px solid #eef0f3; position: sticky; top: 0;
+    }
+    .field-table td { padding: 10px 12px; border-bottom: 1px solid #f0f1f3; vertical-align: middle; }
+    .field-table tr:hover td { background: #f8faff; }
+    .role-seg {
+      display: inline-grid; grid-template-columns: 1fr 1fr; background: #f0f2f5; padding: 2px;
+      border-radius: 6px; min-width: 110px;
+    }
+    .role-seg button {
+      height: 24px; border: 0; border-radius: 4px; background: transparent;
+      font-size: 11px; color: var(--text-3); cursor: pointer; font-weight: 600;
+    }
+    .role-seg button.on.dim { background: #fff; color: #245bdb; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    .role-seg button.on.quota { background: #fff; color: #047857; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    .type-gallery {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px;
+    }
+    .type-pick {
+      border: 1px solid var(--line); border-radius: 12px; padding: 14px 12px; text-align: center;
+      cursor: pointer; background: #fff; transition: .15s;
+    }
+    .type-pick:hover { border-color: #b7cbff; background: #f8faff; }
+    .type-pick.on { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 1px var(--brand); }
+    .type-pick .tb { width: 40px; height: 40px; margin: 0 auto 8px; border-radius: 10px; display: grid; place-items: center; }
+    .type-pick .tn { font-size: 12px; font-weight: 650; }
+    .type-pick .td { font-size: 10px; color: var(--text-3); margin-top: 2px; }
+    .empty-illus {
+      text-align: center; padding: 28px 16px; color: var(--text-3); font-size: 12px;
+    }
+    .empty-illus .big {
+      width: 56px; height: 56px; margin: 0 auto 10px; border-radius: 16px;
+      background: #eef4ff; color: var(--brand); display: grid; place-items: center; font-size: 22px;
+    }
+    .lineage {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0;
+    }
+    .lineage .node {
+      padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line);
+      background: #fff; font-size: 12px; min-width: 120px;
+    }
+    .lineage .node b { display: block; font-size: 11px; color: var(--text-3); font-weight: 500; margin-bottom: 4px; }
+    .lineage .arrow { color: var(--brand); font-weight: 700; }
+    .ping-flash { animation: pingflash .6s ease; }
+    @keyframes pingflash {
+      0% { box-shadow: 0 0 0 0 rgba(0,181,120,.35); }
+      100% { box-shadow: 0 0 0 12px rgba(0,181,120,0); }
+    }
+    .modal.wide { width: min(640px, calc(100vw - 24px)); }
+    .modal-mask.studio-mode { padding: 16px; align-items: stretch; justify-content: center; }
+    .modal.ds-studio-shell {
+      width: min(1120px, calc(100vw - 32px));
+      height: min(760px, calc(100vh - 32px));
+      max-height: none; padding: 0; display: flex; flex-direction: column;
+      border-radius: 14px; overflow: hidden;
+    }
+    .dss-head {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      border-bottom: 1px solid var(--line); background: #fbfcfd; flex-shrink: 0;
+    }
+    .dss-head h3 { font-size: 15px; margin: 0; }
+    .dss-head .sub { font-size: 11px; color: var(--text-3); }
+    .dss-body {
+      flex: 1; min-height: 0; display: grid;
+      grid-template-columns: 220px minmax(0,1fr) 300px; grid-template-rows: 1fr 200px;
+    }
+    .dss-col { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: #fff; }
+    .dss-col:last-of-type { border-right: 0; }
+    .dss-col .chd {
+      padding: 10px 12px; font-size: 12px; font-weight: 650; color: var(--text-2);
+      border-bottom: 1px solid #eff0f1; background: #fafbfc; flex-shrink: 0;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .dss-col .chd .hint { margin-left: auto; font-weight: 400; color: var(--text-3); font-size: 11px; }
+    .dss-col .cbd { flex: 1; overflow: auto; padding: 8px; }
+    .dss-preview {
+      grid-column: 1 / -1; border-top: 1px solid var(--line);
+      display: flex; flex-direction: column; min-height: 0; background: #fff;
+    }
+    .tbl-item {
+      display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
+      cursor: pointer; font-size: 12px; border: 1px solid transparent; margin-bottom: 4px;
+    }
+    .tbl-item:hover { background: #f5f8ff; }
+    .tbl-item.on { background: #eef4ff; border-color: #c9dbff; font-weight: 600; color: var(--brand); }
+    .tbl-item .tn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tbl-item .tc { font-size: 10px; color: var(--text-3); }
+    .src-select {
+      width: 100%; height: 32px; border: 1px solid var(--line); border-radius: 8px;
+      padding: 0 8px; font-size: 12px; margin-bottom: 8px; background: #fff;
+    }
+    .drop-zone {
+      min-height: 120px; border: 1.5px dashed #c5cdd6; border-radius: 10px;
+      padding: 8px; background: #fafbfc; transition: .15s;
+    }
+    .drop-zone.over { border-color: var(--brand); background: var(--brand-soft); }
+    .drop-zone .ph { font-size: 12px; color: var(--text-3); text-align: center; padding: 28px 12px; line-height: 1.5; }
+    .sel-field {
+      display: flex; align-items: center; gap: 6px; padding: 6px 8px; margin-bottom: 6px;
+      border-radius: 8px; border: 1px solid var(--line); background: #fff; font-size: 12px; cursor: grab;
+    }
+    .sel-field.dim { border-color: #c2d8ff; background: #f5f8ff; }
+    .sel-field.quota { border-color: #b7e4cc; background: #f3faf6; }
+    .sel-field .rm {
+      margin-left: auto; border: 0; background: transparent; color: var(--text-3);
+      cursor: pointer; width: 22px; height: 22px; border-radius: 4px; font-size: 14px;
+    }
+    .sel-field .rm:hover { background: #fee2e2; color: var(--danger); }
+    .drag-field {
+      display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px;
+      border-radius: 6px; font-size: 11px; cursor: grab; border: 1px solid transparent;
+      user-select: none; margin: 0 6px 6px 0;
+    }
+    .drag-field.dim { background: #e8f3ff; color: #245bdb; border-color: #c2d8ff; }
+    .drag-field.quota { background: #e8f8f0; color: #047857; border-color: #b7e4cc; }
+    .drag-field:active { cursor: grabbing; opacity: .85; }
+    .field-pool { display: flex; flex-wrap: wrap; align-content: flex-start; }
+    .join-hint {
+      font-size: 11px; color: var(--text-3); padding: 8px 10px; background: #fff8eb;
+      border: 1px solid #fde68a; border-radius: 8px; margin-bottom: 8px; line-height: 1.45;
+    }
   </style>
 </head>
 <body>
 <div class="shell">
   <div class="topbar">
     <strong>商用高保原型</strong>
-    <span>Phase A 画布/绑定/查询/分享 · B Tab切片下钻主题移动 · C 跳转计算告警SQL嵌入</span>
+    <nav class="mod-nav" id="modNav">
+      <button data-mod="workbench" class="on">工作台</button>
+      <button data-mod="datasource">数据源</button>
+      <button data-mod="dataset">数据集</button>
+      <button data-mod="dashboard">仪表盘</button>
+    </nav>
+    <span style="opacity:.7;font-size:12px">数据源 → 数据集 → 仪表盘 · Phase 仅作用于编辑器</span>
     <div class="tabs" id="phaseTabs">
       <button class="on" data-phase="a">Phase A</button>
       <button data-phase="b">Phase B</button>
@@ -429,6 +820,9 @@ const DATASETS = {
   },
   ds_ops: {
     id: 'ds_ops', name: '运营日报',
+    datasourceId: 'src_pg_bi',
+    folder: '运营增长',
+    desc: 'App / H5 流量与停留',
     fields: [
       { name:'day', label:'日期', group:'dim' },
       { name:'module', label:'模块', group:'dim' },
@@ -442,11 +836,292 @@ const DATASETS = {
     rows: [
       { day:'周一', module:'首页', platform:'App', channel:'自然', uv:1200, pv:3400, bounce:0.32, duration:48, date:'2026-07-01' },
       { day:'周一', module:'详情', platform:'H5', channel:'投放', uv:800, pv:2100, bounce:0.41, duration:36, date:'2026-07-01' },
+      { day:'周一', module:'搜索', platform:'App', channel:'分享', uv:420, pv:980, bounce:0.25, duration:55, date:'2026-07-01' },
       { day:'周二', module:'首页', platform:'App', channel:'自然', uv:1400, pv:3900, bounce:0.28, duration:52, date:'2026-07-02' },
-      { day:'周二', module:'详情', platform:'H5', channel:'投放', uv:900, pv:2400, bounce:0.39, duration:40, date:'2026-07-02' }
+      { day:'周二', module:'详情', platform:'H5', channel:'投放', uv:900, pv:2400, bounce:0.39, duration:40, date:'2026-07-02' },
+      { day:'周二', module:'结算', platform:'App', channel:'自然', uv:510, pv:1200, bounce:0.18, duration:68, date:'2026-07-02' },
+      { day:'周三', module:'首页', platform:'App', channel:'自然', uv:1320, pv:3600, bounce:0.30, duration:50, date:'2026-07-03' },
+      { day:'周三', module:'结算', platform:'App', channel:'投放', uv:620, pv:1500, bounce:0.22, duration:70, date:'2026-07-03' },
+      { day:'周三', module:'详情', platform:'H5', channel:'分享', uv:760, pv:1900, bounce:0.36, duration:38, date:'2026-07-03' },
+      { day:'周四', module:'首页', platform:'H5', channel:'分享', uv:980, pv:2600, bounce:0.35, duration:42, date:'2026-07-04' },
+      { day:'周四', module:'搜索', platform:'App', channel:'投放', uv:540, pv:1300, bounce:0.27, duration:50, date:'2026-07-04' },
+      { day:'周五', module:'详情', platform:'App', channel:'自然', uv:1100, pv:3000, bounce:0.31, duration:45, date:'2026-07-05' },
+      { day:'周五', module:'首页', platform:'App', channel:'投放', uv:1500, pv:4100, bounce:0.29, duration:53, date:'2026-07-05' },
+      { day:'周六', module:'首页', platform:'H5', channel:'自然', uv:1680, pv:4500, bounce:0.34, duration:40, date:'2026-07-06' },
+      { day:'周六', module:'结算', platform:'App', channel:'分享', uv:720, pv:1680, bounce:0.20, duration:72, date:'2026-07-06' },
+      { day:'周日', module:'首页', platform:'App', channel:'自然', uv:1550, pv:4200, bounce:0.33, duration:46, date:'2026-07-07' },
+      { day:'周日', module:'详情', platform:'H5', channel:'投放', uv:990, pv:2500, bounce:0.38, duration:37, date:'2026-07-07' }
+    ]
+  },
+  ds_inv: {
+    id: 'ds_inv', name: '库存快照',
+    datasourceId: 'src_mysql_erp',
+    folder: '财务库存',
+    desc: '仓 × SKU 库存与周转',
+    fields: [
+      { name:'warehouse', label:'仓库', group:'dim' },
+      { name:'sku', label:'SKU', group:'dim' },
+      { name:'category', label:'品类', group:'dim' },
+      { name:'status', label:'状态', group:'dim' },
+      { name:'stock', label:'库存量', group:'quota' },
+      { name:'turnover', label:'周转天数', group:'quota' },
+      { name:'value', label:'库存金额', group:'quota' }
+    ],
+    rows: [
+      { warehouse:'华东仓', sku:'SKU-A', category:'硬件', status:'正常', stock:1200, turnover:18, value:360000 },
+      { warehouse:'华东仓', sku:'SKU-B', category:'硬件', status:'积压', stock:800, turnover:45, value:160000 },
+      { warehouse:'华北仓', sku:'SKU-A', category:'硬件', status:'正常', stock:600, turnover:22, value:180000 },
+      { warehouse:'华北仓', sku:'SKU-C', category:'配件', status:'缺货', stock:40, turnover:6, value:8000 },
+      { warehouse:'华南仓', sku:'SKU-D', category:'配件', status:'正常', stock:900, turnover:15, value:90000 },
+      { warehouse:'华南仓', sku:'SKU-E', category:'配件', status:'积压', stock:500, turnover:52, value:45000 }
+    ]
+  },
+  ds_fin: {
+    id: 'ds_fin', name: '财务科目月报',
+    datasourceId: 'src_mysql_erp',
+    folder: '财务库存',
+    desc: '科目 × 月 收支',
+    fields: [
+      { name:'month', label:'月份', group:'dim' },
+      { name:'subject', label:'科目', group:'dim' },
+      { name:'dept', label:'部门', group:'dim' },
+      { name:'income', label:'收入', group:'quota' },
+      { name:'expense', label:'支出', group:'quota' },
+      { name:'profit', label:'利润', group:'quota' }
+    ],
+    rows: [
+      { month:'4月', subject:'商品销售', dept:'电商', income:760000, expense:480000, profit:280000 },
+      { month:'4月', subject:'服务费', dept:'零售', income:110000, expense:38000, profit:72000 },
+      { month:'4月', subject:'广告投放', dept:'市场', income:0, expense:90000, profit:-90000 },
+      { month:'5月', subject:'商品销售', dept:'电商', income:820000, expense:510000, profit:310000 },
+      { month:'5月', subject:'服务费', dept:'零售', income:120000, expense:40000, profit:80000 },
+      { month:'5月', subject:'广告投放', dept:'市场', income:0, expense:95000, profit:-95000 },
+      { month:'6月', subject:'商品销售', dept:'电商', income:910000, expense:560000, profit:350000 },
+      { month:'6月', subject:'服务费', dept:'零售', income:135000, expense:42000, profit:93000 },
+      { month:'6月', subject:'人力成本', dept:'中台', income:0, expense:180000, profit:-180000 },
+      { month:'7月', subject:'商品销售', dept:'电商', income:980000, expense:590000, profit:390000 },
+      { month:'7月', subject:'服务费', dept:'零售', income:148000, expense:45000, profit:103000 },
+      { month:'7月', subject:'人力成本', dept:'中台', income:0, expense:185000, profit:-185000 }
+    ]
+  },
+  ds_crm: {
+    id: 'ds_crm', name: '客户分层',
+    datasourceId: 'src_api_crm',
+    folder: '销售分析',
+    desc: '客户等级与复购',
+    fields: [
+      { name:'level', label:'客户等级', group:'dim' },
+      { name:'region', label:'区域', group:'dim' },
+      { name:'industry', label:'行业', group:'dim' },
+      { name:'customers', label:'客户数', group:'quota' },
+      { name:'gmv', label:'贡献GMV', group:'quota' },
+      { name:'repurchase', label:'复购率', group:'quota' }
+    ],
+    rows: [
+      { level:'A类', region:'华东', industry:'制造', customers:120, gmv:480000, repurchase:0.62 },
+      { level:'A类', region:'华北', industry:'零售', customers:80, gmv:310000, repurchase:0.58 },
+      { level:'B类', region:'华东', industry:'制造', customers:260, gmv:390000, repurchase:0.41 },
+      { level:'B类', region:'华南', industry:'服务', customers:200, gmv:280000, repurchase:0.38 },
+      { level:'C类', region:'华北', industry:'零售', customers:450, gmv:180000, repurchase:0.22 },
+      { level:'C类', region:'华南', industry:'服务', customers:380, gmv:150000, repurchase:0.19 }
     ]
   }
 };
+
+DATASETS.ds_sales.datasourceId = 'src_mysql_erp';
+DATASETS.ds_sales.folder = '销售分析';
+DATASETS.ds_sales.desc = '订单明细宽表（演示）';
+
+const DATASOURCES = [
+  {
+    id: 'src_mysql_erp', name: 'ERP 业务库', type: 'mysql', host: '10.0.1.12', port: 3306,
+    database: 'erp_prod', status: 'ok', lastCheck: '2026-07-29 10:12', owner: '张三',
+    tables: 48, usedBy: ['ds_sales', 'ds_inv', 'ds_fin'], desc: '订单 / 库存 / 财务主库'
+  },
+  {
+    id: 'src_pg_bi', name: 'BI 数仓', type: 'postgresql', host: 'bi-pg.internal', port: 5432,
+    database: 'dwh', status: 'ok', lastCheck: '2026-07-29 09:40', owner: '李四',
+    tables: 126, usedBy: ['ds_ops'], desc: '日聚合宽表与流量主题'
+  },
+  {
+    id: 'src_api_crm', name: 'CRM OpenAPI', type: 'api', host: 'https://crm.example.com/v1', port: null,
+    database: '-', status: 'warn', lastCheck: '2026-07-28 22:05', owner: '王五',
+    tables: 6, usedBy: ['ds_crm'], desc: '客户主数据 REST · Token 将过期'
+  },
+  {
+    id: 'src_excel_promo', name: '促销活动表', type: 'excel', host: '本地上传', port: null,
+    database: 'promo_2026Q3.xlsx', status: 'ok', lastCheck: '2026-07-27 16:20', owner: '赵六',
+    tables: 2, usedBy: [], desc: '活动预算与核销明细'
+  },
+  {
+    id: 'src_click_log', name: '行为日志 ClickHouse', type: 'clickhouse', host: 'ch-01.internal', port: 8123,
+    database: 'events', status: 'err', lastCheck: '2026-07-29 08:01', owner: '钱七',
+    tables: 12, usedBy: [], desc: '连接超时 · 待运维恢复'
+  }
+];
+
+/** 各数据源下的物理表 + 字段（数据集拖拉拽用） */
+const SCHEMA_BY_SRC = {
+  src_mysql_erp: [
+    {
+      name: 'fact_order', label: '订单事实',
+      fields: [
+        { name: 'order_id', label: '订单号', group: 'dim' },
+        { name: 'region', label: '区域', group: 'dim' },
+        { name: 'city', label: '城市', group: 'dim' },
+        { name: 'product', label: '产品', group: 'dim' },
+        { name: 'channel', label: '渠道', group: 'dim' },
+        { name: 'salesman', label: '销售员', group: 'dim' },
+        { name: 'order_date', label: '下单日', group: 'dim' },
+        { name: 'amount', label: '销售额', group: 'quota' },
+        { name: 'qty', label: '销量', group: 'quota' },
+        { name: 'profit', label: '利润', group: 'quota' }
+      ],
+      rows: SALES_ROWS.map((r, i) => ({ order_id: 'O' + (1000 + i), region: r.region, city: r.city, product: r.product, channel: r.channel, salesman: r.salesman, order_date: r.date, amount: r.amount, qty: r.qty, profit: r.profit }))
+    },
+    {
+      name: 'dim_product', label: '产品维表',
+      fields: [
+        { name: 'sku', label: 'SKU', group: 'dim' },
+        { name: 'product', label: '产品名', group: 'dim' },
+        { name: 'category', label: '品类', group: 'dim' },
+        { name: 'brand', label: '品牌', group: 'dim' },
+        { name: 'list_price', label: '挂牌价', group: 'quota' }
+      ],
+      rows: [
+        { sku: 'SKU-A', product: 'A', category: '硬件', brand: '自有品牌', list_price: 399 },
+        { sku: 'SKU-B', product: 'B', category: '硬件', brand: '自有品牌', list_price: 299 },
+        { sku: 'SKU-C', product: 'C', category: '硬件', brand: '自有品牌', list_price: 199 },
+        { sku: 'SKU-E', product: 'E', category: '配件', brand: '第三方', list_price: 89 },
+        { sku: 'SKU-F', product: 'F', category: '配件', brand: '第三方', list_price: 129 }
+      ]
+    },
+    {
+      name: 'fact_inventory', label: '库存快照',
+      fields: [
+        { name: 'warehouse', label: '仓库', group: 'dim' },
+        { name: 'sku', label: 'SKU', group: 'dim' },
+        { name: 'category', label: '品类', group: 'dim' },
+        { name: 'status', label: '状态', group: 'dim' },
+        { name: 'stock', label: '库存量', group: 'quota' },
+        { name: 'turnover', label: '周转天数', group: 'quota' },
+        { name: 'value', label: '库存金额', group: 'quota' }
+      ],
+      rows: DATASETS.ds_inv.rows
+    },
+    {
+      name: 'fact_finance', label: '财务科目',
+      fields: [
+        { name: 'month', label: '月份', group: 'dim' },
+        { name: 'subject', label: '科目', group: 'dim' },
+        { name: 'dept', label: '部门', group: 'dim' },
+        { name: 'income', label: '收入', group: 'quota' },
+        { name: 'expense', label: '支出', group: 'quota' },
+        { name: 'profit', label: '利润', group: 'quota' }
+      ],
+      rows: DATASETS.ds_fin.rows
+    }
+  ],
+  src_pg_bi: [
+    {
+      name: 'ods_traffic_day', label: '日流量宽表',
+      fields: [
+        { name: 'day', label: '星期', group: 'dim' },
+        { name: 'module', label: '模块', group: 'dim' },
+        { name: 'platform', label: '端', group: 'dim' },
+        { name: 'channel', label: '来源', group: 'dim' },
+        { name: 'uv', label: 'UV', group: 'quota' },
+        { name: 'pv', label: 'PV', group: 'quota' },
+        { name: 'bounce', label: '跳出率', group: 'quota' },
+        { name: 'duration', label: '停留秒', group: 'quota' }
+      ],
+      rows: DATASETS.ds_ops.rows
+    },
+    {
+      name: 'dim_channel', label: '来源维表',
+      fields: [
+        { name: 'channel', label: '来源', group: 'dim' },
+        { name: 'channel_type', label: '来源类型', group: 'dim' },
+        { name: 'cost', label: '投放成本', group: 'quota' }
+      ],
+      rows: [
+        { channel: '自然', channel_type: '免费', cost: 0 },
+        { channel: '投放', channel_type: '付费', cost: 28000 },
+        { channel: '分享', channel_type: '裂变', cost: 1200 }
+      ]
+    }
+  ],
+  src_api_crm: [
+    {
+      name: 'customer_tier', label: '客户分层',
+      fields: [
+        { name: 'level', label: '客户等级', group: 'dim' },
+        { name: 'region', label: '区域', group: 'dim' },
+        { name: 'industry', label: '行业', group: 'dim' },
+        { name: 'customers', label: '客户数', group: 'quota' },
+        { name: 'gmv', label: '贡献GMV', group: 'quota' },
+        { name: 'repurchase', label: '复购率', group: 'quota' }
+      ],
+      rows: DATASETS.ds_crm.rows
+    },
+    {
+      name: 'customer_touch', label: '触达记录',
+      fields: [
+        { name: 'touch_type', label: '触达方式', group: 'dim' },
+        { name: 'level', label: '客户等级', group: 'dim' },
+        { name: 'touches', label: '触达次数', group: 'quota' },
+        { name: 'convert', label: '转化数', group: 'quota' }
+      ],
+      rows: [
+        { touch_type: '电话', level: 'A类', touches: 320, convert: 48 },
+        { touch_type: '企微', level: 'A类', touches: 510, convert: 90 },
+        { touch_type: '邮件', level: 'B类', touches: 880, convert: 62 },
+        { touch_type: '企微', level: 'B类', touches: 640, convert: 55 },
+        { touch_type: '短信', level: 'C类', touches: 1200, convert: 36 }
+      ]
+    }
+  ],
+  src_excel_promo: [
+    {
+      name: 'promo_budget', label: '活动预算',
+      fields: [
+        { name: 'campaign', label: '活动', group: 'dim' },
+        { name: 'channel', label: '渠道', group: 'dim' },
+        { name: 'budget', label: '预算', group: 'quota' },
+        { name: 'spent', label: '已花', group: 'quota' },
+        { name: 'roi', label: 'ROI', group: 'quota' }
+      ],
+      rows: [
+        { campaign: '618主会场', channel: '线上', budget: 200000, spent: 168000, roi: 3.2 },
+        { campaign: '新人礼', channel: '线上', budget: 50000, spent: 42000, roi: 2.1 },
+        { campaign: '门店满减', channel: '线下', budget: 80000, spent: 61000, roi: 1.8 }
+      ]
+    }
+  ],
+  src_click_log: [
+    {
+      name: 'evt_page_view', label: '浏览事件',
+      fields: [
+        { name: 'page', label: '页面', group: 'dim' },
+        { name: 'device', label: '设备', group: 'dim' },
+        { name: 'pv', label: 'PV', group: 'quota' },
+        { name: 'users', label: '用户数', group: 'quota' }
+      ],
+      rows: [
+        { page: 'home', device: 'iOS', pv: 12000, users: 4200 },
+        { page: 'detail', device: 'Android', pv: 8600, users: 3100 }
+      ]
+    }
+  ]
+};
+
+function tablesOfSrc(srcId) {
+  return SCHEMA_BY_SRC[srcId] || [];
+}
+
+function findSchemaTable(srcId, tableName) {
+  return tablesOfSrc(srcId).find(t => t.name === tableName) || null;
+}
 
 const CHART_META = {
   bar:   { label:'柱状图', need:['category','value'], group:'比较', icon:'bar' },
@@ -517,7 +1192,8 @@ const THEMES = {
 };
 
 const state = {
-  screen: 'editor',
+  module: 'workbench', // workbench | datasource | dataset | dashboard
+  screen: 'list',      // list | editor | preview（仅仪表盘）
   phase: 'a',
   mobile: false,
   leftTab: 'comp',
@@ -525,12 +1201,22 @@ const state = {
   inspCollapsed: false,
   selectedId: null,
   clipboard: null,
-  filter: { region: '', dateFrom: '2026-07-01', dateTo: '2026-07-31' },
+  filter: { region: '', channel: '', dateFrom: '2026-07-01', dateTo: '2026-07-31' },
   linkageHits: [],
   drillStack: [],
   shares: [],
   undo: [],
   dash: null,
+  dashboards: [],
+  dashId: null,
+  folderFilter: 'all',
+  search: '',
+  srcId: 'src_mysql_erp',
+  datasetId: 'ds_sales',
+  dsWizardStep: 1,
+  srcTypeFilter: 'all',
+  dsTab: 'fields', // fields | preview | lineage
+  previewFrom: 'list', // list | editor — 预览返回去向
   chartInst: {},
   layout: { push: true, compactOnDrop: false, showGrid: true }
 };
@@ -543,9 +1229,9 @@ function toast(msg, type='') {
   setTimeout(() => el.remove(), 2200);
 }
 
-function emptyDash(name='未命名仪表盘') {
+function emptyDash(name='未命名仪表盘', id) {
   return {
-    id: uid('dash'), name, status: 'draft', contentId: '1', version: 1,
+    id: id || uid('dash'), name, status: 'draft', contentId: '1', version: 1,
     theme: 'default',
     components: [],
     charts: {},
@@ -570,66 +1256,376 @@ function defaultEncode(kind) {
   return { ...base, category: 'region', value: 'amount' };
 }
 
-function mkChart(type, title, encodeExtra = {}, styleExtra = {}) {
+function mkChart(type, title, encodeExtra = {}, styleExtra = {}, datasetId = 'ds_sales') {
   const id = uid('chart');
   return {
     id,
     chart: {
-      id, title, chartType: type, datasetId: 'ds_sales',
+      id, title, chartType: type, datasetId,
       encode: { ...defaultEncode(type), ...encodeExtra },
       style: { ...defaultChartStyle(), ...styleExtra }
     }
   };
 }
 
-function demoDash() {
-  const d = emptyDash('销售周报');
-  const kpi = mkChart('kpi', '本月 GMV', { value: 'amount', calc: 'yoy' }, { valueColor: '#1f2329', titleColor: '#646a73', valueSize: 28 });
-  const kpi2 = mkChart('kpi', '本月销量', { value: 'qty', agg: 'SUM', format: 'raw', calc: 'mom' }, { valueColor: '#059669', valueSize: 28 });
-  const kpi3 = mkChart('kpi', '利润', { value: 'profit', agg: 'SUM', format: 'thousand', calc: 'yoy' }, { valueColor: '#0ea5e9', valueSize: 28 });
-  const kpi4 = mkChart('kpi', '订单数', { value: 'order_cnt', agg: 'SUM', format: 'raw', calc: 'none' }, { valueColor: '#7c3aed', valueSize: 28 });
-  const bar = mkChart('bar', '区域销售额', {}, { showLabel: true });
-  const line = mkChart('line', '产品销售趋势', { category: 'product', value: 'amount' }, { smooth: true, showLegend: true });
-  const hbar = mkChart('hbar', '区域销量', { category: 'region', value: 'qty', format: 'raw' }, { showLabel: true });
-  const pie = mkChart('pie', '渠道占比', { category: 'channel', value: 'amount' });
-  const area = mkChart('area', '渠道面积', { category: 'channel', value: 'amount' });
-  const group = mkChart('grouptable', '渠道汇总', { category: 'channel', value: 'amount' }, { pageSize: 10, showRowTotal: true });
-  const detail = mkChart('table', '销售明细', { value: 'amount', format: 'raw' }, { pageSize: 6 });
-  const pivot = mkChart('pivot', '区域 × 产品 透视', { category: 'region', colDim: 'product', value: 'amount' }, { showRowTotal: true, showColTotal: true });
-
-  // 指标条横排 → 主图双栏 → 分析三栏 → 表双栏 → 透视通栏（避免 KPI 塞进侧栏）
-  const charts = [kpi, kpi2, kpi3, kpi4, bar, line, hbar, pie, area, group, detail, pivot];
-  d.charts = Object.fromEntries(charts.map(c => [c.id, c.chart]));
-
-  const ws = uid('w');
-  const ids = charts.map(() => uid('w'));
-  d.components = [
-    { id: ws, type: 'slicer', tabId: 'tab_main', x: 0, y: 0, w: 12, h: 1, z: 1, props: { field: 'region', label: '区域切片' } },
-    { id: ids[0], type: 'chart', tabId: 'tab_main', x: 0, y: 1, w: 3, h: 2, z: 2, chartId: kpi.id },
-    { id: ids[1], type: 'chart', tabId: 'tab_main', x: 3, y: 1, w: 3, h: 2, z: 3, chartId: kpi2.id },
-    { id: ids[2], type: 'chart', tabId: 'tab_main', x: 6, y: 1, w: 3, h: 2, z: 4, chartId: kpi3.id },
-    { id: ids[3], type: 'chart', tabId: 'tab_main', x: 9, y: 1, w: 3, h: 2, z: 5, chartId: kpi4.id },
-    { id: ids[4], type: 'chart', tabId: 'tab_main', x: 0, y: 3, w: 6, h: 5, z: 6, chartId: bar.id },
-    { id: ids[5], type: 'chart', tabId: 'tab_main', x: 6, y: 3, w: 6, h: 5, z: 7, chartId: line.id },
-    { id: ids[6], type: 'chart', tabId: 'tab_main', x: 0, y: 8, w: 4, h: 4, z: 8, chartId: hbar.id },
-    { id: ids[7], type: 'chart', tabId: 'tab_main', x: 4, y: 8, w: 4, h: 4, z: 9, chartId: pie.id },
-    { id: ids[8], type: 'chart', tabId: 'tab_main', x: 8, y: 8, w: 4, h: 4, z: 10, chartId: area.id },
-    { id: ids[9], type: 'chart', tabId: 'tab_main', x: 0, y: 12, w: 6, h: 4, z: 11, chartId: group.id },
-    { id: ids[10], type: 'chart', tabId: 'tab_main', x: 6, y: 12, w: 6, h: 4, z: 12, chartId: detail.id },
-    { id: ids[11], type: 'chart', tabId: 'tab_main', x: 0, y: 16, w: 12, h: 5, z: 13, chartId: pivot.id }
-  ];
-  d.linkages = [
-    { id: uid('l'), sourceChartId: bar.id, sourceField: 'region', targetChartId: detail.id, targetField: 'region', enabled: true },
-    { id: uid('l2'), sourceChartId: bar.id, sourceField: 'region', targetChartId: pivot.id, targetField: 'region', enabled: true }
-  ];
-  d.jumps = [{ id: uid('j'), sourceChartId: bar.id, triggerField: 'region', targetType: 'url', target: 'https://example.com/detail?region={value}' }];
-  d.alerts = [{ id: uid('a'), chartId: kpi.id, metricField: 'amount', operator: 'lt', threshold: 300, enabled: true }];
-  d.status = 'publishedWithDraft';
-  return d;
+function packDash(d, meta = {}) {
+  return {
+    ...d,
+    folder: meta.folder || '未分组',
+    desc: meta.desc || '',
+    updateBy: meta.updateBy || '当前用户',
+    updateTime: meta.updateTime || '2026-07-29 18:20',
+    datasetIds: [...new Set(Object.values(d.charts || {}).map(c => c.datasetId).filter(Boolean))]
+  };
 }
 
-state.dash = demoDash();
+/** items: {type:'chart', ref, x,y,w,h} | {type:'slicer'|'text', props, x,y,w,h} */
+function assembleDash(d, items) {
+  d.charts = {};
+  d.components = items.map((it, i) => {
+    const base = { id: uid('w'), tabId: it.tabId || 'tab_main', x: it.x, y: it.y, w: it.w, h: it.h, z: i + 1 };
+    if (it.type === 'chart') {
+      d.charts[it.ref.id] = it.ref.chart;
+      return { ...base, type: 'chart', chartId: it.ref.id };
+    }
+    return { ...base, type: it.type, props: it.props || {} };
+  });
+}
+
+function demoDash() {
+  const d = emptyDash('销售周报', 'dash_sales');
+  d.theme = 'default';
+  const kpi = mkChart('kpi', '本月 GMV', { value: 'amount', calc: 'yoy' }, { valueColor: '#1f2329', valueSize: 28 });
+  const kpi2 = mkChart('kpi', '本月销量', { value: 'qty', format: 'raw', calc: 'mom' }, { valueColor: '#059669', valueSize: 28 });
+  const kpi3 = mkChart('kpi', '利润', { value: 'profit', calc: 'yoy' }, { valueColor: '#0ea5e9', valueSize: 28 });
+  const kpi4 = mkChart('kpi', '订单数', { value: 'order_cnt', format: 'raw' }, { valueColor: '#7c3aed', valueSize: 28 });
+  const bar = mkChart('bar', '区域销售额', {}, { showLabel: true });
+  const line = mkChart('line', '产品销售趋势', { category: 'product', value: 'amount' }, { smooth: true });
+  const hbar = mkChart('hbar', '销售员业绩', { category: 'salesman', value: 'amount' }, { showLabel: true });
+  const pie = mkChart('pie', '渠道占比', { category: 'channel', value: 'amount' });
+  const area = mkChart('area', '品牌贡献', { category: 'brand', value: 'amount' });
+  const group = mkChart('grouptable', '事业部汇总', { category: 'dept', value: 'amount' }, { pageSize: 10 });
+  const detail = mkChart('table', '销售明细', { value: 'amount', format: 'raw' }, { pageSize: 6 });
+  const pivot = mkChart('pivot', '区域 × 产品', { category: 'region', colDim: 'product', value: 'amount' }, { showRowTotal: true, showColTotal: true });
+  assembleDash(d, [
+    { type: 'slicer', x: 0, y: 0, w: 12, h: 1, props: { field: 'region', label: '区域切片' } },
+    { type: 'chart', ref: kpi, x: 0, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi2, x: 3, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi3, x: 6, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi4, x: 9, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: bar, x: 0, y: 3, w: 6, h: 5 },
+    { type: 'chart', ref: line, x: 6, y: 3, w: 6, h: 5 },
+    { type: 'chart', ref: hbar, x: 0, y: 8, w: 4, h: 4 },
+    { type: 'chart', ref: pie, x: 4, y: 8, w: 4, h: 4 },
+    { type: 'chart', ref: area, x: 8, y: 8, w: 4, h: 4 },
+    { type: 'chart', ref: group, x: 0, y: 12, w: 6, h: 4 },
+    { type: 'chart', ref: detail, x: 6, y: 12, w: 6, h: 4 },
+    { type: 'chart', ref: pivot, x: 0, y: 16, w: 12, h: 5 }
+  ]);
+  d.linkages = [
+    { id: 'l_sales_1', sourceChartId: bar.id, sourceField: 'region', targetChartId: detail.id, targetField: 'region', enabled: true },
+    { id: 'l_sales_2', sourceChartId: bar.id, sourceField: 'region', targetChartId: pivot.id, targetField: 'region', enabled: true }
+  ];
+  d.jumps = [{ id: 'j_sales', sourceChartId: bar.id, triggerField: 'region', targetType: 'url', target: 'https://example.com/detail?region={value}' }];
+  d.alerts = [{ id: 'a_sales', chartId: kpi.id, metricField: 'amount', operator: 'lt', threshold: 300, enabled: true }];
+  d.status = 'publishedWithDraft';
+  return packDash(d, { folder: '销售分析', desc: 'GMV 全景 · 销售员/品牌/透视 · 切片联动', updateBy: '张三', updateTime: '2026-07-29 18:20' });
+}
+
+function demoOpsDash() {
+  const d = emptyDash('运营日报', 'dash_ops');
+  d.theme = 'ocean';
+  const kpi1 = mkChart('kpi', '周 UV', { value: 'uv', format: 'raw', calc: 'mom' }, { valueColor: '#0284c7' }, 'ds_ops');
+  const kpi2 = mkChart('kpi', '周 PV', { value: 'pv', format: 'raw' }, { valueColor: '#7c3aed' }, 'ds_ops');
+  const kpi3 = mkChart('kpi', '均停留秒', { value: 'duration', agg: 'AVG', format: 'raw' }, { valueColor: '#0d9488' }, 'ds_ops');
+  const kpi4 = mkChart('kpi', '跳出率', { value: 'bounce', agg: 'AVG', format: 'raw', calc: 'mom' }, { valueColor: '#ea580c' }, 'ds_ops');
+  const area = mkChart('area', '每日 UV 走势', { category: 'day', value: 'uv', format: 'raw' }, { smooth: true }, 'ds_ops');
+  const line = mkChart('line', '每日 PV 走势', { category: 'day', value: 'pv', format: 'raw' }, { smooth: true }, 'ds_ops');
+  const hbar = mkChart('hbar', '端 UV 对比', { category: 'platform', value: 'uv', format: 'raw' }, { showLabel: true }, 'ds_ops');
+  const pie = mkChart('pie', '来源结构', { category: 'channel', value: 'uv', format: 'raw' }, {}, 'ds_ops');
+  const bar = mkChart('bar', '模块流量', { category: 'module', value: 'pv', format: 'raw' }, { showLabel: true }, 'ds_ops');
+  const group = mkChart('grouptable', '模块 × 来源', { category: 'module', value: 'uv', format: 'raw' }, { pageSize: 8 }, 'ds_ops');
+  const detail = mkChart('table', '流量明细', { value: 'uv', format: 'raw' }, { pageSize: 7 }, 'ds_ops');
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: '运营日报 · 关注端 / 模块 / 来源漏斗，周末流量波动需盯投放', fontSize: 14, color: '#0c4a6e' } },
+    { type: 'chart', ref: kpi1, x: 0, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi2, x: 3, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi3, x: 6, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi4, x: 9, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: area, x: 0, y: 3, w: 8, h: 5 },
+    { type: 'chart', ref: pie, x: 8, y: 3, w: 4, h: 5 },
+    { type: 'chart', ref: line, x: 0, y: 8, w: 6, h: 4 },
+    { type: 'chart', ref: hbar, x: 6, y: 8, w: 6, h: 4 },
+    { type: 'chart', ref: bar, x: 0, y: 12, w: 5, h: 4 },
+    { type: 'chart', ref: group, x: 5, y: 12, w: 7, h: 4 },
+    { type: 'chart', ref: detail, x: 0, y: 16, w: 12, h: 4 }
+  ]);
+  d.status = 'published';
+  return packDash(d, { folder: '运营增长', desc: '海洋主题 · 日走势 + 端对比 + 模块漏斗', updateBy: '李四', updateTime: '2026-07-29 09:10' });
+}
+
+function demoRegionDash() {
+  const d = emptyDash('区域销售看板', 'dash_region');
+  d.theme = 'forest';
+  const kpi1 = mkChart('kpi', '华东 GMV', { value: 'amount', calc: 'yoy' }, { valueColor: '#047857' });
+  const kpi2 = mkChart('kpi', '城市覆盖', { value: 'order_cnt', format: 'raw' }, { valueColor: '#0f766e' });
+  const kpi3 = mkChart('kpi', '客单价', { value: 'unit_price', agg: 'AVG', format: 'raw' }, { valueColor: '#15803d' });
+  const bar = mkChart('bar', '城市销售额', { category: 'city', value: 'amount' }, { showLabel: true });
+  const hbar = mkChart('hbar', '区域销量排行', { category: 'region', value: 'qty', format: 'raw' }, { showLabel: true });
+  const pie = mkChart('pie', '客户等级', { category: 'customer_level', value: 'amount' });
+  const line = mkChart('line', '仓库出货额', { category: 'warehouse', value: 'amount' }, { smooth: false });
+  const pivot = mkChart('pivot', '区域 × 渠道', { category: 'region', colDim: 'channel', value: 'amount' }, { showRowTotal: true, showColTotal: true });
+  const group = mkChart('grouptable', '销售员汇总', { category: 'salesman', value: 'amount' }, { pageSize: 8 });
+  const detail = mkChart('table', '区域明细', { value: 'amount', format: 'raw' }, { pageSize: 6 });
+  assembleDash(d, [
+    { type: 'slicer', x: 0, y: 0, w: 12, h: 1, props: { field: 'region', label: '聚焦区域' } },
+    { type: 'chart', ref: kpi1, x: 0, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi2, x: 4, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi3, x: 8, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: bar, x: 0, y: 3, w: 7, h: 5 },
+    { type: 'chart', ref: pie, x: 7, y: 3, w: 5, h: 5 },
+    { type: 'chart', ref: hbar, x: 0, y: 8, w: 6, h: 4 },
+    { type: 'chart', ref: line, x: 6, y: 8, w: 6, h: 4 },
+    { type: 'chart', ref: pivot, x: 0, y: 12, w: 12, h: 5 },
+    { type: 'chart', ref: group, x: 0, y: 17, w: 6, h: 4 },
+    { type: 'chart', ref: detail, x: 6, y: 17, w: 6, h: 4 }
+  ]);
+  d.linkages = [{ id: 'l_region', sourceChartId: bar.id, sourceField: 'city', targetChartId: detail.id, targetField: 'city', enabled: true }];
+  d.status = 'published';
+  return packDash(d, { folder: '销售分析', desc: '森林主题 · 城市/客户等级/仓配视角', updateBy: '张三', updateTime: '2026-07-28 15:40' });
+}
+
+function demoInvDash() {
+  const d = emptyDash('库存周转', 'dash_inv');
+  d.theme = 'mono';
+  const kpi1 = mkChart('kpi', '库存金额', { value: 'value', calc: 'none' }, { valueColor: '#b45309' }, 'ds_inv');
+  const kpi2 = mkChart('kpi', '总库存量', { value: 'stock', format: 'raw' }, { valueColor: '#334155' }, 'ds_inv');
+  const kpi3 = mkChart('kpi', '均周转天', { value: 'turnover', agg: 'AVG', format: 'raw' }, { valueColor: '#dc2626' }, 'ds_inv');
+  const bar = mkChart('bar', '仓库库存金额', { category: 'warehouse', value: 'value' }, { showLabel: true }, 'ds_inv');
+  const hbar = mkChart('hbar', 'SKU 周转天数', { category: 'sku', value: 'turnover', format: 'raw' }, { showLabel: true }, 'ds_inv');
+  const pie = mkChart('pie', '库存状态', { category: 'status', value: 'stock', format: 'raw' }, {}, 'ds_inv');
+  const area = mkChart('area', '品类库存金额', { category: 'category', value: 'value' }, {}, 'ds_inv');
+  const pivot = mkChart('pivot', '仓 × 品类库存', { category: 'warehouse', colDim: 'category', value: 'stock', format: 'raw' }, { showRowTotal: true }, 'ds_inv');
+  const group = mkChart('grouptable', '状态汇总', { category: 'status', value: 'value' }, {}, 'ds_inv');
+  const detail = mkChart('table', '库存明细', { value: 'stock', format: 'raw' }, { pageSize: 8 }, 'ds_inv');
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: '⚠ 积压 SKU 周转 > 45 天需清仓；缺货行优先补货', fontSize: 13, color: '#9a3412', bg: '#fff7ed' } },
+    { type: 'chart', ref: kpi1, x: 0, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi2, x: 4, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi3, x: 8, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: bar, x: 0, y: 3, w: 6, h: 5 },
+    { type: 'chart', ref: hbar, x: 6, y: 3, w: 6, h: 5 },
+    { type: 'chart', ref: pie, x: 0, y: 8, w: 4, h: 4 },
+    { type: 'chart', ref: area, x: 4, y: 8, w: 8, h: 4 },
+    { type: 'chart', ref: pivot, x: 0, y: 12, w: 12, h: 5 },
+    { type: 'chart', ref: group, x: 0, y: 17, w: 5, h: 4 },
+    { type: 'chart', ref: detail, x: 5, y: 17, w: 7, h: 4 }
+  ]);
+  d.alerts = [{ id: 'a_inv', chartId: kpi3.id, metricField: 'turnover', operator: 'gt', threshold: 30, enabled: true }];
+  d.status = 'published';
+  return packDash(d, { folder: '财务库存', desc: 'Mono 主题 · 周转预警 + 仓品类透视', updateBy: '赵六', updateTime: '2026-07-29 11:05' });
+}
+
+function demoFinDash() {
+  const d = emptyDash('财务月报', 'dash_fin');
+  d.theme = 'default';
+  const kpi1 = mkChart('kpi', '累计收入', { value: 'income', calc: 'mom' }, { valueColor: '#059669' }, 'ds_fin');
+  const kpi2 = mkChart('kpi', '累计支出', { value: 'expense', calc: 'mom' }, { valueColor: '#dc2626' }, 'ds_fin');
+  const kpi3 = mkChart('kpi', '累计利润', { value: 'profit', calc: 'yoy' }, { valueColor: '#2563eb' }, 'ds_fin');
+  const lineIn = mkChart('line', '月度收入', { category: 'month', value: 'income' }, { smooth: true, showLabel: false }, 'ds_fin');
+  const lineEx = mkChart('area', '月度支出', { category: 'month', value: 'expense' }, { smooth: true }, 'ds_fin');
+  const bar = mkChart('bar', '科目支出结构', { category: 'subject', value: 'expense' }, { showLabel: true }, 'ds_fin');
+  const hbar = mkChart('hbar', '部门利润', { category: 'dept', value: 'profit' }, { showLabel: true }, 'ds_fin');
+  const pie = mkChart('pie', '科目收入占比', { category: 'subject', value: 'income' }, {}, 'ds_fin');
+  const pivot = mkChart('pivot', '月 × 部门利润', { category: 'month', colDim: 'dept', value: 'profit' }, { showRowTotal: true, showColTotal: true }, 'ds_fin');
+  const group = mkChart('grouptable', '科目汇总', { category: 'subject', value: 'expense' }, {}, 'ds_fin');
+  const detail = mkChart('table', '科目明细', { value: 'profit', format: 'raw' }, { pageSize: 8 }, 'ds_fin');
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: '财务月报（草稿）· 收入 / 支出 / 利润三线对照，发布前请财务确认', fontSize: 13, color: '#1e3a5f' } },
+    { type: 'chart', ref: kpi1, x: 0, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi2, x: 4, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi3, x: 8, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: lineIn, x: 0, y: 3, w: 6, h: 4 },
+    { type: 'chart', ref: lineEx, x: 6, y: 3, w: 6, h: 4 },
+    { type: 'chart', ref: bar, x: 0, y: 7, w: 5, h: 4 },
+    { type: 'chart', ref: hbar, x: 5, y: 7, w: 4, h: 4 },
+    { type: 'chart', ref: pie, x: 9, y: 7, w: 3, h: 4 },
+    { type: 'chart', ref: pivot, x: 0, y: 11, w: 12, h: 5 },
+    { type: 'chart', ref: group, x: 0, y: 16, w: 5, h: 4 },
+    { type: 'chart', ref: detail, x: 5, y: 16, w: 7, h: 4 }
+  ]);
+  d.status = 'draft';
+  return packDash(d, { folder: '财务库存', desc: '收支双线 · 科目/部门透视 · 草稿未发布', updateBy: '钱七', updateTime: '2026-07-29 17:50' });
+}
+
+function demoCrmDash() {
+  const d = emptyDash('客户分层分析', 'dash_crm');
+  d.theme = 'rose';
+  const kpi1 = mkChart('kpi', '客户总数', { value: 'customers', format: 'raw' }, { valueColor: '#be123c' }, 'ds_crm');
+  const kpi2 = mkChart('kpi', '贡献 GMV', { value: 'gmv', calc: 'yoy' }, { valueColor: '#e11d48' }, 'ds_crm');
+  const kpi3 = mkChart('kpi', '均复购率', { value: 'repurchase', agg: 'AVG', format: 'raw' }, { valueColor: '#c026d3' }, 'ds_crm');
+  const bar = mkChart('bar', '等级贡献 GMV', { category: 'level', value: 'gmv' }, { showLabel: true }, 'ds_crm');
+  const hbar = mkChart('hbar', '区域客户数', { category: 'region', value: 'customers', format: 'raw' }, { showLabel: true }, 'ds_crm');
+  const pie = mkChart('pie', '行业分布', { category: 'industry', value: 'customers', format: 'raw' }, {}, 'ds_crm');
+  const area = mkChart('area', '等级复购', { category: 'level', value: 'repurchase', format: 'raw', agg: 'AVG' }, {}, 'ds_crm');
+  const pivot = mkChart('pivot', '等级 × 区域 GMV', { category: 'level', colDim: 'region', value: 'gmv' }, { showRowTotal: true }, 'ds_crm');
+  const group = mkChart('grouptable', '行业汇总', { category: 'industry', value: 'gmv' }, {}, 'ds_crm');
+  const detail = mkChart('table', '分层明细', { value: 'gmv', format: 'raw' }, { pageSize: 8 }, 'ds_crm');
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: 'CRM 分层 · A 类高复购优先保有，C 类看触达转化', fontSize: 13, color: '#9f1239' } },
+    { type: 'chart', ref: kpi1, x: 0, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi2, x: 4, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi3, x: 8, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: bar, x: 0, y: 3, w: 7, h: 5 },
+    { type: 'chart', ref: pie, x: 7, y: 3, w: 5, h: 5 },
+    { type: 'chart', ref: hbar, x: 0, y: 8, w: 6, h: 4 },
+    { type: 'chart', ref: area, x: 6, y: 8, w: 6, h: 4 },
+    { type: 'chart', ref: pivot, x: 0, y: 12, w: 12, h: 5 },
+    { type: 'chart', ref: group, x: 0, y: 17, w: 5, h: 4 },
+    { type: 'chart', ref: detail, x: 5, y: 17, w: 7, h: 4 }
+  ]);
+  d.status = 'published';
+  d.share = { token: 'sh_crm_demo', url: '/share/sh_crm_demo', expireAt: null };
+  return packDash(d, { folder: '销售分析', desc: '玫瑰主题 · 等级/区域/行业三维分层', updateBy: '王五', updateTime: '2026-07-27 14:22' });
+}
+
+function demoPromoDash() {
+  const d = emptyDash('促销活动监控', 'dash_promo');
+  d.theme = 'ocean';
+  const kpi1 = mkChart('kpi', '活动 GMV', { value: 'amount', calc: 'mom' }, { valueColor: '#0369a1' });
+  const kpi2 = mkChart('kpi', '活动销量', { value: 'qty', format: 'raw', calc: 'mom' }, { valueColor: '#0e7490' });
+  const kpi3 = mkChart('kpi', '平均折扣%', { value: 'discount', agg: 'AVG', format: 'raw' }, { valueColor: '#c2410c' });
+  const kpi4 = mkChart('kpi', '订单数', { value: 'order_cnt', format: 'raw' }, { valueColor: '#7c3aed' });
+  const area = mkChart('area', '产品促销额', { category: 'product', value: 'amount' }, { smooth: true });
+  const bar = mkChart('bar', '渠道成交', { category: 'channel', value: 'amount' }, { showLabel: true });
+  const pie = mkChart('pie', '支付方式', { category: 'pay_type', value: 'amount' });
+  const hbar = mkChart('hbar', '销售员冲刺', { category: 'salesman', value: 'qty', format: 'raw' }, { showLabel: true });
+  const line = mkChart('line', '品类走势', { category: 'category', value: 'amount' }, { smooth: true });
+  const group = mkChart('grouptable', '支付汇总', { category: 'pay_type', value: 'amount' }, {});
+  const pivot = mkChart('pivot', '渠道 × 品类', { category: 'channel', colDim: 'category', value: 'amount' }, { showColTotal: true });
+  const detail = mkChart('table', '活动订单', { value: 'amount', format: 'raw' }, { pageSize: 6 });
+  assembleDash(d, [
+    { type: 'slicer', x: 0, y: 0, w: 12, h: 1, props: { field: 'channel', label: '活动渠道' } },
+    { type: 'chart', ref: kpi1, x: 0, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi2, x: 3, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi3, x: 6, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi4, x: 9, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: area, x: 0, y: 3, w: 8, h: 5 },
+    { type: 'chart', ref: pie, x: 8, y: 3, w: 4, h: 5 },
+    { type: 'chart', ref: bar, x: 0, y: 8, w: 4, h: 4 },
+    { type: 'chart', ref: hbar, x: 4, y: 8, w: 4, h: 4 },
+    { type: 'chart', ref: line, x: 8, y: 8, w: 4, h: 4 },
+    { type: 'chart', ref: pivot, x: 0, y: 12, w: 8, h: 5 },
+    { type: 'chart', ref: group, x: 8, y: 12, w: 4, h: 5 },
+    { type: 'chart', ref: detail, x: 0, y: 17, w: 12, h: 4 }
+  ]);
+  d.linkages = [{ id: 'l_promo', sourceChartId: bar.id, sourceField: 'channel', targetChartId: detail.id, targetField: 'channel', enabled: true }];
+  d.status = 'publishedWithDraft';
+  return packDash(d, { folder: '运营增长', desc: '大促监控 · 折扣/支付/冲刺榜 · 有未发布改动', updateBy: '李四', updateTime: '2026-07-29 16:05' });
+}
+
+function buildCatalog() {
+  return [demoDash(), demoOpsDash(), demoRegionDash(), demoInvDash(), demoFinDash(), demoCrmDash(), demoPromoDash()];
+}
+
+state.dashboards = buildCatalog();
+state.dashId = state.dashboards[0].id;
+state.dash = state.dashboards[0];
 state.selectedId = state.dash.components.find(c => c.type === 'chart')?.id || null;
+
+function currentDash() {
+  return state.dashboards.find(d => d.id === state.dashId) || state.dashboards[0];
+}
+
+function selectDash(id) {
+  const d = state.dashboards.find(x => x.id === id);
+  if (!d) return;
+  state.dashId = d.id;
+  state.dash = d;
+  state.selectedId = d.components.find(c => c.type === 'chart')?.id || null;
+  state.undo = [];
+  state.linkageHits = [];
+  state.drillStack = [];
+}
+
+/** URL hash 路由：#/workbench | #/datasource/:id | #/dataset/:id | #/dashboard/:screen/:dashId */
+const ROUTE_MODS = new Set(['workbench', 'datasource', 'dataset', 'dashboard']);
+let _applyingRoute = false;
+
+function buildRouteHash() {
+  const mod = ROUTE_MODS.has(state.module) ? state.module : 'workbench';
+  if (mod === 'workbench') return '#/workbench';
+  if (mod === 'datasource') return '#/datasource/' + encodeURIComponent(state.srcId || '');
+  if (mod === 'dataset') {
+    const tab = state.dsTab && state.dsTab !== 'fields' ? '/' + encodeURIComponent(state.dsTab) : '';
+    return '#/dataset/' + encodeURIComponent(state.datasetId || '') + tab;
+  }
+  // dashboard
+  const screen = ['list', 'editor', 'preview'].includes(state.screen) ? state.screen : 'list';
+  const id = state.dashId || state.dash?.id || '';
+  return '#/dashboard/' + screen + (id ? '/' + encodeURIComponent(id) : '');
+}
+
+function syncRoute() {
+  if (_applyingRoute) return;
+  const next = buildRouteHash().replace(/\/+$/, '') || '#/workbench';
+  // 去掉末尾空段：#/datasource/ → #/datasource
+  const clean = next.replace(/\/$/, '') || '#/workbench';
+  if (location.hash === clean) return;
+  history.replaceState(null, '', clean);
+}
+
+function applyRouteFromHash() {
+  _applyingRoute = true;
+  try {
+    const raw = (location.hash || '').replace(/^#\/?/, '').trim();
+    if (!raw) {
+      state.module = 'workbench';
+      state.screen = 'list';
+      return;
+    }
+    const parts = raw.split('/').map(p => decodeURIComponent(p || '')).filter(Boolean);
+    const mod = ROUTE_MODS.has(parts[0]) ? parts[0] : 'workbench';
+    state.module = mod;
+    if (mod === 'workbench') {
+      state.screen = 'list';
+      return;
+    }
+    if (mod === 'datasource') {
+      state.screen = 'list';
+      if (parts[1] && DATASOURCES.some(s => s.id === parts[1])) state.srcId = parts[1];
+      return;
+    }
+    if (mod === 'dataset') {
+      state.screen = 'list';
+      if (parts[1] && DATASETS[parts[1]]) state.datasetId = parts[1];
+      if (parts[2] && ['fields', 'preview', 'lineage'].includes(parts[2])) state.dsTab = parts[2];
+      return;
+    }
+    // dashboard
+    const screen = ['list', 'editor', 'preview'].includes(parts[1]) ? parts[1] : 'list';
+    const dashId = parts[2] || (['list', 'editor', 'preview'].includes(parts[1]) ? '' : parts[1]);
+    // support #/dashboard/:dashId as list selection
+    if (parts[1] && !['list', 'editor', 'preview'].includes(parts[1])) {
+      if (state.dashboards.some(d => d.id === parts[1])) {
+        selectDash(parts[1]);
+        state.screen = 'list';
+        return;
+      }
+    }
+    if (dashId && state.dashboards.some(d => d.id === dashId)) selectDash(dashId);
+    state.screen = screen;
+    if (screen === 'preview' && state.dash?.status === 'draft') state.screen = 'list';
+  } finally {
+    _applyingRoute = false;
+  }
+}
+
+function gotoModule(mod) {
+  state.module = ROUTE_MODS.has(mod) ? mod : 'workbench';
+  state.screen = 'list';
+  render();
+}
 
 function snap(n, size) { return Math.round(n / (size + GAP)); }
 function px(x, y, w, h, cw) {
@@ -885,8 +1881,9 @@ function filteredRows(chart) {
   const d = ds(chart.datasetId);
   if (!d) return [];
   let rows = d.rows.slice();
-  if (state.filter.region && rows[0]?.region != null) {
-    rows = rows.filter(r => r.region === state.filter.region);
+  for (const [k, v] of Object.entries(state.filter)) {
+    if (!v || k === 'dateFrom' || k === 'dateTo') continue;
+    if (rows[0] && k in rows[0]) rows = rows.filter(r => String(r[k]) === String(v));
   }
   if (state.filter.dateFrom) rows = rows.filter(r => !r.date || r.date >= state.filter.dateFrom);
   if (state.filter.dateTo) rows = rows.filter(r => !r.date || r.date <= state.filter.dateTo);
@@ -979,14 +1976,993 @@ function esc(s) {
 }
 
 /* ---------- render shell ---------- */
+function syncModNav() {
+  document.querySelectorAll('#modNav button').forEach(b => {
+    b.classList.toggle('on', b.dataset.mod === state.module);
+  });
+}
+
 function render() {
   disposeCharts();
   const app = document.getElementById('app');
-  app.classList.toggle('mobile-frame', state.mobile && state.screen === 'preview');
-  if (state.screen === 'list') renderList(app);
+  app.classList.toggle('mobile-frame', state.mobile && state.screen === 'preview' && state.module === 'dashboard');
+  syncModNav();
+  document.querySelectorAll('#phaseTabs button').forEach(b => b.classList.toggle('on', b.dataset.phase === state.phase));
+
+  if (state.module === 'workbench') renderWorkbench(app);
+  else if (state.module === 'datasource') renderDatasource(app);
+  else if (state.module === 'dataset') renderDataset(app);
+  else if (state.screen === 'list') renderList(app);
   else if (state.screen === 'preview') renderPreview(app);
   else renderEditor(app);
-  document.querySelectorAll('#phaseTabs button').forEach(b => b.classList.toggle('on', b.dataset.phase === state.phase));
+
+  syncRoute();
+}
+
+function statusSrc(st) {
+  if (st === 'ok') return '<span class="pill-soft ok">连通</span>';
+  if (st === 'warn') return '<span class="pill-soft warn">告警</span>';
+  return '<span class="pill-soft err">异常</span>';
+}
+
+function statusLabel(st) {
+  return st === 'ok' ? '连通' : st === 'warn' ? '告警' : '异常';
+}
+
+const SRC_TYPE_META = {
+  mysql: {
+    label: 'MySQL', short: 'MY', color: '#fff', bg: 'linear-gradient(135deg,#3b82f6,#1d4ed8)',
+    ink: '#1d4ed8', soft: '#dbeafe',
+    svg: '<svg viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="#fff" stroke-width="1.6"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" stroke="#fff" stroke-width="1.6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" stroke="#fff" stroke-width="1.6"/></svg>'
+  },
+  postgresql: {
+    label: 'PostgreSQL', short: 'PG', color: '#fff', bg: 'linear-gradient(135deg,#38bdf8,#0369a1)',
+    ink: '#0369a1', soft: '#e0f2fe',
+    svg: '<svg viewBox="0 0 24 24" fill="none"><path d="M7 15c-2 0-3.5-1.8-3-4 .4-1.8 2-3 4-3h1" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="M12 5c2.5-1 6-.5 7.5 2.5S19 14 16 15.5c-1.5.8-3 .5-4-.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="9.5" cy="10" r="1" fill="#fff"/><circle cx="15" cy="9" r="1" fill="#fff"/></svg>'
+  },
+  clickhouse: {
+    label: 'ClickHouse', short: 'CH', color: '#fff', bg: 'linear-gradient(135deg,#fbbf24,#d97706)',
+    ink: '#b45309', soft: '#fef3c7',
+    svg: '<svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="6" height="6" rx="1.2" fill="#fff"/><rect x="14" y="4" width="6" height="6" rx="1.2" fill="#fff" opacity=".75"/><rect x="4" y="14" width="6" height="6" rx="1.2" fill="#fff" opacity=".75"/><rect x="14" y="14" width="6" height="6" rx="1.2" fill="#fff"/></svg>'
+  },
+  api: {
+    label: 'API', short: 'API', color: '#fff', bg: 'linear-gradient(135deg,#a78bfa,#7c3aed)',
+    ink: '#6d28d9', soft: '#ede9fe',
+    svg: '<svg viewBox="0 0 24 24" fill="none"><path d="M8 12h8M10 8l-4 4 4 4M14 8l4 4-4 4" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  },
+  excel: {
+    label: 'Excel', short: 'XLS', color: '#fff', bg: 'linear-gradient(135deg,#4ade80,#15803d)',
+    ink: '#15803d', soft: '#dcfce7',
+    svg: '<svg viewBox="0 0 24 24" fill="none"><rect x="5" y="3" width="14" height="18" rx="2" stroke="#fff" stroke-width="1.6"/><path d="M8 8h8M8 12h8M8 16h5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>'
+  }
+};
+
+function srcMeta(type) {
+  return SRC_TYPE_META[type] || {
+    label: type || 'Other', short: '?', color: '#fff',
+    bg: 'linear-gradient(135deg,#94a3b8,#475569)', ink: '#334155', soft: '#f1f5f9',
+    svg: '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7" stroke="#fff" stroke-width="1.6"/></svg>'
+  };
+}
+
+function typeBadgeHtml(type, size = 36) {
+  const m = srcMeta(type);
+  return `<div class="type-badge" style="width:${size}px;height:${size}px;background:${m.bg};color:${m.color}" title="${esc(m.label)}">${m.svg}</div>`;
+}
+
+function heroIconHtml(type) {
+  const m = srcMeta(type);
+  return `<div class="hero-icon" style="background:${m.bg}">${m.svg}</div>`;
+}
+
+function sparkHtml(rows, dim, quota) {
+  const map = new Map();
+  rows.forEach(r => map.set(r[dim], (map.get(r[dim]) || 0) + (+r[quota] || 0)));
+  const bars = [...map.entries()];
+  const max = Math.max(...bars.map(b => b[1]), 1);
+  return `<div class="spark">${bars.map(([, v]) => `<i style="height:${Math.max(8, Math.round(v / max * 100))}%"></i>`).join('')}</div>`;
+}
+
+function renderWorkbench(app) {
+  const pubs = state.dashboards.filter(d => d.status !== 'draft').length;
+  const dirty = state.dashboards.filter(d => d.status === 'publishedWithDraft').length;
+  const srcOk = DATASOURCES.filter(s => s.status === 'ok').length;
+  const recent = [...state.dashboards].sort((a, b) => (b.updateTime || '').localeCompare(a.updateTime || '')).slice(0, 5);
+  app.innerHTML = `
+    <div class="manage">
+      <div class="bar">
+        <strong style="font-size:14px">工作台</strong>
+        <span class="crumb">概览数据链路与最近资产</span>
+        <div class="spacer"></div>
+        <button class="btn" id="wbRefresh">刷新状态</button>
+        <button class="btn primary" id="wbNewDash">+ 新建仪表盘</button>
+      </div>
+      <div class="detail" style="flex:1;overflow:auto">
+        <div class="stat-row">
+          <div class="stat-card"><div class="k">数据源</div><div class="v">${DATASOURCES.length}</div><div class="s">${srcOk} 连通 · ${DATASOURCES.length - srcOk} 待处理</div></div>
+          <div class="stat-card"><div class="k">数据集</div><div class="v">${Object.keys(DATASETS).length}</div><div class="s">覆盖销售 / 运营 / 库存 / 财务 / CRM</div></div>
+          <div class="stat-card"><div class="k">仪表盘</div><div class="v">${state.dashboards.length}</div><div class="s">${pubs} 已发布 · ${dirty} 有未发布改动</div></div>
+          <div class="stat-card"><div class="k">分享中</div><div class="v">${state.dashboards.filter(d => d.share).length}</div><div class="s">外链与嵌入 Token</div></div>
+        </div>
+        <div class="panel-card">
+          <h3>推荐链路（点一步跳转）</h3>
+          <div class="pipe">
+            <div class="pipe-step" data-go="datasource"><div class="n">01</div><div class="t">接入数据源</div><div class="d">MySQL / PG / API / Excel · 测连通</div></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step" data-go="dataset"><div class="n">02</div><div class="t">维护数据集</div><div class="d">选表 · 字段语义 · 预览取数</div></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step" data-go="dashboard"><div class="n">03</div><div class="t">配置仪表盘</div><div class="d">绑定数据集 · 编码槽 · 发布分享</div></div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-step" data-go="dashboard"><div class="n">04</div><div class="t">用户访问</div><div class="d">工作台打开已发布 · 或分享链</div></div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="panel-card">
+            <h3>最近仪表盘</h3>
+            <div class="recent-list">
+              ${recent.map(d => `
+                <div class="recent-item" data-open="${d.id}">
+                  <div class="ico">▣</div>
+                  <div class="spacer" style="flex:1;min-width:0">
+                    <div class="t">${esc(d.name)}</div>
+                    <div class="m">${esc(d.folder)} · ${esc(d.updateBy)} · ${esc(d.updateTime)}</div>
+                  </div>
+                  ${statusTag(d.status)}
+                </div>`).join('')}
+            </div>
+          </div>
+          <div class="panel-card">
+            <h3>数据源健康</h3>
+            <div class="recent-list">
+              ${DATASOURCES.map(s => `
+                <div class="recent-item" data-src="${s.id}">
+                  <div class="ico" style="background:${s.status==='ok'?'#e3f7ef':s.status==='warn'?'#fff7ed':'#fef2f2'}">${s.type.slice(0,2).toUpperCase()}</div>
+                  <div class="spacer" style="flex:1;min-width:0">
+                    <div class="t">${esc(s.name)}</div>
+                    <div class="m">${esc(s.type)} · 上次检测 ${esc(s.lastCheck)}</div>
+                  </div>
+                  ${statusSrc(s.status)}
+                </div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  app.querySelector('#wbRefresh').onclick = () => toast('已同步连通性（演示）', 'ok');
+  app.querySelector('#wbNewDash').onclick = () => {
+    state.module = 'dashboard';
+    createBlankDash();
+  };
+  app.querySelectorAll('[data-go]').forEach(el => el.onclick = () => gotoModule(el.dataset.go));
+  app.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
+    selectDash(el.dataset.open);
+    state.module = 'dashboard';
+    state.screen = 'editor';
+    render();
+  });
+  app.querySelectorAll('[data-src]').forEach(el => el.onclick = () => {
+    state.srcId = el.dataset.src;
+    gotoModule('datasource');
+  });
+}
+
+function renderDatasource(app) {
+  const q = state.search.trim();
+  const typeKeys = ['all', ...new Set(DATASOURCES.map(s => s.type))];
+  const list = DATASOURCES.filter(s => {
+    if (state.srcTypeFilter !== 'all' && s.type !== state.srcTypeFilter) return false;
+    return !q || s.name.includes(q) || s.type.includes(q) || (s.desc || '').includes(q);
+  });
+  const src = DATASOURCES.find(s => s.id === state.srcId) || list[0] || DATASOURCES[0];
+  if (src) state.srcId = src.id;
+  const used = (src.usedBy || []).map(id => DATASETS[id]).filter(Boolean);
+  const meta = srcMeta(src.type);
+  const okN = DATASOURCES.filter(s => s.status === 'ok').length;
+  const hostLine = src.port ? `${src.host}:${src.port}` : String(src.host);
+
+  const schemaDemo = [
+    { name: 'fact_order', rows: '2.1M', kind: '事实表', note: '订单明细' },
+    { name: 'dim_product', rows: '12k', kind: '维度表', note: '产品主数据' },
+    { name: 'fact_inventory', rows: '480k', kind: '事实表', note: '库存快照' },
+    { name: 'ods_event_day', rows: '90d', kind: '聚合表', note: '日流量' }
+  ];
+
+  app.innerHTML = `
+    <div class="studio">
+      <div class="studio-bar">
+        <div class="title-block">
+          <strong>数据源</strong>
+          <span>${DATASOURCES.length} 个连接 · ${okN} 连通 · 飞书式资产管理</span>
+        </div>
+        <div class="chip-row" id="typeChips">
+          ${typeKeys.map(t => {
+            const label = t === 'all' ? '全部' : srcMeta(t).label;
+            const n = t === 'all' ? DATASOURCES.length : DATASOURCES.filter(s => s.type === t).length;
+            return `<button type="button" class="filter-chip ${state.srcTypeFilter===t?'on':''}" data-tf="${t}">${esc(label)} <span style="opacity:.75">${n}</span></button>`;
+          }).join('')}
+        </div>
+        <div class="spacer"></div>
+        <label class="studio-search"><span class="ico">⌕</span>
+          <input id="srcSearch" placeholder="搜索名称、类型、备注" value="${esc(state.search)}" />
+        </label>
+        <button type="button" class="btn" id="btnPingAll">全部检测</button>
+        <button type="button" class="btn primary" id="btnNewSrc">+ 新建连接</button>
+      </div>
+      <div class="studio-body">
+        <aside class="asset-rail">
+          <div class="rail-head"><span>连接列表</span><span>${list.length}</span></div>
+          <div class="rail-scroll">
+            ${list.map(s => `
+              <div class="asset-item ${s.id===src.id?'on':''}" data-sid="${s.id}">
+                ${typeBadgeHtml(s.type)}
+                <div class="meta">
+                  <div class="name">${esc(s.name)}</div>
+                  <div class="desc">
+                    <span class="status-dot ${s.status}"></span>
+                    <span>${esc(srcMeta(s.type).label)}</span>
+                    <span>·</span>
+                    <span>${statusLabel(s.status)}</span>
+                  </div>
+                </div>
+              </div>`).join('') || '<div class="empty-illus"><div class="big">⌀</div>无匹配连接</div>'}
+          </div>
+        </aside>
+        <section class="asset-stage" id="srcStage">
+          <div class="hero-card" id="srcHero">
+            <div class="hero-top">
+              ${heroIconHtml(src.type)}
+              <div class="hero-copy">
+                <h2>${esc(src.name)}</h2>
+                <div class="sub">${esc(src.desc)} · ${statusSrc(src.status)} · 负责人 ${esc(src.owner)}</div>
+              </div>
+              <div class="hero-actions">
+                <button type="button" class="btn" id="btnPing">测试连接</button>
+                <button type="button" class="btn" id="btnExplore">浏览结构</button>
+                <button type="button" class="btn primary" id="btnMakeDs">以此创建数据集</button>
+              </div>
+            </div>
+            <div class="metric-strip">
+              <div class="metric-cell"><div class="k">引擎类型</div><div class="v" style="color:${meta.ink}">${esc(meta.label)}</div><div class="h">Connector</div></div>
+              <div class="metric-cell"><div class="k">主机 / 入口</div><div class="v" style="font-size:13px">${esc(hostLine)}</div><div class="h">Network</div></div>
+              <div class="metric-cell"><div class="k">库 / 文件</div><div class="v">${esc(String(src.database))}</div><div class="h">Catalog</div></div>
+              <div class="metric-cell"><div class="k">上次检测</div><div class="v" style="font-size:13px">${esc(src.lastCheck)}</div><div class="h">Health check</div></div>
+            </div>
+          </div>
+
+          <div class="soft-panel">
+            <div class="phd"><h3>连接属性</h3><span class="hint">结构化展示 · 非终端日志</span></div>
+            <div class="pbd">
+              <div class="kv-grid">
+                <div class="kv"><div class="kk">显示名</div><div class="vv">${esc(src.name)}</div></div>
+                <div class="kv"><div class="kk">类型</div><div class="vv">${esc(meta.label)}</div></div>
+                <div class="kv"><div class="kk">Host</div><div class="vv">${esc(String(src.host))}</div></div>
+                <div class="kv"><div class="kk">Port</div><div class="vv">${src.port ?? '—'}</div></div>
+                <div class="kv"><div class="kk">Database</div><div class="vv">${esc(String(src.database))}</div></div>
+                <div class="kv"><div class="kk">表数量</div><div class="vv">≈ ${src.tables}</div></div>
+                <div class="kv"><div class="kk">负责人</div><div class="vv">${esc(src.owner)}</div></div>
+                <div class="kv"><div class="kk">引用数据集</div><div class="vv">${used.length} 个</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="soft-panel">
+            <div class="phd">
+              <h3>库表结构预览</h3>
+              <span class="hint">点击行可选中并创建数据集</span>
+              <button type="button" class="btn ghost" id="btnExplore2" style="margin-left:0">刷新</button>
+            </div>
+            <div class="pbd" style="padding:0">
+              <table class="schema-table">
+                <thead><tr><th>对象</th><th>类型</th><th>规模</th><th>说明</th><th></th></tr></thead>
+                <tbody>
+                  ${schemaDemo.map((t, i) => `
+                    <tr data-tbl="${esc(t.name)}" class="${i===0?'picked':''}">
+                      <td><b style="font-weight:650">${esc(t.name)}</b></td>
+                      <td><span class="mini-tag blue">${esc(t.kind)}</span></td>
+                      <td>${esc(t.rows)}</td>
+                      <td style="color:var(--text-2)">${esc(t.note)}</td>
+                      <td><button type="button" class="btn ghost" data-use-tbl="${esc(t.name)}">选用</button></td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="soft-panel">
+            <div class="phd"><h3>下游数据集</h3><span class="hint">${used.length} 个引用</span></div>
+            <div class="pbd">
+              ${used.length ? `<div class="ref-grid">${used.map(d => `
+                <div class="ref-card" data-ds="${d.id}">
+                  <div class="rt">${esc(d.name)}</div>
+                  <div class="rm">${esc(d.desc || d.folder || '')}</div>
+                  <div class="rf">
+                    <span class="mini-tag">${d.fields.filter(f=>f.group==='dim').length} 维度</span>
+                    <span class="mini-tag green">${d.fields.filter(f=>f.group==='quota').length} 指标</span>
+                    <span class="mini-tag blue">${d.rows.length} 样例行</span>
+                  </div>
+                </div>`).join('')}</div>` : `
+                <div class="empty-illus">
+                  <div class="big">▦</div>
+                  还没有数据集引用此连接
+                  <div style="margin-top:10px"><button type="button" class="btn primary" id="btnMakeDs2">以此创建第一个数据集</button></div>
+                </div>`}
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>`;
+
+  app.querySelector('#srcSearch').oninput = e => { state.search = e.target.value; render(); };
+  app.querySelectorAll('[data-tf]').forEach(el => el.onclick = () => { state.srcTypeFilter = el.dataset.tf; render(); });
+  app.querySelectorAll('[data-sid]').forEach(el => el.onclick = () => { state.srcId = el.dataset.sid; render(); });
+  app.querySelector('#btnPing').onclick = () => {
+    const hero = app.querySelector('#srcHero');
+    if (src.status === 'err') { toast('连接失败：超时（演示保持异常态）', 'warn'); return; }
+    src.lastCheck = '刚刚';
+    src.status = src.status === 'warn' ? 'warn' : 'ok';
+    hero?.classList.remove('ping-flash');
+    void hero?.offsetWidth;
+    hero?.classList.add('ping-flash');
+    toast('连接成功 · 延迟 18ms（演示）', 'ok');
+    render();
+  };
+  app.querySelector('#btnPingAll').onclick = () => toast(`已检测 ${DATASOURCES.length} 个数据源`, 'ok');
+  app.querySelector('#btnExplore').onclick = () => {
+    showModal(`<h3>浏览结构 · ${esc(src.name)}</h3>
+      <p style="font-size:12px;color:var(--text-2);margin-bottom:12px">真实环境走 connector.listTables / listColumns</p>
+      <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+        <table class="schema-table">
+          <thead><tr><th>表名</th><th>类型</th><th>估算行数</th><th>备注</th></tr></thead>
+          <tbody>${schemaDemo.map(t => `<tr><td><b>${esc(t.name)}</b></td><td><span class="mini-tag blue">${esc(t.kind)}</span></td><td>${esc(t.rows)}</td><td>${esc(t.note)}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="actions"><button type="button" class="btn primary" id="ok">完成</button></div>`);
+    document.getElementById('ok').onclick = hideModal;
+  };
+  app.querySelector('#btnExplore2').onclick = () => toast('已刷新表清单（演示）', 'ok');
+  const goMakeDs = (tableName) => {
+    state.module = 'dataset';
+    if (used[0]) state.datasetId = used[0].id;
+    state.dsWizardStep = 1;
+    toast(tableName ? `已选用 ${tableName}，进入数据集` : '进入数据集工作台', 'ok');
+    render();
+    if (tableName) setTimeout(() => openNewDatasetModal(src.id, tableName), 80);
+  };
+  app.querySelector('#btnMakeDs').onclick = () => goMakeDs();
+  app.querySelector('#btnMakeDs2')?.addEventListener('click', () => goMakeDs());
+  app.querySelector('#btnNewSrc').onclick = () => openNewDatasourceModal();
+  app.querySelectorAll('[data-ds]').forEach(el => el.onclick = () => {
+    state.datasetId = el.dataset.ds;
+    gotoModule('dataset');
+  });
+  app.querySelectorAll('[data-use-tbl]').forEach(el => {
+    el.onclick = e => { e.stopPropagation(); goMakeDs(el.dataset.useTbl); };
+  });
+  app.querySelectorAll('[data-tbl]').forEach(el => {
+    el.onclick = () => {
+      app.querySelectorAll('[data-tbl]').forEach(r => r.classList.toggle('picked', r === el));
+    };
+  });
+}
+
+function openNewDatasourceModal() {
+  let picked = 'mysql';
+  const paint = () => {
+    showModal(`<h3>新建数据源连接</h3>
+      <p style="font-size:12px;color:var(--text-2);margin:-4px 0 12px">选择引擎类型 → 填写连接 → 检测保存（Quick BI 式选型）</p>
+      <div class="wizard-steps"><span class="on">1 选型</span><span class="on">2 配置</span><span>3 检测</span></div>
+      <div class="type-gallery" id="tg">
+        ${Object.entries(SRC_TYPE_META).map(([k, m]) => `
+          <div class="type-pick ${picked===k?'on':''}" data-t="${k}">
+            <div class="tb" style="background:${m.bg}">${m.svg}</div>
+            <div class="tn">${esc(m.label)}</div>
+            <div class="td">${k === 'excel' ? '文件上传' : k === 'api' ? 'REST / JSON' : 'JDBC 连接'}</div>
+          </div>`).join('')}
+      </div>
+      <div class="field"><label>显示名称</label><input id="n" value="新业务库" /></div>
+      <div style="display:grid;grid-template-columns:1fr 100px;gap:8px">
+        <div class="field"><label>Host / Endpoint</label><input id="h" value="127.0.0.1" /></div>
+        <div class="field"><label>Port</label><input id="p" value="3306" /></div>
+      </div>
+      <div class="field"><label>Database / 路径</label><input id="db" value="demo" /></div>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="c">取消</button>
+        <button type="button" class="btn" id="ping">测试连接</button>
+        <button type="button" class="btn primary" id="ok">保存连接</button>
+      </div>`);
+    document.getElementById('tg').onclick = e => {
+      const card = e.target.closest('[data-t]');
+      if (!card) return;
+      picked = card.dataset.t;
+      document.querySelectorAll('#tg .type-pick').forEach(x => x.classList.toggle('on', x.dataset.t === picked));
+      const defPort = { mysql: 3306, postgresql: 5432, clickhouse: 8123, api: '', excel: '' }[picked];
+      document.getElementById('p').value = defPort;
+    };
+    document.getElementById('c').onclick = hideModal;
+    document.getElementById('ping').onclick = () => toast(`${srcMeta(picked).label} 连通成功（演示）`, 'ok');
+    document.getElementById('ok').onclick = () => {
+      const id = uid('src');
+      const portVal = document.getElementById('p').value;
+      DATASOURCES.unshift({
+        id, name: document.getElementById('n').value || '未命名',
+        type: picked,
+        host: document.getElementById('h').value,
+        port: portVal ? +portVal : null,
+        database: document.getElementById('db').value,
+        status: 'ok', lastCheck: '刚刚', owner: '当前用户', tables: 0, usedBy: [],
+        desc: `新建 ${srcMeta(picked).label} 连接`
+      });
+      state.srcId = id;
+      state.srcTypeFilter = 'all';
+      hideModal();
+      toast('数据源已保存', 'ok');
+      render();
+    };
+  };
+  paint();
+}
+
+function renderDataset(app) {
+  const q = state.search.trim();
+  const folders = [...new Set(Object.values(DATASETS).map(d => d.folder || '未分组'))];
+  const list = Object.values(DATASETS).filter(d => {
+    if (state.folderFilter !== 'all' && (d.folder || '未分组') !== state.folderFilter) return false;
+    return !q || d.name.includes(q) || (d.desc || '').includes(q);
+  });
+  const ds = DATASETS[state.datasetId] || list[0] || Object.values(DATASETS)[0];
+  if (ds) state.datasetId = ds.id;
+  const src = DATASOURCES.find(s => s.id === ds.datasourceId);
+  const usedBy = state.dashboards.filter(d => (d.datasetIds || []).includes(ds.id));
+  const previewRows = ds.rows.slice(0, 8);
+  const dimN = ds.fields.filter(f => f.group === 'dim').length;
+  const quotaN = ds.fields.filter(f => f.group === 'quota').length;
+  const tab = state.dsTab || 'fields';
+
+  const fieldsPane = `
+    <div class="soft-panel" style="margin:0">
+      <div class="phd">
+        <h3>字段配置</h3>
+        <span class="hint">切换维度 / 指标角色 · 供图表编码槽使用</span>
+      </div>
+      <div class="pbd" style="padding:0;max-height:420px;overflow:auto">
+        <table class="field-table">
+          <thead><tr><th style="width:36%">显示名</th><th>字段</th><th>角色</th><th>类型</th></tr></thead>
+          <tbody>
+            ${ds.fields.map(f => `
+              <tr data-fn="${f.name}">
+                <td><b style="font-weight:650">${esc(f.label)}</b></td>
+                <td style="color:var(--text-3);font-family:ui-monospace,monospace;font-size:11px">${esc(f.name)}</td>
+                <td>
+                  <div class="role-seg">
+                    <button type="button" class="${f.group==='dim'?'on dim':''}" data-role="dim" data-fn="${f.name}">维度</button>
+                    <button type="button" class="${f.group==='quota'?'on quota':''}" data-role="quota" data-fn="${f.name}">指标</button>
+                  </div>
+                </td>
+                <td><span class="mini-tag ${f.group==='dim'?'blue':'green'}">${f.group==='dim'?'Abc 文本/维':'# 数值'}</span></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  const previewPane = `
+    <div class="soft-panel" style="margin:0">
+      <div class="phd">
+        <h3>数据预览</h3>
+        <span class="hint">datasetQuery.execute · 前 ${previewRows.length} 行</span>
+        <button type="button" class="btn" id="btnPreviewQ">运行取数</button>
+      </div>
+      <div class="pbd" style="padding:0;overflow:auto;max-height:420px">
+        <table class="schema-table">
+          <thead><tr>${ds.fields.map(f => `<th>${esc(f.label)}<div style="font-weight:400;color:#c0c4cc;font-size:10px">${esc(f.name)}</div></th>`).join('')}</tr></thead>
+          <tbody>
+            ${previewRows.map(r => `<tr>${ds.fields.map(f => `<td>${esc(String(r[f.name] ?? ''))}</td>`).join('')}</tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  const lineagePane = `
+    <div class="soft-panel" style="margin:0">
+      <div class="phd"><h3>血缘与消费</h3><span class="hint">数据源 → 数据集 → 仪表盘</span></div>
+      <div class="pbd">
+        <div class="lineage">
+          <div class="node" id="linSrc" style="cursor:pointer">
+            <b>数据源</b>${esc(src?.name || '—')}
+            <div style="margin-top:6px">${src ? typeBadgeHtml(src.type, 28) : ''}</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="node" style="border-color:#9db7ff;background:#f5f8ff">
+            <b>数据集</b>${esc(ds.name)}
+            <div style="margin-top:4px;font-size:11px;color:var(--text-3)">${dimN} 维 · ${quotaN} 指标</div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="node" style="flex:1;min-width:180px">
+            <b>仪表盘（${usedBy.length}）</b>
+            ${usedBy.length ? usedBy.map(d => `<div style="margin-top:4px;font-size:12px">· ${esc(d.name)}</div>`).join('') : '<div style="margin-top:4px;color:var(--text-3)">暂无消费</div>'}
+          </div>
+        </div>
+        <div class="ref-grid" style="margin-top:14px">
+          ${usedBy.map(d => `
+            <div class="ref-card" data-open="${d.id}">
+              <div class="rt">${esc(d.name)}</div>
+              <div class="rm">${esc(d.folder)} · ${esc(d.updateBy || '')}</div>
+              <div class="rf">${statusTag(d.status)}<span class="mini-tag blue">${Object.keys(d.charts||{}).length} 图</span></div>
+            </div>`).join('') || '<div class="empty-illus" style="grid-column:1/-1"><div class="big">▣</div>还没有仪表盘使用此数据集</div>'}
+        </div>
+      </div>
+    </div>`;
+
+  app.innerHTML = `
+    <div class="studio">
+      <div class="studio-bar">
+        <div class="title-block">
+          <strong>数据集</strong>
+          <span>语义层 · 字段角色 · 预览取数 · 一键上板</span>
+        </div>
+        <div class="chip-row">
+          <button type="button" class="filter-chip ${state.folderFilter==='all'?'on':''}" data-ff="all">全部</button>
+          ${folders.map(f => `<button type="button" class="filter-chip ${state.folderFilter===f?'on':''}" data-ff="${esc(f)}">${esc(f)}</button>`).join('')}
+        </div>
+        <div class="spacer"></div>
+        <label class="studio-search"><span class="ico">⌕</span>
+          <input id="dsSearch" placeholder="搜索数据集" value="${esc(state.search)}" />
+        </label>
+        <button type="button" class="btn primary" id="btnNewDs">+ 新建数据集</button>
+      </div>
+      <div class="studio-body">
+        <aside class="asset-rail">
+          <div class="rail-head"><span>数据集</span><span>${list.length}</span></div>
+          <div class="rail-scroll">
+            ${list.map(d => {
+              const s = DATASOURCES.find(x => x.id === d.datasourceId);
+              return `<div class="asset-item ${d.id===ds.id?'on':''}" data-did="${d.id}">
+                <div class="type-badge" style="background:linear-gradient(135deg,#93c5fd,#3370ff);color:#fff">
+                  <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><rect x="14" y="15" width="6" height="5" rx="1" stroke="#fff" stroke-width="1.4"/></svg>
+                </div>
+                <div class="meta">
+                  <div class="name">${esc(d.name)}</div>
+                  <div class="desc">${esc(d.folder || '未分组')} · ${esc(s ? srcMeta(s.type).label : '—')} · ${d.fields.length} 字段</div>
+                </div>
+              </div>`;
+            }).join('') || '<div class="empty-illus"><div class="big">⌀</div>无匹配数据集</div>'}
+          </div>
+        </aside>
+        <section class="asset-stage">
+          <div class="hero-card">
+            <div class="hero-top">
+              <div class="hero-icon" style="background:linear-gradient(135deg,#60a5fa,#3370ff)">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><rect x="14" y="15" width="6" height="5" rx="1" stroke="#fff" stroke-width="1.4"/></svg>
+              </div>
+              <div class="hero-copy">
+                <h2>${esc(ds.name)}</h2>
+                <div class="sub">${esc(ds.desc || '')} · 来自
+                  <a href="javascript:void(0)" id="srcLink" style="color:var(--brand);text-decoration:none;font-weight:600">${esc(src?.name || '—')}</a>
+                </div>
+              </div>
+              <div class="hero-actions">
+                <button type="button" class="btn" id="btnOpenSrc">数据源</button>
+                <button type="button" class="btn" id="btnEditDs">编辑数据集</button>
+                <button type="button" class="btn" id="btnPreviewQTop">预览取数</button>
+                <button type="button" class="btn primary" id="btnUseDash">创建仪表盘</button>
+              </div>
+            </div>
+            <div class="metric-strip">
+              <div class="metric-cell"><div class="k">维度</div><div class="v" style="color:#245bdb">${dimN}</div><div class="h">Dimension</div></div>
+              <div class="metric-cell"><div class="k">指标</div><div class="v" style="color:#047857">${quotaN}</div><div class="h">Measure</div></div>
+              <div class="metric-cell"><div class="k">样例行</div><div class="v">${ds.rows.length}</div><div class="h">Preview rows</div></div>
+              <div class="metric-cell"><div class="k">引用看板</div><div class="v">${usedBy.length}</div><div class="h">Consumers</div></div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+            <div class="studio-tabs" id="dsTabs">
+              <button type="button" class="${tab==='fields'?'on':''}" data-tab="fields">字段</button>
+              <button type="button" class="${tab==='preview'?'on':''}" data-tab="preview">预览</button>
+              <button type="button" class="${tab==='lineage'?'on':''}" data-tab="lineage">血缘</button>
+            </div>
+            <span style="font-size:11px;color:var(--text-3)">切换页签不会丢失字段角色修改</span>
+          </div>
+          <div id="dsPane">
+            ${tab === 'preview' ? previewPane : tab === 'lineage' ? lineagePane : fieldsPane}
+          </div>
+        </section>
+      </div>
+    </div>`;
+
+  app.querySelector('#dsSearch').oninput = e => { state.search = e.target.value; render(); };
+  app.querySelectorAll('[data-ff]').forEach(el => el.onclick = () => { state.folderFilter = el.dataset.ff; render(); });
+  app.querySelectorAll('[data-did]').forEach(el => el.onclick = () => { state.datasetId = el.dataset.did; state.dsTab = 'fields'; render(); });
+  app.querySelectorAll('#dsTabs [data-tab]').forEach(el => el.onclick = () => { state.dsTab = el.dataset.tab; render(); });
+
+  app.querySelectorAll('[data-role]').forEach(btn => {
+    btn.onclick = e => {
+      e.stopPropagation();
+      const f = ds.fields.find(x => x.name === btn.dataset.fn);
+      if (!f) return;
+      f.group = btn.dataset.role;
+      toast(`${f.label} → ${f.group === 'dim' ? '维度' : '指标'}`, 'ok');
+      render();
+    };
+  });
+
+  const runPreviewQ = () => {
+    const dims = ds.fields.filter(f => f.group === 'dim').slice(0, 2).map(f => f.name);
+    const quotas = ds.fields.filter(f => f.group === 'quota').slice(0, 1).map(f => f.name);
+    showModal(`<h3>预览取数 · ${esc(ds.name)}</h3>
+      <p style="font-size:12px;color:var(--text-2);margin-bottom:8px">自研 <code>datasetQuery.execute</code> · FilterAST + ResultTable</p>
+      <div class="sql-box">POST /datasetQuery/execute
+{
+  "datasetId": "${ds.id}",
+  "dimensions": ${JSON.stringify(dims)},
+  "measures": [{ "field": "${quotas[0] || 'amount'}", "agg": "SUM" }],
+  "filters": { "op": "and", "children": [] },
+  "limit": 200
+}</div>
+      <p style="font-size:12px;margin:12px 0 6px;color:var(--text-2)">ResultTable · ${previewRows.length} rows</p>
+      <div style="overflow:auto;max-height:180px;border:1px solid var(--line);border-radius:10px">
+        <table class="schema-table"><thead><tr>${[...dims, ...quotas].map(n => `<th>${esc(n)}</th>`).join('')}</tr></thead>
+        <tbody>${previewRows.map(r => `<tr>${[...dims, ...quotas].map(n => `<td>${esc(String(r[n] ?? ''))}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      </div>
+      <div class="actions"><button type="button" class="btn primary" id="ok">关闭</button></div>`);
+    document.getElementById('ok').onclick = hideModal;
+  };
+  app.querySelector('#btnPreviewQ')?.addEventListener('click', runPreviewQ);
+  app.querySelector('#btnPreviewQTop')?.addEventListener('click', () => {
+    state.dsTab = 'preview';
+    render();
+    setTimeout(runPreviewQ, 0);
+  });
+
+  const goSrc = () => { if (src) state.srcId = src.id; gotoModule('datasource'); };
+  app.querySelector('#btnOpenSrc').onclick = goSrc;
+  app.querySelector('#srcLink').onclick = goSrc;
+  app.querySelector('#linSrc')?.addEventListener('click', goSrc);
+
+  app.querySelector('#btnUseDash').onclick = () => {
+    const d = emptyDash(ds.name + '看板');
+    const kpiField = ds.fields.find(f => f.group === 'quota')?.name || 'amount';
+    const dimField = ds.fields.find(f => f.group === 'dim')?.name || 'region';
+    const kpi = mkChart('kpi', '核心指标', { value: kpiField, format: 'raw', calc: 'none' }, {}, ds.id);
+    const bar = mkChart('bar', '分布', { category: dimField, value: kpiField, format: 'raw' }, {}, ds.id);
+    d.charts = { [kpi.id]: kpi.chart, [bar.id]: bar.chart };
+    d.components = [
+      { id: uid('w'), type: 'chart', tabId: 'tab_main', x: 0, y: 0, w: 4, h: 2, z: 1, chartId: kpi.id },
+      { id: uid('w'), type: 'chart', tabId: 'tab_main', x: 0, y: 2, w: 8, h: 5, z: 2, chartId: bar.id }
+    ];
+    const packed = packDash(d, { folder: ds.folder || '未分组', desc: '从数据集一键创建', updateBy: '当前用户', updateTime: '刚刚' });
+    state.dashboards.unshift(packed);
+    selectDash(packed.id);
+    state.module = 'dashboard';
+    state.screen = 'editor';
+    toast('已基于数据集创建仪表盘', 'ok');
+    render();
+  };
+  app.querySelector('#btnNewDs').onclick = () => openDatasetStudio({ mode: 'create' });
+  app.querySelector('#btnEditDs').onclick = () => openDatasetStudio({ mode: 'edit', datasetId: ds.id });
+  app.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
+    selectDash(el.dataset.open);
+    state.module = 'dashboard';
+    state.screen = 'list';
+    render();
+  });
+}
+
+function openNewDatasetModal(presetSrcId, tableName) {
+  openDatasetStudio({ mode: 'create', srcId: presetSrcId, tableName });
+}
+
+/**
+ * DataEase / Quick BI 风格：左库表 → 中字段池拖拽 → 右已选字段 → 底预览
+ */
+function openDatasetStudio(opts = {}) {
+  const isEdit = opts.mode === 'edit' && opts.datasetId && DATASETS[opts.datasetId];
+  const editing = isEdit ? DATASETS[opts.datasetId] : null;
+  let srcId = opts.srcId || editing?.datasourceId || state.srcId || DATASOURCES[0]?.id;
+  let tables = tablesOfSrc(srcId);
+  let activeTable = opts.tableName || editing?.sourceTable || tables[0]?.name || '';
+  let dsName = editing?.name || (opts.tableName ? `${opts.tableName} 数据集` : '未命名数据集');
+  /** @type {{key:string,name:string,label:string,group:string,table:string}[]} */
+  let selected = [];
+
+  if (editing) {
+    selected = editing.fields.map(f => ({
+      key: `${editing.sourceTable || 't'}.${f.name}`,
+      name: f.name,
+      label: f.label,
+      group: f.group,
+      table: editing.sourceTable || tables[0]?.name || ''
+    }));
+    if (!activeTable && selected[0]) activeTable = selected[0].table;
+  } else if (activeTable) {
+    const t = findSchemaTable(srcId, activeTable);
+    if (t) selected = t.fields.slice(0, 6).map(f => ({
+      key: `${t.name}.${f.name}`, name: f.name, label: f.label, group: f.group, table: t.name
+    }));
+  }
+
+  const paint = () => {
+    tables = tablesOfSrc(srcId);
+    if (!tables.find(t => t.name === activeTable)) activeTable = tables[0]?.name || '';
+    const curTable = findSchemaTable(srcId, activeTable);
+    const poolFields = curTable?.fields || [];
+    const selectedKeys = new Set(selected.map(s => s.key));
+    const previewCols = selected.length ? selected : poolFields.slice(0, 6).map(f => ({ ...f, table: activeTable }));
+    const previewRows = buildStudioPreviewRows(srcId, selected.length ? selected : previewCols.map(f => ({ ...f, table: activeTable, key: `${activeTable}.${f.name}` })));
+
+    showModal(`
+      <div class="dss-head">
+        <div>
+          <h3>${isEdit ? '编辑数据集' : '新建数据集'}</h3>
+          <div class="sub">参考 DataEase / Quick BI · 从左侧选表，拖字段到右侧，底部即时预览</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="field" style="margin:0;width:220px">
+          <input id="dsName" value="${esc(dsName)}" placeholder="数据集名称" style="height:32px" />
+        </div>
+        <button type="button" class="btn ghost" id="c">取消</button>
+        <button type="button" class="btn primary" id="save">${isEdit ? '保存修改' : '创建数据集'}</button>
+      </div>
+      <div class="dss-body">
+        <div class="dss-col">
+          <div class="chd">数据源 / 表</div>
+          <div class="cbd">
+            <select class="src-select" id="srcPick">
+              ${DATASOURCES.map(s => `<option value="${s.id}" ${s.id===srcId?'selected':''}>${esc(s.name)}</option>`).join('')}
+            </select>
+            ${tables.length ? tables.map(t => `
+              <div class="tbl-item ${t.name===activeTable?'on':''}" data-tbl="${esc(t.name)}" draggable="true" title="拖到右侧可整表加入">
+                <span style="color:var(--brand)">▦</span>
+                <div class="tn">${esc(t.label)}</div>
+                <div class="tc">${t.fields.length}</div>
+              </div>
+              <div style="font-size:10px;color:var(--text-3);padding:0 10px 8px 28px;margin-top:-4px">${esc(t.name)}</div>
+            `).join('') : '<div class="empty-illus"><div class="big">⌀</div>该源暂无表结构</div>'}
+          </div>
+        </div>
+        <div class="dss-col">
+          <div class="chd">表字段 <span class="hint">拖到右侧 · 或双击添加</span></div>
+          <div class="cbd">
+            <div class="join-hint">当前表 <b>${esc(curTable?.label || '—')}</b>（${esc(activeTable || '—')}）。可切换左侧其它表继续挑选字段，跨表字段会带表前缀（演示级关联）。</div>
+            <div class="field-pool" id="fieldPool">
+              ${poolFields.map(f => {
+                const key = `${activeTable}.${f.name}`;
+                const used = selectedKeys.has(key);
+                return `<span class="drag-field ${f.group}" draggable="true" data-key="${esc(key)}" data-name="${esc(f.name)}" data-label="${esc(f.label)}" data-group="${f.group}" data-table="${esc(activeTable)}" style="${used?'opacity:.4':''}" title="${used?'已添加 · 仍可拖':'拖到右侧已选区'}">
+                  <i class="ftype">${f.group==='dim'?'Abc':'#'}</i>${esc(f.label)}
+                </span>`;
+              }).join('') || '<div class="ph" style="padding:24px;color:var(--text-3);font-size:12px">请选择左侧表</div>'}
+            </div>
+            <div style="margin-top:10px">
+              <button type="button" class="btn" id="addAll" ${!poolFields.length?'disabled':''}>全部加入</button>
+              <button type="button" class="btn ghost" id="clearSel">清空已选</button>
+            </div>
+          </div>
+        </div>
+        <div class="dss-col">
+          <div class="chd">已选字段 <span class="hint">${selected.length} 个</span></div>
+          <div class="cbd">
+            <div class="drop-zone" id="dropZone">
+              ${selected.length ? selected.map((s, idx) => `
+                <div class="sel-field ${s.group}" draggable="true" data-idx="${idx}">
+                  <span class="mini-tag">${esc(s.table)}</span>
+                  <span style="font-weight:600">${esc(s.label)}</span>
+                  <span style="color:var(--text-3);font-size:10px">${esc(s.name)}</span>
+                  <div class="role-seg" style="min-width:88px;margin-left:4px">
+                    <button type="button" class="${s.group==='dim'?'on dim':''}" data-setrole="dim" data-idx="${idx}">维</button>
+                    <button type="button" class="${s.group==='quota'?'on quota':''}" data-setrole="quota" data-idx="${idx}">指</button>
+                  </div>
+                  <button type="button" class="rm" data-rm="${idx}" title="移除">×</button>
+                </div>`).join('') : `<div class="ph">将左侧表或中间字段<br/>拖拽到此处<br/><span style="font-size:11px">也可双击字段快速添加</span></div>`}
+            </div>
+          </div>
+        </div>
+        <div class="dss-preview">
+          <div class="chd" style="border-bottom:1px solid #eff0f1">数据预览 <span class="hint">按已选字段生成 ResultTable（最多 8 行）</span></div>
+          <div class="cbd" style="padding:0;overflow:auto">
+            ${previewCols.length ? `
+              <table class="schema-table">
+                <thead><tr>${previewCols.map(c => `<th>${esc(c.label)}<div style="font-weight:400;font-size:10px;color:#c0c4cc">${esc(c.table || '')}.${esc(c.name)}</div></th>`).join('')}</tr></thead>
+                <tbody>
+                  ${(previewRows.length ? previewRows : [{}]).slice(0, 8).map(r => `
+                    <tr>${previewCols.map(c => `<td>${esc(String(r[c.name] ?? ''))}</td>`).join('')}</tr>`).join('')}
+                </tbody>
+              </table>` : '<div class="empty-illus">选择字段后显示预览</div>'}
+          </div>
+        </div>
+      </div>
+    `, { studio: true });
+
+    const nameEl = document.getElementById('dsName');
+    nameEl.oninput = () => { dsName = nameEl.value; };
+
+    document.getElementById('c').onclick = hideModal;
+    document.getElementById('srcPick').onchange = e => {
+      srcId = e.target.value;
+      tables = tablesOfSrc(srcId);
+      activeTable = tables[0]?.name || '';
+      selected = selected.filter(s => tables.some(t => t.name === s.table));
+      paint();
+    };
+
+    document.querySelectorAll('[data-tbl]').forEach(el => {
+      el.onclick = () => { activeTable = el.dataset.tbl; paint(); };
+      el.ondragstart = ev => {
+        ev.dataTransfer.setData('text/table', el.dataset.tbl);
+        ev.dataTransfer.effectAllowed = 'copy';
+      };
+    });
+
+    const addField = (f) => {
+      if (selected.some(s => s.key === f.key)) { toast('字段已在已选区', 'warn'); return; }
+      selected.push(f);
+      paint();
+    };
+
+    document.querySelectorAll('#fieldPool .drag-field').forEach(el => {
+      el.ondragstart = ev => {
+        ev.dataTransfer.setData('text/field', JSON.stringify({
+          key: el.dataset.key, name: el.dataset.name, label: el.dataset.label,
+          group: el.dataset.group, table: el.dataset.table
+        }));
+        ev.dataTransfer.effectAllowed = 'copy';
+      };
+      el.ondblclick = () => addField({
+        key: el.dataset.key, name: el.dataset.name, label: el.dataset.label,
+        group: el.dataset.group, table: el.dataset.table
+      });
+    });
+
+    const zone = document.getElementById('dropZone');
+    zone.ondragover = ev => { ev.preventDefault(); zone.classList.add('over'); };
+    zone.ondragleave = () => zone.classList.remove('over');
+    zone.ondrop = ev => {
+      ev.preventDefault();
+      zone.classList.remove('over');
+      const tbl = ev.dataTransfer.getData('text/table');
+      if (tbl) {
+        const t = findSchemaTable(srcId, tbl);
+        if (!t) return;
+        activeTable = tbl;
+        t.fields.forEach(f => {
+          const key = `${t.name}.${f.name}`;
+          if (!selected.some(s => s.key === key)) {
+            selected.push({ key, name: f.name, label: f.label, group: f.group, table: t.name });
+          }
+        });
+        toast(`已加入表 ${t.label} 的 ${t.fields.length} 个字段`, 'ok');
+        paint();
+        return;
+      }
+      const raw = ev.dataTransfer.getData('text/field');
+      if (!raw) return;
+      try { addField(JSON.parse(raw)); } catch (_) {}
+    };
+
+    document.getElementById('addAll').onclick = () => {
+      poolFields.forEach(f => {
+        const key = `${activeTable}.${f.name}`;
+        if (!selected.some(s => s.key === key)) {
+          selected.push({ key, name: f.name, label: f.label, group: f.group, table: activeTable });
+        }
+      });
+      paint();
+    };
+    document.getElementById('clearSel').onclick = () => { selected = []; paint(); };
+
+    zone.querySelectorAll('[data-rm]').forEach(btn => {
+      btn.onclick = e => { e.stopPropagation(); selected.splice(+btn.dataset.rm, 1); paint(); };
+    });
+    zone.querySelectorAll('[data-setrole]').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        const i = +btn.dataset.idx;
+        if (selected[i]) selected[i].group = btn.dataset.setrole;
+        paint();
+      };
+    });
+
+    document.getElementById('save').onclick = () => {
+      dsName = (document.getElementById('dsName').value || '').trim() || '未命名数据集';
+      if (!selected.length) { toast('请至少选择一个字段', 'warn'); return; }
+      const fields = selected.map(s => ({ name: s.name, label: s.label, group: s.group }));
+      // 同名字段去重（跨表时保留首次）
+      const seen = new Set();
+      const uniqFields = [];
+      selected.forEach(s => {
+        let name = s.name;
+        if (seen.has(name)) name = s.table + '_' + s.name;
+        if (seen.has(name)) return;
+        seen.add(name);
+        uniqFields.push({ name, label: s.label, group: s.group, _src: s });
+      });
+      const rows = buildStudioPreviewRows(srcId, uniqFields.map(f => ({
+        key: f._src.key, name: f.name, label: f.label, group: f.group, table: f._src.table
+      })), 20);
+      const cleanFields = uniqFields.map(({ name, label, group }) => ({ name, label, group }));
+
+      if (isEdit) {
+        editing.name = dsName;
+        editing.datasourceId = srcId;
+        editing.sourceTable = activeTable;
+        editing.fields = cleanFields;
+        editing.rows = rows.length ? rows : editing.rows;
+        editing.desc = `来自 ${activeTable} 等 ${new Set(selected.map(s => s.table)).size} 张表`;
+        state.datasetId = editing.id;
+        hideModal();
+        toast('数据集已更新', 'ok');
+        render();
+        return;
+      }
+      const id = uid('ds');
+      DATASETS[id] = {
+        id, name: dsName, datasourceId: srcId, sourceTable: activeTable,
+        folder: '未分组',
+        desc: `来自 ${[...new Set(selected.map(s => s.table))].join(', ')}`,
+        fields: cleanFields,
+        rows: rows.length ? rows : [{ [cleanFields[0].name]: '—' }]
+      };
+      const s = DATASOURCES.find(x => x.id === srcId);
+      if (s) s.usedBy = [...new Set([...(s.usedBy || []), id])];
+      state.datasetId = id;
+      state.dsTab = 'fields';
+      hideModal();
+      toast('数据集已创建', 'ok');
+      render();
+    };
+  };
+
+  paint();
+}
+
+function buildStudioPreviewRows(srcId, fields, limit = 8) {
+  if (!fields.length) return [];
+  const byTable = new Map();
+  fields.forEach(f => {
+    if (!byTable.has(f.table)) byTable.set(f.table, []);
+    byTable.get(f.table).push(f);
+  });
+  // 主表取行最多的表
+  let primary = null, max = -1;
+  for (const [tname] of byTable) {
+    const t = findSchemaTable(srcId, tname);
+    const n = t?.rows?.length || 0;
+    if (n > max) { max = n; primary = t; }
+  }
+  if (!primary?.rows?.length) {
+    return Array.from({ length: Math.min(3, limit) }, (_, i) => {
+      const row = {};
+      fields.forEach(f => { row[f.name] = f.group === 'quota' ? (i + 1) * 10 : `${f.label}${i + 1}`; });
+      return row;
+    });
+  }
+  return primary.rows.slice(0, limit).map(srcRow => {
+    const row = {};
+    fields.forEach(f => {
+      const t = findSchemaTable(srcId, f.table);
+      if (f.table === primary.name) {
+        row[f.name] = srcRow[f.name] ?? srcRow[f.name?.replace(/^.*_/, '')];
+        // original field name before dedupe
+        const orig = f.key?.split('.').pop();
+        if (row[f.name] == null && orig) row[f.name] = srcRow[orig];
+      } else {
+        const sample = t?.rows?.[0] || {};
+        const orig = f.key?.split('.').pop() || f.name;
+        row[f.name] = sample[orig] ?? sample[f.name] ?? '';
+      }
+    });
+    return row;
+  });
+}
+
+function createBlankDash() {
+  const d = packDash(emptyDash(), { folder: '未分组', desc: '空白画布', updateBy: '当前用户', updateTime: '刚刚' });
+  state.dashboards.unshift(d);
+  selectDash(d.id);
+  state.module = 'dashboard';
+  state.screen = 'editor';
+  toast('已创建空白仪表盘', 'ok');
+  render();
 }
 
 function disposeCharts() {
@@ -1134,35 +3110,107 @@ function statusTag(st) {
 }
 
 function renderList(app) {
+  const q = state.search.trim();
+  const folders = [...new Set(state.dashboards.map(d => d.folder || '未分组'))];
+  const list = state.dashboards.filter(d => {
+    if (state.folderFilter !== 'all' && (d.folder || '未分组') !== state.folderFilter) return false;
+    return !q || d.name.includes(q) || (d.desc || '').includes(q);
+  });
+  const d = currentDash();
+  if (d && state.dash?.id !== d.id) selectDash(d.id);
+  const chartCount = Object.keys(d.charts || {}).length;
+  const dsNames = (d.datasetIds || []).map(id => DATASETS[id]?.name || id).join('、') || '—';
+  const sampleDs = DATASETS[(d.datasetIds || [])[0]] || DATASETS.ds_sales;
+  const dim = sampleDs.fields.find(f => f.group === 'dim')?.name;
+  const quota = sampleDs.fields.find(f => f.group === 'quota')?.name;
   app.innerHTML = `
-    <div class="bar">
-      <strong style="font-size:14px">仪表盘</strong>
-      <div class="spacer"></div>
-      <button class="btn primary" id="btnNew">+ 新建</button>
-    </div>
-    <div class="list-layout">
-      <div class="tree">
-        <div class="tree-item on">${esc(state.dash.name)}</div>
+    <div class="manage">
+      <div class="bar">
+        <strong style="font-size:14px">仪表盘</strong>
+        <span class="crumb">场景库 · 编辑器能力不变，仅扩充列表</span>
+        <div class="spacer"></div>
+        <input class="search-inline" id="dashSearch" placeholder="搜索仪表盘" value="${esc(state.search)}" />
+        <button class="btn primary" id="btnNew">+ 新建</button>
       </div>
-      <div class="detail">
-        <h2 style="margin-bottom:8px">${esc(state.dash.name)}</h2>
-        <p style="color:var(--text-2);font-size:13px;margin-bottom:16px">商用路径验证 · ${statusTag(state.dash.status)}</p>
-        <div style="display:flex;gap:8px">
-          <button class="btn primary" id="btnEdit">编辑</button>
-          <button class="btn" id="btnPrev">预览已发布</button>
-          <button class="btn" id="btnShareList">分享</button>
+      <div class="list-layout">
+        <div class="tree">
+          <div class="tree-item ${state.folderFilter==='all'?'on':''}" data-ff="all">全部（${state.dashboards.length}）</div>
+          ${folders.map(f => {
+            const n = state.dashboards.filter(x => (x.folder || '未分组') === f).length;
+            return `<div class="tree-item ${state.folderFilter===f?'on':''}" data-ff="${esc(f)}">${esc(f)} <span class="sub">${n} 个</span></div>`;
+          }).join('')}
+          <div class="tree-sec">列表</div>
+          ${list.map(x => `
+            <div class="tree-item ${x.id===d.id?'on':''}" data-dash="${x.id}">
+              ${esc(x.name)}
+              <span class="sub">${esc(x.folder || '')} · ${x.status === 'draft' ? '草稿' : x.status === 'publishedWithDraft' ? '有改动' : '已发布'}</span>
+            </div>`).join('') || '<div class="tree-item">无匹配</div>'}
+        </div>
+        <div class="detail">
+          <div class="detail-hero" style="flex-direction:column;align-items:stretch">
+            <div>
+              <h2 style="margin-bottom:6px">${esc(d.name)}</h2>
+              <p style="color:var(--text-2);font-size:13px;margin-bottom:12px">${esc(d.desc || '—')} · ${statusTag(d.status)}</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn primary" id="btnEdit">编辑</button>
+                <button type="button" class="btn" id="btnPrev" title="${d.status==='draft'?'草稿尚未发布，点击查看说明':'打开已发布只读预览'}">预览已发布</button>
+                <button type="button" class="btn" id="btnShareList">分享</button>
+              </div>
+            </div>
+          </div>
+          <div class="meta-grid">
+            <div class="meta-card"><div class="k">图表数</div><div class="v">${chartCount}</div></div>
+            <div class="meta-card"><div class="k">数据集</div><div class="v" style="font-size:12px">${esc(dsNames)}</div></div>
+            <div class="meta-card"><div class="k">更新</div><div class="v" style="font-size:12px">${esc(d.updateBy)} · ${esc(d.updateTime || '')}</div></div>
+            <div class="meta-card"><div class="k">分享</div><div class="v">${d.share ? '已开启' : '未开启'}</div></div>
+          </div>
+          <div class="preview-mini">
+            <div style="font-size:12px;color:var(--text-2);font-weight:600">场景缩略（示例聚合）</div>
+            ${dim && quota ? sparkHtml(sampleDs.rows, dim, quota) : ''}
+            <div style="margin-top:10px;font-size:11px;color:var(--text-3)">双击左侧名称可直接进入编辑 · 画布逻辑与原先一致</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn" id="btnDup">复制场景</button>
+            <button class="btn danger" id="btnDel" ${state.dashboards.length<=1?'disabled':''}>删除</button>
+            <button class="btn ghost" id="btnToDs">查看关联数据集</button>
+          </div>
         </div>
       </div>
     </div>`;
-  app.querySelector('#btnEdit').onclick = () => { state.screen = 'editor'; render(); };
-  app.querySelector('#btnPrev').onclick = () => { state.screen = 'preview'; render(); };
+  app.querySelector('#dashSearch').oninput = e => { state.search = e.target.value; render(); };
+  app.querySelectorAll('[data-ff]').forEach(el => el.onclick = () => { state.folderFilter = el.dataset.ff; render(); });
+  app.querySelectorAll('[data-dash]').forEach(el => {
+    el.onclick = () => { selectDash(el.dataset.dash); render(); };
+    el.ondblclick = () => { selectDash(el.dataset.dash); state.screen = 'editor'; render(); };
+  });
+  app.querySelector('#btnEdit').onclick = () => { state.module = 'dashboard'; state.screen = 'editor'; render(); };
+  app.querySelector('#btnPrev').onclick = () => openPublishedPreview('list');
   app.querySelector('#btnShareList').onclick = () => openShareModal();
-  app.querySelector('#btnNew').onclick = () => {
-    state.dash = emptyDash();
-    state.selectedId = null;
-    state.screen = 'editor';
-    toast('已创建空白仪表盘', 'ok');
+  app.querySelector('#btnNew').onclick = () => createBlankDash();
+  app.querySelector('#btnDup').onclick = () => {
+    const copy = packDash(clone(d), {
+      folder: d.folder, desc: (d.desc || '') + '（副本）',
+      updateBy: '当前用户', updateTime: '刚刚'
+    });
+    copy.id = uid('dash');
+    copy.name = d.name + ' 副本';
+    copy.status = 'draft';
+    copy.share = null;
+    state.dashboards.unshift(copy);
+    selectDash(copy.id);
+    toast('已复制场景', 'ok');
     render();
+  };
+  app.querySelector('#btnDel').onclick = () => {
+    if (state.dashboards.length <= 1) return;
+    state.dashboards = state.dashboards.filter(x => x.id !== d.id);
+    selectDash(state.dashboards[0].id);
+    toast('已删除', 'ok');
+    render();
+  };
+  app.querySelector('#btnToDs').onclick = () => {
+    state.datasetId = (d.datasetIds || [])[0] || 'ds_sales';
+    gotoModule('dataset');
   };
 }
 
@@ -1208,10 +3256,10 @@ function renderEditor(app) {
       </aside>
     </div>`;
 
-  app.querySelector('#toList').onclick = () => { state.screen = 'list'; render(); };
+  app.querySelector('#toList').onclick = () => { state.module = 'dashboard'; state.screen = 'list'; render(); };
   app.querySelector('#toggleInsp').onclick = () => { state.inspCollapsed = !state.inspCollapsed; render(); };
   app.querySelector('#btnUndo').onclick = undo;
-  app.querySelector('#btnPreview').onclick = () => { state.screen = 'preview'; render(); };
+  app.querySelector('#btnPreview').onclick = () => openPublishedPreview('editor');
   app.querySelector('#btnShare').onclick = () => openShareModal();
   app.querySelector('#btnExport').onclick = () => exportCsv();
   app.querySelector('#btnPub').onclick = () => {
@@ -1533,13 +3581,16 @@ function widgetHtml(c, cw) {
   // slicer: single compact row (no tall empty header)
   if (c.type === 'slicer') {
     const p = c.props || {};
+    const field = p.field || 'region';
+    const cur = state.filter[field] || '';
+    const opts = slicerOptions(field);
     const slicerStyle = `left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;z-index:${c.z};background:${p.bg || '#fff'};color:${p.titleColor || '#1f2329'};border-radius:${p.radius ?? 10}px`;
     return `<div class="widget slicer ${sel}" data-wid="${c.id}" style="${slicerStyle}">
       <div class="slicer-inline" data-drag="${c.id}">
         <b style="color:inherit">${esc(title)}</b>
-        <div class="slicer">
-          <button class="sc ${!state.filter.region?'on':''}" data-sv="">全部</button>
-          ${['华东','华北','华南'].map(r => `<button class="sc ${state.filter.region===r?'on':''}" data-sv="${r}">${r}</button>`).join('')}
+        <div class="slicer" data-sfield="${esc(field)}">
+          <button class="sc ${!cur?'on':''}" data-sv="">全部</button>
+          ${opts.map(r => `<button class="sc ${cur===r?'on':''}" data-sv="${esc(r)}">${esc(r)}</button>`).join('')}
         </div>
       </div>
       ${handlesHtml(c.id)}
@@ -1589,15 +3640,26 @@ function widgetHtml(c, cw) {
   </div>`;
 }
 
+function slicerOptions(field) {
+  const defaults = { region: ['华东', '华北', '华南'], channel: ['线上', '线下'] };
+  if (defaults[field]) return defaults[field];
+  const set = new Set();
+  Object.values(DATASETS).forEach(d => {
+    d.rows.forEach(r => { if (r[field] != null && r[field] !== '') set.add(String(r[field])); });
+  });
+  const list = [...set].slice(0, 8);
+  return list.length ? list : ['选项A', '选项B'];
+}
+
 function wireSlicer(el) {
+  const field = el.querySelector('.slicer')?.dataset.sfield || 'region';
   el.querySelectorAll('[data-sv]').forEach(b => {
     b.onclick = e => {
       e.stopPropagation();
-      state.filter.region = b.dataset.sv;
-      // 更新切片按钮态
-      el.querySelectorAll('[data-sv]').forEach(x => x.classList.toggle('on', x.dataset.sv === (state.filter.region || '')));
+      state.filter[field] = b.dataset.sv;
+      el.querySelectorAll('[data-sv]').forEach(x => x.classList.toggle('on', x.dataset.sv === (state.filter[field] || '')));
       repaintAllCharts();
-      toast(state.filter.region ? `切片：${state.filter.region}` : '已清除切片', 'ok');
+      toast(state.filter[field] ? `切片 ${field}：${state.filter[field]}` : '已清除切片', 'ok');
     };
   });
 }
@@ -2540,30 +4602,60 @@ function renderSenior(el, comp) {
 DashboardEmbed.mount('#el', { token: '${token}', theme: '${state.dash.theme}' })`;
 }
 
-function renderPreview(app) {
-  const d = state.dash;
+function leavePreview() {
+  state.mobile = false;
+  state.module = 'dashboard';
+  state.screen = state.previewFrom === 'editor' ? 'editor' : 'list';
+  render();
+}
+
+/** 列表 / 编辑器共用：打开已发布只读预览 */
+function openPublishedPreview(from) {
+  state.module = 'dashboard';
+  const d = state.dash || currentDash();
+  if (!d) { toast('未选择仪表盘', 'warn'); return; }
   if (d.status === 'draft') {
-    app.innerHTML = `<div class="bar"><button class="btn ghost" id="back">←</button><b>尚未发布</b></div>
-      <div class="empty" style="position:relative;margin:40px"><p>请先发布</p><button class="btn primary" id="pub">发布</button></div>`;
-    app.querySelector('#back').onclick = () => { state.screen = 'editor'; render(); };
-    app.querySelector('#pub').onclick = () => { d.status = 'published'; render(); };
+    toast('当前是草稿，请先点「发布」后再预览已发布版', 'warn');
     return;
   }
+  state.previewFrom = from === 'editor' ? 'editor' : 'list';
+  state.screen = 'preview';
+  render();
+}
+
+function renderPreview(app) {
+  const d = state.dash;
+  if (!d || d.status === 'draft') {
+    app.innerHTML = `<div class="bar"><button type="button" class="btn ghost" id="back">← 返回</button><b>尚未发布</b></div>
+      <div class="empty" style="position:relative;margin:40px">
+        <p>草稿没有已发布版本可预览</p>
+        <button type="button" class="btn primary" id="pub">发布并预览</button>
+      </div>`;
+    app.querySelector('#back').onclick = leavePreview;
+    app.querySelector('#pub').onclick = () => {
+      d.status = 'published';
+      toast('已发布', 'ok');
+      state.screen = 'preview';
+      render();
+    };
+    return;
+  }
+  const backLabel = state.previewFrom === 'editor' ? '← 返回编辑' : '← 返回列表';
   app.innerHTML = `
     <div class="bar">
-      <button class="btn ghost" id="back">← 编辑</button>
+      <button type="button" class="btn ghost" id="back">${backLabel}</button>
       <b>${esc(d.name)}</b>
       <span class="tag pub">已发布只读</span>
       <div class="spacer"></div>
-      ${state.phase!=='a'?`<button class="btn ghost" id="mob">${state.mobile?'桌面':'移动'}宽</button>`:''}
-      <button class="btn" id="sh">分享</button>
+      ${state.phase!=='a'?`<button type="button" class="btn ghost" id="mob">${state.mobile?'桌面':'移动'}宽</button>`:''}
+      <button type="button" class="btn" id="sh">分享</button>
     </div>
     <div class="qbar" id="qbar"></div>
-    <div class="canvas-wrap">
+    <div class="canvas-wrap" style="flex:1;min-height:0">
       <div class="tab-strip" id="tabStrip"></div>
       <div class="board" id="board"></div>
     </div>`;
-  app.querySelector('#back').onclick = () => { state.screen = 'editor'; state.mobile = false; render(); };
+  app.querySelector('#back').onclick = leavePreview;
   app.querySelector('#sh').onclick = () => openShareModal();
   app.querySelector('#mob')?.addEventListener('click', () => { state.mobile = !state.mobile; render(); });
   renderQueryBar(app.querySelector('#qbar'));
@@ -2572,15 +4664,17 @@ function renderPreview(app) {
 }
 
 /* ---------- modals ---------- */
-function showModal(html) {
+function showModal(html, opts = {}) {
   const mask = document.getElementById('mask');
   mask.classList.add('show');
-  mask.innerHTML = `<div class="modal">${html}</div>`;
+  mask.classList.toggle('studio-mode', !!opts.studio);
+  const cls = ['modal', opts.studio ? 'ds-studio-shell' : '', opts.wide ? 'wide' : ''].filter(Boolean).join(' ');
+  mask.innerHTML = `<div class="${cls}">${html}</div>`;
   mask.onclick = e => { if (e.target === mask) hideModal(); };
 }
 function hideModal() {
   const mask = document.getElementById('mask');
-  mask.classList.remove('show');
+  mask.classList.remove('show', 'studio-mode');
   mask.innerHTML = '';
 }
 
@@ -2791,6 +4885,20 @@ document.getElementById('phaseTabs').onclick = e => {
   render();
 };
 
+document.getElementById('modNav').onclick = e => {
+  const b = e.target.closest('button[data-mod]');
+  if (!b) return;
+  const mod = b.dataset.mod;
+  // 已在该模块列表态时，仍写一次路由，保证地址栏可分享/刷新
+  if (mod === state.module && (mod !== 'dashboard' || state.screen === 'list')) {
+    syncRoute();
+    return;
+  }
+  state.search = '';
+  if (mod !== 'dashboard') state.folderFilter = 'all';
+  gotoModule(mod);
+};
+
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(); }
   if ((e.metaKey || e.ctrlKey) && e.key === 'c' && state.selectedId && state.screen === 'editor') {
@@ -2822,6 +4930,15 @@ window.addEventListener('resize', () => {
   }
 });
 
+window.addEventListener('hashchange', () => {
+  if (_applyingRoute) return;
+  applyRouteFromHash();
+  render();
+});
+
+// 首次进入：无 hash → 工作台；有 hash → 按地址恢复
+applyRouteFromHash();
+if (!location.hash) syncRoute();
 render();
 </script>
 </body>
