@@ -27,8 +27,11 @@ ECharts 已内置在 `frontend/hi-fi/vendor/`，可离线打开。
 
 ```
 open-dashboard/
-├── docs/                      # 规格与架构
-│   ├── backend-architecture.md  # ★ 配置 / 取数 / 权限（含行列权限）
+├── docs/                      # 规格与架构（含版本 / 提案）
+│   ├── VERSIONING.md            # 文档版本规范
+│   ├── CHANGELOG.md
+│   ├── proposals/               # 演进中方案 P00N-*.md
+│   ├── backend-architecture.md
 │   ├── domain.md
 │   ├── schema.sql
 │   ├── dashboard-api.md
@@ -49,14 +52,17 @@ open-dashboard/
 
 ## 文档导读
 
+文档版本与提案流程：[docs/VERSIONING.md](docs/VERSIONING.md) · 变更记录：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+
 | 文档 | 内容 |
 |------|------|
+| [docs/proposals/P001-mobile-layout-c.md](docs/proposals/P001-mobile-layout-c.md) | **提案**：移动端布局 C 档（独立布局 + 样式同步/分设） |
 | [docs/backend-architecture.md](docs/backend-architecture.md) | **后端怎么接**：表、接口、查询流水线、仪表盘 ACL、数据集行列权限、分享 |
 | [docs/data-query-architecture.md](docs/data-query-architecture.md) | **数据面**：数据源类型 → 数据集 → chartQuery → 用户访问（自研，非 DE getData 照搬） |
 | [docs/domain.md](docs/domain.md) | 领域模型与发布状态机 |
 | [docs/schema.sql](docs/schema.sql) | 双副本表结构 + auth/share |
 | [docs/dashboard-api.md](docs/dashboard-api.md) | REST 契约 |
-| [docs/commercial-mvp-spec.md](docs/commercial-mvp-spec.md) | Phase A/B/C 商用能力 |
+| [docs/commercial-mvp-spec.md](docs/commercial-mvp-spec.md) | Phase A/B/C 商用能力（v0.1 基线） |
 | [frontend/hi-fi/README-分享.md](frontend/hi-fi/README-分享.md) | 打包发给他人预览 |
 
 ## 垂直切片（内存后端）
