@@ -1,16 +1,18 @@
 openapi: 3.0.3
 info:
-  title: Dashboard Redesign API
-  version: 1.0.0
+  title: Open Dashboard API
+  version: 0.4.0
   description: |
-    Target-product dashboard APIs (Phase 1).
-    Auth resource: DASHBOARD. IDs are strings in JSON.
+    Core APIs: dashboard editor, chartQuery + datasetQuery, mobile layout, report (Umo charts).
+    Auth resources: DASHBOARD, REPORT. IDs are strings in JSON.
 servers:
   - url: /api
 tags:
   - name: dashboardTree
   - name: dashboard
   - name: chartQuery
+  - name: datasetQuery
+  - name: report
 
 paths:
   /dashboardTree/tree:
@@ -337,6 +339,109 @@ paths:
                   sql: { type: string }
                   dialect: { type: string }
 
+  /datasetQuery/execute:
+    post:
+      tags: [datasetQuery]
+      summary: Execute QuerySpec against a dataset (sole data-source entry)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatasetQueryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetQueryResult'
+
+  /report:
+    get:
+      tags: [report]
+      summary: List reports
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportMetaVO'
+    post:
+      tags: [report]
+      summary: Create report
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetailVO'
+
+  /report/{id}:
+    get:
+      tags: [report]
+      summary: Get report meta + draft content JSON
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetailVO'
+
+  /report/{id}/doc:
+    put:
+      tags: [report]
+      summary: Save report document JSON (Umo/Tiptap)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content, contentId]
+              properties:
+                content: { type: object }
+                contentId: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetailVO'
+        '409':
+          description: contentId conflict
+
+  /report/{id}/publish:
+    post:
+      tags: [report]
+      summary: Publish report
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetailVO'
+
   /dashboard/{id}/share:
     post:
       tags: [dashboard]
@@ -534,6 +639,27 @@ components:
         themeRef: { type: string }
         refreshSec: { type: integer }
         extStyle: { type: object }
+        mobile:
+          type: object
+          description: Independent mobile layout (v0.2+); persisted as mobile_json
+          properties:
+            enabled: { type: boolean }
+            device: { type: string }
+            bg: { type: string }
+            components:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  refId: { type: string }
+                  x: { type: integer }
+                  y: { type: integer }
+                  w: { type: integer }
+                  h: { type: integer }
+                  z: { type: integer }
+                  styleSync: { type: boolean }
+                  style: { type: object }
 
     DashboardComponentVO:
       type: object
@@ -637,17 +763,23 @@ components:
 
     ChartQueryRequest:
       type: object
-      required: [dashboardId, context]
+      required: [context]
+      description: |
+        Provide dashboardId+chartId (board chart) and/or inline (report-only / unsaved preview).
+        Pure inline (no dashboardId) is valid for report source=inline.
       properties:
         chartId: { type: string }
-        dashboardId: { type: string }
+        dashboardId: { type: string, nullable: true }
         view: { type: string, enum: [draft, published], default: published }
+        client: { type: string, enum: [dashboard, report], description: optional audit hint }
         inline:
           type: object
           properties:
             datasetId: { type: string }
             chartType: { type: string }
             encode: { type: object }
+            style: { type: object }
+            senior: { type: object }
         context:
           type: object
           properties:
@@ -688,3 +820,75 @@ components:
             items: {}
         series: { type: object }
         extra: { type: object }
+
+    DatasetQueryRequest:
+      type: object
+      required: [datasetId]
+      properties:
+        datasetId: { type: string }
+        dimensions:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+        measures:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              agg: { type: string, enum: [SUM, AVG, COUNT, MAX, MIN, COUNT_DISTINCT] }
+        columns:
+          type: array
+          items: { type: string }
+          description: Raw column projection (table chart); mutually exclusive with agg path when used alone
+        filters:
+          type: object
+          description: FilterAST root node
+        limit: { type: integer }
+        options:
+          type: object
+          properties:
+            includeSql: { type: boolean }
+            timeoutMs: { type: integer }
+
+    DatasetQueryResult:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              dataType: { type: string }
+              field: { type: string }
+              agg: { type: string }
+        rows:
+          type: array
+          items:
+            type: array
+            items: {}
+        truncated: { type: boolean }
+        sql: { type: string }
+        elapsedMs: { type: integer }
+
+    ReportMetaVO:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [draft, published, publishedWithDraft] }
+        contentId: { type: string }
+        version: { type: integer }
+        updateTime: { type: integer, format: int64 }
+
+    ReportDetailVO:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/ReportMetaVO'
+        content:
+          type: object
+          description: Umo/Tiptap JSON document

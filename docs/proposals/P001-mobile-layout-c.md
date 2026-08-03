@@ -5,7 +5,7 @@ status: accepted
 target_spec: v0.2.0
 date: 2026-08-03
 implemented_in: v0.2.0
-prototype: frontend/hi-fi/dashboard-commercial.html
+prototype: prototypes/hi-fi/dashboard-commercial.html
 ---
 
 # P001 · 移动端布局与样式（DataEase C 档）
@@ -101,7 +101,7 @@ flowchart TB
 
 ## 实现落点
 
-单文件原型：[`frontend/hi-fi/dashboard-commercial.html`](../../frontend/hi-fi/dashboard-commercial.html)
+单文件原型：[`prototypes/hi-fi/dashboard-commercial.html`](../../prototypes/hi-fi/dashboard-commercial.html)
 
 - `ensureMobile(dash)`、`COL_MOBILE`、设备预设
 - `tabComps` / `commitLayout` / `renderBoard` / `renderEditor` 按 `editSurface` 分支

@@ -37,7 +37,7 @@
 
 详见 [commercial-mvp-spec.md](./commercial-mvp-spec.md)。可运行原型：
 
-`dashboard-redesign/frontend/hi-fi/dashboard-commercial.html`
+`prototypes/hi-fi/dashboard-commercial.html`
 
 | Phase | 状态（蓝图包） |
 |-------|----------------|

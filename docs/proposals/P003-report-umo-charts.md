@@ -1,0 +1,198 @@
+# P003 · 在线报告（Umo Editor）引用 / 新建仪表盘图表
+
+---
+id: P003
+title: 在线报告 Umo 编辑器插入看板图与报告内新建图
+status: accepted
+target_spec: v0.4.0
+implemented_in: v0.4.0
+date: 2026-08-03
+---
+
+## 1. 背景
+
+产品除仪表盘外还有 **在线报告**：正文排版用 [Umo Editor](https://dev.umodoc.com/cn/docs/editor)（Vue3 + Tiptap3）。报告需复用仪表盘侧的 **图表配置意图 + 双层取数协议**，而不是另造一套出数链路。
+
+## 2. 已锁定决策
+
+| # | 决策 | 说明 |
+|---|------|------|
+| D1 | **实时取数** | 阅读 / 编辑预览均走 `chartQuery` → `datasetQuery`；文档 **不**持久化 ResultTable |
+| D2 | **新建图仅属报告** | 「新建图表」配置只存在于报告文档节点（`source: inline`），**不**写入仪表盘组件 / `de_chart_view` |
+| D3 | 引用看板图 | 节点只存 `dashboardId + chartId`（+ view 策略），encode 以看板配置为准 |
+| D4 | 编辑器 | Umo Editor；工具栏用插槽扩展；图表用自定义 Tiptap Node + Vue NodeView |
+
+导出 Word/PDF 时是否「渲染瞬间快照」属后续议题，**默认产品行为仍是实时**。
+
+## 3. 目标交互
+
+工具栏「插入」分组后方（`#toolbar_insert`）增加两个入口：
+
+### 3.1 引用仪表盘图表
+
+```text
+点击「引用看板图」
+  → 弹层：选仪表盘（有权 view）
+  → 列出该盘图表缩略/标题
+  → 确认 → 在光标处插入 reportChart 节点（source=dashboard）
+```
+
+- 数据 / encode / 联动定义以 **看板 published（或可配 draft）** 为准  
+- 报告内可覆盖的仅限 **展示壳**：宽度、对齐、标题是否显示、固定高度等（不改 encode）
+
+### 3.2 新建图表并插入
+
+```text
+点击「新建图表」
+  → 向导：选数据集（USE）→ 选图表类型 → 配 encode（精简版字段面板）
+  → 确认 → 插入 reportChart 节点（source=inline，配置写在节点 attrs）
+```
+
+- 配置 **只活在报告**；删除节点即删除该配置  
+- 不提供「同步到仪表盘」一期能力（可列二期）
+
+### 3.3 节点内行为
+
+| 态 | 行为 |
+|----|------|
+| 编辑选中 | 边框/工具条：刷新、（inline）编辑配置、删除；dashboard 源可「打开原看板」外链 |
+| 编辑未选中 / 预览 | NodeView 调取数并渲染 ECharts（或 table） |
+| 文档保存 | 只存节点 attrs + 正文 JSON；**不含** rows |
+
+## 4. 文档节点模型
+
+Tiptap Node：`reportChart`（atom, selectable, draggable）。
+
+```ts
+type ReportChartAttrs = {
+  id: string                    // 节点稳定 id（报告内）
+  source: 'dashboard' | 'inline'
+  // source=dashboard
+  dashboardId?: string
+  chartId?: string
+  view?: 'published' | 'draft'  // 默认 published
+  // source=inline
+  datasetId?: string
+  chartType?: string            // bar | line | pie | kpi | table | …
+  encode?: Record<string, unknown>
+  style?: Record<string, unknown>
+  senior?: Record<string, unknown>
+  // 展示壳（两种 source 共用）
+  title?: string                // 覆盖显示标题；空则用看板标题 / 默认
+  width?: 'full' | 'half' | number
+  height?: number               // px
+}
+```
+
+报告实体（配置库，与看板分离）：
+
+| 表 / 字段 | 说明 |
+|-----------|------|
+| `de_report` | id, name, status, … |
+| `de_report_doc` | report_id, copy_type draft\|published, `content_json` JSONB（Umo/Tiptap doc） |
+
+权限：报告 ACL（manage/edit/view）独立；取数时再过数据集 / 看板闸门。
+
+## 5. 取数协议复用
+
+```text
+ReportChartNodeView.load():
+  if source == dashboard:
+    POST /chartQuery/query {
+      dashboardId, chartId, view,
+      context: reportContext   // 一期可空；二期接报告级筛选
+    }
+  if source == inline:
+    POST /chartQuery/query {
+      dashboardId: null 或约定 sentinel,
+      inline: { datasetId, chartType, encode },
+      context: reportContext
+    }
+    // 后端：无看板 ACL，仅数据集 USE + RLS/CLS
+```
+
+约定：
+
+- **style 永不进 SQL**（与仪表盘一致）  
+- inline 路径必须已支持（编辑器预览未保存图时本就需要 `inline`）  
+- 报告 **不** 直连 `datasetQuery`；统一经 `chartQuery` 塑形，避免 NodeView 分叉
+
+可选增强（非一期）：`POST /chartQuery/query` 增加 `client: 'report'` 便于审计。
+
+## 6. 前端模块（Vue3）
+
+```
+frontend/src/report/
+  views/ReportEditor.vue       # 挂 Umo Editor
+  extensions/reportChart.ts    # Tiptap Node
+  nodeviews/ReportChartView.vue
+  components/
+    InsertDashboardChartDialog.vue
+    CreateInlineChartWizard.vue
+  api/report.ts
+```
+
+Umo 接入要点（对照官方文档）：
+
+- `extensions: [ReportChart]`  
+- 插槽 `#toolbar_insert`：两个按钮打开上述弹层  
+- 保存：`editor.getJSON()` → `PUT /report/{id}/doc`  
+- 预览：Umo Viewer 或只读 Editor + 同一 NodeView
+
+与仪表盘共用：`chartQuery` client、encode 字段面板可抽 `shared/chart`（二期再抽也不阻塞一期向导简化版）。
+
+## 7. 后端模块
+
+```
+io.opendashboard
+  api/ReportController
+  application/ReportDocService
+  application/ChartQueryService   # 已有：分支 dashboard | inline
+```
+
+| API | 说明 |
+|-----|------|
+| CRUD `/api/report/**` | 报告元数据 + draft/published doc |
+| 既有 `/api/chartQuery/query` | 扩展：允许无 `dashboardId` 的纯 `inline`（权限只校验 dataset） |
+| 既有树/画布 API | 供「引用」弹层列看板与图表 |
+
+## 8. 权限矩阵（摘要）
+
+| 动作 | 报告 | 看板 | 数据集 |
+|------|------|------|--------|
+| 插入引用图 | edit | view | （取数时 USE） |
+| 插入新建图 | edit | — | USE |
+| 阅读含图报告 | view | 引用图需看板 view**或**分享策略（见下） | USE + RLS |
+| 编辑 inline 配置 | edit | — | USE |
+
+**引用图与看板权限**：若读者有报告 view、无看板 view —— 一期建议 **拒绝出数并显示占位**（安全默认）；二期可做「发布时快照权限」或「报告发布连带授权」。
+
+## 9. 非范围（一期）
+
+- 报告级全局筛选器联动多图（可留 `context` 扩展点）  
+- 新建图「保存到仪表盘」  
+- 文档内持久化查询结果 / 离线包  
+- Umo 协同服务器、批注深度集成  
+- 移动端 Umo Mobile（可后接同一 Node attrs）
+
+## 10. 与 v0.3 的关系
+
+- **依赖**：Vue/Java 脚手架、OpenAPI 中 `chartQuery` + `inline`、数据集 USE 闸门  
+- **不阻塞**：仪表盘编辑器高保迁 Vue 可并行；报告可先做 Node + stub 取数  
+- 目标规格：**v0.4.0**（本提案 accepted 并实现后写入 `specs/`）
+
+## 11. 验收（设计落地后）
+
+1. 报告编辑器工具栏可见「引用看板图」「新建图表」  
+2. 两种插入均生成 `reportChart` 节点，保存再打开 attrs 不丢  
+3. 预览实时出数；改数据集侧数据后刷新可见变化  
+4. 删除 inline 节点后配置不再存在；引用节点不影响原看板  
+5. 无数据集权限时 NodeView 明确错误态，不白屏  
+
+## 12. 修订
+
+| 日期 | 说明 |
+|------|------|
+| 2026-08-03 | draft：锁定实时取数 + inline 仅报告；整体交互与模型 |
+| 2026-08-03 | accepted → v0.4.0；脚手架：Report API + 报告编辑器插图工具 / NodeView |
+| 2026-08-03 | 高保：`dashboard-commercial.html` 顶栏仪表盘后增加「报告」列表/Umo 风编辑器 |

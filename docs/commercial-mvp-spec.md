@@ -1,7 +1,7 @@
 # 商用 MVP 规格（对标飞书 / Quick BI）
 
 > 交互气质对齐飞书；分析与治理对齐 Quick BI。  
-> 可运行原型：[`dashboard-redesign/frontend/hi-fi/dashboard-commercial.html`](../../dashboard-redesign/frontend/hi-fi/dashboard-commercial.html)
+> 可运行原型：[`prototypes/hi-fi/dashboard-commercial.html`](../prototypes/hi-fi/dashboard-commercial.html)
 
 ## Phase A — 最小可商用
 

@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: open-dashboard-pg
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: opendashboard
+      POSTGRES_USER: opendashboard
+      POSTGRES_PASSWORD: opendashboard
+    volumes:
+      - od_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opendashboard -d opendashboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  od_pg_data:

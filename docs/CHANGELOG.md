@@ -9,6 +9,24 @@
 ### Added
 
 - 文档版本规范：[`VERSIONING.md`](./VERSIONING.md)、[`proposals/`](./proposals/)
+- 取数对照页：[`chart-getdata-comparison.html`](./chart-getdata-comparison.html)（DataEase getData vs chartQuery）
+## [0.4.0] - 2026-08-03
+
+### Added
+
+- 提案 [P003](./proposals/P003-report-umo-charts.md) accepted → 规格 [`specs/v0.4.0-report-umo-charts.md`](./specs/v0.4.0-report-umo-charts.md)
+- 在线报告：引用看板图 / 报告内新建图（实时取数；inline 仅属报告）
+- Report API stub + 前端 `report/` 编辑器插图工具与 `reportChart` 节点
+- 高保顶栏「报告」：列表 + Umo 风编辑器（引用看板图 / 新建图表 · 实时演示）
+
+## [0.3.0] - 2026-08-03
+
+### Added
+
+- 技术选型锁定：[`tech-stack.md`](./tech-stack.md)（Vue 3 + JDK 21 Spring Boot + PostgreSQL）
+- 需求 [`requirements/v0.3.0-core.md`](./requirements/v0.3.0-core.md) · 规格 [`specs/v0.3.0-core.md`](./specs/v0.3.0-core.md)
+- 提案 [P002](./proposals/P002-vue-java-scaffold.md)：真前后端脚手架；高保迁至 `prototypes/hi-fi/`
+- OpenAPI：`POST /datasetQuery/execute`；LayoutVO.mobile
 
 ## [0.2.0] - 2026-08-03
 

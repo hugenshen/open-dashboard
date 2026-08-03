@@ -1,89 +1,98 @@
 # Open Dashboard
 
-开源的**仪表盘 / BI 画布**蓝图：可运行的高保真交互原型 + 领域模型、表结构、OpenAPI、权限与取数架构、TypeScript 垂直切片。
+开源的**仪表盘 / BI 画布**：Vue 3 + Spring Boot 产品脚手架，附高保交互参照、领域模型、OpenAPI 与取数架构。
 
-对标飞书式编排体验与 Quick BI 式分析治理，适合作为新产品落地参考，或迁入现有 Dataset 体系。
+对标飞书式编排体验与 Quick BI 式分析治理。核心版本 **v0.3**：编辑器 + `chartQuery` / `datasetQuery` + 移动端布局工程化。  
+**v0.4**：在线报告（Umo）引用看板图 / 报告内新建图（实时取数）。
 
-## 快速体验（高保原型）
+## 技术栈（已锁定）
 
-无需后端，浏览器内演示完整编辑 / 绑定 / 图表 / 透视 / 权限交互骨架：
+见 [docs/tech-stack.md](docs/tech-stack.md)。
+
+| 层 | 选择 |
+|----|------|
+| 前端 | Vue 3 · Vite · TypeScript · Pinia · Vue Router · ECharts |
+| 后端 | JDK 21 · Spring Boot 3 · Spring JDBC · Flyway |
+| 数据库 | PostgreSQL 16 |
+
+## 快速启动（产品脚手架）
 
 ```bash
-npm install
+# 1) PostgreSQL（需 Docker Desktop 已运行）
+docker-compose up -d
+
+# 2) 后端
+cd backend && mvn spring-boot:run
+
+# 无库时可：
+# mvn spring-boot:run -Dspring-boot.run.arguments=--spring.profiles.active=stub
+
+# 3) 前端（另开终端）
+cd frontend && npm install && npm run dev
+# → http://127.0.0.1:5173
+# 报告：http://127.0.0.1:5173/reports
+```
+
+API 健康检查：http://127.0.0.1:8080/actuator/health
+
+## 高保交互参照（非产品运行时）
+
+完整编辑 / 绑定 / 图表 / 透视 / 移动端交互骨架：
+
+```bash
+npm install   # 仓库根，仅需 tsx 等可选
 npm run hi-fi
 # → http://127.0.0.1:8765/dashboard-commercial.html
 ```
 
-或进入目录后：
+或：
 
 ```bash
-cd frontend/hi-fi && ./start.sh   # macOS / Linux
-# Windows: start.bat
+cd prototypes/hi-fi && ./start.sh
 ```
-
-ECharts 已内置在 `frontend/hi-fi/vendor/`，可离线打开。
 
 ## 仓库结构
 
 ```
 open-dashboard/
-├── docs/                      # 规格与架构（含版本 / 提案）
-│   ├── VERSIONING.md            # 文档版本规范
-│   ├── CHANGELOG.md
-│   ├── proposals/               # 演进中方案 P00N-*.md
-│   ├── backend-architecture.md
-│   ├── domain.md
-│   ├── schema.sql
-│   ├── dashboard-api.md
-│   ├── openapi.yaml
-│   ├── commercial-mvp-spec.md
-│   └── capability-matrix.md
-├── frontend/
-│   ├── hi-fi/                 # 可分享静态高保原型
-│   ├── api/ stores/ views/    # 目标 FE 结构示意
-│   └── types/
-├── backend/
-│   ├── manage/                # Tree / Canvas / Publish / ChartQuery…
-│   ├── server/ store/ demo/   # 薄服务 + 内存切片
-│   └── java/.../api/          # Java 契约标记
-├── package.json
-└── LICENSE                    # MIT
+├── docs/                      # 需求 / 规格 / 架构 / OpenAPI
+│   ├── tech-stack.md
+│   ├── requirements/v0.3.0-core.md
+│   └── specs/v0.3.0-core.md
+├── prototypes/hi-fi/          # 静态高保参照（视觉与交互）
+├── frontend/                  # Vue3 产品应用
+├── backend/                   # Spring Boot 产品应用
+│   ├── src/main/java/io/opendashboard/
+│   └── demo|manage|store/     # 旧 TS 垂直切片（reference only）
+├── docker-compose.yml
+└── package.json               # hi-fi / 旧 slice 脚本
 ```
 
 ## 文档导读
 
-文档版本与提案流程：[docs/VERSIONING.md](docs/VERSIONING.md) · 变更记录：[docs/CHANGELOG.md](docs/CHANGELOG.md)
-
 | 文档 | 内容 |
 |------|------|
-| [docs/proposals/P001-mobile-layout-c.md](docs/proposals/P001-mobile-layout-c.md) | **提案**：移动端布局 C 档（独立布局 + 样式同步/分设） |
-| [docs/backend-architecture.md](docs/backend-architecture.md) | **后端怎么接**：表、接口、查询流水线、仪表盘 ACL、数据集行列权限、分享 |
-| [docs/data-query-architecture.md](docs/data-query-architecture.md) | **数据面**：数据源类型 → 数据集 → chartQuery → 用户访问（自研，非 DE getData 照搬） |
-| [docs/domain.md](docs/domain.md) | 领域模型与发布状态机 |
-| [docs/schema.sql](docs/schema.sql) | 双副本表结构 + auth/share |
-| [docs/dashboard-api.md](docs/dashboard-api.md) | REST 契约 |
-| [docs/commercial-mvp-spec.md](docs/commercial-mvp-spec.md) | Phase A/B/C 商用能力（v0.1 基线） |
-| [frontend/hi-fi/README-分享.md](frontend/hi-fi/README-分享.md) | 打包发给他人预览 |
+| [docs/tech-stack.md](docs/tech-stack.md) | 技术选型锁定 |
+| [docs/requirements/v0.3.0-core.md](docs/requirements/v0.3.0-core.md) | 窄范围需求 |
+| [docs/specs/v0.3.0-core.md](docs/specs/v0.3.0-core.md) | 设计规格 |
+| [docs/specs/v0.4.0-report-umo-charts.md](docs/specs/v0.4.0-report-umo-charts.md) | 在线报告 Umo 插图 |
+| [docs/data-query-architecture.md](docs/data-query-architecture.md) | 取数两层协议 |
+| [docs/openapi.yaml](docs/openapi.yaml) | REST 契约 |
+| [docs/VERSIONING.md](docs/VERSIONING.md) | 文档版本规范 |
+| [prototypes/hi-fi/README-分享.md](prototypes/hi-fi/README-分享.md) | 高保打包分享 |
 
-## 垂直切片（内存后端）
+## 旧 TypeScript 垂直切片（参照）
 
 ```bash
-npm install
-npm run slice              # 树 → 画布 → 查询 → 发布
-npm run slice:commercial   # 商用路径演示
+npm run slice
+npm run slice:commercial
 ```
+
+行为对照用，**不是**产品入口。产品后端见 `backend/src/main/java`。
 
 ## 设计要点（摘要）
 
-1. **配置与取数分离**：画布/encode 存库；出数走 `POST /chartQuery/query`，每图独立刷新。  
-2. **draft / published 双副本**：分享与观看只读已发布内容。  
-3. **权限三道闸**：仪表盘 ACL → 数据集 use → 行列权限（RLS/CLS）在查询引擎强制合并。  
-4. **禁止**整页 `component_data` 大 blob 与巨型 God Controller。
-
-## 许可
-
-[MIT](./LICENSE) © hugenshen
-
-## 致谢
-
-交互与领域设计过程中参考了 DataEase、飞书多维表格 / 仪表盘、Quick BI、永洪等产品的公开体验，本仓库为独立开源蓝图，不包含上游专有代码。
+1. **配置与取数分离**：画布/encode 存库；出数走 `POST /chartQuery/query`。  
+2. **datasetQuery 唯一触达数据源**：`QuerySpec` → `ResultTable`。  
+3. **draft / published 双副本**；移动端独立 `mobile_json`（6 列 + styleSync）。  
+4. **权限三道闸**：仪表盘 ACL → 数据集 USE → RLS/CLS（脚手架可 stub）。

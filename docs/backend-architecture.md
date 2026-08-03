@@ -1,6 +1,6 @@
 # 后端架构：配置、取数与权限
 
-> 对齐商用高保原型（`frontend/hi-fi/dashboard-commercial.html`）与飞书 / Quick BI 常见治理模型。  
+> 对齐商用高保原型（`prototypes/hi-fi/dashboard-commercial.html`）与飞书 / Quick BI 常见治理模型。  
 > 相关：[`data-query-architecture.md`](./data-query-architecture.md)（数据源/数据集/取数全链路）· [`domain.md`](./domain.md) · [`schema.sql`](./schema.sql) · [`dashboard-api.md`](./dashboard-api.md) · [`openapi.yaml`](./openapi.yaml)
 
 ## 1. 分层原则

@@ -1,6 +1,9 @@
 node_modules/
 dist/
 build/
+backend/target/
+frontend/dist/
+frontend/node_modules/
 .DS_Store
 *.log
 .env
@@ -12,3 +15,6 @@ build/
 coverage/
 .turbo/
 *.tsbuildinfo
+
+# Third-party reference clones
+prototypes/vendor/editor/

@@ -11,6 +11,8 @@
 
 ## 0. 和 DataEase getData 的关系（差异）
 
+> 更完整的理念 / 接口 / 后端流水线对照见 HTML：[`chart-getdata-comparison.html`](./chart-getdata-comparison.html)
+
 | DataEase（参考） | 本方案（自研） |
 |------------------|----------------|
 | `POST /chartData/getData`，body≈整份 `ChartViewDTO` | `POST /datasetQuery/execute` + `POST /chartQuery/query` **两层** |

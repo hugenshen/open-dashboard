@@ -1,8 +1,8 @@
 {
   "name": "open-dashboard",
   "private": false,
-  "version": "0.1.0",
-  "description": "Open-source BI dashboard canvas blueprint: hi-fi prototype, schema, OpenAPI, auth & query architecture",
+  "version": "0.3.0",
+  "description": "Open-source BI dashboard: Vue3 + Spring Boot scaffold, hi-fi prototype reference, OpenAPI & query architecture",
   "repository": {
     "type": "git",
     "url": "https://github.com/hugenshen/open-dashboard.git"
@@ -13,7 +13,7 @@
     "slice": "tsx backend/demo/vertical-slice.ts",
     "slice:commercial": "tsx backend/demo/commercial-slice.ts",
     "test:slice": "tsx backend/demo/vertical-slice.ts && tsx backend/demo/commercial-slice.ts",
-    "hi-fi": "python3 -m http.server 8765 --directory frontend/hi-fi"
+    "hi-fi": "python3 -m http.server 8765 --directory prototypes/hi-fi"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
