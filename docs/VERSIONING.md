@@ -73,6 +73,6 @@ authors: []
 |-------------|----------|
 | 商用 Phase A/B/C（既有） | `prototypes/hi-fi/dashboard-commercial.html` |
 | P001 移动端 C 档 | 同上，Phase B+ · 移动布局 |
-| P003 报告 Umo 插图 | `prototypes/hi-fi/dashboard-commercial.html` 顶栏「报告」· `#/report/...`；产品 Vue `/reports` |
+| P003 / v0.4.0 报告 Umo 插图 | `prototypes/hi-fi/dashboard-commercial.html` 顶栏「报告」· `#/report/list/...` · `#/report/editor/:id`；产品 Vue `/reports`；需求见 `requirements/v0.4.0-report-editor.md` |
 
 实现提案时：先改原型验证，再把结论回写提案「实现备注」，最后晋升 `specs/`。

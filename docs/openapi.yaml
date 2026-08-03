@@ -392,6 +392,9 @@ paths:
     get:
       tags: [report]
       summary: Get report meta + draft content JSON
+      description: |
+        Returns draft document. Content is Umo/Tiptap JSON and must not embed query result rows.
+        reportChart nodes use attrs documented in ReportChartAttrs.
       parameters:
         - $ref: '#/components/parameters/IdPath'
       responses:
@@ -401,11 +404,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReportDetailVO'
-
-  /report/{id}/doc:
-    put:
+        '404':
+          description: Not found
+    patch:
       tags: [report]
-      summary: Save report document JSON (Umo/Tiptap)
+      summary: Update report metadata (e.g. name)
       parameters:
         - $ref: '#/components/parameters/IdPath'
       requestBody:
@@ -414,10 +417,45 @@ paths:
           application/json:
             schema:
               type: object
-              required: [content, contentId]
               properties:
-                content: { type: object }
-                contentId: { type: string }
+                name: { type: string }
+                folder: { type: string }
+                desc: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportMetaVO'
+        '404':
+          description: Not found
+    delete:
+      tags: [report]
+      summary: Delete report and its document copies
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+
+  /report/{id}/doc:
+    put:
+      tags: [report]
+      summary: Save report document JSON (Umo/Tiptap)
+      description: |
+        Persists draft content_json only (text + reportChart attrs).
+        Do not persist chartQuery ResultTable / rows inside content.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportDocSaveRequest'
       responses:
         '200':
           description: OK
@@ -431,7 +469,7 @@ paths:
   /report/{id}/publish:
     post:
       tags: [report]
-      summary: Publish report
+      summary: Publish draft to published copy
       parameters:
         - $ref: '#/components/parameters/IdPath'
       responses:
@@ -441,6 +479,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReportDetailVO'
+
+  /report/{id}/discardDraft:
+    post:
+      tags: [report]
+      summary: Discard draft and restore from published
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDetailVO'
+        '400':
+          description: No published copy to restore
 
   /dashboard/{id}/share:
     post:
@@ -765,21 +819,17 @@ components:
       type: object
       required: [context]
       description: |
-        Provide dashboardId+chartId (board chart) and/or inline (report-only / unsaved preview).
-        Pure inline (no dashboardId) is valid for report source=inline.
+        Board chart: dashboardId + chartId (+ view).
+        Report inline / unsaved preview: omit dashboardId and provide inline
+        (datasetId + chartType + encode). Style never enters SQL.
+        Report NodeViews SHOULD set client=report.
       properties:
         chartId: { type: string }
         dashboardId: { type: string, nullable: true }
         view: { type: string, enum: [draft, published], default: published }
         client: { type: string, enum: [dashboard, report], description: optional audit hint }
         inline:
-          type: object
-          properties:
-            datasetId: { type: string }
-            chartType: { type: string }
-            encode: { type: object }
-            style: { type: object }
-            senior: { type: object }
+          $ref: '#/components/schemas/ChartInlineSpec'
         context:
           type: object
           properties:
@@ -802,6 +852,14 @@ components:
                   value: {}
                   targetChartId: { type: string }
                   targetField: { type: string }
+      example:
+        client: report
+        dashboardId: null
+        inline:
+          datasetId: ds_sales
+          chartType: bar
+          encode: { category: city, value: amount, agg: SUM, format: thousand }
+        context: {}
 
     ChartQueryResult:
       type: object
@@ -874,11 +932,58 @@ components:
         sql: { type: string }
         elapsedMs: { type: integer }
 
+    ChartInlineSpec:
+      type: object
+      required: [datasetId, chartType, encode]
+      description: Report-only or unsaved chart config; never written to de_chart_view
+      properties:
+        datasetId: { type: string }
+        chartType: { type: string }
+        encode: { type: object }
+        style: { type: object }
+        senior: { type: object }
+
+    ReportChartAttrs:
+      type: object
+      description: |
+        Attrs of Tiptap node type reportChart inside report content_json.
+        source=dashboard requires dashboardId+chartId; source=inline requires datasetId+chartType+encode.
+        Query results must not be stored here.
+      required: [id, source]
+      properties:
+        id: { type: string }
+        source: { type: string, enum: [dashboard, inline] }
+        dashboardId: { type: string, nullable: true }
+        chartId: { type: string, nullable: true }
+        view: { type: string, enum: [published, draft], default: published }
+        datasetId: { type: string, nullable: true }
+        chartType: { type: string }
+        encode: { type: object }
+        style: { type: object }
+        senior: { type: object }
+        title: { type: string }
+        width:
+          oneOf:
+            - { type: string, enum: [full, half] }
+            - { type: number }
+        height: { type: number, description: px }
+
+    ReportDocSaveRequest:
+      type: object
+      required: [content, contentId]
+      properties:
+        content:
+          type: object
+          description: Umo/Tiptap JSON; may contain reportChart nodes (see ReportChartAttrs)
+        contentId: { type: string }
+
     ReportMetaVO:
       type: object
       properties:
         id: { type: string }
         name: { type: string }
+        folder: { type: string }
+        desc: { type: string }
         status: { type: string, enum: [draft, published, publishedWithDraft] }
         contentId: { type: string }
         version: { type: integer }
@@ -891,4 +996,6 @@ components:
           $ref: '#/components/schemas/ReportMetaVO'
         content:
           type: object
-          description: Umo/Tiptap JSON document
+          description: |
+            Umo/Tiptap JSON document (draft on GET /report/{id}).
+            Must not embed chart query rows; charts live as reportChart attrs only.

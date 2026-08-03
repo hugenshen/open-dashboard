@@ -26,15 +26,19 @@ date: 2026-08-03
 
 ## 3. 目标交互
 
-工具栏「插入」分组后方（`#toolbar_insert`）增加两个入口：
+> **交互基准已冻结为高保**：`prototypes/hi-fi/dashboard-commercial.html`（`#/report/...`）。  
+> 正式需求与验收清单：[requirements/v0.4.0-report-editor.md](../requirements/v0.4.0-report-editor.md)。  
+> 规格（API / 节点 / Umo 槽）：[specs/v0.4.0-report-umo-charts.md](../specs/v0.4.0-report-umo-charts.md)。
+
+工具栏 **「工具」** 分组槽位（Umo `#toolbar_tools`，**非** `#toolbar_insert`）增加两个入口：
 
 ### 3.1 引用仪表盘图表
 
 ```text
-点击「引用看板图」
-  → 弹层：选仪表盘（有权 view）
-  → 列出该盘图表缩略/标题
-  → 确认 → 在光标处插入 reportChart 节点（source=dashboard）
+点击「引用仪表盘」
+  → 三栏向导：左看板列表 → 中图表多选+搜索 → 右实时预览
+  → 确认 → 按勾选顺序插入多个 reportChart（source=dashboard）
+  → 非整盘导入；文档只存 dashboardId + chartId
 ```
 
 - 数据 / encode / 联动定义以 **看板 published（或可配 draft）** 为准  
@@ -44,8 +48,9 @@ date: 2026-08-03
 
 ```text
 点击「新建图表」
-  → 向导：选数据集（USE）→ 选图表类型 → 配 encode（精简版字段面板）
-  → 确认 → 插入 reportChart 节点（source=inline，配置写在节点 attrs）
+  → 左右分栏向导：左实时预览 · 右配置（数据集/类型/字段银行/维指/聚合/格式/高度/标题）
+  → 确认后才插入 reportChart（source=inline，配置写在节点 attrs）
+  → 插入后右侧 inspector（数据/样式/高级）可继续改
 ```
 
 - 配置 **只活在报告**；删除节点即删除该配置  
@@ -132,12 +137,14 @@ frontend/src/report/
   api/report.ts
 ```
 
-Umo 接入要点（对照官方文档）：
+Umo 接入要点（对照官方文档 / 高保）：
 
+- Ribbon：开始/插入/表格/工具/页面/视图/导出；默认「开始」  
 - `extensions: [ReportChart]`  
-- 插槽 `#toolbar_insert`：两个按钮打开上述弹层  
+- 插槽 `#toolbar_tools`：两个业务按钮打开上述向导  
 - 保存：`editor.getJSON()` → `PUT /report/{id}/doc`  
-- 预览：Umo Viewer 或只读 Editor + 同一 NodeView
+- 预览：Umo Viewer 或只读 Editor + 同一 NodeView  
+- 页面大纲默认隐藏；标题文案「页面大纲」；A4 + 裁切线 + 状态栏（字数/缩放/视图）
 
 与仪表盘共用：`chartQuery` client、encode 字段面板可抽 `shared/chart`（二期再抽也不阻塞一期向导简化版）。
 
@@ -183,11 +190,13 @@ io.opendashboard
 
 ## 11. 验收（设计落地后）
 
-1. 报告编辑器工具栏可见「引用看板图」「新建图表」  
-2. 两种插入均生成 `reportChart` 节点，保存再打开 attrs 不丢  
-3. 预览实时出数；改数据集侧数据后刷新可见变化  
-4. 删除 inline 节点后配置不再存在；引用节点不影响原看板  
-5. 无数据集权限时 NodeView 明确错误态，不白屏  
+完整勾选清单见 [requirements/v0.4.0-report-editor.md §7](../requirements/v0.4.0-report-editor.md)。摘要：
+
+1. 工具槽可见「引用仪表盘」「新建图表」（`#toolbar_tools`）  
+2. 引用三栏多选按序插入；新建左右向导确认后插入  
+3. 两种插入均生成 `reportChart`，保存再打开 attrs 不丢、无结果行  
+4. 预览实时出数；inline 插入后 inspector 可改  
+5. 删除 inline 不影响看板；无权限错误占位不白屏  
 
 ## 12. 修订
 
@@ -196,3 +205,4 @@ io.opendashboard
 | 2026-08-03 | draft：锁定实时取数 + inline 仅报告；整体交互与模型 |
 | 2026-08-03 | accepted → v0.4.0；脚手架：Report API + 报告编辑器插图工具 / NodeView |
 | 2026-08-03 | 高保：`dashboard-commercial.html` 顶栏仪表盘后增加「报告」列表/Umo 风编辑器 |
+| 2026-08-03 | **状态说明**：交互以高保为基准冻结；正式需求 `requirements/v0.4.0-report-editor.md`；规格补齐工具槽/向导/API；槽位由 `#toolbar_insert` 更正为 `#toolbar_tools` |

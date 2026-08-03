@@ -10,14 +10,21 @@
 
 - 文档版本规范：[`VERSIONING.md`](./VERSIONING.md)、[`proposals/`](./proposals/)
 - 取数对照页：[`chart-getdata-comparison.html`](./chart-getdata-comparison.html)（DataEase getData vs chartQuery）
+
 ## [0.4.0] - 2026-08-03
 
 ### Added
 
 - 提案 [P003](./proposals/P003-report-umo-charts.md) accepted → 规格 [`specs/v0.4.0-report-umo-charts.md`](./specs/v0.4.0-report-umo-charts.md)
+- 需求 [`requirements/v0.4.0-report-editor.md`](./requirements/v0.4.0-report-editor.md)：高保报告编辑器交互基准 + 可勾选验收清单
 - 在线报告：引用看板图 / 报告内新建图（实时取数；inline 仅属报告）
 - Report API stub + 前端 `report/` 编辑器插图工具与 `reportChart` 节点
 - 高保顶栏「报告」：列表 + Umo 风编辑器（引用看板图 / 新建图表 · 实时演示）
+
+### Changed
+
+- 规格 / P003：业务入口统一为 Umo `#toolbar_tools`（工具）；补齐三栏引用与左右新建向导、壳（Ribbon/大纲/状态栏）
+- OpenAPI `report`：PATCH/DELETE、discardDraft、ReportChartAttrs / ChartInlineSpec；明确纯 inline `chartQuery`
 
 ## [0.3.0] - 2026-08-03
 

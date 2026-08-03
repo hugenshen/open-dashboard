@@ -4,12 +4,13 @@
 
 ## 快速索引
 
-### 核心版本（v0.3）
+### 核心版本（v0.3 / v0.4）
 
 | 文件 | 说明 |
 |------|------|
 | [tech-stack.md](./tech-stack.md) | **技术选型锁定**（Vue3 / JDK21 Spring Boot / PostgreSQL） |
-| [requirements/v0.3.0-core.md](./requirements/v0.3.0-core.md) | 窄范围需求与验收 |
+| [requirements/v0.3.0-core.md](./requirements/v0.3.0-core.md) | 窄范围需求与验收（仪表盘编辑器 + 取数 + 移动端） |
+| [requirements/v0.4.0-report-editor.md](./requirements/v0.4.0-report-editor.md) | **报告编辑器需求**（高保交互基准 + 验收清单） |
 | [specs/v0.3.0-core.md](./specs/v0.3.0-core.md) | 设计规格（编辑器 + 取数 + 移动端工程） |
 
 ### 演进中（proposals）
@@ -18,7 +19,7 @@
 |------|------|------|
 | [P001 移动端布局 C 档](./proposals/P001-mobile-layout-c.md) | 独立布局 + 样式同步/分设 | accepted → [v0.2.0](./specs/v0.2.0-mobile-layout.md) |
 | [P002 Vue/Java 脚手架](./proposals/P002-vue-java-scaffold.md) | 真前后端工程落地 | accepted → [v0.3.0](./specs/v0.3.0-core.md) |
-| [P003 报告 Umo 插图](./proposals/P003-report-umo-charts.md) | 引用看板图 + 报告内新建图（实时取数） | accepted → [v0.4.0](./specs/v0.4.0-report-umo-charts.md) |
+| [P003 报告 Umo 插图](./proposals/P003-report-umo-charts.md) | 引用看板图 + 报告内新建图（实时取数）；交互以高保为基准 | accepted → [需求](./requirements/v0.4.0-report-editor.md) / [规格](./specs/v0.4.0-report-umo-charts.md) |
 
 全部提案目录：[proposals/README.md](./proposals/README.md)
 
@@ -26,7 +27,7 @@
 
 | 规格 | 说明 |
 |------|------|
-| [v0.4.0 报告 Umo 插图](./specs/v0.4.0-report-umo-charts.md) | 引用看板图 + 报告内新建图；实时取数 |
+| [v0.4.0 报告 Umo 插图](./specs/v0.4.0-report-umo-charts.md) | 引用看板图 + 报告内新建图；`#toolbar_tools`；实时取数；对齐高保 |
 | [v0.3.0 Core](./specs/v0.3.0-core.md) | 编辑器 + chartQuery/datasetQuery + 移动端 + 脚手架 |
 | [v0.2.0 移动端布局](./specs/v0.2.0-mobile-layout.md) | C 档：独立布局 + styleSync |
 
@@ -40,7 +41,7 @@
 | [domain.md](./domain.md) | 领域模型与发布状态机 |
 | [schema.sql](./schema.sql) | 表结构（历史参考；PG 以 Flyway 为准） |
 | [dashboard-api.md](./dashboard-api.md) | REST 说明 |
-| [openapi.yaml](./openapi.yaml) | OpenAPI 3（含 datasetQuery） |
+| [openapi.yaml](./openapi.yaml) | OpenAPI 3（含 datasetQuery、report CRUD/doc/publish、纯 inline chartQuery） |
 
 ### 商用规格（将逐步迁入 specs/）
 
