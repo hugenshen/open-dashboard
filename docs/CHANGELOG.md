@@ -9,7 +9,14 @@
 ### Added
 
 - 文档版本规范：[`VERSIONING.md`](./VERSIONING.md)、[`proposals/`](./proposals/)
-- 提案 [P001](./proposals/P001-mobile-layout-c.md)：移动端布局与样式（DataEase C 档）
+
+## [0.2.0] - 2026-08-03
+
+### Added
+
+- [P001](./proposals/P001-mobile-layout-c.md) 落地：独立移动端布局（6 列）+ 组件池勾选上板 + `styleSync` / 样式覆盖
+- 规格 [`specs/v0.2.0-mobile-layout.md`](./specs/v0.2.0-mobile-layout.md)
+- 高保：PC/移动画布切换、手机外框预览、列表「移动端」标识、`dash_sales` 移动种子布局
 
 ## [0.1.0] - 2026-07-01
 

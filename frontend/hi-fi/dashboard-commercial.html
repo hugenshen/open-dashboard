@@ -29,6 +29,34 @@
     .topbar .tabs button.on { background: var(--brand); color: #fff; }
     .app { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
     .app.mobile-frame { max-width: 390px; margin: 12px auto; border: 8px solid #222; border-radius: 24px; overflow: hidden; height: calc(100% - 24px); }
+    .canvas-wrap.mobile-edit {
+      background: #d8dce3; align-items: center; justify-content: flex-start; padding-top: 16px;
+    }
+    .mobile-phone {
+      width: 390px; max-width: calc(100% - 24px); flex: 0 0 auto;
+      border: 8px solid #1f2329; border-radius: 28px; background: #f5f6f7;
+      box-shadow: 0 12px 40px rgba(15,17,21,.18); overflow: hidden;
+      display: flex; flex-direction: column; max-height: calc(100% - 8px);
+    }
+    .mobile-phone.device-430 { width: 430px; }
+    .mobile-phone .phone-notch {
+      height: 28px; background: #1f2329; color: #fff; font-size: 10px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; letter-spacing: .04em;
+    }
+    .mobile-phone .board {
+      position: relative; width: 100%; background: #fff; overflow: visible;
+      border: 0; border-radius: 0; margin: 0;
+    }
+    .mobile-pool-item {
+      display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line);
+      border-radius: 8px; margin-bottom: 6px; font-size: 12px; background: #fff; cursor: pointer;
+    }
+    .mobile-pool-item.on { border-color: var(--brand); background: var(--brand-soft); }
+    .mobile-pool-item small { color: var(--text-3); margin-left: auto; }
+    .tag.mob {
+      display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;
+      background: #e8f0ff; color: #245bdb; margin-left: 6px; vertical-align: middle;
+    }
     .bar {
       height: 52px; background: var(--bg-elev); border-bottom: 1px solid var(--line);
       display: flex; align-items: center; padding: 0 12px; gap: 8px; flex-shrink: 0;
@@ -778,13 +806,152 @@
 <div class="toast-wrap" id="toasts"></div>
 
 <script>
-const COL = 12, ROW_H = 52, GAP = 16, EXTRA_ROWS = 6;
+const COL = 12, COL_MOBILE = 6, ROW_H = 52, GAP = 16, EXTRA_ROWS = 6;
+const MOBILE_DEVICES = {
+  iphone390: { label: 'iPhone 390', width: 390 },
+  iphone430: { label: 'iPhone 430', width: 430 }
+};
+
+function ensureMobile(dash) {
+  if (!dash) return { enabled: false, device: 'iphone390', bg: '#f5f6f7', components: [] };
+  if (!dash.mobile) dash.mobile = { enabled: false, device: 'iphone390', bg: '#f5f6f7', components: [] };
+  if (!Array.isArray(dash.mobile.components)) dash.mobile.components = [];
+  if (!dash.mobile.device) dash.mobile.device = 'iphone390';
+  if (!dash.mobile.bg) dash.mobile.bg = '#f5f6f7';
+  return dash.mobile;
+}
+
+function isMobileEdit() {
+  return state.screen === 'editor' && state.editSurface === 'mobile';
+}
+
+/** Editor mobile surface, or preview mobile frame with an enabled mobile layout */
+function useMobileLayout() {
+  if (!state.dash) return false;
+  if (state.screen === 'editor') return state.editSurface === 'mobile';
+  if (state.screen === 'preview' && state.mobile) {
+    const m = ensureMobile(state.dash);
+    return !!(m.enabled && m.components.length);
+  }
+  return false;
+}
+
+function gridCols() {
+  return useMobileLayout() ? COL_MOBILE : COL;
+}
+
 /** column width derived from board client width so canvas fills middle pane */
 function colW(board) {
   const pad = boardPad();
-  const inner = Math.max(480, (board?.clientWidth || 900) - pad);
-  return (inner - (COL - 1) * GAP) / COL;
+  const cols = gridCols();
+  const minInner = useMobileLayout() ? 280 : 480;
+  const inner = Math.max(minInner, (board?.clientWidth || 900) - pad);
+  return (inner - (cols - 1) * GAP) / cols;
 }
+
+function hydrateMobileComp(mc) {
+  const pc = state.dash?.components?.find(c => c.id === mc.refId);
+  if (!pc) return null;
+  return {
+    ...pc,
+    id: mc.id,
+    refId: mc.refId,
+    x: mc.x, y: mc.y, w: mc.w, h: mc.h, z: mc.z ?? 1,
+    styleSync: mc.styleSync !== false,
+    mobileStyle: mc.style || null,
+    _mobile: true
+  };
+}
+
+function resolveCompStyle(comp) {
+  const ch = comp?.type === 'chart' ? state.dash.charts[comp.chartId] : null;
+  if (!ch) return defaultChartStyle();
+  const base = { ...defaultChartStyle(), ...(ch.style || {}) };
+  if (comp._mobile && comp.styleSync === false && comp.mobileStyle) {
+    return { ...base, ...comp.mobileStyle };
+  }
+  return base;
+}
+
+function mobileDefaultSize(pc) {
+  if (pc.type === 'slicer') return { w: 6, h: 1 };
+  if (pc.type === 'text') return { w: 6, h: 1 };
+  const t = state.dash.charts[pc.chartId]?.chartType;
+  if (t === 'kpi') return { w: 3, h: 2 };
+  if (isTableType(t)) return { w: 6, h: 5 };
+  if (t === 'pie') return { w: 6, h: 4 };
+  return { w: 6, h: 4 };
+}
+
+function findMobileFreeSlot(w, h) {
+  const items = ensureMobile(state.dash).components;
+  const maxY = Math.max(contentRows(items), 0) + EXTRA_ROWS;
+  for (let y = 0; y <= maxY; y++) {
+    for (let x = 0; x <= COL_MOBILE - w; x++) {
+      const trial = { x, y, w, h };
+      if (!items.some(o => collide(trial, o))) return { x, y };
+    }
+  }
+  return { x: 0, y: contentRows(items) };
+}
+
+function addToMobileLayout(pcId) {
+  const m = ensureMobile(state.dash);
+  if (m.components.some(c => c.refId === pcId)) return null;
+  const pc = state.dash.components.find(c => c.id === pcId);
+  if (!pc) return null;
+  const size = mobileDefaultSize(pc);
+  const slot = findMobileFreeSlot(size.w, size.h);
+  const mc = {
+    id: uid('m'),
+    refId: pcId,
+    x: slot.x, y: slot.y, w: size.w, h: size.h,
+    z: m.components.length + 1,
+    styleSync: true,
+    style: null
+  };
+  m.components.push(mc);
+  m.enabled = true;
+  return mc;
+}
+
+function removeFromMobileLayout(pcIdOrMobileId) {
+  const m = ensureMobile(state.dash);
+  m.components = m.components.filter(c => c.id !== pcIdOrMobileId && c.refId !== pcIdOrMobileId);
+}
+
+function clearMobileLayout() {
+  const m = ensureMobile(state.dash);
+  m.components = [];
+  m.enabled = false;
+}
+
+/** Delete selection: mobile surface only removes board entry; PC deletes component (+ chart). */
+function deleteSelectedComp(comp) {
+  if (!comp) return;
+  if (isMobileEdit() || comp._mobile) {
+    removeFromMobileLayout(comp.id);
+    const m = ensureMobile(state.dash);
+    if (!m.components.length) m.enabled = false;
+    state.selectedId = null;
+    return;
+  }
+  state.dash.components = state.dash.components.filter(c => c.id !== comp.id);
+  if (comp.chartId) delete state.dash.charts[comp.chartId];
+  removeFromMobileLayout(comp.id);
+  state.selectedId = null;
+}
+
+function styleWriteBag(comp, ch) {
+  if (comp?._mobile && isMobileEdit() && comp.styleSync === false && ch) {
+    const m = ensureMobile(state.dash).components.find(c => c.id === comp.id);
+    if (!m) return ensureStyle(ch);
+    if (!m.style) m.style = {};
+    return m.style;
+  }
+  return ch ? ensureStyle(ch) : null;
+}
+
 const uid = (p='id') => `${p}_${Math.random().toString(36).slice(2,7)}`;
 const clone = v => JSON.parse(JSON.stringify(v));
 
@@ -1401,6 +1568,7 @@ const state = {
   screen: 'list',      // list | editor | preview（仅仪表盘）
   phase: 'a',
   mobile: false,
+  editSurface: 'pc', // pc | mobile（编辑器画布）
   leftTab: 'comp',
   rightTab: 'data',
   inspCollapsed: false,
@@ -1445,7 +1613,8 @@ function emptyDash(name='未命名仪表盘', id) {
     alerts: [],
     tabs: [{ id: 'tab_main', name: '概览' }],
     activeTab: 'tab_main',
-    share: null
+    share: null,
+    mobile: { enabled: false, device: 'iphone390', bg: '#f5f6f7', components: [] }
   };
 }
 
@@ -1497,6 +1666,40 @@ function assembleDash(d, items) {
   });
 }
 
+function seedSalesMobile(d) {
+  const byTitle = {};
+  Object.values(d.charts).forEach(ch => {
+    byTitle[ch.title] = d.components.find(c => c.chartId === ch.id);
+  });
+  const slicer = d.components.find(c => c.type === 'slicer');
+  const m = ensureMobile(d);
+  m.enabled = true;
+  m.device = 'iphone390';
+  m.bg = '#f5f6f7';
+  m.components = [];
+  let y = 0;
+  if (slicer) {
+    m.components.push({ id: uid('m'), refId: slicer.id, x: 0, y: 0, w: 6, h: 1, z: 1, styleSync: true, style: null });
+    y = 1;
+  }
+  const kpis = ['本月 GMV', '本月销量', '利润', '订单数'].map(t => byTitle[t]).filter(Boolean);
+  kpis.forEach((pc, i) => {
+    m.components.push({
+      id: uid('m'), refId: pc.id,
+      x: (i % 2) * 3, y: y + Math.floor(i / 2) * 2, w: 3, h: 2,
+      z: m.components.length + 1, styleSync: true, style: null
+    });
+  });
+  y += Math.ceil(Math.max(kpis.length, 1) / 2) * 2;
+  ['区域销售额', '渠道占比'].map(t => byTitle[t]).filter(Boolean).forEach(pc => {
+    m.components.push({
+      id: uid('m'), refId: pc.id, x: 0, y, w: 6, h: 4,
+      z: m.components.length + 1, styleSync: true, style: null
+    });
+    y += 4;
+  });
+}
+
 function demoDash() {
   const d = emptyDash('销售周报', 'dash_sales');
   d.theme = 'default';
@@ -1540,8 +1743,9 @@ function demoDash() {
   ];
   d.jumps = [{ id: 'j_sales', sourceChartId: bar.id, triggerField: 'region', targetType: 'url', target: 'https://example.com/detail?region={value}' }];
   d.alerts = [{ id: 'a_sales', chartId: kpi.id, metricField: 'amount', operator: 'lt', threshold: 300, enabled: true }];
+  seedSalesMobile(d);
   d.status = 'publishedWithDraft';
-  return packDash(d, { folder: '销售分析', desc: 'GMV 全景 · 销售员/品牌/透视 · 切片联动', updateBy: '张三', updateTime: '2026-07-29 18:20' });
+  return packDash(d, { folder: '销售分析', desc: 'GMV 全景 · 销售员/品牌/透视 · 切片联动 · 移动端', updateBy: '张三', updateTime: '2026-07-29 18:20' });
 }
 
 function demoOpsDash() {
@@ -1857,6 +2061,12 @@ function boardPad() { return 32; /* padding 16*2 */ }
 
 function tabComps(tabId) {
   const tab = tabId || state.dash.activeTab;
+  if (useMobileLayout()) {
+    return ensureMobile(state.dash).components
+      .map(hydrateMobileComp)
+      .filter(Boolean)
+      .filter(c => (c.tabId || 'tab_main') === tab);
+  }
   return state.dash.components.filter(c => (c.tabId || 'tab_main') === tab);
 }
 
@@ -1865,6 +2075,12 @@ function collide(a, b) {
 }
 
 function minWH(comp) {
+  if (useMobileLayout()) {
+    if (comp.type === 'slicer' || comp.type === 'text') return { w: 2, h: 1 };
+    const t = state.dash.charts[comp.chartId]?.chartType;
+    if (t === 'kpi') return { w: 2, h: 2 };
+    return { w: 3, h: 2 };
+  }
   if (comp.type === 'slicer') return { w: 3, h: 1 };
   if (comp.type === 'text') return { w: 2, h: 1 };
   const t = state.dash.charts[comp.chartId]?.chartType;
@@ -1887,9 +2103,10 @@ function defaultSize(kind) {
 
 function findFreeSlot(w, h, tabId) {
   const items = tabComps(tabId);
+  const cols = gridCols();
   const maxY = Math.max(contentRows(items), 0) + EXTRA_ROWS;
   for (let y = 0; y <= maxY; y++) {
-    for (let x = 0; x <= COL - w; x++) {
+    for (let x = 0; x <= cols - w; x++) {
       const trial = { x, y, w, h };
       if (!items.some(o => collide(trial, o))) return { x, y };
     }
@@ -1937,6 +2154,13 @@ function compactLayout(layout) {
 
 function commitLayout(items) {
   const map = Object.fromEntries(items.map(i => [i.id, i]));
+  if (useMobileLayout()) {
+    ensureMobile(state.dash).components.forEach(c => {
+      const n = map[c.id];
+      if (n) { c.x = n.x; c.y = n.y; c.w = n.w; c.h = n.h; if (n.z != null) c.z = n.z; }
+    });
+    return;
+  }
   state.dash.components.forEach(c => {
     const n = map[c.id];
     if (n) { c.x = n.x; c.y = n.y; c.w = n.w; c.h = n.h; }
@@ -1986,7 +2210,7 @@ function cellFromPoint(board, clientX, clientY, w, h) {
   const cw = colW(board);
   const lx = clientX - rect.left - pad;
   const ly = clientY - rect.top - pad;
-  let x = Math.max(0, Math.min(COL - w, Math.round(lx / (cw + GAP))));
+  let x = Math.max(0, Math.min(gridCols() - w, Math.round(lx / (cw + GAP))));
   let y = Math.max(0, Math.round(ly / (ROW_H + GAP)));
   return { x, y };
 }
@@ -2340,7 +2564,7 @@ function syncModNav() {
 function render() {
   disposeCharts();
   const app = document.getElementById('app');
-  app.classList.toggle('mobile-frame', state.mobile && state.screen === 'preview' && state.module === 'dashboard');
+  app.classList.toggle('mobile-frame', state.mobile && state.screen === 'preview' && state.module === 'dashboard' && !useMobileLayout());
   syncModNav();
   document.querySelectorAll('#phaseTabs button').forEach(b => b.classList.toggle('on', b.dataset.phase === state.phase));
 
@@ -3332,10 +3556,19 @@ function disposeOneChart(chartId) {
 }
 
 function findComp(id) {
+  if (useMobileLayout()) {
+    const raw = ensureMobile(state.dash).components.find(c => c.id === id);
+    const h = raw ? hydrateMobileComp(raw) : null;
+    if (h) return h;
+  }
   return state.dash.components.find(c => c.id === id);
 }
 
 function findCompByChartId(chartId) {
+  if (useMobileLayout()) {
+    const h = tabComps().find(c => c.chartId === chartId);
+    if (h) return h;
+  }
   return state.dash.components.find(c => c.chartId === chartId);
 }
 
@@ -3360,7 +3593,7 @@ function applyCardStyleDom(el, comp) {
   if (!el || comp.type !== 'chart') return;
   const ch = state.dash.charts[comp.chartId];
   if (!ch) return;
-  const st = ensureStyle(ch);
+  const st = resolveCompStyle(comp);
   const isKpi = ch?.chartType === 'kpi';
   const showTitle = isKpi ? st.showTitle === true : st.showTitle !== false;
   const bw = st.borderWidth != null ? st.borderWidth : 1;
@@ -3510,14 +3743,14 @@ function renderList(app) {
           <div class="tree-sec">列表</div>
           ${list.map(x => `
             <div class="tree-item ${x.id===d.id?'on':''}" data-dash="${x.id}">
-              ${esc(x.name)}
+              ${esc(x.name)}${(x.mobile && x.mobile.enabled) ? ' · 移动' : ''}
               <span class="sub">${esc(x.folder || '')} · ${x.status === 'draft' ? '草稿' : x.status === 'publishedWithDraft' ? '有改动' : '已发布'}</span>
             </div>`).join('') || '<div class="tree-item">无匹配</div>'}
         </div>
         <div class="detail">
           <div class="detail-hero" style="flex-direction:column;align-items:stretch">
             <div>
-              <h2 style="margin-bottom:6px">${esc(d.name)}</h2>
+              <h2 style="margin-bottom:6px">${esc(d.name)}${(d.mobile && d.mobile.enabled) ? '<span class="tag mob">移动端</span>' : ''}</h2>
               <p style="color:var(--text-2);font-size:13px;margin-bottom:12px">${esc(d.desc || '—')} · ${statusTag(d.status)}</p>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button type="button" class="btn primary" id="btnEdit">编辑</button>
@@ -3584,13 +3817,22 @@ function renderList(app) {
 
 function renderEditor(app) {
   const d = state.dash;
+  const mob = ensureMobile(d);
+  const isMob = state.phase !== 'a' && state.editSurface === 'mobile';
+  const device = mob.device || 'iphone390';
+  const deviceCls = device === 'iphone430' ? 'device-430' : '';
+  const leftCompLabel = isMob ? '组件池' : '组件';
   app.innerHTML = `
     <div class="bar">
       <button class="btn ghost" id="toList">←</button>
       <b contenteditable="true" id="title">${esc(d.name)}</b>
       ${statusTag(d.status)}
+      ${mob.enabled ? '<span class="tag mob">移动端</span>' : ''}
       <div class="spacer"></div>
-      ${state.phase !== 'a' ? `<button class="btn ghost" id="toggleMobile">${state.mobile ? '桌面' : '移动预览'}</button>` : ''}
+      ${state.phase !== 'a' ? `<div class="seg2" id="surfaceSeg" style="width:168px;height:30px;flex-shrink:0">
+        <button type="button" data-sf="pc" class="${!isMob?'on':''}">PC布局</button>
+        <button type="button" data-sf="mobile" class="${isMob?'on':''}">移动布局</button>
+      </div>` : ''}
       <button class="btn ghost" id="toggleInsp">${state.inspCollapsed ? '显示配置' : '收起配置'}</button>
       <button class="btn ghost" id="btnUndo">撤销</button>
       <button class="btn" id="btnPreview">预览</button>
@@ -3601,7 +3843,7 @@ function renderEditor(app) {
     <div class="editor ${state.inspCollapsed ? 'no-insp' : ''}">
       <aside class="pane">
         <div class="ptabs">
-          <button class="${state.leftTab==='comp'?'on':''}" data-lt="comp">组件</button>
+          <button class="${state.leftTab==='comp'?'on':''}" data-lt="comp">${leftCompLabel}</button>
           <button class="${state.leftTab==='layer'?'on':''}" data-lt="layer">图层</button>
         </div>
         <div class="pbody" id="left"></div>
@@ -3609,9 +3851,12 @@ function renderEditor(app) {
       <section class="stage">
         <div class="qbar" id="qbar"></div>
         <div class="layout-bar" id="layoutBar"></div>
-        <div class="canvas-wrap" id="cwrap">
+        <div class="canvas-wrap ${isMob?'mobile-edit':''}" id="cwrap">
           <div class="tab-strip" id="tabStrip"></div>
-          <div class="board" id="board"></div>
+          ${isMob ? `<div class="mobile-phone ${deviceCls}" id="phoneShell" style="background:${esc(mob.bg||'#f5f6f7')}">
+            <div class="phone-notch">${esc(MOBILE_DEVICES[device]?.label || 'iPhone')} · 移动编辑</div>
+            <div class="board" id="board" style="background:${esc(mob.bg||'#f5f6f7')}"></div>
+          </div>` : `<div class="board" id="board"></div>`}
         </div>
       </section>
       <aside class="pane insp">
@@ -3624,7 +3869,7 @@ function renderEditor(app) {
       </aside>
     </div>`;
 
-  app.querySelector('#toList').onclick = () => { state.module = 'dashboard'; state.screen = 'list'; render(); };
+  app.querySelector('#toList').onclick = () => { state.module = 'dashboard'; state.screen = 'list'; state.editSurface = 'pc'; render(); };
   app.querySelector('#toggleInsp').onclick = () => { state.inspCollapsed = !state.inspCollapsed; render(); };
   app.querySelector('#btnUndo').onclick = undo;
   app.querySelector('#btnPreview').onclick = () => openPublishedPreview('editor');
@@ -3637,8 +3882,12 @@ function renderEditor(app) {
     const n = e.target.textContent.trim();
     if (n && n !== d.name) { pushUndo(); d.name = n; markDirty(); toast('已重命名', 'ok'); }
   };
-  const tm = app.querySelector('#toggleMobile');
-  if (tm) tm.onclick = () => { state.mobile = !state.mobile; state.screen = 'preview'; render(); };
+  app.querySelectorAll('[data-sf]').forEach(b => b.onclick = () => {
+    state.editSurface = b.dataset.sf;
+    state.selectedId = null;
+    if (state.editSurface === 'mobile') ensureMobile(d).enabled = true;
+    render();
+  });
 
   app.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => {
     state.leftTab = b.dataset.lt;
@@ -3678,21 +3927,25 @@ function renderLayoutBar(el) {
     markDirty(); render(); toast('已自动紧凑', 'ok');
   };
   const preset = (w) => {
-    const comp = state.dash.components.find(c => c.id === state.selectedId);
+    const comp = findComp(state.selectedId);
     if (!comp) { toast('请先选中组件', 'warn'); return; }
     pushUndo();
     const min = minWH(comp);
-    comp.w = Math.max(min.w, Math.min(COL, w));
-    if (comp.x + comp.w > COL) comp.x = COL - comp.w;
-    let layout = tabComps().map(c => ({ ...c }));
+    const cols = gridCols();
+    const target = Math.min(cols, w);
+    let nw = Math.max(min.w, Math.min(cols, target));
+    let nx = comp.x;
+    if (nx + nw > cols) nx = cols - nw;
+    let layout = tabComps().map(c => c.id === comp.id ? { ...c, w: nw, x: nx } : { ...c });
     if (state.layout.push) layout = pushLayout(layout, comp.id);
     if (state.layout.compactOnDrop) layout = compactLayout(layout);
     commitLayout(layout);
     markDirty(); render();
   };
-  el.querySelector('#layFull').onclick = () => preset(12);
-  el.querySelector('#layHalf').onclick = () => preset(6);
-  el.querySelector('#layThird').onclick = () => preset(4);
+  const cols = gridCols();
+  el.querySelector('#layFull').onclick = () => preset(cols);
+  el.querySelector('#layHalf').onclick = () => preset(Math.max(1, Math.floor(cols / 2)));
+  el.querySelector('#layThird').onclick = () => preset(Math.max(1, Math.floor(cols / 3)));
   el.querySelector('#layPush').onchange = e => { state.layout.push = e.target.checked; };
   el.querySelector('#layAuto').onchange = e => { state.layout.compactOnDrop = e.target.checked; };
   el.querySelector('#layGrid').onchange = e => { state.layout.showGrid = e.target.checked; };
@@ -3705,7 +3958,7 @@ function wireKeyboardLayout() {
     if (state.screen !== 'editor') return;
     const tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
-    const comp = state.dash?.components?.find(c => c.id === state.selectedId);
+    const comp = findComp(state.selectedId);
     if (!comp) return;
     const step = e.shiftKey ? 2 : 1;
     let dx = 0, dy = 0;
@@ -3716,17 +3969,15 @@ function wireKeyboardLayout() {
     else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       pushUndo();
-      state.dash.components = state.dash.components.filter(c => c.id !== comp.id);
-      if (comp.chartId) delete state.dash.charts[comp.chartId];
-      state.selectedId = null; markDirty(); render(); toast('已删除', 'ok');
+      deleteSelectedComp(comp);
+      markDirty(); render(); toast('已删除', 'ok');
       return;
     } else return;
     e.preventDefault();
     pushUndo();
-    const nx = Math.max(0, Math.min(COL - comp.w, comp.x + dx));
+    const nx = Math.max(0, Math.min(gridCols() - comp.w, comp.x + dx));
     const ny = Math.max(0, comp.y + dy);
-    comp.x = nx; comp.y = ny;
-    let layout = tabComps().map(c => ({ ...c }));
+    let layout = tabComps().map(c => c.id === comp.id ? { ...c, x: nx, y: ny } : { ...c });
     if (state.layout.push) layout = pushLayout(layout, comp.id);
     commitLayout(layout);
     markDirty();
@@ -3786,6 +4037,10 @@ function renderLeft(el) {
     el.querySelectorAll('[data-sel]').forEach(n => n.onclick = () => selectComp(n.dataset.sel, { left: true }));
     return;
   }
+  if (isMobileEdit()) {
+    renderMobilePool(el);
+    return;
+  }
   const groups = {};
   Object.entries(CHART_META).forEach(([k,v]) => {
     (groups[v.group] = groups[v.group] || []).push([k,v]);
@@ -3825,7 +4080,54 @@ function renderLeft(el) {
   });
 }
 
+function renderMobilePool(el) {
+  const tab = state.dash.activeTab;
+  const pcs = state.dash.components.filter(c => (c.tabId || 'tab_main') === tab);
+  const m = ensureMobile(state.dash);
+  const onIds = new Set(m.components.map(c => c.refId));
+  el.innerHTML = `
+    <div class="sec">
+      <h4>移动端组件池</h4>
+      <p style="font-size:11px;color:var(--text-3);line-height:1.5;margin-bottom:8px">勾选 PC 组件上板；数据与编码与 PC 共用，仅布局/可选样式独立。</p>
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+        <button type="button" class="btn" id="mobImportAll" style="height:28px">导入全部</button>
+        <button type="button" class="btn ghost" id="mobClear" style="height:28px">清空</button>
+      </div>
+      ${pcs.map(pc => {
+        const title = pc.type === 'chart' ? (state.dash.charts[pc.chartId]?.title || '图') : (pc.props?.label || pc.type);
+        const kind = pc.type === 'chart' ? (state.dash.charts[pc.chartId]?.chartType || 'chart') : pc.type;
+        const on = onIds.has(pc.id);
+        return `<label class="mobile-pool-item ${on?'on':''}">
+          <input type="checkbox" data-pc="${pc.id}" ${on?'checked':''}/>
+          <span>${esc(title)}</span>
+          <small>${esc(kind)}</small>
+        </label>`;
+      }).join('') || '<p style="font-size:12px;color:var(--text-3)">当前页签暂无 PC 组件</p>'}
+    </div>`;
+  el.querySelector('#mobImportAll').onclick = () => {
+    pushUndo(); importAllToMobile(); markDirty(); render(); toast('已导入并重排', 'ok');
+  };
+  el.querySelector('#mobClear').onclick = () => {
+    pushUndo(); clearMobileLayout(); state.selectedId = null; markDirty(); render(); toast('已清空移动布局', 'ok');
+  };
+  el.querySelectorAll('[data-pc]').forEach(inp => {
+    inp.onchange = () => {
+      pushUndo();
+      if (inp.checked) addToMobileLayout(inp.dataset.pc);
+      else removeFromMobileLayout(inp.dataset.pc);
+      const mm = ensureMobile(state.dash);
+      if (!mm.components.length) mm.enabled = false;
+      else mm.enabled = true;
+      markDirty(); render();
+    };
+  });
+}
+
 function addComp(kind, at) {
+  if (isMobileEdit()) {
+    toast('移动布局请从左侧组件池勾选上板', 'warn');
+    return;
+  }
   pushUndo();
   const d = state.dash;
   if (kind === 'tab') {
@@ -3836,7 +4138,7 @@ function addComp(kind, at) {
   }
   const size = defaultSize(kind);
   const slot = at || findFreeSlot(size.w, size.h);
-  let x = Math.max(0, Math.min(COL - size.w, at?.x ?? slot.x));
+  let x = Math.max(0, Math.min(gridCols() - size.w, at?.x ?? slot.x));
   let y = Math.max(0, at?.y ?? slot.y);
   let comp;
   if (kind === 'slicer') {
@@ -3876,6 +4178,13 @@ function renderBoard(board) {
 
   if (!comps.length) {
     board.style.height = '240px';
+    if (isMobileEdit()) {
+      board.innerHTML = `<div class="empty" style="position:relative;inset:auto;min-height:200px;border:0">
+        <b>从左侧勾选 PC 组件上板</b>
+        <span style="font-size:12px">6 列栅格 · 可一键导入全部</span>
+      </div>`;
+      return;
+    }
     board.innerHTML = `<div class="empty" style="position:relative;inset:auto;min-height:200px;border:0">
       <b>从左侧添加或拖入组件</b>
       <span style="font-size:12px">八向缩放 · 推挤编排 · 方向键微调</span>
@@ -3905,6 +4214,11 @@ function renderBoard(board) {
 }
 
 function wireBoardDrop(board) {
+  if (isMobileEdit()) {
+    board.ondragover = e => e.preventDefault();
+    board.ondrop = e => { e.preventDefault(); toast('移动布局请从左侧组件池勾选', 'warn'); };
+    return;
+  }
   board.ondragover = e => {
     if (![...e.dataTransfer.types].includes('add-kind') && !e.dataTransfer.types.includes('text/plain')) {
       // chromium reports types differently
@@ -3984,7 +4298,7 @@ function widgetHtml(c, cw) {
     </div>`;
   } else {
     const ch = state.dash.charts[c.chartId];
-    const st = ensureStyle(ch);
+    const st = resolveCompStyle(c);
     kindClass = ch ? `kind-${ch.chartType}` : '';
     const isKpi = ch?.chartType === 'kpi';
     // KPI：默认隐藏卡片标题栏，避免与数值区标题重复挤压
@@ -4098,7 +4412,7 @@ function wireDrag(el, comp, cw) {
       const startX = e.clientX, startY = e.clientY, ox = comp.x, oy = comp.y;
       let latest = tabComps().map(c => ({ ...c }));
       const move = ev => {
-        let nx = Math.min(COL - comp.w, Math.max(0, ox + snap(ev.clientX - startX, unit)));
+        let nx = Math.min(gridCols() - comp.w, Math.max(0, ox + snap(ev.clientX - startX, unit)));
         let ny = Math.max(0, oy + snap(ev.clientY - startY, ROW_H));
         latest = tabComps().map(c => c.id === comp.id ? { ...c, x: nx, y: ny } : { ...c });
         if (state.layout.push) latest = pushLayout(latest, comp.id);
@@ -4132,7 +4446,7 @@ function wireDrag(el, comp, cw) {
         const ddx = snap(ev.clientX - startX, unit);
         const ddy = snap(ev.clientY - startY, ROW_H);
         let nx = ox, ny = oy, nw = ow, nh = oh;
-        if (mode.includes('e')) nw = Math.max(min.w, Math.min(COL - ox, ow + ddx));
+        if (mode.includes('e')) nw = Math.max(min.w, Math.min(gridCols() - ox, ow + ddx));
         if (mode.includes('s')) nh = Math.max(min.h, oh + ddy);
         if (mode.includes('w')) {
           const right = ox + ow;
@@ -4144,9 +4458,9 @@ function wireDrag(el, comp, cw) {
           nh = Math.max(min.h, Math.min(bottom, oh - ddy));
           ny = bottom - nh;
         }
-        nx = Math.max(0, Math.min(COL - nw, nx));
+        nx = Math.max(0, Math.min(gridCols() - nw, nx));
         ny = Math.max(0, ny);
-        nw = Math.max(min.w, Math.min(COL - nx, nw));
+        nw = Math.max(min.w, Math.min(gridCols() - nx, nw));
         nh = Math.max(min.h, nh);
         latest = tabComps().map(c => c.id === comp.id ? { ...c, x: nx, y: ny, w: nw, h: nh } : { ...c });
         if (state.layout.push) latest = pushLayout(latest, comp.id);
@@ -4363,7 +4677,9 @@ function applyPieTopN(data, topN) {
 function paintChart(el, comp) {
   const ch = state.dash.charts[comp.chartId];
   if (!ch || missingBind(ch).length) return;
-  const st = ensureStyle(ch);
+  const st = resolveCompStyle(comp);
+  // keep PC style bag hydrated for editors that mutate ensureStyle(ch)
+  ensureStyle(ch);
   const sn = ensureSenior(ch);
   const rows = filteredRows(ch);
   const catFields = encodeFields(ch.encode, 'category');
@@ -4576,21 +4892,32 @@ function openCtx(x, y, comp) {
       } else if (a === 'paste') pasteComp();
       else if (a === 'data') openDataModal(comp);
       else if (a === 'sql') openSqlModal(comp);
-      else if (a === 'top') { pushUndo(); comp.z = Math.max(...state.dash.components.map(c=>c.z)) + 1; markDirty(); render(); }
-      else if (a === 'bottom') { pushUndo(); comp.z = Math.min(...state.dash.components.map(c=>c.z)) - 1; markDirty(); render(); }
+      else if (a === 'top') {
+        pushUndo();
+        const zs = tabComps().map(c => c.z || 1);
+        comp.z = (zs.length ? Math.max(...zs) : 0) + 1;
+        commitLayout(tabComps().map(c => c.id === comp.id ? { ...c, z: comp.z } : { ...c }));
+        markDirty(); render();
+      }
+      else if (a === 'bottom') {
+        pushUndo();
+        const zs = tabComps().map(c => c.z || 1);
+        comp.z = (zs.length ? Math.min(...zs) : 1) - 1;
+        commitLayout(tabComps().map(c => c.id === comp.id ? { ...c, z: comp.z } : { ...c }));
+        markDirty(); render();
+      }
       else if (a === 'full') {
         pushUndo();
-        comp.w = 12; comp.x = 0;
-        let layout = tabComps().map(c => ({ ...c }));
+        const cols = gridCols();
+        let layout = tabComps().map(c => c.id === comp.id ? { ...c, w: cols, x: 0 } : { ...c });
         if (state.layout.push) layout = pushLayout(layout, comp.id);
         commitLayout(layout);
         markDirty(); render();
       }
       else if (a === 'del') {
         pushUndo();
-        state.dash.components = state.dash.components.filter(c => c.id !== comp.id);
-        if (comp.chartId) delete state.dash.charts[comp.chartId];
-        state.selectedId = null; markDirty(); render(); toast('已删除', 'ok');
+        deleteSelectedComp(comp);
+        markDirty(); render(); toast('已删除', 'ok');
       }
       ctx.style.display = 'none';
     };
@@ -4624,10 +4951,45 @@ function pasteComp() {
   toast('已粘贴', 'ok');
 }
 
+function renderMobileDashSettings(el) {
+  const m = ensureMobile(state.dash);
+  el.innerHTML = `
+    <div class="sec"><h4>移动端画布</h4>
+      <label class="chk"><input type="checkbox" id="mobEnabled" ${m.enabled?'checked':''}/> 启用移动端布局</label>
+      <div class="field"><label>预览机型</label>
+        <select id="mobDevice">
+          <option value="iphone390" ${m.device!=='iphone430'?'selected':''}>iPhone 390</option>
+          <option value="iphone430" ${m.device==='iphone430'?'selected':''}>iPhone 430</option>
+        </select>
+      </div>
+      <div class="field"><label>画布背景</label>
+        <div class="color-row"><input type="color" id="mobBg" value="${m.bg || '#f5f6f7'}"/></div>
+      </div>
+      <p style="font-size:11px;color:var(--text-3);line-height:1.5;margin-top:8px">当前板上 ${m.components.length} 个组件。从左侧勾选上板后可拖拽排版。</p>
+    </div>`;
+  el.querySelector('#mobEnabled').onchange = e => {
+    pushUndo(); m.enabled = e.target.checked; markDirty(); render();
+  };
+  el.querySelector('#mobDevice').onchange = e => {
+    pushUndo(); m.device = e.target.value; markDirty(); render();
+  };
+  el.querySelector('#mobBg').oninput = e => {
+    m.bg = e.target.value; markDirty();
+    const shell = document.getElementById('phoneShell');
+    const board = document.getElementById('board');
+    if (shell) shell.style.background = m.bg;
+    if (board && isMobileEdit()) board.style.background = m.bg;
+  };
+  el.querySelector('#mobBg').onchange = e => {
+    pushUndo(); m.bg = e.target.value; markDirty();
+  };
+}
+
 function renderRight(el) {
   if (!el) return;
-  const comp = state.dash.components.find(c => c.id === state.selectedId);
+  const comp = findComp(state.selectedId);
   if (!comp) {
+    if (isMobileEdit()) return renderMobileDashSettings(el);
     el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px;line-height:1.6">
       点选组件进行配置<br/>画布支持拖拽 / 缩放 / 右键菜单
     </div>`;
@@ -4707,17 +5069,17 @@ function renderDataPanel(el, comp) {
     </div>` : ''}
     ${miss.length ? `<div class="miss"><b>缺失要素</b>${miss.map(m=>`<button data-focus="${m.key}">→ ${esc(m.label)}</button>`).join('')}</div>` : ''}
     <div class="sec">
-      <h4>布局</h4>
+      <h4>布局${useMobileLayout() ? ' · 移动 6 列' : ''}</h4>
       <div class="lay-grid">
-        <div class="field"><label>X</label><input type="number" id="layX" min="0" max="11" value="${comp.x}" /></div>
+        <div class="field"><label>X</label><input type="number" id="layX" min="0" max="${gridCols()-1}" value="${comp.x}" /></div>
         <div class="field"><label>Y</label><input type="number" id="layY" min="0" value="${comp.y}" /></div>
-        <div class="field"><label>宽</label><input type="number" id="layW" min="1" max="12" value="${comp.w}" /></div>
+        <div class="field"><label>宽</label><input type="number" id="layW" min="1" max="${gridCols()}" value="${comp.w}" /></div>
         <div class="field"><label>高</label><input type="number" id="layH" min="1" value="${comp.h}" /></div>
       </div>
       <div class="preset-row" style="margin-top:8px">
-        <button type="button" data-pw="12">整行</button>
-        <button type="button" data-pw="6">半宽</button>
-        <button type="button" data-pw="4">1/3</button>
+        <button type="button" data-pw="${gridCols()}">整行</button>
+        <button type="button" data-pw="${Math.max(1, Math.floor(gridCols()/2))}">半宽</button>
+        <button type="button" data-pw="${Math.max(1, Math.floor(gridCols()/3))}">1/3</button>
       </div>
     </div>`;
 
@@ -4759,12 +5121,12 @@ function renderDataPanel(el, comp) {
     let w = +el.querySelector('#layW').value, h = +el.querySelector('#layH').value;
     if ([x,y,w,h].some(n => Number.isNaN(n))) return;
     pushUndo();
-    w = Math.max(min.w, Math.min(COL, w));
+    const cols = gridCols();
+    w = Math.max(min.w, Math.min(cols, w));
     h = Math.max(min.h, h);
-    x = Math.max(0, Math.min(COL - w, x));
+    x = Math.max(0, Math.min(cols - w, x));
     y = Math.max(0, y);
-    Object.assign(comp, { x, y, w, h });
-    let layout = tabComps().map(c => ({ ...c }));
+    let layout = tabComps().map(c => c.id === comp.id ? { ...c, x, y, w, h } : { ...c });
     if (state.layout.push) layout = pushLayout(layout, comp.id);
     commitLayout(layout);
     markDirty();
@@ -4994,14 +5356,38 @@ function seniorGuideHtml(type, label) {
 
 function renderStyle(el, comp) {
   const ch = comp.type === 'chart' ? state.dash.charts[comp.chartId] : null;
-  const st = ch ? ensureStyle(ch) : null;
+  if (ch) ensureStyle(ch);
+  const st = ch ? resolveCompStyle(comp) : null;
   const type = ch?.chartType || comp.type;
   const typeLabel = CHART_META[type]?.label || (type === 'slicer' ? '切片器' : type === 'text' ? '文本' : type);
   const isChart = ['bar','hbar','line','area','pie'].includes(type);
   const isAxis = ['bar','hbar','line','area'].includes(type);
   const isTable = isTableType(type);
+  const mobileOv = isMobileEdit() && !!comp._mobile;
+  const styleSynced = !mobileOv || comp.styleSync !== false;
 
   let blocks = '';
+  if (isMobileEdit()) {
+    const m = ensureMobile(state.dash);
+    blocks += `<div class="sec"><h4>移动端画布</h4>
+      <label class="chk"><input type="checkbox" id="mobEnabled" ${m.enabled?'checked':''}/> 启用移动端</label>
+      <div class="field inline-2">
+        <div><label>机型</label>
+          <select id="mobDevice">
+            <option value="iphone390" ${m.device!=='iphone430'?'selected':''}>390</option>
+            <option value="iphone430" ${m.device==='iphone430'?'selected':''}>430</option>
+          </select>
+        </div>
+        <div><label>背景</label><input type="color" id="mobBg" value="${m.bg || '#f5f6f7'}"/></div>
+      </div>
+    </div>`;
+  }
+  if (mobileOv) {
+    blocks += `<div class="sec"><h4>样式同步</h4>
+      <label class="chk"><input type="checkbox" id="stStyleSync" ${styleSynced?'checked':''}/> 与 PC 样式同步</label>
+      <p style="font-size:11px;color:var(--text-3);line-height:1.45;margin-top:6px">${styleSynced ? '开启：以下修改写入 PC 样式，移动端跟随。' : '关闭：以下修改仅写入移动端覆盖，不影响 PC。'}</p>
+    </div>`;
+  }
 
   // —— 控件：切片器 / 文本 ——
   if (type === 'slicer') {
@@ -5274,6 +5660,7 @@ function renderStyle(el, comp) {
     if (ch) patchChart(ch, { inspector: false, flash: false });
     else replaceWidget(comp);
   };
+  const bag = () => styleWriteBag(comp, ch);
 
   const bindStyle = (id, fn, { live = false } = {}) => {
     const node = el.querySelector(id);
@@ -5288,6 +5675,30 @@ function renderStyle(el, comp) {
     }
   };
 
+  el.querySelector('#mobEnabled')?.addEventListener('change', e => {
+    pushUndo(); ensureMobile(state.dash).enabled = e.target.checked; markDirty(); render();
+  });
+  el.querySelector('#mobDevice')?.addEventListener('change', e => {
+    pushUndo(); ensureMobile(state.dash).device = e.target.value; markDirty(); render();
+  });
+  el.querySelector('#mobBg')?.addEventListener('input', e => {
+    ensureMobile(state.dash).bg = e.target.value; markDirty();
+    const shell = document.getElementById('phoneShell');
+    const board = document.getElementById('board');
+    if (shell) shell.style.background = e.target.value;
+    if (board && isMobileEdit()) board.style.background = e.target.value;
+  });
+  el.querySelector('#stStyleSync')?.addEventListener('change', e => {
+    pushUndo();
+    const m = ensureMobile(state.dash).components.find(c => c.id === comp.id);
+    if (m) {
+      m.styleSync = e.target.checked;
+      if (e.target.checked) m.style = null;
+      else m.style = m.style || {};
+    }
+    markDirty(); render();
+  });
+
   el.querySelectorAll('[data-th]').forEach(b => b.onclick = () => {
     pushUndo();
     state.dash.theme = b.dataset.th;
@@ -5298,68 +5709,69 @@ function renderStyle(el, comp) {
   });
 
   if (ch && st) {
-    bindStyle('#stShowTitle', n => { st.showTitle = n.checked; });
-    bindStyle('#stTitleBold', n => { st.titleBold = n.checked; });
-    bindStyle('#stBg', n => { st.bg = n.value; }, { live: true });
+    bindStyle('#stShowTitle', n => { bag().showTitle = n.checked; });
+    bindStyle('#stTitleBold', n => { bag().titleBold = n.checked; });
+    bindStyle('#stBg', n => { bag().bg = n.value; }, { live: true });
     el.querySelector('#stBgReset')?.addEventListener('click', () => {
-      pushUndo(); st.bg = '#ffffff'; softStyle();
+      pushUndo(); bag().bg = '#ffffff'; softStyle();
       const bg = el.querySelector('#stBg'); if (bg) bg.value = '#ffffff';
     });
     el.querySelector('#stTitleBiz')?.addEventListener('click', () => {
       pushUndo();
-      st.titleBg = '#1677ff';
-      st.titleColor = '#ffffff';
-      st.titleBold = true;
+      const b = bag();
+      b.titleBg = '#1677ff';
+      b.titleColor = '#ffffff';
+      b.titleBold = true;
       softStyle();
       const bg = el.querySelector('#stTitleBg'); if (bg) bg.value = '#1677ff';
       const tc = el.querySelector('#stTitle'); if (tc) tc.value = '#ffffff';
       const tb = el.querySelector('#stTitleBold'); if (tb) tb.checked = true;
       toast('已应用商务蓝标题', 'ok');
     });
-    bindStyle('#stTitleBg', n => { st.titleBg = n.value; }, { live: true });
-    bindStyle('#stTitle', n => { st.titleColor = n.value; }, { live: true });
-    bindStyle('#stTitleSize', n => { st.titleSize = +n.value; });
-    bindStyle('#stTitleAlign', n => { st.titleAlign = n.value; });
-    bindStyle('#stRadius', n => { st.cardRadius = +n.value; });
-    bindStyle('#stBorderW', n => { st.borderWidth = +n.value; });
-    bindStyle('#stBorderC', n => { st.borderColor = n.value; }, { live: true });
-    bindStyle('#stLegend', n => { st.showLegend = n.checked; });
-    bindStyle('#stLabel', n => { st.showLabel = n.checked; });
-    bindStyle('#stLabelSize', n => { st.labelSize = +n.value; });
-    bindStyle('#stTooltip', n => { st.showTooltip = n.checked; });
-    bindStyle('#stAxisName', n => { st.showAxisName = n.checked; });
-    bindStyle('#stSplit', n => { st.showSplitLine = n.checked; });
-    bindStyle('#stXName', n => { st.xAxisName = n.value; });
-    bindStyle('#stYName', n => { st.yAxisName = n.value; });
-    bindStyle('#stBarRadius', n => { st.barRadius = +n.value; });
-    bindStyle('#stSmooth', n => { st.smooth = n.checked; });
-    bindStyle('#stPieRose', n => { st.pieRose = n.checked; });
-    bindStyle('#stPieIn', n => { st.pieInner = +n.value; });
-    bindStyle('#stPieOut', n => { st.pieOuter = +n.value; });
-    bindStyle('#stValColor', n => { st.valueColor = n.value; }, { live: true });
-    bindStyle('#stValSize', n => { st.valueSize = +n.value; });
-    bindStyle('#stValAlign', n => { st.valueAlign = n.value; });
-    bindStyle('#stPrefix', n => { st.valuePrefix = n.value; });
-    bindStyle('#stSuffix', n => { st.valueSuffix = n.value; });
-    bindStyle('#stCompare', n => { st.showCompare = n.checked; });
-    bindStyle('#stPage', n => { st.pageSize = +n.value; });
-    bindStyle('#stHead', n => { st.showHeader = n.checked; });
-    bindStyle('#stHeadBold', n => { st.headerBold = n.checked; });
-    bindStyle('#stStripe', n => { st.stripe = n.checked; });
-    bindStyle('#stHeadBg', n => { st.headerBg = n.value; }, { live: true });
-    bindStyle('#stHeadColor', n => { st.headerColor = n.value; }, { live: true });
-    bindStyle('#stRowHeadBg', n => { st.rowHeadBg = n.value; }, { live: true });
-    bindStyle('#stRowHeadColor', n => { st.rowHeadColor = n.value; }, { live: true });
-    bindStyle('#stRowHeadBold', n => { st.rowHeadBold = n.checked; });
-    bindStyle('#stCornerBg', n => { st.cornerBg = n.value; }, { live: true });
-    bindStyle('#stCornerColor', n => { st.cornerColor = n.value; }, { live: true });
-    bindStyle('#stPivotMulti', n => { st.pivotMultiHead = n.checked; });
-    bindStyle('#stCellAlign', n => { st.cellAlign = n.value; });
-    bindStyle('#stRowTotal', n => { st.showRowTotal = n.checked; });
-    bindStyle('#stColTotal', n => { st.showColTotal = n.checked; });
+    bindStyle('#stTitleBg', n => { bag().titleBg = n.value; }, { live: true });
+    bindStyle('#stTitle', n => { bag().titleColor = n.value; }, { live: true });
+    bindStyle('#stTitleSize', n => { bag().titleSize = +n.value; });
+    bindStyle('#stTitleAlign', n => { bag().titleAlign = n.value; });
+    bindStyle('#stRadius', n => { bag().cardRadius = +n.value; });
+    bindStyle('#stBorderW', n => { bag().borderWidth = +n.value; });
+    bindStyle('#stBorderC', n => { bag().borderColor = n.value; }, { live: true });
+    bindStyle('#stLegend', n => { bag().showLegend = n.checked; });
+    bindStyle('#stLabel', n => { bag().showLabel = n.checked; });
+    bindStyle('#stLabelSize', n => { bag().labelSize = +n.value; });
+    bindStyle('#stTooltip', n => { bag().showTooltip = n.checked; });
+    bindStyle('#stAxisName', n => { bag().showAxisName = n.checked; });
+    bindStyle('#stSplit', n => { bag().showSplitLine = n.checked; });
+    bindStyle('#stXName', n => { bag().xAxisName = n.value; });
+    bindStyle('#stYName', n => { bag().yAxisName = n.value; });
+    bindStyle('#stBarRadius', n => { bag().barRadius = +n.value; });
+    bindStyle('#stSmooth', n => { bag().smooth = n.checked; });
+    bindStyle('#stPieRose', n => { bag().pieRose = n.checked; });
+    bindStyle('#stPieIn', n => { bag().pieInner = +n.value; });
+    bindStyle('#stPieOut', n => { bag().pieOuter = +n.value; });
+    bindStyle('#stValColor', n => { bag().valueColor = n.value; }, { live: true });
+    bindStyle('#stValSize', n => { bag().valueSize = +n.value; });
+    bindStyle('#stValAlign', n => { bag().valueAlign = n.value; });
+    bindStyle('#stPrefix', n => { bag().valuePrefix = n.value; });
+    bindStyle('#stSuffix', n => { bag().valueSuffix = n.value; });
+    bindStyle('#stCompare', n => { bag().showCompare = n.checked; });
+    bindStyle('#stPage', n => { bag().pageSize = +n.value; });
+    bindStyle('#stHead', n => { bag().showHeader = n.checked; });
+    bindStyle('#stHeadBold', n => { bag().headerBold = n.checked; });
+    bindStyle('#stStripe', n => { bag().stripe = n.checked; });
+    bindStyle('#stHeadBg', n => { bag().headerBg = n.value; }, { live: true });
+    bindStyle('#stHeadColor', n => { bag().headerColor = n.value; }, { live: true });
+    bindStyle('#stRowHeadBg', n => { bag().rowHeadBg = n.value; }, { live: true });
+    bindStyle('#stRowHeadColor', n => { bag().rowHeadColor = n.value; }, { live: true });
+    bindStyle('#stRowHeadBold', n => { bag().rowHeadBold = n.checked; });
+    bindStyle('#stCornerBg', n => { bag().cornerBg = n.value; }, { live: true });
+    bindStyle('#stCornerColor', n => { bag().cornerColor = n.value; }, { live: true });
+    bindStyle('#stPivotMulti', n => { bag().pivotMultiHead = n.checked; });
+    bindStyle('#stCellAlign', n => { bag().cellAlign = n.value; });
+    bindStyle('#stRowTotal', n => { bag().showRowTotal = n.checked; });
+    bindStyle('#stColTotal', n => { bag().showColTotal = n.checked; });
     el.querySelector('#stPivotBiz')?.addEventListener('click', () => {
       pushUndo();
-      Object.assign(ch.style, {
+      Object.assign(bag(), {
         headerBg: '#1677ff', headerColor: '#ffffff', headerBold: true,
         rowHeadBg: '#1677ff', rowHeadColor: '#ffffff', rowHeadBold: true,
         cornerBg: '#0958d9', cornerColor: '#ffffff',
@@ -5371,15 +5783,16 @@ function renderStyle(el, comp) {
     el.querySelector('#stPivotReset')?.addEventListener('click', () => {
       pushUndo();
       const d = defaultChartStyle();
+      const b = bag();
       ['headerBg','headerColor','headerBold','rowHeadBg','rowHeadColor','rowHeadBold','cornerBg','cornerColor','cellAlign','stripe','pivotMultiHead']
-        .forEach(k => { ch.style[k] = d[k]; });
+        .forEach(k => { b[k] = d[k]; });
       toast('已恢复默认表头', 'ok');
       patchChart(ch, { inspector: true, flash: false });
     });
     el.querySelectorAll('[data-lp]').forEach(b => {
       b.onclick = () => {
-        pushUndo(); st.legendPos = b.dataset.lp;
-        el.querySelectorAll('[data-lp]').forEach(x => x.classList.toggle('on', x.dataset.lp === st.legendPos));
+        pushUndo(); bag().legendPos = b.dataset.lp;
+        el.querySelectorAll('[data-lp]').forEach(x => x.classList.toggle('on', x.dataset.lp === bag().legendPos || x.dataset.lp === resolveCompStyle(comp).legendPos));
         softStyle();
       };
     });
@@ -5608,23 +6021,38 @@ function renderPreview(app) {
     return;
   }
   const backLabel = state.previewFrom === 'editor' ? '← 返回编辑' : '← 返回列表';
+  const mob = ensureMobile(d);
+  const useMobLay = !!(state.mobile && mob.enabled && mob.components.length);
+  const device = mob.device || 'iphone390';
+  const deviceCls = device === 'iphone430' ? 'device-430' : '';
   app.innerHTML = `
     <div class="bar">
       <button type="button" class="btn ghost" id="back">${backLabel}</button>
       <b>${esc(d.name)}</b>
       <span class="tag pub">已发布只读</span>
+      ${mob.enabled ? '<span class="tag mob">移动端</span>' : ''}
       <div class="spacer"></div>
       ${state.phase!=='a'?`<button type="button" class="btn ghost" id="mob">${state.mobile?'桌面':'移动'}宽</button>`:''}
       <button type="button" class="btn" id="sh">分享</button>
     </div>
     <div class="qbar" id="qbar"></div>
-    <div class="canvas-wrap" style="flex:1;min-height:0">
+    <div class="canvas-wrap ${useMobLay?'mobile-edit':''}" style="flex:1;min-height:0">
       <div class="tab-strip" id="tabStrip"></div>
-      <div class="board" id="board"></div>
+      ${useMobLay ? `<div class="mobile-phone ${deviceCls}" style="background:${esc(mob.bg||'#f5f6f7')}">
+        <div class="phone-notch">${esc(MOBILE_DEVICES[device]?.label || 'iPhone')} · 预览</div>
+        <div class="board" id="board" style="background:${esc(mob.bg||'#f5f6f7')}"></div>
+      </div>` : `<div class="board" id="board"></div>`}
     </div>`;
   app.querySelector('#back').onclick = leavePreview;
   app.querySelector('#sh').onclick = () => openShareModal();
-  app.querySelector('#mob')?.addEventListener('click', () => { state.mobile = !state.mobile; render(); });
+  app.querySelector('#mob')?.addEventListener('click', () => {
+    state.mobile = !state.mobile;
+    if (state.mobile) {
+      const m = ensureMobile(d);
+      if (!m.enabled || !m.components.length) toast('尚未配置移动布局，显示 PC 窄屏', 'warn');
+    }
+    render();
+  });
   renderQueryBar(app.querySelector('#qbar'));
   renderTabStrip(app.querySelector('#tabStrip'));
   renderBoard(app.querySelector('#board'));
@@ -5882,22 +6310,23 @@ document.getElementById('modNav').onclick = e => {
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(); }
   if ((e.metaKey || e.ctrlKey) && e.key === 'c' && state.selectedId && state.screen === 'editor') {
-    const comp = state.dash.components.find(c => c.id === state.selectedId);
-    if (comp) {
+    const comp = findComp(state.selectedId);
+    if (comp && !comp._mobile) {
       state.clipboard = clone(comp);
       if (comp.chartId) state.clipboard._chart = clone(state.dash.charts[comp.chartId]);
     }
   }
-  if ((e.metaKey || e.ctrlKey) && e.key === 'v' && state.screen === 'editor') pasteComp();
+  if ((e.metaKey || e.ctrlKey) && e.key === 'v' && state.screen === 'editor') {
+    if (isMobileEdit()) toast('移动布局不支持粘贴新建，请从组件池勾选', 'warn');
+    else pasteComp();
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (state.screen !== 'editor' || !state.selectedId) return;
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
-    const comp = state.dash.components.find(c => c.id === state.selectedId);
+    const comp = findComp(state.selectedId);
     if (!comp) return;
     pushUndo();
-    state.dash.components = state.dash.components.filter(c => c.id !== comp.id);
-    if (comp.chartId) delete state.dash.charts[comp.chartId];
-    state.selectedId = null;
+    deleteSelectedComp(comp);
     markDirty();
     render();
   }

@@ -8,9 +8,15 @@
 
 | 提案 | 说明 | 状态 |
 |------|------|------|
-| [P001 移动端布局 C 档](./proposals/P001-mobile-layout-c.md) | DataEase 对齐：独立布局 + 样式同步/分设 | draft |
+| [P001 移动端布局 C 档](./proposals/P001-mobile-layout-c.md) | DataEase 对齐：独立布局 + 样式同步/分设 | accepted → [v0.2.0](./specs/v0.2.0-mobile-layout.md) |
 
 全部提案目录：[proposals/README.md](./proposals/README.md)
+
+### 已冻结规格（specs）
+
+| 规格 | 说明 |
+|------|------|
+| [v0.2.0 移动端布局](./specs/v0.2.0-mobile-layout.md) | C 档：独立布局 + styleSync |
 
 ### 架构与契约（当前）
 
@@ -37,4 +43,4 @@
 3. 里程碑冻结 → 写入 `specs/vX.Y.Z-*.md`，并在 CHANGELOG 记一笔
 4. 根目录旧文档逐步迁入 `architecture/` / `specs/`，索引保持可点
 
-下一规格目标：**v0.2.0**（含 P001 移动端 C 档，待实现后晋升）。
+下一规格目标：后续提案自 **v0.3.0** 起编号。

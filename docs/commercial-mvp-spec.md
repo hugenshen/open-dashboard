@@ -32,7 +32,7 @@
 - Tab 容器、切片器组件
 - 维度下钻（category 点击进下一层）
 - 主题 3～5 套 + KPI 条件格式
-- 移动端：观看预览（历史：375 视口套壳）→ **独立布局 + 样式同步/分设 见提案 [P001](./proposals/P001-mobile-layout-c.md)**
+- 移动端：观看预览（历史：375 视口套壳）→ **独立布局 + 样式同步/分设 已落地，见 [P001](./proposals/P001-mobile-layout-c.md) / [v0.2.0](./specs/v0.2.0-mobile-layout.md)**
 
 ## Phase C — Quick BI 向深度
 

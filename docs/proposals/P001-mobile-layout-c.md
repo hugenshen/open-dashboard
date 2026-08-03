@@ -1,10 +1,10 @@
 ---
 id: P001
 title: 移动端布局与样式（DataEase C 档）
-status: draft
+status: accepted
 target_spec: v0.2.0
 date: 2026-08-03
-implemented_in: null
+implemented_in: v0.2.0
 prototype: frontend/hi-fi/dashboard-commercial.html
 ---
 
@@ -110,17 +110,20 @@ flowchart TB
 
 ## 验收
 
-- [ ] PC / 移动布局切换互不覆盖对方坐标
-- [ ] 勾选上板、拖拽改尺寸后，手机框预览顺序正确
-- [ ] 关闭同步改标题商务蓝仅移动端变化；开启后跟随 PC
-- [ ] 列表有移动端标识；未开启时移动预览有明确提示
+- [x] PC / 移动布局切换互不覆盖对方坐标
+- [x] 勾选上板、拖拽改尺寸后，手机框预览顺序正确
+- [x] 关闭同步改标题商务蓝仅移动端变化；开启后跟随 PC
+- [x] 列表有移动端标识；未开启时移动预览有明确提示
 
 ## 实现备注
 
-（落地后填写：关键函数名、与 Phase 文案差异、已知限制）
+- 规格：[v0.2.0-mobile-layout.md](../specs/v0.2.0-mobile-layout.md)
+- Phase A 仅桌面；Phase B+ 顶栏「PC布局 / 移动布局」切换（替换旧「一点击进预览」）
+- 已知限制：移动端不新建组件（仅池勾选）；样式分设时右侧仍展示完整样式面板（写入覆盖袋）
 
 ## 修订记录
 
 | 日期 | 变更 |
 |------|------|
 | 2026-08-03 | 初稿：选定 C 档，写入 proposals |
+| 2026-08-03 | 高保落地，状态 accepted → v0.2.0 |
