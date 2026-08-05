@@ -1,9 +1,7 @@
-# 技术选型（v0.3 锁定）
+# 技术选型（锁定）
 
-> 状态：accepted · 日期：2026-08-03  
-> 关联：[requirements/v0.3.0-core.md](./requirements/v0.3.0-core.md) · [specs/v0.3.0-core.md](./specs/v0.3.0-core.md)
-
-本页为 **核心版本不可再摇摆** 的技术选择。变更须走提案（`docs/proposals/`）。
+> 状态：accepted · 随 v0.3/v0.4 实现冻结  
+> 变更须更新本文，并同步 [product/roadmap.md](./product/roadmap.md)
 
 ## 前端
 
@@ -15,10 +13,10 @@
 | 状态 | Pinia |
 | 路由 | Vue Router |
 | 图表 | ECharts |
-| 表格 | 轻量自研 / 原生表格优先；透视 S2 **不**作为本期硬依赖 |
+| 报告 | `@umoteam/editor`（Tiptap） |
+| 表格 | 轻量自研 / 原生表格；透视 S2 **非**硬依赖 |
 
-产品入口：`frontend/`（Vite 应用）。  
-交互参照：`prototypes/hi-fi/`（静态高保，非运行时）。
+产品入口：`frontend/`。交互参照：`prototypes/hi-fi/`（非运行时）。
 
 ## 后端
 
@@ -26,40 +24,41 @@
 |----|------|
 | 语言 / 运行时 | **JDK 21** |
 | 框架 | **Spring Boot 3.3+**（Web、Validation、Actuator） |
-| 持久化 | **Spring JDBC + 手写 Repository**（薄层，对齐 schema） |
+| 持久化 | **Spring JDBC + 手写 Repository** |
 | 迁移 | Flyway |
+| 架构 | COLA 多模块（domain / app / infrastructure / adapter / start） |
 | 包名 | `io.opendashboard` |
-| API | REST；契约源 [`openapi.yaml`](./openapi.yaml) |
+| API | REST；契约 [`openapi.yaml`](./openapi.yaml) |
 
-配置 CRUD 与取数分层见 [backend-architecture.md](./backend-architecture.md)、[data-query-architecture.md](./data-query-architecture.md)。
+详见 [design/backend.md](./design/backend.md)、[design/data-query.md](./design/data-query.md)。
 
 ## 数据库
 
 | 项 | 选择 |
 |----|------|
 | 引擎 | **PostgreSQL 16** |
-| 配置库 | 仪表盘树 / 布局 / 组件 / 图表 / 联动 / ACL / 分享 |
-| JSON | 配置类字段用 `JSONB`；移动端布局：`de_dashboard_layout.mobile_json` |
-| 业务库 | 与配置库逻辑分离；本期可同一实例、不同 schema（`config` / 后续 `engine`） |
+| 配置库 | 看板 / 数据源 / 数据集 / 报告 / 分享 |
+| JSON | 配置类字段用 `JSONB`；移动端：`mobile_json` |
+| 业务库 | 经 Dataset JDBC 访问；可与配置库同实例 |
 
-## 取数协议（契约层）
+## 取数协议
 
 | 接口 | 职责 |
 |------|------|
-| `POST /chartQuery/query` | 看板运行时：读图配置 + context → 编译 QuerySpec → 塑形 |
-| `POST /datasetQuery/execute` | **唯一**触达数据源的查询入口：QuerySpec → ResultTable |
+| `POST /chartQuery/query` | 看板 / 报告运行时取数 |
+| `POST /datasetQuery/execute` | **唯一**触达数据源的通用查询入口 |
 
-风格 / 高级配置 **永不**进入 SQL。
+风格 / 高级展示配置 **永不**进入 SQL。
 
-## 明确不选（本期）
+## 明确不选
 
-- 单页 HTML 作为产品运行时
-- DataEase 式「整份 ChartViewDTO = getData」
-- MyBatis-Plus / JPA 重 ORM（可后议，非默认）
-- 原生 App、完整工作台 / 数据源管理 UI（见 requirements Out of scope）
+- 单页 HTML 作为产品运行时  
+- DataEase 式「整份 ChartViewDTO = getData」路径拷贝  
+- MyBatis-Plus / JPA 作为默认 ORM  
+- 内置登录页 / 绑定单一 OAuth 实现（用 Auth SPI）  
 
 ## 本地依赖
 
-- Node.js 20+（前端与根目录 hi-fi / 旧 TS slice）
-- JDK 21、Maven 3.9+
-- Docker（PostgreSQL via `docker-compose.yml`）
+- Node.js 20+  
+- JDK 21、Maven 3.9+  
+- Docker（推荐一键：`./scripts/up.sh`）

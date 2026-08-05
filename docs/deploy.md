@@ -22,6 +22,7 @@ chmod +x scripts/*.sh
 | 入口 | 默认地址 |
 |------|----------|
 | Web UI | http://127.0.0.1:8088 |
+| 用户手册 | http://127.0.0.1:8088/help/（顶栏右侧「帮助」） |
 | API | http://127.0.0.1:8080/api |
 | Health | http://127.0.0.1:8080/actuator/health |
 | Postgres | localhost:5434（user/db/password 见 `.env`） |
