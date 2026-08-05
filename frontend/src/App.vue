@@ -1,18 +1,14 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
+const fullBleed = computed(() => !!route.meta.fullBleed)
+</script>
+
 <template>
-  <div class="app-shell">
-    <header class="topbar">
-      <router-link class="brand" to="/list">Open Dashboard</router-link>
-      <nav>
-        <router-link to="/list">仪表盘</router-link>
-        <router-link to="/editor/1">编辑器</router-link>
-        <router-link to="/reports">报告</router-link>
-        <router-link to="/preview/1">预览</router-link>
-        <a href="http://127.0.0.1:8765/dashboard-commercial.html" target="_blank" rel="noreferrer">
-          高保参照
-        </a>
-      </nav>
-    </header>
-    <main class="main">
+  <div class="app-shell" :class="{ 'full-bleed': fullBleed }">
+    <main class="main" :class="{ 'main-bleed': fullBleed }">
       <router-view />
     </main>
   </div>

@@ -1,0 +1,241 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { dashboardApi, dashboardTreeApi } from '../../api/dashboard'
+import { datasetApi } from '../../dataset/api'
+import {
+  datasetsToHiFi,
+  detailToHiFi,
+  hiFiToSavePayload,
+  type HiFiDash
+} from './adapter'
+import EditorOnboarding from './EditorOnboarding.vue'
+import './editor.css'
+
+const props = defineProps<{
+  mode?: 'editor' | 'preview'
+}>()
+
+const route = useRoute()
+const router = useRouter()
+const error = ref('')
+const loading = ref(true)
+const saving = ref(false)
+const guideReady = ref(false)
+const forceGuide = computed(() => route.query.guide === '1')
+
+let runtime: { getDash: () => HiFiDash; destroy: () => void; rerender: () => void } | null = null
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let knownCompIds = new Set<string>()
+let knownChartIds = new Set<string>()
+
+const dashId = () => String(route.params.id || '')
+
+async function persist(dash: HiFiDash, { publish = false } = {}) {
+  if (props.mode === 'preview') return
+  saving.value = true
+  try {
+    const payload = hiFiToSavePayload(dash)
+    const contentId = payload.meta.contentId || '1'
+
+    // rename if needed
+    try {
+      await dashboardTreeApi.rename({ id: dash.id, name: dash.name })
+    } catch {
+      /* ignore */
+    }
+
+    await dashboardApi.updateLayout(dash.id, {
+      gridCols: payload.layout.gridCols,
+      gridRows: payload.layout.gridRows,
+      extStyle: payload.layout.extStyle,
+      mobile: payload.layout.mobile as never,
+      contentId
+    })
+
+    const deleteIds = [...knownCompIds].filter((id) => !payload.components.some((c) => c.id === id))
+    await dashboardApi.updateComponents(dash.id, {
+      upsert: payload.components,
+      deleteIds,
+      contentId
+    })
+    knownCompIds = new Set(payload.components.map((c) => c.id))
+
+    for (const chart of Object.values(payload.charts)) {
+      await dashboardApi.saveChart(dash.id, chart.id, {
+        datasetId: chart.datasetId,
+        chartType: chart.chartType,
+        title: chart.title,
+        encode: chart.encode,
+        style: chart.style,
+        senior: chart.senior,
+        contentId
+      })
+    }
+    knownChartIds = new Set(Object.keys(payload.charts))
+
+    try {
+      await dashboardApi.putLinkages(dash.id, payload.linkages)
+    } catch {
+      /* backend may lag */
+    }
+
+    if (publish) {
+      await dashboardApi.publish(dash.id)
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+function scheduleSave(dash: HiFiDash) {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    persist(dash).catch((e) => {
+      error.value = e instanceof Error ? e.message : String(e)
+    })
+  }, 600)
+}
+
+async function boot() {
+  loading.value = true
+  error.value = ''
+  try {
+    const id = dashId()
+    let detail
+    if (props.mode === 'preview') {
+      try {
+        detail = await dashboardApi.get(id, 'published')
+      } catch {
+        detail = await dashboardApi.get(id, 'draft')
+      }
+    } else {
+      detail = await dashboardApi.get(id, 'draft')
+    }
+
+    const list = await datasetApi.list()
+    const details = await Promise.all(list.map((m) => datasetApi.get(m.id)))
+    const dash = detailToHiFi(detail)
+    knownCompIds = new Set(dash.components.map((c) => c.id))
+    knownChartIds = new Set(Object.keys(dash.charts))
+
+    loading.value = false
+    await nextTick()
+    const mod = await import('./editorCore.js')
+    runtime?.destroy()
+    runtime = mod.mountHiFiDashboard({
+      mode: props.mode || 'editor',
+      previewFrom: route.query.from === 'edit' ? 'editor' : 'list',
+      dash,
+      datasets: datasetsToHiFi(details),
+      // 与 Vue 根 #app 隔离，避免渲染/销毁时清空整站
+      rootIds: {
+        app: 'od-hifi-app',
+        ctx: 'od-hifi-ctx',
+        mask: 'od-hifi-mask',
+        toasts: 'od-hifi-toasts'
+      },
+      onDirty: (d: HiFiDash) => scheduleSave(d),
+      onBack: () => {
+        if (props.mode === 'preview') {
+          if (route.query.from === 'edit') {
+            router.push(`/dashboards/${id}/edit`)
+          } else {
+            router.push(`/dashboards/${id}`)
+          }
+          return
+        }
+        router.push(`/dashboards/${id}`)
+      },
+      onPreview: () => {
+        const d = runtime?.getDash()
+        if (d) {
+          persist(d)
+            .then(() => router.push(`/dashboards/${id}/preview?from=edit`))
+            .catch((e) => {
+              error.value = e instanceof Error ? e.message : String(e)
+            })
+        } else router.push(`/dashboards/${id}/preview?from=edit`)
+      },
+      onPublish: async (d: HiFiDash) => {
+        await persist(d, { publish: true })
+      }
+    })
+    guideReady.value = props.mode !== 'preview'
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+    loading.value = false
+    guideReady.value = false
+  }
+}
+
+function onGuideDone() {
+  if (route.query.guide) {
+    const q = { ...route.query }
+    delete q.guide
+    router.replace({ path: route.path, query: q })
+  }
+}
+
+onMounted(boot)
+watch(
+  () => [route.params.id, props.mode],
+  () => boot()
+)
+
+onBeforeUnmount(() => {
+  if (saveTimer) clearTimeout(saveTimer)
+  runtime?.destroy()
+  runtime = null
+})
+</script>
+
+<template>
+  <div class="hifi-dash-root">
+    <div v-if="loading" class="boot">加载编辑器…</div>
+    <div v-if="error" class="boot err">{{ error }}</div>
+    <div class="app" id="od-hifi-app" />
+    <div class="ctx" id="od-hifi-ctx" />
+    <div class="modal-mask" id="od-hifi-mask" />
+    <div class="toast-wrap" id="od-hifi-toasts" />
+    <div v-if="saving" class="save-chip">保存中…</div>
+    <EditorOnboarding
+      v-if="guideReady && !loading && !error"
+      :force="forceGuide"
+      @done="onGuideDone"
+    />
+  </div>
+</template>
+
+<style scoped>
+.hifi-dash-root {
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.boot {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #646a73;
+  font-size: 14px;
+}
+.boot.err {
+  color: #f54a45;
+  padding: 2rem;
+}
+.save-chip {
+  position: fixed;
+  right: 316px;
+  bottom: 60px;
+  z-index: 80;
+  background: rgba(31, 35, 41, 0.88);
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+</style>

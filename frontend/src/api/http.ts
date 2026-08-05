@@ -1,0 +1,82 @@
+/**
+ * Shared fetch helper: attaches pluggable identity headers (no login page).
+ * Customers replace getAuthHeaders() to inject SSO/JWT tokens.
+ */
+
+const AUTH_STORAGE_KEY = 'od.auth.headers'
+
+export type AuthHeaderBundle = {
+  userId: string
+  displayName: string
+  permissions: string
+}
+
+const DEFAULT_AUTH: AuthHeaderBundle = {
+  userId: 'demo',
+  displayName: '演示用户',
+  permissions: '*'
+}
+
+export function getAuthHeaders(): Record<string, string> {
+  let bundle = DEFAULT_AUTH
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AuthHeaderBundle>
+      bundle = {
+        userId: parsed.userId || DEFAULT_AUTH.userId,
+        displayName: parsed.displayName || DEFAULT_AUTH.displayName,
+        permissions: parsed.permissions || DEFAULT_AUTH.permissions
+      }
+    } else {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(DEFAULT_AUTH))
+    }
+  } catch {
+    /* ignore */
+  }
+  // fetch header values must be ISO-8859-1; encode non-ASCII display names
+  return {
+    'X-User-Id': bundle.userId,
+    'X-User-Name': encodeURIComponent(bundle.displayName),
+    'X-User-Perms': bundle.permissions
+  }
+}
+
+export function setAuthHeaders(bundle: Partial<AuthHeaderBundle>) {
+  const next = { ...DEFAULT_AUTH, ...bundle }
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next))
+}
+
+export async function apiFetch<T>(
+  url: string,
+  opts: {
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+    data?: unknown
+    params?: Record<string, string>
+  } = {}
+): Promise<T> {
+  const method = opts.method || 'GET'
+  const qs = opts.params ? `?${new URLSearchParams(opts.params)}` : ''
+  const res = await fetch(`/api${url}${qs}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
+    body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(opts.data ?? {})
+  })
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const body = await res.json()
+      detail = body?.message ? `: ${body.message}` : ''
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`${method} ${url} → ${res.status}${detail}`)
+  }
+  if (res.status === 204) return undefined as T
+  const text = await res.text()
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
+}

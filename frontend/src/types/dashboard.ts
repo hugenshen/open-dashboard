@@ -7,7 +7,7 @@ export type NodeType = 'folder' | 'dashboard'
 export type PublishStatus = 'draft' | 'published' | 'publishedWithDraft'
 export type CopyType = 'draft' | 'published'
 export type LayoutMode = 'grid' | 'free'
-export type ComponentType = 'chart' | 'filter' | 'text' | 'image' | 'tabs'
+export type ComponentType = 'chart' | 'filter' | 'text' | 'image' | 'tabs' | 'slicer' | 'tab' | string
 export type ViewMode = 'draft' | 'published'
 
 export interface BusiNodeRequest {
@@ -30,6 +30,15 @@ export interface DashboardCreateRequest {
   name: string
   nodeType: NodeType
   layoutMode?: LayoutMode
+  /** Built-in template: blank | sales | ops | finance */
+  templateId?: string
+}
+
+export interface DashboardTemplateVO {
+  id: string
+  name: string
+  domain: string
+  description: string
 }
 
 export interface DashboardRenameRequest {
@@ -141,7 +150,18 @@ export interface DashboardLayoutUpdateRequest {
   themeRef?: string
   refreshSec?: number
   extStyle?: Record<string, unknown>
+  mobile?: MobileLayoutVO
   contentId: string
+}
+
+export interface DashboardShareVO {
+  id?: string
+  dashboardId: string
+  token: string
+  visibility: string
+  perm: string
+  enabled: boolean
+  expireAt?: number | null
 }
 
 export interface DashboardComponentsUpdateRequest {

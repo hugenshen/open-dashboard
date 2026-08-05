@@ -17,12 +17,13 @@ import type {
   DashboardNodeVO,
   DashboardRenameRequest,
   DashboardStatusVO,
+  DashboardTemplateVO,
   ViewMode
 } from '../types/dashboard'
 
 /**
- * API clients for target product.
- * Wire `request` to your HTTP layer (axios/fetch). Default uses in-memory backend for local demos.
+ * Dashboard / chartQuery HTTP API clients.
+ * Wire via `setDashboardHttpClient` (see main.ts → apiFetch).
  */
 
 export type HttpClient = <T>(opts: {
@@ -45,7 +46,7 @@ async function call<T>(opts: {
   params?: Record<string, string>
 }): Promise<T> {
   if (!http) {
-    throw new Error('setDashboardHttpClient() first, or use createInMemoryClient()')
+    throw new Error('setDashboardHttpClient() must be called before using dashboard APIs')
   }
   return http<T>(opts)
 }
@@ -66,6 +67,7 @@ export const dashboardTreeApi = {
 }
 
 export const dashboardApi = {
+  listTemplates: () => call<DashboardTemplateVO[]>({ method: 'GET', url: '/dashboard/templates' }),
   get: (id: string, view: ViewMode = 'draft') =>
     call<DashboardDetailVO>({ method: 'GET', url: `/dashboard/${id}`, params: { view } }),
   updateLayout: (id: string, data: DashboardLayoutUpdateRequest) =>
@@ -86,7 +88,15 @@ export const dashboardApi = {
     call<DashboardStatusVO>({ method: 'POST', url: `/dashboard/${id}/publish` }),
   discardDraft: (id: string) =>
     call<DashboardStatusVO>({ method: 'POST', url: `/dashboard/${id}/discardDraft` }),
-  status: (id: string) => call<DashboardStatusVO>({ method: 'GET', url: `/dashboard/${id}/status` })
+  status: (id: string) => call<DashboardStatusVO>({ method: 'GET', url: `/dashboard/${id}/status` }),
+  share: (id: string, data?: { visibility?: string; perm?: string }) =>
+    call<import('../types/dashboard').DashboardShareVO>({
+      method: 'POST',
+      url: `/dashboard/${id}/share`,
+      data
+    }),
+  getShare: (id: string) =>
+    call<import('../types/dashboard').DashboardShareVO>({ method: 'GET', url: `/dashboard/${id}/share` })
 }
 
 export const chartQueryApi = {

@@ -1,0 +1,324 @@
+import type {
+  ChartViewVO,
+  DashboardComponentVO,
+  DashboardDetailVO,
+  DashboardLinkageVO,
+  MobileLayoutVO
+} from '../../types/dashboard'
+import type { DatasetDetailVO } from '../../dataset/api'
+
+/** Hi-fi in-memory dash model (subset used by editorCore). */
+export interface HiFiDash {
+  id: string
+  name: string
+  status: string
+  contentId: string
+  version: number
+  theme: string
+  components: HiFiComp[]
+  charts: Record<string, HiFiChart>
+  linkages: HiFiLinkage[]
+  jumps: unknown[]
+  alerts: unknown[]
+  tabs: Array<{ id: string; name: string }>
+  activeTab: string
+  share: { token?: string; visibility?: string; perm?: string } | null
+  mobile: MobileLayoutVO & { enabled?: boolean; device?: string; bg?: string; components?: unknown[] }
+  folder?: string
+  desc?: string
+  updateBy?: string
+  updateTime?: string
+  datasetIds?: string[]
+}
+
+export interface HiFiComp {
+  id: string
+  type: string
+  tabId?: string
+  x: number
+  y: number
+  w: number
+  h: number
+  z: number
+  chartId?: string
+  props?: Record<string, unknown>
+}
+
+export interface HiFiChart {
+  id: string
+  title?: string
+  chartType: string
+  datasetId: string | null
+  encode: Record<string, unknown>
+  style?: Record<string, unknown>
+  senior?: Record<string, unknown>
+  fieldRoles?: Record<string, string>
+}
+
+export interface HiFiLinkage {
+  id?: string
+  sourceChartId: string
+  sourceField: string
+  targetChartId: string
+  targetField: string
+  enabled: boolean
+}
+
+const STUB_ROWS: Record<string, Record<string, unknown>[]> = {
+  ds_sales: [
+    { region: '华东', product: 'A', channel: '线上', salesman: '张三', amount: 1200, qty: 30, profit: 420, order_cnt: 12, date: '2026-07-01' },
+    { region: '华东', product: 'B', channel: '线下', salesman: '李四', amount: 860, qty: 18, profit: 210, order_cnt: 8, date: '2026-07-02' },
+    { region: '华北', product: 'A', channel: '线上', salesman: '王五', amount: 980, qty: 22, profit: 300, order_cnt: 10, date: '2026-07-03' },
+    { region: '华北', product: 'C', channel: '投放', salesman: '张三', amount: 640, qty: 14, profit: 160, order_cnt: 6, date: '2026-07-04' },
+    { region: '华南', product: 'B', channel: '线上', salesman: '赵六', amount: 760, qty: 16, profit: 190, order_cnt: 7, date: '2026-07-05' },
+    { region: '华南', product: 'C', channel: '线下', salesman: '李四', amount: 520, qty: 11, profit: 120, order_cnt: 5, date: '2026-07-06' }
+  ],
+  ds_ops: [
+    { day: '周一', module: '首页', platform: 'App', channel: '自然', uv: 1200, pv: 3400, bounce: 0.32, duration: 48, date: '2026-07-01' },
+    { day: '周一', module: '详情', platform: 'H5', channel: '投放', uv: 800, pv: 2100, bounce: 0.41, duration: 36, date: '2026-07-01' },
+    { day: '周二', module: '搜索', platform: 'App', channel: '分享', uv: 420, pv: 980, bounce: 0.25, duration: 55, date: '2026-07-02' },
+    { day: '周二', module: '首页', platform: 'App', channel: '自然', uv: 1400, pv: 3900, bounce: 0.28, duration: 52, date: '2026-07-02' },
+    { day: '周三', module: '结算', platform: 'App', channel: '投放', uv: 620, pv: 1500, bounce: 0.22, duration: 70, date: '2026-07-03' },
+    { day: '周四', module: '详情', platform: 'H5', channel: '分享', uv: 760, pv: 1900, bounce: 0.36, duration: 38, date: '2026-07-04' }
+  ],
+  ds_fin: [
+    { month: '4月', subject: '商品销售', dept: '电商', income: 760000, expense: 480000, profit: 280000 },
+    { month: '4月', subject: '服务费', dept: '零售', income: 110000, expense: 38000, profit: 72000 },
+    { month: '5月', subject: '商品销售', dept: '电商', income: 820000, expense: 510000, profit: 310000 },
+    { month: '5月', subject: '广告投放', dept: '市场', income: 0, expense: 95000, profit: -95000 },
+    { month: '6月', subject: '商品销售', dept: '电商', income: 910000, expense: 560000, profit: 350000 },
+    { month: '7月', subject: '人力成本', dept: '中台', income: 0, expense: 185000, profit: -185000 }
+  ]
+}
+
+export function datasetsToHiFi(details: DatasetDetailVO[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const d of details) {
+    const id = d.meta.id
+    out[id] = {
+      id,
+      name: d.meta.name,
+      datasourceId: d.meta.datasourceId,
+      folder: d.meta.folder,
+      fields: d.fields.map((f) => ({
+        name: f.name,
+        label: f.label,
+        group: f.group === 'quota' ? 'quota' : 'dim'
+      })),
+      rows: STUB_ROWS[id] || synthesizeRows(d)
+    }
+  }
+  return out
+}
+
+function synthesizeRows(d: DatasetDetailVO): Record<string, unknown>[] {
+  const dims = d.fields.filter((f) => f.group === 'dim')
+  const quotas = d.fields.filter((f) => f.group === 'quota')
+  const rows: Record<string, unknown>[] = []
+  for (let i = 0; i < 6; i++) {
+    const row: Record<string, unknown> = { date: `2026-07-0${(i % 9) + 1}` }
+    dims.forEach((f, di) => {
+      row[f.name] = `${f.label || f.name}${String.fromCharCode(65 + ((i + di) % 4))}`
+    })
+    quotas.forEach((f, qi) => {
+      row[f.name] = 40 + i * 17 + qi * 11
+    })
+    rows.push(row)
+  }
+  return rows
+}
+
+/** Product layout uses 72 cols; hi-fi editor canvas uses 12 cols. */
+const GRID_SCALE = 6
+
+function needsDownscale(comps: Array<{ x: number; w: number }>) {
+  return comps.some((c) => c.w > 12 || c.x + c.w > 12)
+}
+
+/** Hi-fi row units needed so ECharts/KPI are not crushed after 72→12 scale. */
+function minHiFiHeight(type: string, chartType?: string) {
+  if (type === 'slicer' || type === 'text' || type === 'query') return 1
+  if (chartType === 'kpi') return 2
+  if (chartType === 'pie') return 4
+  if (chartType === 'table' || chartType === 'grouptable' || chartType === 'detailtable' || chartType === 'pivot') {
+    return 4
+  }
+  // bar / line / area / hbar …
+  return 4
+}
+
+function rectsOverlap(a: HiFiComp, b: HiFiComp) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+}
+
+/** Clamp short charts and push later ones down so 72-col seed (h=12→2) still paints. */
+function normalizeHiFiLayout(comps: HiFiComp[], charts: Record<string, HiFiChart>) {
+  for (const c of comps) {
+    const chartType = c.chartId ? charts[c.chartId]?.chartType : undefined
+    c.h = Math.max(c.h, minHiFiHeight(c.type, chartType))
+  }
+  const sorted = [...comps].sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id))
+  for (let i = 0; i < sorted.length; i++) {
+    const cur = sorted[i]
+    for (let j = 0; j < i; j++) {
+      const prev = sorted[j]
+      if (cur.tabId !== prev.tabId) continue
+      if (rectsOverlap(cur, prev)) {
+        cur.y = Math.max(cur.y, prev.y + prev.h)
+      }
+    }
+  }
+}
+
+export function detailToHiFi(detail: DashboardDetailVO): HiFiDash {
+  const ext = (detail.layout.extStyle || {}) as Record<string, unknown>
+  const tabs = (ext.tabs as HiFiDash['tabs']) || [{ id: 'tab_main', name: '概览' }]
+  const activeTab = String(ext.activeTab || tabs[0]?.id || 'tab_main')
+  const jumps = (ext.jumps as unknown[]) || []
+  const alerts = (ext.alerts as unknown[]) || []
+  const share = (ext.share as HiFiDash['share']) || null
+
+  const charts: Record<string, HiFiChart> = {}
+  for (const [id, c] of Object.entries(detail.charts || {})) {
+    charts[id] = {
+      id: c.id,
+      title: c.title,
+      chartType: c.chartType,
+      datasetId: c.datasetId,
+      encode: { ...(c.encode || {}) },
+      style: { ...(c.style || {}) },
+      senior: { ...(c.senior || {}) },
+      fieldRoles: ((c.senior as Record<string, unknown> | undefined)?.fieldRoles as Record<string, string>) || undefined
+    }
+  }
+
+  const rawComps = detail.components || []
+  const down = needsDownscale(rawComps)
+  const components: HiFiComp[] = rawComps.map((c) => ({
+    id: c.id,
+    type: c.type,
+    tabId: String((c.props as Record<string, unknown> | undefined)?.tabId || activeTab),
+    x: down ? Math.round(c.x / GRID_SCALE) : c.x,
+    y: down ? Math.round(c.y / GRID_SCALE) : c.y,
+    w: down ? Math.max(1, Math.round(c.w / GRID_SCALE)) : c.w,
+    h: down ? Math.max(1, Math.round(c.h / GRID_SCALE)) : c.h,
+    z: c.zIndex,
+    chartId: c.chartViewId,
+    props: { ...(c.props || {}), __grid72: true }
+  }))
+  normalizeHiFiLayout(components, charts)
+
+  const mobile = (detail.layout.mobile || {
+    enabled: false,
+    device: 'iphone_14',
+    bg: '#f0f2f5',
+    components: []
+  }) as HiFiDash['mobile']
+
+  return {
+    id: detail.meta.id,
+    name: detail.meta.name,
+    status: detail.meta.status,
+    contentId: detail.meta.contentId,
+    version: detail.meta.version,
+    theme: String(ext.theme || 'default'),
+    components,
+    charts,
+    linkages: (detail.linkages || []).map((l) => ({
+      id: l.id,
+      sourceChartId: l.sourceChartId,
+      sourceField: l.sourceField,
+      targetChartId: l.targetChartId,
+      targetField: l.targetField,
+      enabled: l.enabled !== false
+    })),
+    jumps,
+    alerts,
+    tabs,
+    activeTab,
+    share,
+    mobile,
+    folder: String(ext.folder || '未分组'),
+    desc: String(ext.desc || ''),
+    updateBy: '当前用户',
+    updateTime: detail.meta.updateTime
+      ? new Date(detail.meta.updateTime).toLocaleString('zh-CN')
+      : '',
+    datasetIds: [...new Set(Object.values(charts).map((c) => c.datasetId).filter(Boolean) as string[])]
+  }
+}
+
+export function hiFiToSavePayload(dash: HiFiDash) {
+  const components: DashboardComponentVO[] = (dash.components || []).map((c) => {
+    const props = { ...(c.props || {}), tabId: c.tabId }
+    delete (props as Record<string, unknown>).__grid72
+    return {
+      id: c.id,
+      type: c.type as DashboardComponentVO['type'],
+      parentId: '0',
+      chartViewId: c.chartId,
+      // persist as 72-col product grid
+      x: c.x * GRID_SCALE,
+      y: c.y * GRID_SCALE,
+      w: c.w * GRID_SCALE,
+      h: c.h * GRID_SCALE,
+      zIndex: c.z,
+      props
+    }
+  })
+
+  const charts: Record<string, ChartViewVO> = {}
+  for (const [id, c] of Object.entries(dash.charts || {})) {
+    const senior = { ...(c.senior || {}) }
+    if (c.fieldRoles) senior.fieldRoles = c.fieldRoles
+    charts[id] = {
+      id: c.id,
+      dashboardId: dash.id,
+      datasetId: c.datasetId,
+      chartType: c.chartType,
+      title: c.title,
+      encode: { ...(c.encode || {}), datasetId: c.datasetId },
+      style: c.style || {},
+      senior
+    }
+  }
+
+  const linkages: DashboardLinkageVO[] = (dash.linkages || []).map((l) => ({
+    id: l.id,
+    sourceChartId: l.sourceChartId,
+    sourceField: l.sourceField,
+    targetChartId: l.targetChartId,
+    targetField: l.targetField,
+    enabled: l.enabled !== false
+  }))
+
+  const extStyle = {
+    theme: dash.theme,
+    tabs: dash.tabs,
+    activeTab: dash.activeTab,
+    jumps: dash.jumps || [],
+    alerts: dash.alerts || [],
+    share: dash.share,
+    folder: dash.folder,
+    desc: dash.desc
+  }
+
+  return {
+    components,
+    charts,
+    linkages,
+    layout: {
+      gridCols: 72,
+      gridRows: 36,
+      extStyle,
+      mobile: dash.mobile,
+      contentId: dash.contentId
+    },
+    meta: {
+      name: dash.name,
+      status: dash.status,
+      contentId: dash.contentId,
+      version: dash.version
+    }
+  }
+}
