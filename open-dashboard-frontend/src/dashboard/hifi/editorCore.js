@@ -20,8 +20,11 @@ export function mountHiFiDashboard(options) {
   // force product editor mode
   state.phase = 'c';
   state.module = 'dashboard';
-  state.screen = __productOpts.mode === 'preview' ? 'preview' : 'editor';
+  state.screen = (__productOpts.mode === 'preview' || __productOpts.mode === 'share')
+    ? 'preview'
+    : 'editor';
   state.previewFrom = __productOpts.previewFrom === 'editor' ? 'editor' : 'list';
+  state.shareViewer = __productOpts.mode === 'share';
   state.mobile = false;
   state.editSurface = 'pc';
   if (__productOpts.datasets) {
@@ -85,7 +88,7 @@ function wireProductChrome() {
   if (toList && opts.onBack) toList.onclick = () => opts.onBack();
   // 产品预览：#back 走 Vue 路由，避免 leavePreview 在 /preview 内切到 hi-fi 列表屏
   const back = (root && root.querySelector('#back')) || document.getElementById('back');
-  if (back && opts.onBack && opts.mode === 'preview') {
+  if (back && opts.onBack && (opts.mode === 'preview' || opts.mode === 'share')) {
     back.onclick = () => opts.onBack();
   }
   const btnPreview = (root && root.querySelector('#btnPreview')) || document.getElementById('btnPreview');
@@ -99,8 +102,8 @@ function wireProductChrome() {
 }
 
 
-const COL = 12, COL_MOBILE = 6, ROW_H = 52, GAP = 16, EXTRA_ROWS = 6;
-const ROW_H_MOBILE = 48, GAP_MOBILE = 8, EXTRA_ROWS_MOBILE = 2;
+const COL = 12, COL_MOBILE = 6, ROW_H = 52, GAP = 16, EXTRA_ROWS = 2;
+const ROW_H_MOBILE = 48, GAP_MOBILE = 8, EXTRA_ROWS_MOBILE = 1;
 const MOBILE_DEVICE_GROUPS = [
   { id: 'ios', label: 'iOS' },
   { id: 'android', label: 'Android' },
@@ -300,7 +303,11 @@ function gridCols() {
 }
 function rowH() { return isMobileMetrics() ? ROW_H_MOBILE : ROW_H; }
 function gapSize() { return isMobileMetrics() ? GAP_MOBILE : GAP; }
-function extraRows() { return isMobileMetrics() ? EXTRA_ROWS_MOBILE : EXTRA_ROWS; }
+function extraRows() {
+  // 预览/分享按内容收紧高度；编辑态仅留少量落点空间
+  if (isPreviewReadonly()) return 0;
+  return isMobileMetrics() ? EXTRA_ROWS_MOBILE : EXTRA_ROWS;
+}
 
 /** 按机型宽高比缩放手机框，居中放入舞台，避免下方留出大块空灰 */
 function fitMobilePhone() {
@@ -1166,6 +1173,7 @@ const state = {
   screen: 'list',      // list | editor | preview（仪表盘）；报告用 list | editor
   phase: 'a',
   mobile: false,
+  shareViewer: false,  // 公开分享访客：无管理工具栏
   editSurface: 'pc', // pc | mobile（编辑器画布）
   leftTab: 'comp',
   rightTab: 'data',
@@ -1265,6 +1273,31 @@ function emptyEncode(kind) {
   const base = { agg: 'SUM', format: kind === 'table' ? 'raw' : 'thousand', calc: 'none' };
   if (kind === 'kpi') return { ...base, calc: 'none' };
   return { ...base };
+}
+
+/** 切换图表类型：继承维度/指标/筛选，按新类型槽位上限裁剪 */
+function adaptEncodeForChartType(prev, nextType) {
+  const base = emptyEncode(nextType);
+  const src = prev || {};
+  const next = {
+    ...base,
+    agg: src.agg || base.agg,
+    format: src.format || base.format,
+    calc: src.calc || base.calc,
+    filters: Array.isArray(src.filters) ? src.filters.map((f) => ({ ...f })) : []
+  };
+  const meta = CHART_META[nextType] || CHART_META.bar;
+  for (const slot of ['category', 'value', 'colDim', 'color']) {
+    const fields = encodeFields(src, slot);
+    if (!fields.length) continue;
+    if (!meta.slots?.[slot]) {
+      // 新类型暂无此槽：原样保留，便于切回时恢复
+      setEncodeFields(next, slot, fields);
+      continue;
+    }
+    setEncodeFields(next, slot, fields.slice(0, slotMax(nextType, slot)));
+  }
+  return next;
 }
 
 function mkChart(type, title, encodeExtra = {}, styleExtra = {}, datasetId = 'ds_sales') {
@@ -6250,14 +6283,15 @@ function renderTabStrip(el) {
   const show = state.phase !== 'a' && d.tabs.length > 0;
   el.classList.toggle('show', show);
   if (!show) { el.innerHTML = ''; return; }
-  const canClose = d.tabs.length > 1;
+  const readonly = isPreviewReadonly();
+  const canClose = !readonly && d.tabs.length > 1;
   el.innerHTML = d.tabs.map(t => {
     const on = t.id === d.activeTab;
     return `<div class="tab-item ${on ? 'on' : ''}" data-tab="${t.id}">
-      <button type="button" class="tab-lab" data-tab-switch="${t.id}" title="双击重命名">${esc(t.name)}</button>
+      <button type="button" class="tab-lab" data-tab-switch="${t.id}" ${readonly ? '' : 'title="双击重命名"'}>${esc(t.name)}</button>
       ${canClose ? `<button type="button" class="tab-close" data-tab-del="${t.id}" title="删除页签">×</button>` : ''}
     </div>`;
-  }).join('') + `<button type="button" class="tab-add" id="tabAdd" title="新建页签">+</button>`;
+  }).join('') + (readonly ? '' : `<button type="button" class="tab-add" id="tabAdd" title="新建页签">+</button>`);
 
   el.querySelectorAll('[data-tab-switch]').forEach(b => {
     b.onclick = () => {
@@ -6265,6 +6299,7 @@ function renderTabStrip(el) {
       state.selectedId = null;
       render();
     };
+    if (readonly) return;
     b.ondblclick = e => {
       e.preventDefault();
       e.stopPropagation();
@@ -6280,6 +6315,7 @@ function renderTabStrip(el) {
       render();
     };
   });
+  if (readonly) return;
   el.querySelectorAll('[data-tab-del]').forEach(b => {
     b.onclick = e => {
       e.stopPropagation();
@@ -7865,8 +7901,9 @@ function renderDataPanel(el, comp) {
   };
   el.querySelector('#ctype').onchange = e => {
     pushUndo();
+    const prev = ch.encode;
     ch.chartType = e.target.value;
-    ch.encode = emptyEncode(ch.chartType);
+    ch.encode = adaptEncodeForChartType(prev, ch.chartType);
     markChartPending(ch.id);
     patchChart(ch, { inspector: true, flash: false, paint: false });
   };
@@ -8856,9 +8893,18 @@ function openPublishedPreview(from) {
   render();
 }
 
+function isShareViewer() {
+  return !!state.shareViewer || __productOpts?.mode === 'share';
+}
+
 function renderPreview(app) {
   const d = state.dash;
+  const shareViewer = isShareViewer();
   if (!d || d.status === 'draft') {
+    if (shareViewer) {
+      app.innerHTML = `<div class="empty" style="position:relative;margin:40px"><p>分享内容不可用</p></div>`;
+      return;
+    }
     app.innerHTML = `<div class="bar"><button type="button" class="btn ghost" id="back">← 返回</button><b>尚未发布</b></div>
       <div class="empty" style="position:relative;margin:40px">
         <p>草稿没有已发布版本可预览</p>
@@ -8875,11 +8921,13 @@ function renderPreview(app) {
   }
   const backLabel = state.previewFrom === 'editor' ? '← 返回编辑' : '← 返回列表';
   const mob = ensureMobile(d);
-  const narrow = isNarrowPreview();
+  const narrow = shareViewer ? false : isNarrowPreview();
   const useMobLay = useMobileLayout();
   const adapted = narrow && !useMobLay;
-  app.innerHTML = `
-    <div class="bar">
+  // 分享访客：仅看板内容 + 查询条件，无管理工具栏
+  const barHtml = shareViewer
+    ? ''
+    : `<div class="bar">
       <button type="button" class="btn ghost" id="back">${backLabel}</button>
       <b>${esc(d.name)}</b>
       <span class="tag pub">已发布只读</span>
@@ -8889,27 +8937,31 @@ function renderPreview(app) {
       ${state.phase!=='a'?`<button type="button" class="btn ghost" id="mob" title="在手机机框中预览窄屏效果">${narrow?'桌面预览':'手机预览'}</button>`:''}
       <button type="button" class="btn" id="dl">下载数据</button>
       <button type="button" class="btn" id="sh">分享</button>
-    </div>
+    </div>`;
+  app.innerHTML = `
+    ${barHtml}
     <div class="canvas-wrap ${narrow?'mobile-edit':''}" id="cwrap" style="flex:1;min-height:0">
       ${narrow
         ? phoneShellHtml(mob, { mode: 'preview' })
         : `<div class="tab-strip" id="tabStrip"></div><div class="board" id="board"></div>`}
     </div>`;
-  app.querySelector('#back').onclick = leavePreview;
-  app.querySelector('#sh').onclick = () => openShareModal();
-  app.querySelector('#dl')?.addEventListener('click', () => exportCsv());
-  app.querySelector('#mob')?.addEventListener('click', () => {
-    state.mobile = !state.mobile;
-    if (state.mobile) {
-      const m = ensureMobile(d);
-      if (!m.enabled || !m.components.length) {
-        toast('未配置专属移动布局：已将组件竖排适配手机预览', 'ok');
-      } else {
-        toast('已切换手机预览（专属移动布局）', 'ok');
+  if (!shareViewer) {
+    app.querySelector('#back').onclick = leavePreview;
+    app.querySelector('#sh').onclick = () => openShareModal();
+    app.querySelector('#dl')?.addEventListener('click', () => exportCsv());
+    app.querySelector('#mob')?.addEventListener('click', () => {
+      state.mobile = !state.mobile;
+      if (state.mobile) {
+        const m = ensureMobile(d);
+        if (!m.enabled || !m.components.length) {
+          toast('未配置专属移动布局：已将组件竖排适配手机预览', 'ok');
+        } else {
+          toast('已切换手机预览（专属移动布局）', 'ok');
+        }
       }
-    }
-    render();
-  });
+      render();
+    });
+  }
   if (app.querySelector('#tabStrip')) renderTabStrip(app.querySelector('#tabStrip'));
   if (narrow) {
     if (useMobLay) ensureMobileKpiRoom();

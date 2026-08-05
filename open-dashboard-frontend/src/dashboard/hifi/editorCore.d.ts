@@ -1,6 +1,6 @@
 declare module '*.js' {
   export function mountHiFiDashboard(options: {
-    mode?: 'editor' | 'preview'
+    mode?: 'editor' | 'preview' | 'share'
     /** 预览页返回去向：editor → 编辑器；list → 列表 */
     previewFrom?: 'editor' | 'list'
     dash: unknown
