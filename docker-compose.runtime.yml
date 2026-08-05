@@ -1,0 +1,10 @@
+# Local/prebuilt override: skip multi-stage Maven/Node builds inside Docker.
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.runtime
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.runtime
