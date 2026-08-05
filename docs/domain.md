@@ -111,4 +111,4 @@ stateDiagram-v2
 }
 ```
 
-`ChartQueryManage` 将 filters + linkages 合并为 Dataset 层过滤条件，再执行聚合。
+`chartQuery`（应用层）将 filters + linkages 合并为 Dataset 层过滤条件，再执行聚合。

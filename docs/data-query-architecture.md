@@ -279,7 +279,7 @@ DatasetQueryManage.execute(req, user):
 **ChartQuery = 编译器 + 薄塑形**，内部只调用 `datasetQuery.execute`。
 
 ```text
-ChartQueryManage.query(req, user|token):
+ChartQuery.query(req, user|token):
   dash = loadDashboard(req.dashboardId, req.view)   // draft|published
   assertDashboardAccess(...)
   chart = loadChart(req.chartId) | req.inline
@@ -289,7 +289,7 @@ ChartQueryManage.query(req, user|token):
        // filters + linkages(for this chart) + drill → FilterNode
 
   spec = encodeToQuerySpec(chart.chartType, chart.encode, ctxFilters)
-  raw = DatasetQueryManage.execute(spec, user)
+  raw = DatasetQuery.execute(spec, user)
 
   return shapeForChart(chart.chartType, chart.encode, raw)
        // bar/line → categories+series
@@ -402,14 +402,10 @@ context: {
 推荐包结构：
 
 ```text
-datasource/
-  api / manage / connector(mysql|pg|...|excel)
-dataset/
-  api / manage / query(DatasetQueryManage) / permission
-dashboard/
-  api / manage(canvas|publish|share)
-chart/
-  api / manage(ChartQueryManage = compile + shape)
+io.opendashboard
+  api/            DatasourceController · DatasetController · DashboardController · ChartQueryController
+  application/    DatasourceService · DatasetService · DashboardAppService · StubQueryService
+  infrastructure/ JDBC 连接 / 持久化 / Flyway
 ```
 
 ---

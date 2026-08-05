@@ -13,8 +13,161 @@ tags:
   - name: chartQuery
   - name: datasetQuery
   - name: report
+  - name: datasource
+  - name: dataset
+  - name: catalog
 
 paths:
+  /datasource:
+    get:
+      tags: [datasource]
+      summary: List datasources
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [datasource]
+      summary: Create datasource
+      responses:
+        '200':
+          description: OK
+  /datasource/{id}:
+    get:
+      tags: [datasource]
+      summary: Get datasource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+    patch:
+      tags: [datasource]
+      summary: Update datasource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+    delete:
+      tags: [datasource]
+      summary: Delete datasource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: No Content
+  /datasource/{id}/ping:
+    post:
+      tags: [datasource]
+      summary: Stub ping datasource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+  /datasource/{id}/tables:
+    get:
+      tags: [datasource]
+      summary: Stub list tables
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+  /dataset:
+    get:
+      tags: [dataset]
+      summary: List datasets
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [dataset]
+      summary: Create dataset
+      responses:
+        '200':
+          description: OK
+  /dataset/{id}:
+    get:
+      tags: [dataset]
+      summary: Get dataset with fields
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+    patch:
+      tags: [dataset]
+      summary: Update dataset meta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+    delete:
+      tags: [dataset]
+      summary: Delete dataset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: No Content
+  /dataset/{id}/fields:
+    put:
+      tags: [dataset]
+      summary: Replace dataset fields
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+  /dataset/{id}/preview:
+    post:
+      tags: [dataset]
+      summary: Stub preview via datasetQuery
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+  /catalog:
+    get:
+      tags: [catalog]
+      summary: Dashboard + dataset catalog for report/dashboard
+      responses:
+        '200':
+          description: OK
+
   /dashboardTree/tree:
     post:
       tags: [dashboardTree]

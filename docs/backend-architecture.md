@@ -182,7 +182,7 @@ POST /chartQuery/query
 ## 4. 查询权限流水线（必须服务端强制）
 
 ```text
-ChartQueryManage.query(req, user | shareToken):
+ChartQuery.query(req, user | shareToken):
   1. dash = load(dashboardId, view)
   2. assertDashboardAccess(user/token, dash, need=view|edit)
   3. chart = loadChart(chartId, view)   // 或 inline
@@ -241,25 +241,29 @@ ChartQueryManage.query(req, user | shareToken):
 
 ---
 
-## 6. 服务分层（代码落点）
+## 6. 服务分层（COLA 代码落点）
 
 ```
-api/*Api          ← OpenAPI / 契约
-server/*Server    ← 薄 Controller（鉴权注解）
-manage/*
-  DashboardTreeManage
-  DashboardCanvasManage
-  DashboardPublishManage
-  DashboardShareManage
-  ChartQueryManage      ← 合并 filter + 调 Dataset
-  ChartExplainManage    ← 查看 SQL
-dao / store
+open-dashboard-adapter
+  io.opendashboard.adapter.web/*Controller   ← REST
+  io.opendashboard.adapter.security.*        ← Auth SPI / 拦截器
+open-dashboard-app
+  io.opendashboard.application.*             ← 应用服务（编排）
+open-dashboard-domain
+  io.opendashboard.domain.*Dtos              ← 请求/响应契约
+  io.opendashboard.domain.gateway.*          ← Gateway / DataSourcePort
+  io.opendashboard.domain.context.*          ← AuthContext
+open-dashboard-infrastructure
+  io.opendashboard.infrastructure.persistence.*   ← Gateway 实现
+  io.opendashboard.infrastructure.datasource.*    ← JDBC 连接器
+open-dashboard-start
+  io.opendashboard.OpenDashboardApplication
+  resources/application*.yml + db/migration
 ```
 
-参考实现（TypeScript 垂直切片）：`backend/manage/*`、`backend/demo/*`。  
-Java 契约标记：`backend/java/io/product/dashboard/api/*`。
+产品实现根目录：`backend/`（Maven 多模块 parent：`open-dashboard-backend`）。
 
-反例：巨型 `DataVisualizationServer` + 整页 `component_data` blob。
+反例：巨型 Controller + 整页 `component_data` blob。
 
 ---
 

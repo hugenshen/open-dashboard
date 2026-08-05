@@ -49,4 +49,4 @@
 
 - 仪表盘 **只依赖** Dataset：树、字段、权限、枚举值、查询执行。
 - 图表绑定字段：`ChartView.datasetId`（禁止直连 Datasource）。
-- 取数编排：`ChartQueryManage` → Dataset 查询能力；把 `filters` / `linkages` 编译为数据集过滤条件。
+- 取数编排：`chartQuery`（`StubQueryService` / ChartQueryController）→ Dataset 查询能力；把 `filters` / `linkages` 编译为数据集过滤条件。
