@@ -1,0 +1,12 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    # Docker PG via scripts/setup-pg-docker.sh / compose (host 5434 → container 5432)
+    url: jdbc:postgresql://localhost:5434/opendashboard
+    username: opendashboard
+    password: opendashboard
+
+opendashboard:
+  stub-query: false
