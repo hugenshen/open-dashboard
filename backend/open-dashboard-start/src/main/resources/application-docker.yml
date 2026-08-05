@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/opendashboard
+    username: opendashboard
+    password: opendashboard
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+opendashboard:
+  stub-query: false
+  bootstrap:
+    meta-datasource: true
+    host: postgres
+    port: 5432
+    db-name: opendashboard
+    schema: public
+    username: opendashboard
+    password: opendashboard
+    datasource-name: 元数据库
+    sample-dataset: true

@@ -1,0 +1,7 @@
+# Runtime-only image (JAR built on host). Used when Maven base image pull is slow.
+FROM eclipse-temurin:21-jre-alpine
+RUN apk add --no-cache curl
+WORKDIR /app
+COPY open-dashboard-start/target/open-dashboard-start-*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -10,13 +10,6 @@
   "license": "MIT",
   "author": "hugenshen",
   "scripts": {
-    "slice": "tsx backend/demo/vertical-slice.ts",
-    "slice:commercial": "tsx backend/demo/commercial-slice.ts",
-    "test:slice": "tsx backend/demo/vertical-slice.ts && tsx backend/demo/commercial-slice.ts",
     "hi-fi": "python3 -m http.server 8765 --directory prototypes/hi-fi"
-  },
-  "devDependencies": {
-    "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
   }
 }

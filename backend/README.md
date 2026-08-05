@@ -1,8 +1,10 @@
 # Open Dashboard Backend
 
-JDK 21 · Spring Boot 3 · PostgreSQL · Flyway
+JDK 21 · Spring Boot 3 · PostgreSQL · Flyway · **COLA 多模块**
 
 产品 API 入口。契约见 [`../docs/openapi.yaml`](../docs/openapi.yaml)。
+
+模块：`open-dashboard-domain` / `app` / `infrastructure` / `adapter` / `start`
 
 ## 运行
 
@@ -11,28 +13,39 @@ JDK 21 · Spring Boot 3 · PostgreSQL · Flyway
 docker-compose up -d
 
 cd backend
-mvn spring-boot:run
+mvn -pl open-dashboard-start -am spring-boot:run
+```
+
+本地库（5433）+ 指定端口：
+
+```bash
+cd backend
+mvn -pl open-dashboard-start -am spring-boot:run \
+  -Dspring-boot.run.arguments='--spring.profiles.active=local --server.port=8082'
 ```
 
 无 PostgreSQL 时可用 stub 配置（不连库）：
 
 ```bash
 cd backend
-mvn spring-boot:run -Dspring-boot.run.arguments=--spring.profiles.active=stub
+mvn -pl open-dashboard-start -am spring-boot:run \
+  -Dspring-boot.run.arguments=--spring.profiles.active=stub
 ```
 
 - Health: http://127.0.0.1:8080/actuator/health  
 - Dashboard: `GET /api/dashboard/1`  
-- Chart query: `POST /api/chartQuery/query`（支持纯 `inline`，报告用）  
+- Chart query: `POST /api/chartQuery/query`  
 - Dataset query: `POST /api/datasetQuery/execute`  
 - Report: `GET/POST /api/report` · `GET /api/report/{id}` · `PUT /api/report/{id}/doc` · `POST /api/report/{id}/publish`
 
-## 目录说明
+## 目录说明（COLA）
 
-| 路径 | 说明 |
-|------|------|
-| `src/main/java/io/opendashboard/` | **产品代码** |
-| `demo/` · `manage/` · `store/` · `server/` | **旧 TypeScript 垂直切片（reference only）**，勿当产品入口 |
-| `java/io/product/dashboard/` | 早期 Java 契约标记（deprecated） |
-
-根目录仍可用 `npm run slice` 跑旧 TS 演示，与本 Spring 服务无关。
+```
+backend/
+├── pom.xml                         # parent
+├── open-dashboard-domain/          # DTO + Gateway 接口 + context
+├── open-dashboard-app/             # 应用服务（用例编排）
+├── open-dashboard-infrastructure/  # Gateway 实现、JDBC、Flyway(由 start 带资源)
+├── open-dashboard-adapter/         # REST + Security 适配
+└── open-dashboard-start/           # 启动入口 + application*.yml + db/migration
+```
