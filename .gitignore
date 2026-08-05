@@ -2,8 +2,9 @@ node_modules/
 dist/
 build/
 target/
-frontend/dist/
-frontend/node_modules/
+open-dashboard-frontend/dist/
+open-dashboard-frontend/public/help/
+open-dashboard-frontend/node_modules/
 .DS_Store
 *.log
 .env

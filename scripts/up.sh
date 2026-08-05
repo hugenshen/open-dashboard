@@ -59,6 +59,7 @@ fi
 echo ""
 echo "Open Dashboard is ready."
 echo "  Web UI : http://127.0.0.1:${WEB_PORT}"
+echo "  Help   : http://127.0.0.1:${WEB_PORT}/help/"
 echo "  API    : http://127.0.0.1:${API_PORT}/api"
 echo "  Health : http://127.0.0.1:${API_PORT}/actuator/health"
 echo "  PG     : localhost:${OD_PG_PORT:-5434}  user/db=${POSTGRES_USER:-opendashboard}"

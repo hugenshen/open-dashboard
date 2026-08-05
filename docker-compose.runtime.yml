@@ -2,9 +2,9 @@
 services:
   backend:
     build:
-      context: ./backend
+      context: ./open-dashboard-backend
       dockerfile: Dockerfile.runtime
   frontend:
     build:
-      context: ./frontend
+      context: ./open-dashboard-frontend
       dockerfile: Dockerfile.runtime
