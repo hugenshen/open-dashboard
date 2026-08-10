@@ -19,3 +19,6 @@ coverage/
 
 # Third-party reference clones
 prototypes/vendor/editor/
+
+# Local Cursor transcript HTML export (may contain private chat content)
+.cursor-export/
