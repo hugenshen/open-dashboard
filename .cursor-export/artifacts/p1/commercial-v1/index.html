@@ -1,0 +1,2828 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>仪表盘商用高保 · Phase A/B/C</title>
+  <script src="./vendor/echarts.min.js"></script>
+  <style>
+    :root {
+      --brand: #3370ff; --brand-soft: #e8f0ff; --brand-hover: #2860e1;
+      --text: #1f2329; --text-2: #646a73; --text-3: #8f959e;
+      --line: #dee0e3; --bg: #f5f6f7; --bg-elev: #fff;
+      --success: #00b578; --danger: #f54a45; --warn: #ff8800;
+      --font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --col-w: 72px; --row-h: 56px; --gap: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: var(--font); color: var(--text); background: #0f1115; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .shell { height: 100%; display: flex; flex-direction: column; }
+    .topbar {
+      height: 48px; background: #1a1d24; color: #c9cdd4; display: flex; align-items: center;
+      padding: 0 16px; gap: 12px; flex-shrink: 0; font-size: 13px;
+    }
+    .topbar strong { color: #fff; }
+    .topbar .tabs { display: flex; gap: 4px; margin-left: auto; background: #0f1115; padding: 3px; border-radius: 999px; }
+    .topbar .tabs button { border: 0; background: transparent; color: #8f959e; padding: 6px 12px; border-radius: 999px; font-size: 12px; }
+    .topbar .tabs button.on { background: var(--brand); color: #fff; }
+    .app { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+    .app.mobile-frame { max-width: 390px; margin: 12px auto; border: 8px solid #222; border-radius: 24px; overflow: hidden; height: calc(100% - 24px); }
+    .bar {
+      height: 52px; background: var(--bg-elev); border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; padding: 0 12px; gap: 8px; flex-shrink: 0;
+    }
+    .btn { height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line); background: #fff; font-size: 12px; color: var(--text); display: inline-flex; align-items: center; gap: 4px; }
+    .btn:hover { background: var(--bg); }
+    .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .btn.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
+    .btn.danger { color: var(--danger); border-color: #fecdca; }
+    .tag { height: 22px; padding: 0 8px; border-radius: 4px; font-size: 11px; display: inline-flex; align-items: center; font-weight: 500; }
+    .tag.draft { background: #fff3e0; color: #c2410c; }
+    .tag.pub { background: #e3f7ef; color: #047857; }
+    .tag.dirty { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+    .spacer { flex: 1; }
+    .editor { flex: 1; min-height: 0; display: grid; grid-template-columns: 228px minmax(0,1fr) 300px; }
+    .editor.no-insp { grid-template-columns: 228px minmax(0,1fr) 0; }
+    .editor.no-insp .insp { display: none; }
+    .pane { background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+    .insp { border-right: 0; border-left: 1px solid var(--line); }
+    .ptabs { display: grid; grid-template-columns: 1fr 1fr; height: 38px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+    .ptabs.t3 { grid-template-columns: 1fr 1fr 1fr; }
+    .ptabs button { border: 0; background: transparent; color: var(--text-2); font-size: 12px; position: relative; }
+    .ptabs button.on { color: var(--brand); font-weight: 600; }
+    .ptabs button.on::after { content: ""; position: absolute; left: 20%; right: 20%; bottom: 0; height: 2px; background: var(--brand); }
+    .pbody { flex: 1; overflow: auto; padding: 10px; }
+    .sec { margin-bottom: 14px; }
+    .sec h4 { font-size: 11px; color: var(--text-3); margin-bottom: 8px; font-weight: 600; }
+    .comp { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .comp-card {
+      border: 1px solid var(--line); border-radius: 10px; padding: 8px 6px 10px;
+      background: linear-gradient(180deg, #fff 0%, #f7f8fa 100%);
+      font-size: 11px; text-align: center; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .12s;
+    }
+    .comp-card:hover {
+      border-color: #b7cbff; background: #fff;
+      box-shadow: 0 4px 12px rgba(51,112,255,.12); transform: translateY(-1px);
+    }
+    .comp-card .thumb {
+      height: 44px; margin: 0 4px 8px; border-radius: 8px;
+      background: #f0f4ff; display: grid; place-items: center; overflow: hidden;
+    }
+    .comp-card .thumb svg { width: 52px; height: 32px; display: block; }
+    .comp-card .name { font-weight: 600; color: var(--text); font-size: 12px; }
+    .comp-card small { display: block; color: var(--text-3); margin-top: 2px; font-size: 10px; }
+    .color-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .color-row input[type=color] {
+      width: 32px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer;
+    }
+    .seg2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--bg); padding: 3px; border-radius: 6px; }
+    .seg2 button {
+      height: 28px; border: 0; border-radius: 4px; background: transparent;
+      font-size: 11px; color: var(--text-2); font-weight: 500;
+    }
+    .seg2 button.on { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin: 6px 0; }
+    .stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #e9ebef; }
+    .qbar {
+      flex-shrink: 0; background: #fff; border-bottom: 1px solid var(--line);
+      padding: 8px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px;
+    }
+    .qbar label { color: var(--text-2); }
+    .qbar select, .qbar input { height: 28px; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; }
+    .canvas-wrap {
+      flex: 1; overflow: auto; padding: 12px; position: relative;
+      display: flex; flex-direction: column; align-items: stretch; gap: 0;
+    }
+    .tab-strip {
+      display: none; flex-shrink: 0; align-items: flex-end;
+      background: #fff; border: 1px solid var(--line); border-bottom: 0;
+      border-radius: 4px 4px 0 0; padding: 0 8px; min-height: 36px;
+    }
+    .tab-strip.show { display: flex; }
+    .board {
+      position: relative; background: #f7f8fa;
+      border: 1px solid var(--line);
+      border-radius: 8px; box-shadow: none;
+      width: 100%; max-width: 100%;
+      height: auto; min-height: 160px;
+      margin: 0; padding: 16px;
+      flex: 0 0 auto;
+    }
+    .tab-strip.show + .board { border-radius: 0 0 8px 8px; }
+    .widget {
+      position: absolute; background: #fff; border: 1px solid var(--line); border-radius: 10px;
+      overflow: hidden; box-shadow: 0 1px 2px rgba(31,35,41,.04); user-select: none;
+    }
+    .widget.slicer {
+      display: flex; align-items: center;
+      box-shadow: none;
+    }
+    .widget.slicer .slicer-inline {
+      display: flex; align-items: center; gap: 10px; width: 100%; height: 100%;
+      padding: 0 14px; cursor: move;
+    }
+    .widget.slicer .slicer-inline b { font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+    .widget.slicer .slicer { padding: 0; flex: 1; }
+    .widget.selected { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand), 0 8px 20px rgba(51,112,255,.12); z-index: 3; }
+    .widget.dragging { opacity: .88; z-index: 20; box-shadow: 0 12px 28px rgba(31,35,41,.18); }
+    .widget.pushed { transition: left .12s ease, top .12s ease, width .12s ease, height .12s ease; }
+    .widget.flash { animation: wid-flash .4s ease; }
+    @keyframes wid-flash {
+      0% { box-shadow: 0 0 0 2px rgba(51,112,255,.45); }
+      100% { box-shadow: 0 1px 2px rgba(31,35,41,.04); }
+    }
+    .widget.selected.flash { animation: wid-flash-sel .4s ease; }
+    @keyframes wid-flash-sel {
+      0% { box-shadow: 0 0 0 2px rgba(51,112,255,.45), 0 8px 20px rgba(51,112,255,.12); }
+      100% { box-shadow: 0 0 0 1px var(--brand), 0 8px 20px rgba(51,112,255,.12); }
+    }
+    .widget .hd {
+      height: 32px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--line-soft, #eff0f1); cursor: move; background: #fafbfc;
+    }
+    .widget .hd span { font-weight: 400; color: var(--text-3); font-size: 10px; }
+    .widget .bd { position: absolute; left: 0; right: 0; top: 32px; bottom: 0; padding: 6px; }
+    .widget .bd.chart-el { padding: 0; }
+    .handle {
+      position: absolute; width: 9px; height: 9px; background: #fff; border: 2px solid var(--brand);
+      border-radius: 2px; display: none; z-index: 4;
+    }
+    .widget.selected .handle { display: block; }
+    .handle.n { top: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+    .handle.s { bottom: -5px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+    .handle.e { right: -5px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+    .handle.w { left: -5px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+    .handle.ne { right: -5px; top: -5px; cursor: nesw-resize; }
+    .handle.nw { left: -5px; top: -5px; cursor: nwse-resize; }
+    .handle.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+    .handle.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+    .board.editing-grid {
+      background-color: #f7f8fa;
+      background-image:
+        linear-gradient(to right, rgba(51,112,255,.07) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(51,112,255,.07) 1px, transparent 1px);
+    }
+    .grid-ph {
+      position: absolute; border: 2px dashed var(--brand); background: rgba(51,112,255,.08);
+      border-radius: 10px; pointer-events: none; z-index: 1; display: none;
+    }
+    .grid-ph.show { display: block; }
+    .layout-bar {
+      flex-shrink: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      padding: 6px 12px; background: #fff; border-bottom: 1px solid var(--line); font-size: 12px;
+    }
+    .layout-bar .hint { color: var(--text-3); margin-left: auto; font-size: 11px; }
+    .layout-bar label.tog { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); margin: 0 4px; }
+    .lay-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .lay-grid .field { margin: 0; }
+    .preset-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    .preset-row button { height: 28px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 11px; color: var(--text-2); cursor: pointer; }
+    .preset-row button:hover { border-color: #b7cbff; color: var(--brand); }
+    .empty {
+      position: absolute; inset: 40px; border: 1px dashed #c5cdd6; border-radius: 12px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-2);
+    }
+    .field { margin-bottom: 8px; }
+    .field label { display: block; font-size: 11px; color: var(--text-2); margin-bottom: 4px; }
+    .field input, .field select, .field textarea {
+      width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; height: 30px; font-size: 12px;
+    }
+    .field textarea { height: 64px; padding: 6px 8px; }
+    .field-bank { border: 1px solid var(--line); border-radius: 8px; background: #fafbfc; overflow: hidden; }
+    .field-bank .fb-search {
+      display: flex; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+    .field-bank .fb-search input {
+      flex: 1; height: 28px; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; font-size: 12px;
+    }
+    .field-bank .fb-hint { font-size: 10px; color: var(--text-3); padding: 0 8px 6px; line-height: 1.4; }
+    .fb-group-hd {
+      display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px;
+      border: 0; background: transparent; cursor: pointer; font-size: 11px; font-weight: 600; color: var(--text-2);
+    }
+    .fb-group-hd:hover { background: #f0f2f5; }
+    .fb-group-hd .cnt {
+      margin-left: auto; font-weight: 500; color: var(--text-3); background: #fff;
+      border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; height: 18px; line-height: 18px; font-size: 10px;
+    }
+    .fb-group-hd .caret { font-size: 10px; color: var(--text-3); width: 12px; }
+    .fb-group.collapsed .chip-bank { display: none; }
+    .fb-group.collapsed .caret { transform: rotate(-90deg); display: inline-block; }
+    .chip-bank {
+      display: flex; flex-wrap: wrap; gap: 6px; padding: 0 8px 8px;
+      max-height: 132px; overflow: auto; align-content: flex-start;
+    }
+    .chip-bank:empty::after {
+      content: attr(data-empty); font-size: 11px; color: var(--text-3); padding: 4px 0;
+    }
+    .fchip {
+      height: 26px; padding: 0 4px 0 6px; border-radius: 4px; font-size: 11px; cursor: grab;
+      border: 1px solid transparent; display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+      user-select: none;
+    }
+    .fchip .ftype {
+      font-size: 9px; font-weight: 700; opacity: .75; font-style: normal; width: 14px; text-align: center;
+    }
+    .fchip .flab { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 96px; }
+    .fchip .ftag {
+      font-size: 9px; font-style: normal; font-weight: 600; padding: 0 3px; border-radius: 3px;
+      background: rgba(255,255,255,.7); color: #b54708;
+    }
+    .fchip .fconv {
+      width: 18px; height: 18px; border: 0; border-radius: 3px; background: transparent;
+      color: inherit; opacity: 0; cursor: pointer; font-size: 12px; line-height: 1; padding: 0;
+    }
+    .fchip:hover .fconv { opacity: .85; }
+    .fchip .fconv:hover { background: rgba(0,0,0,.06); opacity: 1; }
+    .fchip.dim { background: #e8f3ff; color: #245bdb; border-color: #c2d8ff; }
+    .fchip.quota { background: #e8f8f0; color: #047857; border-color: #b7e4cc; }
+    .fchip.converted { box-shadow: inset 0 0 0 1px rgba(181,71,8,.25); }
+    .slot {
+      min-height: 34px; border: 1px dashed #c5cdd6; border-radius: 6px; padding: 4px; background: #fafbfc;
+      display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+    }
+    .slot.over { border-color: var(--brand); background: var(--brand-soft); }
+    .slot .ph { font-size: 11px; color: var(--text-3); padding: 4px; }
+    .pill { height: 24px; padding: 0 6px 0 8px; border-radius: 4px; color: #fff; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; }
+    .pill.dim { background: var(--brand); }
+    .pill.quota { background: var(--success); }
+    .pill button { border: 0; background: transparent; color: #fff; cursor: pointer; }
+    .miss { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px; font-size: 12px; color: #c2410c; }
+    .miss button { display: block; width: 100%; margin-top: 6px; text-align: left; border: 0; background: transparent; color: var(--brand); font-size: 12px; }
+    .ctx {
+      position: fixed; z-index: 100; background: #fff; border: 1px solid var(--line); border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 4px; min-width: 160px; display: none;
+    }
+    .ctx button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 8px 10px; font-size: 12px; border-radius: 4px; }
+    .ctx button:hover { background: var(--brand-soft); color: var(--brand); }
+    .modal-mask {
+      position: fixed; inset: 0; background: rgba(15,17,21,.45); display: none; align-items: center; justify-content: center; z-index: 80;
+    }
+    .modal-mask.show { display: flex; }
+    .modal { background: #fff; border-radius: 12px; padding: 18px; width: min(520px, calc(100vw - 24px)); max-height: 80vh; overflow: auto; }
+    .modal h3 { font-size: 15px; margin-bottom: 12px; }
+    .modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+    .toast-wrap { position: fixed; right: 16px; bottom: 16px; z-index: 120; display: flex; flex-direction: column; gap: 6px; }
+    .toast { background: #1f2329; color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px; }
+    .toast.ok { background: #067647; }
+    .toast.warn { background: #b54708; }
+    .list-layout { flex: 1; display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
+    .tree { overflow: auto; padding: 8px; background: #fff; border-right: 1px solid var(--line); }
+    .tree-item { padding: 8px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .tree-item:hover { background: var(--bg); }
+    .tree-item.on { background: var(--brand-soft); color: var(--brand); }
+    .detail { padding: 24px; overflow: auto; }
+    .kpi-box {
+      height: 100%; display: flex; flex-direction: column; justify-content: center;
+      padding: 10px 16px 12px; gap: 4px; min-height: 0;
+    }
+    .kpi-box.compact { padding: 6px 12px 8px; gap: 2px; }
+    .kpi-box .kpi-label { font-size: 12px; color: var(--text-2); line-height: 1.2; }
+    .kpi-box .n { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+    .kpi-box.compact .n { font-size: 22px; }
+    .kpi-box .d { font-size: 12px; margin-top: 0; }
+    .kpi-box .d.up { color: var(--success); }
+    .kpi-box .d.down { color: var(--danger); }
+    .kpi-box.alert { outline: 2px solid var(--danger); outline-offset: -2px; }
+    .widget.kind-kpi .hd { background: transparent; border-bottom-color: transparent; }
+    .table-wrap { height: 100%; overflow: auto; font-size: 12px; }
+    table.dt { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table.dt th, table.dt td { padding: 6px 8px; border-bottom: 1px solid #eff0f1; text-align: left; }
+    table.dt th { color: var(--text-3); font-weight: 500; background: #fafbfc; }
+    table.dt.stripe tbody tr:nth-child(even) { background: #f7f8fa; }
+    table.dt td.num, table.dt th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.dt tr.total { background: #f0f4ff; font-weight: 600; }
+    table.dt tr.total td { border-top: 1px solid #d0dbf5; }
+    table.dt th.corner { background: #eef2ff; color: var(--text-2); position: sticky; left: 0; z-index: 2; }
+    table.dt td.row-head { position: sticky; left: 0; background: #fff; font-weight: 500; z-index: 1; border-right: 1px solid #eff0f1; }
+    table.dt.stripe tbody tr:nth-child(even) td.row-head { background: #f7f8fa; }
+    table.dt tr.total td.row-head { background: #f0f4ff; }
+    table.dt.pivot { min-width: 100%; }
+    table.dt.pivot th { white-space: nowrap; }
+    .table-pager {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 6px 4px 2px; font-size: 11px; color: var(--text-3);
+    }
+    .table-pager button {
+      height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px;
+      background: #fff; font-size: 11px; color: var(--text-2); cursor: pointer;
+    }
+    .table-pager button:disabled { opacity: .4; cursor: not-allowed; }
+    .slicer { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px; }
+    .slicer .sc {
+      height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line);
+      background: #fff; font-size: 12px; color: var(--text-2);
+    }
+    .slicer .sc.on { background: var(--brand-soft); border-color: #9db7ff; color: var(--brand); font-weight: 600; }
+    .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--line); padding: 0 8px; height: 32px; align-items: flex-end; }
+    .tab-bar button { border: 0; background: transparent; padding: 6px 12px; font-size: 12px; color: var(--text-2); border-bottom: 2px solid transparent; }
+    .tab-bar button.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+    .code { background: #0f1115; color: #d6e4ff; padding: 10px; border-radius: 8px; font-size: 11px; white-space: pre-wrap; font-family: ui-monospace, monospace; }
+    .layer { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+    .layer.on { background: var(--brand-soft); color: var(--brand); }
+    .theme-swatch { display: flex; gap: 6px; }
+    .theme-swatch button { width: 28px; height: 28px; border-radius: 6px; border: 2px solid transparent; }
+    .theme-swatch button.on { border-color: var(--text); }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <strong>商用高保原型</strong>
+    <span>Phase A 画布/绑定/查询/分享 · B Tab切片下钻主题移动 · C 跳转计算告警SQL嵌入</span>
+    <div class="tabs" id="phaseTabs">
+      <button class="on" data-phase="a">Phase A</button>
+      <button data-phase="b">Phase B</button>
+      <button data-phase="c">Phase C</button>
+    </div>
+  </div>
+  <div class="app" id="app"></div>
+</div>
+<div class="ctx" id="ctx"></div>
+<div class="modal-mask" id="mask"></div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+const COL = 12, ROW_H = 52, GAP = 16, EXTRA_ROWS = 6;
+/** column width derived from board client width so canvas fills middle pane */
+function colW(board) {
+  const pad = boardPad();
+  const inner = Math.max(480, (board?.clientWidth || 900) - pad);
+  return (inner - (COL - 1) * GAP) / COL;
+}
+const uid = (p='id') => `${p}_${Math.random().toString(36).slice(2,7)}`;
+const clone = v => JSON.parse(JSON.stringify(v));
+
+const SALES_RAW = [
+  { region:'华东', product:'A', channel:'线上', amount:120, qty:30, date:'2026-07-01' },
+  { region:'华东', product:'B', channel:'线下', amount:80, qty:20, date:'2026-07-02' },
+  { region:'华东', product:'C', channel:'线上', amount:55, qty:12, date:'2026-07-07' },
+  { region:'华北', product:'A', channel:'线上', amount:60, qty:15, date:'2026-07-03' },
+  { region:'华北', product:'B', channel:'线下', amount:40, qty:10, date:'2026-07-04' },
+  { region:'华北', product:'D', channel:'线上', amount:70, qty:18, date:'2026-07-08' },
+  { region:'华南', product:'A', channel:'线上', amount:90, qty:22, date:'2026-07-05' },
+  { region:'华南', product:'B', channel:'线下', amount:110, qty:28, date:'2026-07-06' },
+  { region:'华南', product:'E', channel:'线下', amount:45, qty:9, date:'2026-07-09' },
+  { region:'华东', product:'F', channel:'线上', amount:95, qty:24, date:'2026-07-10' },
+  { region:'华北', product:'G', channel:'线下', amount:35, qty:8, date:'2026-07-11' },
+  { region:'华南', product:'H', channel:'线上', amount:66, qty:14, date:'2026-07-12' }
+];
+const CITY_MAP = { 华东: ['上海', '杭州'], 华北: ['北京', '天津'], 华南: ['广州', '深圳'] };
+const SALES_PEOPLE = ['张三', '李四', '王五', '赵六'];
+const SALES_ROWS = SALES_RAW.map((r, i) => {
+  const cities = CITY_MAP[r.region] || ['未知'];
+  const cost = Math.round(r.amount * 0.62);
+  return {
+    ...r,
+    year: '2026',
+    month: r.date.slice(5, 7) + '月',
+    week: 'W' + (Math.ceil(+r.date.slice(8, 10) / 7)),
+    city: cities[i % cities.length],
+    category: r.product <= 'D' ? '硬件' : '配件',
+    brand: ['A', 'B', 'C'].includes(r.product) ? '自有品牌' : '第三方',
+    salesman: SALES_PEOPLE[i % SALES_PEOPLE.length],
+    customer_level: ['A类', 'B类', 'C类'][i % 3],
+    warehouse: r.region === '华东' ? '华东仓' : (r.region === '华北' ? '华北仓' : '华南仓'),
+    pay_type: r.channel === '线上' ? '支付宝' : 'POS',
+    dept: r.channel === '线上' ? '电商事业部' : '零售事业部',
+    sku: 'SKU-' + r.product,
+    cost,
+    profit: r.amount - cost,
+    discount: [0, 5, 8, 12][i % 4],
+    unit_price: +(r.amount / Math.max(1, r.qty)).toFixed(1),
+    order_cnt: 1
+  };
+});
+
+const DATASETS = {
+  ds_sales: {
+    id: 'ds_sales', name: '销售明细',
+    fields: [
+      { name:'region', label:'区域', group:'dim' },
+      { name:'city', label:'城市', group:'dim' },
+      { name:'product', label:'产品', group:'dim' },
+      { name:'sku', label:'SKU', group:'dim' },
+      { name:'category', label:'品类', group:'dim' },
+      { name:'brand', label:'品牌', group:'dim' },
+      { name:'channel', label:'渠道', group:'dim' },
+      { name:'dept', label:'事业部', group:'dim' },
+      { name:'salesman', label:'销售员', group:'dim' },
+      { name:'customer_level', label:'客户等级', group:'dim' },
+      { name:'warehouse', label:'仓库', group:'dim' },
+      { name:'pay_type', label:'支付方式', group:'dim' },
+      { name:'year', label:'年', group:'dim' },
+      { name:'month', label:'月', group:'dim' },
+      { name:'week', label:'周', group:'dim' },
+      { name:'date', label:'日期', group:'dim' },
+      { name:'amount', label:'销售额', group:'quota' },
+      { name:'qty', label:'销量', group:'quota' },
+      { name:'cost', label:'成本', group:'quota' },
+      { name:'profit', label:'利润', group:'quota' },
+      { name:'discount', label:'折扣%', group:'quota' },
+      { name:'unit_price', label:'单价', group:'quota' },
+      { name:'order_cnt', label:'订单数', group:'quota' }
+    ],
+    rows: SALES_ROWS
+  },
+  ds_ops: {
+    id: 'ds_ops', name: '运营日报',
+    fields: [
+      { name:'day', label:'日期', group:'dim' },
+      { name:'module', label:'模块', group:'dim' },
+      { name:'platform', label:'端', group:'dim' },
+      { name:'channel', label:'来源', group:'dim' },
+      { name:'uv', label:'UV', group:'quota' },
+      { name:'pv', label:'PV', group:'quota' },
+      { name:'bounce', label:'跳出率', group:'quota' },
+      { name:'duration', label:'停留秒', group:'quota' }
+    ],
+    rows: [
+      { day:'周一', module:'首页', platform:'App', channel:'自然', uv:1200, pv:3400, bounce:0.32, duration:48, date:'2026-07-01' },
+      { day:'周一', module:'详情', platform:'H5', channel:'投放', uv:800, pv:2100, bounce:0.41, duration:36, date:'2026-07-01' },
+      { day:'周二', module:'首页', platform:'App', channel:'自然', uv:1400, pv:3900, bounce:0.28, duration:52, date:'2026-07-02' },
+      { day:'周二', module:'详情', platform:'H5', channel:'投放', uv:900, pv:2400, bounce:0.39, duration:40, date:'2026-07-02' }
+    ]
+  }
+};
+
+const CHART_META = {
+  bar:   { label:'柱状图', need:['category','value'], group:'比较', icon:'bar' },
+  hbar:  { label:'条形图', need:['category','value'], group:'比较', icon:'hbar' },
+  line:  { label:'折线图', need:['category','value'], group:'趋势', icon:'line' },
+  area:  { label:'面积图', need:['category','value'], group:'趋势', icon:'area' },
+  pie:   { label:'饼图', need:['category','value'], group:'分布', icon:'pie' },
+  kpi:   { label:'指标卡', need:['value'], group:'指标', icon:'kpi' },
+  table: { label:'明细表', need:[], group:'表格', icon:'table' },
+  grouptable: { label:'汇总表', need:['category','value'], group:'表格', icon:'grouptable' },
+  pivot: { label:'透视表', need:['category','colDim','value'], group:'表格', icon:'pivot' }
+};
+
+function isTableType(t) {
+  return t === 'table' || t === 'grouptable' || t === 'pivot';
+}
+
+function chartIcon(kind) {
+  const c = '#3370ff', c2 = '#8fb3ff';
+  const icons = {
+    bar: `<svg viewBox="0 0 52 32" fill="none"><rect x="6" y="14" width="8" height="14" rx="2" fill="${c2}"/><rect x="18" y="6" width="8" height="22" rx="2" fill="${c}"/><rect x="30" y="10" width="8" height="18" rx="2" fill="${c2}"/><rect x="42" y="16" width="6" height="12" rx="2" fill="${c}"/></svg>`,
+    hbar: `<svg viewBox="0 0 52 32" fill="none"><rect x="4" y="5" width="28" height="5" rx="2" fill="${c}"/><rect x="4" y="14" width="40" height="5" rx="2" fill="${c2}"/><rect x="4" y="23" width="22" height="5" rx="2" fill="${c}"/></svg>`,
+    line: `<svg viewBox="0 0 52 32" fill="none"><path d="M4 24 L16 18 L28 22 L40 8 L48 12" stroke="${c}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="18" r="2.5" fill="${c}"/><circle cx="40" cy="8" r="2.5" fill="${c}"/></svg>`,
+    area: `<svg viewBox="0 0 52 32" fill="none"><path d="M4 26 L4 20 L16 12 L28 16 L40 6 L48 10 L48 26 Z" fill="${c2}" opacity=".55"/><path d="M4 20 L16 12 L28 16 L40 6 L48 10" stroke="${c}" stroke-width="2" stroke-linejoin="round"/></svg>`,
+    pie: `<svg viewBox="0 0 52 32" fill="none"><circle cx="26" cy="16" r="12" fill="${c2}"/><path d="M26 16 L26 4 A12 12 0 0 1 37 22 Z" fill="${c}"/></svg>`,
+    kpi: `<svg viewBox="0 0 52 32" fill="none"><rect x="6" y="6" width="40" height="20" rx="4" fill="#e8f0ff"/><text x="26" y="20" text-anchor="middle" fill="${c}" font-size="12" font-weight="700" font-family="sans-serif">1.2k</text></svg>`,
+    table: `<svg viewBox="0 0 52 32" fill="none"><rect x="6" y="5" width="40" height="22" rx="3" stroke="${c}" stroke-width="1.5" fill="#fff"/><path d="M6 12h40M6 19h40M19 5v22M33 5v22" stroke="${c2}" stroke-width="1.2"/></svg>`,
+    grouptable: `<svg viewBox="0 0 52 32" fill="none"><rect x="6" y="5" width="40" height="22" rx="3" stroke="${c}" stroke-width="1.5" fill="#fff"/><path d="M6 12h40M6 20h40" stroke="${c2}" stroke-width="1.2"/><rect x="6" y="5" width="40" height="7" fill="${c2}" opacity=".35"/><path d="M14 20v7M28 20v7" stroke="${c}" stroke-width="1.2"/></svg>`,
+    pivot: `<svg viewBox="0 0 52 32" fill="none"><rect x="6" y="5" width="40" height="22" rx="3" stroke="${c}" stroke-width="1.5" fill="#fff"/><rect x="6" y="5" width="12" height="22" fill="#e8f0ff"/><rect x="6" y="5" width="40" height="7" fill="${c2}" opacity=".45"/><path d="M18 12v15M30 12v15M42 12v15M6 19h40" stroke="${c2}" stroke-width="1"/><text x="11" y="22" fill="${c}" font-size="7" font-family="sans-serif" font-weight="700">Σ</text></svg>`,
+    slicer: `<svg viewBox="0 0 52 32" fill="none"><rect x="6" y="10" width="14" height="12" rx="6" fill="${c}"/><rect x="24" y="10" width="14" height="12" rx="6" fill="${c2}"/><rect x="42" y="10" width="6" height="12" rx="3" fill="#d6e4ff"/></svg>`,
+    text: `<svg viewBox="0 0 52 32" fill="none"><path d="M14 8h24M26 8v16" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/><path d="M12 24h28" stroke="${c2}" stroke-width="2" stroke-linecap="round"/></svg>`
+  };
+  return icons[kind] || icons.bar;
+}
+
+function defaultChartStyle() {
+  return {
+    bg: '#ffffff',
+    titleColor: '#1f2329',
+    titleSize: 12,
+    bodyColor: '#646a73',
+    showTitle: true,
+    showLegend: true,
+    legendPos: 'top',
+    showLabel: false,
+    smooth: true,
+    pageSize: 5,
+    showHeader: true,
+    stripe: true,
+    valueColor: '#1f2329',
+    cardRadius: 10,
+    showRowTotal: true,
+    showColTotal: true
+  };
+}
+
+function ensureStyle(ch) {
+  if (!ch.style) ch.style = defaultChartStyle();
+  return ch.style;
+}
+
+const THEMES = {
+  default: { brand:'#3370ff', series:['#3370ff','#00b578','#ff8800','#f54a45'] },
+  ocean:   { brand:'#0ea5e9', series:['#0ea5e9','#14b8a6','#6366f1','#f59e0b'] },
+  forest:  { brand:'#059669', series:['#059669','#84cc16','#0d9488','#ca8a04'] },
+  rose:    { brand:'#e11d48', series:['#e11d48','#f97316','#a855f7','#64748b'] },
+  mono:    { brand:'#334155', series:['#334155','#64748b','#94a3b8','#cbd5e1'] }
+};
+
+const state = {
+  screen: 'editor',
+  phase: 'a',
+  mobile: false,
+  leftTab: 'comp',
+  rightTab: 'data',
+  inspCollapsed: false,
+  selectedId: null,
+  clipboard: null,
+  filter: { region: '', dateFrom: '2026-07-01', dateTo: '2026-07-31' },
+  linkageHits: [],
+  drillStack: [],
+  shares: [],
+  undo: [],
+  dash: null,
+  chartInst: {},
+  layout: { push: true, compactOnDrop: false, showGrid: true }
+};
+
+function toast(msg, type='') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+
+function emptyDash(name='未命名仪表盘') {
+  return {
+    id: uid('dash'), name, status: 'draft', contentId: '1', version: 1,
+    theme: 'default',
+    components: [],
+    charts: {},
+    linkages: [],
+    jumps: [],
+    alerts: [],
+    tabs: [{ id: 'tab_main', name: '概览' }],
+    activeTab: 'tab_main',
+    share: null
+  };
+}
+
+function defaultEncode(kind) {
+  const base = { agg: 'SUM', format: 'thousand', calc: 'none' };
+  if (kind === 'kpi') return { ...base, value: 'amount', calc: 'yoy' };
+  if (kind === 'table') return { ...base, value: 'amount', format: 'raw' };
+  if (kind === 'pivot') return { ...base, category: 'region', colDim: 'product', value: 'amount' };
+  if (kind === 'grouptable') return { ...base, category: 'channel', value: 'amount' };
+  if (kind === 'pie') return { ...base, category: 'channel', value: 'amount' };
+  if (kind === 'line' || kind === 'area') return { ...base, category: 'product', value: 'amount' };
+  if (kind === 'hbar') return { ...base, category: 'region', value: 'qty', format: 'raw' };
+  return { ...base, category: 'region', value: 'amount' };
+}
+
+function mkChart(type, title, encodeExtra = {}, styleExtra = {}) {
+  const id = uid('chart');
+  return {
+    id,
+    chart: {
+      id, title, chartType: type, datasetId: 'ds_sales',
+      encode: { ...defaultEncode(type), ...encodeExtra },
+      style: { ...defaultChartStyle(), ...styleExtra }
+    }
+  };
+}
+
+function demoDash() {
+  const d = emptyDash('销售周报');
+  const kpi = mkChart('kpi', '本月 GMV', { value: 'amount', calc: 'yoy' }, { valueColor: '#1f2329', titleColor: '#646a73', valueSize: 28 });
+  const kpi2 = mkChart('kpi', '本月销量', { value: 'qty', agg: 'SUM', format: 'raw', calc: 'mom' }, { valueColor: '#059669', valueSize: 28 });
+  const kpi3 = mkChart('kpi', '利润', { value: 'profit', agg: 'SUM', format: 'thousand', calc: 'yoy' }, { valueColor: '#0ea5e9', valueSize: 28 });
+  const kpi4 = mkChart('kpi', '订单数', { value: 'order_cnt', agg: 'SUM', format: 'raw', calc: 'none' }, { valueColor: '#7c3aed', valueSize: 28 });
+  const bar = mkChart('bar', '区域销售额', {}, { showLabel: true });
+  const line = mkChart('line', '产品销售趋势', { category: 'product', value: 'amount' }, { smooth: true, showLegend: true });
+  const hbar = mkChart('hbar', '区域销量', { category: 'region', value: 'qty', format: 'raw' }, { showLabel: true });
+  const pie = mkChart('pie', '渠道占比', { category: 'channel', value: 'amount' });
+  const area = mkChart('area', '渠道面积', { category: 'channel', value: 'amount' });
+  const group = mkChart('grouptable', '渠道汇总', { category: 'channel', value: 'amount' }, { pageSize: 10, showRowTotal: true });
+  const detail = mkChart('table', '销售明细', { value: 'amount', format: 'raw' }, { pageSize: 6 });
+  const pivot = mkChart('pivot', '区域 × 产品 透视', { category: 'region', colDim: 'product', value: 'amount' }, { showRowTotal: true, showColTotal: true });
+
+  // 指标条横排 → 主图双栏 → 分析三栏 → 表双栏 → 透视通栏（避免 KPI 塞进侧栏）
+  const charts = [kpi, kpi2, kpi3, kpi4, bar, line, hbar, pie, area, group, detail, pivot];
+  d.charts = Object.fromEntries(charts.map(c => [c.id, c.chart]));
+
+  const ws = uid('w');
+  const ids = charts.map(() => uid('w'));
+  d.components = [
+    { id: ws, type: 'slicer', tabId: 'tab_main', x: 0, y: 0, w: 12, h: 1, z: 1, props: { field: 'region', label: '区域切片' } },
+    { id: ids[0], type: 'chart', tabId: 'tab_main', x: 0, y: 1, w: 3, h: 2, z: 2, chartId: kpi.id },
+    { id: ids[1], type: 'chart', tabId: 'tab_main', x: 3, y: 1, w: 3, h: 2, z: 3, chartId: kpi2.id },
+    { id: ids[2], type: 'chart', tabId: 'tab_main', x: 6, y: 1, w: 3, h: 2, z: 4, chartId: kpi3.id },
+    { id: ids[3], type: 'chart', tabId: 'tab_main', x: 9, y: 1, w: 3, h: 2, z: 5, chartId: kpi4.id },
+    { id: ids[4], type: 'chart', tabId: 'tab_main', x: 0, y: 3, w: 6, h: 5, z: 6, chartId: bar.id },
+    { id: ids[5], type: 'chart', tabId: 'tab_main', x: 6, y: 3, w: 6, h: 5, z: 7, chartId: line.id },
+    { id: ids[6], type: 'chart', tabId: 'tab_main', x: 0, y: 8, w: 4, h: 4, z: 8, chartId: hbar.id },
+    { id: ids[7], type: 'chart', tabId: 'tab_main', x: 4, y: 8, w: 4, h: 4, z: 9, chartId: pie.id },
+    { id: ids[8], type: 'chart', tabId: 'tab_main', x: 8, y: 8, w: 4, h: 4, z: 10, chartId: area.id },
+    { id: ids[9], type: 'chart', tabId: 'tab_main', x: 0, y: 12, w: 6, h: 4, z: 11, chartId: group.id },
+    { id: ids[10], type: 'chart', tabId: 'tab_main', x: 6, y: 12, w: 6, h: 4, z: 12, chartId: detail.id },
+    { id: ids[11], type: 'chart', tabId: 'tab_main', x: 0, y: 16, w: 12, h: 5, z: 13, chartId: pivot.id }
+  ];
+  d.linkages = [
+    { id: uid('l'), sourceChartId: bar.id, sourceField: 'region', targetChartId: detail.id, targetField: 'region', enabled: true },
+    { id: uid('l2'), sourceChartId: bar.id, sourceField: 'region', targetChartId: pivot.id, targetField: 'region', enabled: true }
+  ];
+  d.jumps = [{ id: uid('j'), sourceChartId: bar.id, triggerField: 'region', targetType: 'url', target: 'https://example.com/detail?region={value}' }];
+  d.alerts = [{ id: uid('a'), chartId: kpi.id, metricField: 'amount', operator: 'lt', threshold: 300, enabled: true }];
+  d.status = 'publishedWithDraft';
+  return d;
+}
+
+state.dash = demoDash();
+state.selectedId = state.dash.components.find(c => c.type === 'chart')?.id || null;
+
+function snap(n, size) { return Math.round(n / (size + GAP)); }
+function px(x, y, w, h, cw) {
+  const c = cw || 72;
+  return {
+    left: x * (c + GAP),
+    top: y * (ROW_H + GAP),
+    width: w * c + (w - 1) * GAP,
+    height: h * ROW_H + (h - 1) * GAP
+  };
+}
+function contentRows(comps) {
+  if (!comps.length) return 2;
+  return comps.reduce((m, c) => Math.max(m, c.y + c.h), 0);
+}
+function boardPad() { return 32; /* padding 16*2 */ }
+
+function tabComps(tabId) {
+  const tab = tabId || state.dash.activeTab;
+  return state.dash.components.filter(c => (c.tabId || 'tab_main') === tab);
+}
+
+function collide(a, b) {
+  return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+}
+
+function minWH(comp) {
+  if (comp.type === 'slicer') return { w: 3, h: 1 };
+  if (comp.type === 'text') return { w: 2, h: 1 };
+  const t = state.dash.charts[comp.chartId]?.chartType;
+  if (t === 'kpi') return { w: 2, h: 2 }; // 允许压到 2，演示默认用更舒展尺寸
+  if (isTableType(t)) return { w: 4, h: 3 };
+  if (t === 'pie') return { w: 3, h: 3 };
+  return { w: 3, h: 2 };
+}
+
+function defaultSize(kind) {
+  if (kind === 'slicer') return { w: 12, h: 1 };
+  if (kind === 'text') return { w: 6, h: 1 };
+  if (kind === 'kpi') return { w: 3, h: 2 }; // 指标条场景：宽 3、高 2 横排更稳
+  if (kind === 'pivot') return { w: 12, h: 5 };
+  if (kind === 'grouptable') return { w: 6, h: 4 };
+  if (kind === 'table') return { w: 6, h: 4 };
+  if (kind === 'pie') return { w: 4, h: 4 };
+  return { w: 6, h: 4 };
+}
+
+function findFreeSlot(w, h, tabId) {
+  const items = tabComps(tabId);
+  const maxY = Math.max(contentRows(items), 0) + EXTRA_ROWS;
+  for (let y = 0; y <= maxY; y++) {
+    for (let x = 0; x <= COL - w; x++) {
+      const trial = { x, y, w, h };
+      if (!items.some(o => collide(trial, o))) return { x, y };
+    }
+  }
+  return { x: 0, y: contentRows(items) };
+}
+
+/** Push colliding widgets down, cascade until stable */
+function pushLayout(layout, moverId) {
+  const items = layout.map(c => ({ ...c }));
+  const mover = items.find(i => i.id === moverId);
+  if (!mover) return items;
+  let guard = 0;
+  while (guard++ < 80) {
+    let changed = false;
+    const sorted = [...items].sort((a, b) => a.y - b.y || a.x - b.x);
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = i + 1; j < sorted.length; j++) {
+        const a = sorted[i], b = sorted[j];
+        if (!collide(a, b)) continue;
+        // keep mover preferred; push the other down
+        if (a.id === moverId) { b.y = a.y + a.h; changed = true; }
+        else if (b.id === moverId) { a.y = b.y + b.h; changed = true; }
+        else { b.y = a.y + a.h; changed = true; }
+      }
+    }
+    if (!changed) break;
+  }
+  return items;
+}
+
+/** Fill vertical gaps (Feishu-like compact) */
+function compactLayout(layout) {
+  const sorted = [...layout].sort((a, b) => a.y - b.y || a.x - b.x);
+  const placed = [];
+  for (const item of sorted) {
+    let y = 0;
+    const trial = { ...item };
+    while (placed.some(p => collide({ ...trial, y }, p))) y++;
+    trial.y = y;
+    placed.push(trial);
+  }
+  return placed;
+}
+
+function commitLayout(items) {
+  const map = Object.fromEntries(items.map(i => [i.id, i]));
+  state.dash.components.forEach(c => {
+    const n = map[c.id];
+    if (n) { c.x = n.x; c.y = n.y; c.w = n.w; c.h = n.h; }
+  });
+}
+
+function paintPositions(board, items, cw, animateIds) {
+  items.forEach(c => {
+    const el = board.querySelector(`[data-wid="${c.id}"]`);
+    if (!el) return;
+    if (animateIds && animateIds.has(c.id)) el.classList.add('pushed');
+    else el.classList.remove('pushed');
+    const box = px(c.x, c.y, c.w, c.h, cw);
+    el.style.left = box.left + 'px';
+    el.style.top = box.top + 'px';
+    el.style.width = box.width + 'px';
+    el.style.height = box.height + 'px';
+    const ch = state.dash.charts[c.chartId];
+    if (ch && state.chartInst[ch.id]) state.chartInst[ch.id].resize();
+  });
+  fitBoardHeight(board, items);
+}
+
+function showPlaceholder(board, x, y, w, h, cw) {
+  let ph = board.querySelector('.grid-ph');
+  if (!ph) {
+    ph = document.createElement('div');
+    ph.className = 'grid-ph';
+    board.appendChild(ph);
+  }
+  const box = px(x, y, w, h, cw);
+  ph.style.left = box.left + 'px';
+  ph.style.top = box.top + 'px';
+  ph.style.width = box.width + 'px';
+  ph.style.height = box.height + 'px';
+  ph.classList.add('show');
+  return ph;
+}
+
+function hidePlaceholder(board) {
+  board?.querySelector('.grid-ph')?.classList.remove('show');
+}
+
+function cellFromPoint(board, clientX, clientY, w, h) {
+  const rect = board.getBoundingClientRect();
+  const pad = 16;
+  const cw = colW(board);
+  const lx = clientX - rect.left - pad;
+  const ly = clientY - rect.top - pad;
+  let x = Math.max(0, Math.min(COL - w, Math.round(lx / (cw + GAP))));
+  let y = Math.max(0, Math.round(ly / (ROW_H + GAP)));
+  return { x, y };
+}
+
+function handlesHtml(id) {
+  return ['n','s','e','w','ne','nw','se','sw'].map(m =>
+    `<div class="handle ${m}" data-resize="${m}" data-wid="${id}"></div>`
+  ).join('');
+}
+
+function pushUndo() {
+  state.undo.push(clone(state.dash));
+  if (state.undo.length > 30) state.undo.shift();
+}
+function undo() {
+  const prev = state.undo.pop();
+  if (!prev) { toast('没有可撤销操作', 'warn'); return; }
+  state.dash = prev;
+  render();
+  toast('已撤销');
+}
+
+function markDirty() {
+  if (state.dash.status === 'published') state.dash.status = 'publishedWithDraft';
+  state.dash.contentId = String(+state.dash.contentId + 1);
+}
+
+function ds(id) { return DATASETS[id]; }
+function fieldMeta(dsId, name) { return ds(dsId)?.fields.find(f => f.name === name); }
+
+/** 分析层角色：可覆盖物理类型（永洪式 维度⇄指标） */
+function fieldRole(ch, fOrName) {
+  const name = typeof fOrName === 'string' ? fOrName : fOrName?.name;
+  const f = typeof fOrName === 'string' ? fieldMeta(ch.datasetId, name) : fOrName;
+  if (!f) return 'dim';
+  return ch.fieldRoles?.[name] || f.group;
+}
+
+function isFieldConverted(ch, f) {
+  return !!(ch.fieldRoles?.[f.name] && ch.fieldRoles[f.name] !== f.group);
+}
+
+function fieldsByRole(ch, role) {
+  return (ds(ch.datasetId)?.fields || []).filter(f => fieldRole(ch, f) === role);
+}
+
+function toggleFieldRole(ch, fieldName) {
+  const f = fieldMeta(ch.datasetId, fieldName);
+  if (!f) return;
+  ch.fieldRoles = ch.fieldRoles || {};
+  const cur = fieldRole(ch, f);
+  const next = cur === 'dim' ? 'quota' : 'dim';
+  if (next === f.group) delete ch.fieldRoles[fieldName];
+  else ch.fieldRoles[fieldName] = next;
+  // 若编码槽角色冲突则清空该槽
+  const enc = ch.encode || {};
+  ['category', 'colDim', 'color', 'value'].forEach(slot => {
+    if (enc[slot] !== fieldName) return;
+    const need = slot === 'value' ? 'quota' : 'dim';
+    if (fieldRole(ch, f) !== need) delete enc[slot];
+  });
+  // 维度转指标时默认 COUNT 更合理
+  if (next === 'quota' && f.group === 'dim') ch.encode.agg = 'COUNT';
+  if (next === 'dim' && f.group === 'quota' && ch.encode.agg === 'COUNT') ch.encode.agg = 'SUM';
+}
+
+function fieldChipHtml(ch, f) {
+  const role = fieldRole(ch, f);
+  const conv = isFieldConverted(ch, f);
+  const to = role === 'dim' ? '指标' : '维度';
+  return `<span class="fchip ${role}${conv ? ' converted' : ''}" draggable="true" data-f="${esc(f.name)}" data-g="${role}" data-label="${esc(f.label)}" title="${conv ? '已转换 · ' : ''}点击绑定 / 拖到槽位；⇄ 转为${to}">
+    <i class="ftype">${role === 'dim' ? 'Abc' : '#'}</i>
+    <span class="flab">${esc(f.label)}</span>
+    ${conv ? '<i class="ftag">转</i>' : ''}
+    <button type="button" class="fconv" data-conv="${esc(f.name)}" title="转换为${to}">⇄</button>
+  </span>`;
+}
+
+function fieldBankHtml(ch) {
+  const dims = fieldsByRole(ch, 'dim');
+  const quos = fieldsByRole(ch, 'quota');
+  const convN = (ds(ch.datasetId)?.fields || []).filter(f => isFieldConverted(ch, f)).length;
+  return `<div class="field-bank" id="fieldBank">
+    <div class="fb-search">
+      <input id="fsearch" type="search" placeholder="搜索字段名 / 显示名…" autocomplete="off" />
+    </div>
+    <div class="fb-hint">字段多时可搜索与滚动；点 ⇄ 或右键可在维度/指标间转换（永洪同款分析角色）。${convN ? `已转换 ${convN} 个。` : ''}</div>
+    <div class="fb-group" data-bank="dim">
+      <button type="button" class="fb-group-hd" data-toggle-bank="dim">
+        <span class="caret">▾</span>维度 <span class="cnt" id="dimCnt">${dims.length}</span>
+      </button>
+      <div class="chip-bank" id="dims" data-empty="无匹配维度">${dims.map(f => fieldChipHtml(ch, f)).join('')}</div>
+    </div>
+    <div class="fb-group" data-bank="quota">
+      <button type="button" class="fb-group-hd" data-toggle-bank="quota">
+        <span class="caret">▾</span>指标 <span class="cnt" id="quoCnt">${quos.length}</span>
+      </button>
+      <div class="chip-bank" id="quos" data-empty="无匹配指标">${quos.map(f => fieldChipHtml(ch, f)).join('')}</div>
+    </div>
+  </div>`;
+}
+
+function filteredRows(chart) {
+  const d = ds(chart.datasetId);
+  if (!d) return [];
+  let rows = d.rows.slice();
+  if (state.filter.region && rows[0]?.region != null) {
+    rows = rows.filter(r => r.region === state.filter.region);
+  }
+  if (state.filter.dateFrom) rows = rows.filter(r => !r.date || r.date >= state.filter.dateFrom);
+  if (state.filter.dateTo) rows = rows.filter(r => !r.date || r.date <= state.filter.dateTo);
+  for (const hit of state.linkageHits) {
+    if (hit.targetChartId === chart.id) rows = rows.filter(r => String(r[hit.targetField]) === String(hit.value));
+  }
+  // drill: treat last drill as extra eq filter on category path
+  if (state.drillStack.length && chart.encode.category) {
+    const last = state.drillStack[state.drillStack.length - 1];
+    if (last.chartId === chart.id) {
+      rows = rows.filter(r => String(r[last.field]) === String(last.value));
+    }
+  }
+  return rows;
+}
+
+function reduceAgg(nums, agg='SUM') {
+  if (agg === 'COUNT') return nums.length;
+  if (!nums.length) return 0;
+  if (agg === 'AVG') return nums.reduce((a,b)=>a+b,0) / nums.length;
+  if (agg === 'MAX') return Math.max(...nums);
+  if (agg === 'MIN') return Math.min(...nums);
+  return nums.reduce((a,b)=>a+b,0);
+}
+
+function aggregate(rows, cat, val, agg='SUM') {
+  if (!cat) {
+    return [{ name: '合计', value: reduceAgg(rows.map(r => +r[val] || 0), agg) }];
+  }
+  const m = new Map();
+  for (const r of rows) {
+    const k = String(r[cat] ?? 'null');
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(+r[val] || 0);
+  }
+  return [...m.entries()].map(([name, nums]) => ({ name, value: reduceAgg(nums, agg) }));
+}
+
+/** Crosstab: rows × cols → value */
+function pivotAggregate(rows, rowField, colField, val, agg='SUM') {
+  const cell = new Map();
+  const rowSet = new Set(), colSet = new Set();
+  for (const r of rows) {
+    const row = String(r[rowField] ?? 'null');
+    const col = String(r[colField] ?? 'null');
+    rowSet.add(row); colSet.add(col);
+    const key = row + '\t' + col;
+    if (!cell.has(key)) cell.set(key, []);
+    cell.get(key).push(+r[val] || 0);
+  }
+  const rowKeys = [...rowSet];
+  const colKeys = [...colSet];
+  const matrix = rowKeys.map(row => {
+    const vals = colKeys.map(col => reduceAgg(cell.get(row + '\t' + col) || [], agg));
+    return { row, vals, total: vals.reduce((a, b) => a + b, 0) };
+  });
+  const colTotals = colKeys.map((_, ci) => matrix.reduce((s, r) => s + r.vals[ci], 0));
+  const grand = colTotals.reduce((a, b) => a + b, 0);
+  return { rowKeys, colKeys, matrix, colTotals, grand };
+}
+
+function formatVal(v, fmt) {
+  if (v == null || Number.isNaN(v)) return '—';
+  if (fmt === 'percent') return (v * 100).toFixed(1) + '%';
+  if (fmt === 'thousand') return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 1 });
+  if (fmt === 'fixed2') return (+v).toFixed(2);
+  return String(v);
+}
+
+function slotLabel(chartType, slot) {
+  if (slot === 'colDim') return '列维度';
+  if (slot === 'category') return chartType === 'pivot' ? '行维度' : '维度';
+  if (slot === 'value') return '指标';
+  if (slot === 'color') return '分组';
+  return slot;
+}
+
+function missingBind(chart) {
+  const meta = CHART_META[chart.chartType] || CHART_META.bar;
+  const miss = [];
+  if (!chart.datasetId) miss.push({ key:'dataset', label:'选择数据集' });
+  for (const slot of meta.need) {
+    if (!chart.encode?.[slot]) miss.push({ key: slot, label: '绑定' + slotLabel(chart.chartType, slot) });
+  }
+  return miss;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------- render shell ---------- */
+function render() {
+  disposeCharts();
+  const app = document.getElementById('app');
+  app.classList.toggle('mobile-frame', state.mobile && state.screen === 'preview');
+  if (state.screen === 'list') renderList(app);
+  else if (state.screen === 'preview') renderPreview(app);
+  else renderEditor(app);
+  document.querySelectorAll('#phaseTabs button').forEach(b => b.classList.toggle('on', b.dataset.phase === state.phase));
+}
+
+function disposeCharts() {
+  Object.values(state.chartInst).forEach(c => { try { c.dispose(); } catch (_) {} });
+  state.chartInst = {};
+}
+
+function disposeOneChart(chartId) {
+  if (!chartId || !state.chartInst[chartId]) return;
+  try { state.chartInst[chartId].dispose(); } catch (_) {}
+  delete state.chartInst[chartId];
+}
+
+function findComp(id) {
+  return state.dash.components.find(c => c.id === id);
+}
+
+function findCompByChartId(chartId) {
+  return state.dash.components.find(c => c.chartId === chartId);
+}
+
+/** 仅切换选中态 + 右侧面板，不重建画布 */
+function selectComp(id, { right = true, left = false } = {}) {
+  state.selectedId = id;
+  document.querySelectorAll('.widget').forEach(w => w.classList.toggle('selected', w.dataset.wid === id));
+  document.querySelectorAll('.layer').forEach(n => n.classList.toggle('on', n.dataset.sel === id));
+  if (right) renderRight(document.getElementById('right'));
+  if (left && state.leftTab === 'layer') renderLeft(document.getElementById('left'));
+}
+
+function flashWidget(el) {
+  if (!el) return;
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 420);
+}
+
+function applyCardStyleDom(el, comp) {
+  if (!el || comp.type !== 'chart') return;
+  const ch = state.dash.charts[comp.chartId];
+  if (!ch) return;
+  const st = ensureStyle(ch);
+  el.style.background = st.bg || '#fff';
+  el.style.borderRadius = (st.cardRadius ?? 10) + 'px';
+  const hd = el.querySelector('.hd');
+  if (hd) {
+    hd.style.display = st.showTitle === false ? 'none' : '';
+    hd.style.color = st.titleColor || '#1f2329';
+    hd.style.fontSize = (st.titleSize || 12) + 'px';
+  }
+  const bd = el.querySelector('.bd');
+  if (bd) bd.style.top = st.showTitle === false ? '0px' : '32px';
+}
+
+function updateWidgetChrome(comp) {
+  const el = document.querySelector(`[data-wid="${comp.id}"]`);
+  if (!el || comp.type !== 'chart') return;
+  const hd = el.querySelector('.hd');
+  if (!hd) return;
+  const ch = state.dash.charts[comp.chartId];
+  const title = ch?.title || '图表';
+  const badge = missingBind(ch).length ? '待配置' : ch.chartType;
+  hd.innerHTML = `${esc(title)}<span>${esc(badge)}</span>`;
+  applyCardStyleDom(el, comp);
+}
+
+/** 替换单个组件 DOM（类型切换 / miss↔图表） */
+function replaceWidget(comp) {
+  const board = document.getElementById('board');
+  if (!board) return;
+  const old = board.querySelector(`[data-wid="${comp.id}"]`);
+  if (!old) { renderBoard(board); return; }
+  if (comp.chartId) disposeOneChart(comp.chartId);
+  const cw = colW(board);
+  const wrap = document.createElement('div');
+  wrap.innerHTML = widgetHtml(comp, cw);
+  const neu = wrap.firstElementChild;
+  old.replaceWith(neu);
+  wireDrag(neu, comp, cw);
+  if (comp.type === 'chart') paintChart(neu, comp);
+  if (comp.type === 'slicer') wireSlicer(neu);
+  flashWidget(neu);
+}
+
+/** 只刷新一个组件的数据/样式，其他图不动 */
+function refreshComp(compId, { inspector = false, flash = true } = {}) {
+  const comp = findComp(compId);
+  if (!comp) return;
+  const board = document.getElementById('board');
+  const el = board?.querySelector(`[data-wid="${comp.id}"]`);
+  if (!el || !board) return;
+
+  if (comp.type !== 'chart') {
+    replaceWidget(comp);
+    if (inspector) renderRight(document.getElementById('right'));
+    return;
+  }
+  const ch = state.dash.charts[comp.chartId];
+  const wasMiss = !!el.querySelector('.miss');
+  const nowMiss = missingBind(ch).length > 0;
+  const bodyKind = () => {
+    if (el.querySelector('[data-echart]')) return 'echart';
+    if (el.querySelector('[data-kpi]')) return 'kpi';
+    if (el.querySelector('[data-table]')) return 'table';
+    if (el.querySelector('.miss')) return 'miss';
+    return 'other';
+  };
+  const needKind = nowMiss ? 'miss' : (isTableType(ch.chartType) ? 'table' : ch.chartType === 'kpi' ? 'kpi' : 'echart');
+  if (wasMiss !== nowMiss || bodyKind() !== needKind) {
+    replaceWidget(comp);
+  } else {
+    updateWidgetChrome(comp);
+    paintChart(el, comp);
+    if (flash) flashWidget(el);
+  }
+  if (inspector) renderRight(document.getElementById('right'));
+}
+
+/** 筛选/主题：只重绘画布数据，不拆 DOM */
+function repaintAllCharts({ flash = false } = {}) {
+  const board = document.getElementById('board');
+  if (!board) return;
+  tabComps().forEach(c => {
+    if (c.type !== 'chart') return;
+    const el = board.querySelector(`[data-wid="${c.id}"]`);
+    if (!el || el.querySelector('.miss')) return;
+    paintChart(el, c);
+    if (flash) flashWidget(el);
+  });
+}
+
+/** 配置变更入口：脏标记 + 单图刷新 + 可选刷新右侧 */
+function patchChart(ch, { inspector = true, flash = true } = {}) {
+  markDirty();
+  const comp = findCompByChartId(ch.id);
+  if (comp) refreshComp(comp.id, { inspector, flash });
+  else if (inspector) renderRight(document.getElementById('right'));
+}
+
+function statusTag(st) {
+  if (st === 'published') return '<span class="tag pub">已发布</span>';
+  if (st === 'publishedWithDraft') return '<span class="tag dirty">已发布·有未发布改动</span>';
+  return '<span class="tag draft">草稿</span>';
+}
+
+function renderList(app) {
+  app.innerHTML = `
+    <div class="bar">
+      <strong style="font-size:14px">仪表盘</strong>
+      <div class="spacer"></div>
+      <button class="btn primary" id="btnNew">+ 新建</button>
+    </div>
+    <div class="list-layout">
+      <div class="tree">
+        <div class="tree-item on">${esc(state.dash.name)}</div>
+      </div>
+      <div class="detail">
+        <h2 style="margin-bottom:8px">${esc(state.dash.name)}</h2>
+        <p style="color:var(--text-2);font-size:13px;margin-bottom:16px">商用路径验证 · ${statusTag(state.dash.status)}</p>
+        <div style="display:flex;gap:8px">
+          <button class="btn primary" id="btnEdit">编辑</button>
+          <button class="btn" id="btnPrev">预览已发布</button>
+          <button class="btn" id="btnShareList">分享</button>
+        </div>
+      </div>
+    </div>`;
+  app.querySelector('#btnEdit').onclick = () => { state.screen = 'editor'; render(); };
+  app.querySelector('#btnPrev').onclick = () => { state.screen = 'preview'; render(); };
+  app.querySelector('#btnShareList').onclick = () => openShareModal();
+  app.querySelector('#btnNew').onclick = () => {
+    state.dash = emptyDash();
+    state.selectedId = null;
+    state.screen = 'editor';
+    toast('已创建空白仪表盘', 'ok');
+    render();
+  };
+}
+
+function renderEditor(app) {
+  const d = state.dash;
+  app.innerHTML = `
+    <div class="bar">
+      <button class="btn ghost" id="toList">←</button>
+      <b contenteditable="true" id="title">${esc(d.name)}</b>
+      ${statusTag(d.status)}
+      <div class="spacer"></div>
+      ${state.phase !== 'a' ? `<button class="btn ghost" id="toggleMobile">${state.mobile ? '桌面' : '移动预览'}</button>` : ''}
+      <button class="btn ghost" id="toggleInsp">${state.inspCollapsed ? '显示配置' : '收起配置'}</button>
+      <button class="btn ghost" id="btnUndo">撤销</button>
+      <button class="btn" id="btnPreview">预览</button>
+      <button class="btn" id="btnShare">分享</button>
+      <button class="btn" id="btnExport">导出 CSV</button>
+      <button class="btn primary" id="btnPub">发布</button>
+    </div>
+    <div class="editor ${state.inspCollapsed ? 'no-insp' : ''}">
+      <aside class="pane">
+        <div class="ptabs">
+          <button class="${state.leftTab==='comp'?'on':''}" data-lt="comp">组件</button>
+          <button class="${state.leftTab==='layer'?'on':''}" data-lt="layer">图层</button>
+        </div>
+        <div class="pbody" id="left"></div>
+      </aside>
+      <section class="stage">
+        <div class="qbar" id="qbar"></div>
+        <div class="layout-bar" id="layoutBar"></div>
+        <div class="canvas-wrap" id="cwrap">
+          <div class="tab-strip" id="tabStrip"></div>
+          <div class="board" id="board"></div>
+        </div>
+      </section>
+      <aside class="pane insp">
+        <div class="ptabs t3">
+          <button class="${state.rightTab==='data'?'on':''}" data-rt="data">数据</button>
+          <button class="${state.rightTab==='style'?'on':''}" data-rt="style">样式</button>
+          <button class="${state.rightTab==='senior'?'on':''}" data-rt="senior">高级</button>
+        </div>
+        <div class="pbody" id="right"></div>
+      </aside>
+    </div>`;
+
+  app.querySelector('#toList').onclick = () => { state.screen = 'list'; render(); };
+  app.querySelector('#toggleInsp').onclick = () => { state.inspCollapsed = !state.inspCollapsed; render(); };
+  app.querySelector('#btnUndo').onclick = undo;
+  app.querySelector('#btnPreview').onclick = () => { state.screen = 'preview'; render(); };
+  app.querySelector('#btnShare').onclick = () => openShareModal();
+  app.querySelector('#btnExport').onclick = () => exportCsv();
+  app.querySelector('#btnPub').onclick = () => {
+    d.status = 'published'; d.version += 1; toast('已发布', 'ok'); render();
+  };
+  app.querySelector('#title').onblur = e => {
+    const n = e.target.textContent.trim();
+    if (n && n !== d.name) { pushUndo(); d.name = n; markDirty(); toast('已重命名', 'ok'); }
+  };
+  const tm = app.querySelector('#toggleMobile');
+  if (tm) tm.onclick = () => { state.mobile = !state.mobile; state.screen = 'preview'; render(); };
+
+  app.querySelectorAll('[data-lt]').forEach(b => b.onclick = () => {
+    state.leftTab = b.dataset.lt;
+    app.querySelectorAll('[data-lt]').forEach(x => x.classList.toggle('on', x.dataset.lt === state.leftTab));
+    renderLeft(document.getElementById('left'));
+  });
+  app.querySelectorAll('[data-rt]').forEach(b => b.onclick = () => {
+    state.rightTab = b.dataset.rt;
+    app.querySelectorAll('[data-rt]').forEach(x => x.classList.toggle('on', x.dataset.rt === state.rightTab));
+    renderRight(document.getElementById('right'));
+  });
+
+  renderQueryBar(app.querySelector('#qbar'));
+  renderLayoutBar(app.querySelector('#layoutBar'));
+  renderLeft(app.querySelector('#left'));
+  renderTabStrip(app.querySelector('#tabStrip'));
+  renderBoard(app.querySelector('#board'));
+  renderRight(app.querySelector('#right'));
+  wireKeyboardLayout();
+}
+
+function renderLayoutBar(el) {
+  if (!el) return;
+  const L = state.layout;
+  el.innerHTML = `
+    <button class="btn ghost" id="layCompact" title="消除纵向空隙">自动紧凑</button>
+    <button class="btn ghost" id="layFull" title="选中组件拉满整行">整行</button>
+    <button class="btn ghost" id="layHalf" title="选中组件半宽">半宽</button>
+    <button class="btn ghost" id="layThird" title="选中组件 1/3 宽">1/3</button>
+    <label class="tog"><input type="checkbox" id="layPush" ${L.push?'checked':''}/> 推挤</label>
+    <label class="tog"><input type="checkbox" id="layAuto" ${L.compactOnDrop?'checked':''}/> 落位紧凑</label>
+    <label class="tog"><input type="checkbox" id="layGrid" ${L.showGrid?'checked':''}/> 网格</label>
+    <span class="hint">拖拽移动 · 八向缩放 · 方向键微调 · 组件库可拖入画布</span>`;
+  el.querySelector('#layCompact').onclick = () => {
+    pushUndo();
+    commitLayout(compactLayout(tabComps()));
+    markDirty(); render(); toast('已自动紧凑', 'ok');
+  };
+  const preset = (w) => {
+    const comp = state.dash.components.find(c => c.id === state.selectedId);
+    if (!comp) { toast('请先选中组件', 'warn'); return; }
+    pushUndo();
+    const min = minWH(comp);
+    comp.w = Math.max(min.w, Math.min(COL, w));
+    if (comp.x + comp.w > COL) comp.x = COL - comp.w;
+    let layout = tabComps().map(c => ({ ...c }));
+    if (state.layout.push) layout = pushLayout(layout, comp.id);
+    if (state.layout.compactOnDrop) layout = compactLayout(layout);
+    commitLayout(layout);
+    markDirty(); render();
+  };
+  el.querySelector('#layFull').onclick = () => preset(12);
+  el.querySelector('#layHalf').onclick = () => preset(6);
+  el.querySelector('#layThird').onclick = () => preset(4);
+  el.querySelector('#layPush').onchange = e => { state.layout.push = e.target.checked; };
+  el.querySelector('#layAuto').onchange = e => { state.layout.compactOnDrop = e.target.checked; };
+  el.querySelector('#layGrid').onchange = e => { state.layout.showGrid = e.target.checked; };
+}
+
+function wireKeyboardLayout() {
+  if (window.__layKeyWired) return;
+  window.__layKeyWired = true;
+  document.addEventListener('keydown', e => {
+    if (state.screen !== 'editor') return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+    const comp = state.dash?.components?.find(c => c.id === state.selectedId);
+    if (!comp) return;
+    const step = e.shiftKey ? 2 : 1;
+    let dx = 0, dy = 0;
+    if (e.key === 'ArrowLeft') dx = -step;
+    else if (e.key === 'ArrowRight') dx = step;
+    else if (e.key === 'ArrowUp') dy = -step;
+    else if (e.key === 'ArrowDown') dy = step;
+    else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      pushUndo();
+      state.dash.components = state.dash.components.filter(c => c.id !== comp.id);
+      if (comp.chartId) delete state.dash.charts[comp.chartId];
+      state.selectedId = null; markDirty(); render(); toast('已删除', 'ok');
+      return;
+    } else return;
+    e.preventDefault();
+    pushUndo();
+    const nx = Math.max(0, Math.min(COL - comp.w, comp.x + dx));
+    const ny = Math.max(0, comp.y + dy);
+    comp.x = nx; comp.y = ny;
+    let layout = tabComps().map(c => ({ ...c }));
+    if (state.layout.push) layout = pushLayout(layout, comp.id);
+    commitLayout(layout);
+    markDirty();
+    const board = document.getElementById('board');
+    paintPositions(board, layout, colW(board));
+    Object.values(state.chartInst).forEach(c => { try { c.resize(); } catch (_) {} });
+    renderRight(document.getElementById('right'));
+  });
+}
+
+function renderTabStrip(el) {
+  if (!el) return;
+  const d = state.dash;
+  const show = state.phase !== 'a' && d.tabs.length > 0;
+  el.classList.toggle('show', show);
+  if (!show) { el.innerHTML = ''; return; }
+  el.innerHTML = d.tabs.map(t =>
+    `<button type="button" class="${t.id === d.activeTab ? 'on' : ''}" data-tab="${t.id}"
+      style="border:0;background:transparent;padding:8px 12px;font-size:12px;color:${t.id===d.activeTab?'var(--brand)':'var(--text-2)'};border-bottom:2px solid ${t.id===d.activeTab?'var(--brand)':'transparent'};font-weight:${t.id===d.activeTab?600:400}">${esc(t.name)}</button>`
+  ).join('');
+  el.querySelectorAll('[data-tab]').forEach(b => {
+    b.onclick = () => { d.activeTab = b.dataset.tab; render(); };
+  });
+}
+
+function renderQueryBar(el) {
+  el.innerHTML = `
+    <label>查询控件</label>
+    <label>日期</label>
+    <input type="date" id="df" value="${state.filter.dateFrom}" />
+    <span>~</span>
+    <input type="date" id="dt" value="${state.filter.dateTo}" />
+    <label>区域</label>
+    <select id="fr">
+      <option value="">全部</option>
+      <option value="华东" ${state.filter.region==='华东'?'selected':''}>华东</option>
+      <option value="华北" ${state.filter.region==='华北'?'selected':''}>华北</option>
+      <option value="华南" ${state.filter.region==='华南'?'selected':''}>华南</option>
+    </select>
+    ${state.drillStack.length ? `<button class="btn ghost" id="drillUp">下钻返回 (${state.drillStack.length})</button>` : ''}
+    <span style="margin-left:auto;color:var(--text-3)">作用于整页 filterState → chartQuery</span>
+  `;
+  el.querySelector('#df').onchange = e => { state.filter.dateFrom = e.target.value; repaintAllCharts(); };
+  el.querySelector('#dt').onchange = e => { state.filter.dateTo = e.target.value; repaintAllCharts(); };
+  el.querySelector('#fr').onchange = e => { state.filter.region = e.target.value; repaintAllCharts(); };
+  const up = el.querySelector('#drillUp');
+  if (up) up.onclick = () => { state.drillStack.pop(); repaintAllCharts(); toast('已返回上一层'); };
+}
+
+function renderLeft(el) {
+  if (state.leftTab === 'layer') {
+    const comps = tabComps().slice().sort((a,b)=>a.z-b.z);
+    el.innerHTML = comps.map(c => {
+      const title = c.type === 'chart' ? (state.dash.charts[c.chartId]?.title || '图') : (c.props?.label || c.type);
+      return `<div class="layer ${c.id===state.selectedId?'on':''}" data-sel="${c.id}">${c.type} · ${esc(title)} <small style="color:var(--text-3)">${c.w}×${c.h}</small></div>`;
+    }).join('') || '<p style="color:var(--text-3);font-size:12px">暂无组件</p>';
+    el.querySelectorAll('[data-sel]').forEach(n => n.onclick = () => selectComp(n.dataset.sel, { left: true }));
+    return;
+  }
+  const groups = {};
+  Object.entries(CHART_META).forEach(([k,v]) => {
+    (groups[v.group] = groups[v.group] || []).push([k,v]);
+  });
+  let html = '';
+  for (const [g, items] of Object.entries(groups)) {
+    html += `<div class="sec"><h4>${g}</h4><div class="comp">`;
+    for (const [k,v] of items) {
+      html += `<div class="comp-card" data-add="${k}" title="需要：${v.need.join(' + ')}">
+        <div class="thumb">${chartIcon(v.icon)}</div>
+        <div class="name">${esc(v.label)}</div>
+        <small>${v.need.length ? v.need.map(n => slotLabel(k, n)).join(' · ') : '原始行'}</small>
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+  html += `<div class="sec"><h4>控件</h4><div class="comp">
+    <div class="comp-card" data-add="slicer"><div class="thumb">${chartIcon('slicer')}</div><div class="name">切片器</div><small>筛选</small></div>
+    <div class="comp-card" data-add="text"><div class="thumb">${chartIcon('text')}</div><div class="name">文本</div><small>标题 / 说明</small></div>
+    ${state.phase !== 'a' ? `<div class="comp-card" data-add="tab"><div class="thumb">${chartIcon('table')}</div><div class="name">Tab</div><small>容器</small></div>` : ''}
+  </div></div>`;
+  el.innerHTML = html;
+  el.querySelectorAll('[data-add]').forEach(b => {
+    b.onclick = () => addComp(b.dataset.add);
+    b.draggable = true;
+    b.ondragstart = e => {
+      state._dragKind = b.dataset.add;
+      e.dataTransfer.setData('add-kind', b.dataset.add);
+      e.dataTransfer.setData('text/plain', b.dataset.add);
+      e.dataTransfer.effectAllowed = 'copy';
+    };
+    b.ondragend = () => { state._dragKind = null; hidePlaceholder(document.getElementById('board')); };
+  });
+}
+
+function addComp(kind, at) {
+  pushUndo();
+  const d = state.dash;
+  if (kind === 'tab') {
+    d.tabs.push({ id: uid('tab'), name: '页签' + d.tabs.length });
+    toast('已添加 Tab（切换顶栏页签）', 'ok');
+    markDirty(); render();
+    return;
+  }
+  const size = defaultSize(kind);
+  const slot = at || findFreeSlot(size.w, size.h);
+  let x = Math.max(0, Math.min(COL - size.w, at?.x ?? slot.x));
+  let y = Math.max(0, at?.y ?? slot.y);
+  let comp;
+  if (kind === 'slicer') {
+    const id = uid('w');
+    comp = { id, type:'slicer', tabId:d.activeTab, x, y, w:size.w, h:size.h, z:d.components.length+1, props:{ field:'region', label:'切片器' } };
+  } else if (kind === 'text') {
+    const id = uid('w');
+    comp = { id, type:'text', tabId:d.activeTab, x, y, w:size.w, h:size.h, z:d.components.length+1, props:{ content:'标题文本' } };
+  } else {
+    const cid = uid('chart'), wid = uid('w');
+    d.charts[cid] = {
+      id: cid, title: CHART_META[kind].label, chartType: kind, datasetId: 'ds_sales',
+      encode: defaultEncode(kind),
+      style: defaultChartStyle()
+    };
+    comp = { id:wid, type:'chart', tabId:d.activeTab, x, y, w:size.w, h:size.h, z:d.components.length+1, chartId:cid };
+    state.rightTab = 'data';
+  }
+  d.components.push(comp);
+  state.selectedId = comp.id;
+  let layout = tabComps().map(c => ({ ...c }));
+  if (state.layout.push) layout = pushLayout(layout, comp.id);
+  if (state.layout.compactOnDrop && !at) layout = compactLayout(layout);
+  commitLayout(layout);
+  markDirty();
+  render();
+  toast(`已添加 ${CHART_META[kind]?.label || kind}`, 'ok');
+}
+
+function renderBoard(board) {
+  disposeCharts();
+  if (!board) return;
+  const d = state.dash;
+  const comps = tabComps();
+  const cw = colW(board);
+  board.style.backgroundSize = `${cw + GAP}px ${ROW_H + GAP}px`;
+
+  if (!comps.length) {
+    board.style.height = '240px';
+    board.innerHTML = `<div class="empty" style="position:relative;inset:auto;min-height:200px;border:0">
+      <b>从左侧添加或拖入组件</b>
+      <span style="font-size:12px">八向缩放 · 推挤编排 · 方向键微调</span>
+      <button class="btn primary" id="emptyAdd">+ 柱状图</button>
+    </div>`;
+    board.querySelector('#emptyAdd')?.addEventListener('click', () => addComp('bar'));
+    wireBoardDrop(board);
+    return;
+  }
+
+  const rows = contentRows(comps) + EXTRA_ROWS;
+  const contentH = rows * ROW_H + Math.max(0, rows - 1) * GAP + boardPad();
+  board.style.height = contentH + 'px';
+  board.innerHTML = comps.map(c => widgetHtml(c, cw)).join('') + `<div class="grid-ph"></div>`;
+
+  comps.forEach(c => {
+    const el = board.querySelector(`[data-wid="${c.id}"]`);
+    if (!el) return;
+    wireDrag(el, c, cw);
+    if (c.type === 'chart') paintChart(el, c);
+    if (c.type === 'slicer') wireSlicer(el);
+  });
+  board.onclick = e => {
+    if (e.target === board) selectComp(null);
+  };
+  wireBoardDrop(board);
+}
+
+function wireBoardDrop(board) {
+  board.ondragover = e => {
+    if (![...e.dataTransfer.types].includes('add-kind') && !e.dataTransfer.types.includes('text/plain')) {
+      // chromium reports types differently
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    const kind = state._dragKind || 'bar';
+    const size = defaultSize(kind);
+    const cell = cellFromPoint(board, e.clientX, e.clientY, size.w, size.h);
+    if (state.layout.showGrid) board.classList.add('editing-grid');
+    showPlaceholder(board, cell.x, cell.y, size.w, size.h, colW(board));
+  };
+  board.ondragleave = e => {
+    if (!board.contains(e.relatedTarget)) {
+      hidePlaceholder(board);
+      board.classList.remove('editing-grid');
+    }
+  };
+  board.ondrop = e => {
+    e.preventDefault();
+    const kind = e.dataTransfer.getData('add-kind') || state._dragKind;
+    hidePlaceholder(board);
+    board.classList.remove('editing-grid');
+    state._dragKind = null;
+    if (!kind || kind === 'tab') return;
+    const size = defaultSize(kind);
+    const cell = cellFromPoint(board, e.clientX, e.clientY, size.w, size.h);
+    addComp(kind, cell);
+  };
+}
+
+function widgetHtml(c, cw) {
+  const box = px(c.x, c.y, c.w, c.h, cw);
+  const sel = c.id === state.selectedId ? 'selected' : '';
+  let title = c.type, badge = '';
+  if (c.type === 'chart') {
+    const ch = state.dash.charts[c.chartId];
+    title = ch?.title || '图表';
+    badge = missingBind(ch).length ? '待配置' : ch.chartType;
+  } else if (c.type === 'slicer') {
+    title = c.props?.label || '切片器';
+    badge = 'slicer';
+  } else if (c.type === 'text') {
+    title = '文本';
+  }
+  // slicer: single compact row (no tall empty header)
+  if (c.type === 'slicer') {
+    const p = c.props || {};
+    const slicerStyle = `left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;z-index:${c.z};background:${p.bg || '#fff'};color:${p.titleColor || '#1f2329'};border-radius:${p.radius ?? 10}px`;
+    return `<div class="widget slicer ${sel}" data-wid="${c.id}" style="${slicerStyle}">
+      <div class="slicer-inline" data-drag="${c.id}">
+        <b style="color:inherit">${esc(title)}</b>
+        <div class="slicer">
+          <button class="sc ${!state.filter.region?'on':''}" data-sv="">全部</button>
+          ${['华东','华北','华南'].map(r => `<button class="sc ${state.filter.region===r?'on':''}" data-sv="${r}">${r}</button>`).join('')}
+        </div>
+      </div>
+      ${handlesHtml(c.id)}
+    </div>`;
+  }
+
+  let body = '';
+  let kindClass = '';
+  let cardStyle = `left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;z-index:${c.z}`;
+  if (c.type === 'text') {
+    const p = c.props || {};
+    cardStyle += `;background:${p.bg || '#fff'};border-radius:${p.radius ?? 10}px`;
+    body = `<div class="hd" data-drag="${c.id}" style="color:${p.color || '#1f2329'}">文本<span></span></div>
+      <div style="padding:12px;font-size:${p.fontSize || 16}px;font-weight:650;color:${p.color || '#1f2329'}">${esc(c.props.content)}</div>`;
+  } else {
+    const ch = state.dash.charts[c.chartId];
+    const st = ensureStyle(ch);
+    kindClass = ch ? `kind-${ch.chartType}` : '';
+    const isKpi = ch?.chartType === 'kpi';
+    // KPI：默认隐藏卡片标题栏，避免与数值区标题重复挤压
+    const showTitle = isKpi ? st.showTitle === true : st.showTitle !== false;
+    cardStyle += `;background:${st.bg || '#fff'};border-radius:${st.cardRadius ?? 10}px`;
+    const hdStyle = `color:${st.titleColor || '#1f2329'};font-size:${st.titleSize || 12}px;${showTitle ? '' : 'display:none'}`;
+    const bdTop = showTitle ? 32 : (isKpi ? 0 : 0);
+    const head = `<div class="hd" data-drag="${c.id}" style="${hdStyle}">${esc(title)}<span>${isKpi ? '' : badge}</span></div>`;
+    const miss = missingBind(ch);
+    // KPI 无标题栏时也要能拖动：整卡可拖
+    const dragPad = (!showTitle && isKpi)
+      ? `<div class="bd" data-kpi="${c.chartId}" data-drag="${c.id}" style="top:0;cursor:move"></div>`
+      : `<div class="bd" data-kpi="${c.chartId}" style="top:${bdTop}px"></div>`;
+    if (miss.length) {
+      body = `${head}<div class="miss" style="margin:8px">
+        <b>${esc(ch.title)}</b> 缺少配置
+        ${miss.map(m => `<button data-fix="${m.key}" data-wid="${c.id}">→ ${esc(m.label)}</button>`).join('')}
+      </div>`;
+    } else if (isTableType(ch.chartType)) {
+      body = `${head}<div class="bd table-wrap" data-table="${c.chartId}" style="top:${bdTop}px"></div>`;
+    } else if (isKpi) {
+      body = `${head}${dragPad}`;
+    } else {
+      body = `${head}<div class="bd chart-el" data-echart="${c.chartId}" style="top:${bdTop}px"></div>`;
+    }
+  }
+  return `<div class="widget ${kindClass} ${sel}" data-wid="${c.id}" style="${cardStyle}">
+    ${body}
+    ${handlesHtml(c.id)}
+  </div>`;
+}
+
+function wireSlicer(el) {
+  el.querySelectorAll('[data-sv]').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      state.filter.region = b.dataset.sv;
+      // 更新切片按钮态
+      el.querySelectorAll('[data-sv]').forEach(x => x.classList.toggle('on', x.dataset.sv === (state.filter.region || '')));
+      repaintAllCharts();
+      toast(state.filter.region ? `切片：${state.filter.region}` : '已清除切片', 'ok');
+    };
+  });
+}
+
+function wireDrag(el, comp, cw) {
+  const board = el.parentElement;
+  const unit = cw || colW(board);
+  el.onmousedown = e => {
+    if (e.target.closest('[data-fix]')) {
+      e.stopPropagation();
+      state.rightTab = 'data';
+      state.inspCollapsed = false;
+      const insp = document.querySelector('.editor');
+      if (insp) insp.classList.remove('no-insp');
+      selectComp(comp.id);
+      return;
+    }
+    if (e.button === 2) return;
+    selectComp(comp.id, { right: state.selectedId !== comp.id });
+  };
+  el.oncontextmenu = e => {
+    e.preventDefault();
+    selectComp(comp.id, { right: false });
+    openCtx(e.clientX, e.clientY, comp);
+  };
+
+  const beginInteract = () => {
+    selectComp(comp.id, { right: false });
+    el.classList.add('dragging');
+    if (state.layout.showGrid) board.classList.add('editing-grid');
+  };
+  const endInteract = (layout) => {
+    el.classList.remove('dragging');
+    board.classList.remove('editing-grid');
+    hidePlaceholder(board);
+    board.querySelectorAll('.widget').forEach(w => w.classList.remove('pushed'));
+    if (layout) {
+      commitLayout(layout);
+      paintPositions(board, layout, unit);
+    }
+    markDirty();
+    selectComp(comp.id, { right: true });
+    Object.values(state.chartInst).forEach(c => { try { c.resize(); } catch (_) {} });
+  };
+
+  const hd = el.querySelector('[data-drag]');
+  if (hd) {
+    hd.onmousedown = e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pushUndo();
+      beginInteract();
+      const startX = e.clientX, startY = e.clientY, ox = comp.x, oy = comp.y;
+      let latest = tabComps().map(c => ({ ...c }));
+      const move = ev => {
+        let nx = Math.min(COL - comp.w, Math.max(0, ox + snap(ev.clientX - startX, unit)));
+        let ny = Math.max(0, oy + snap(ev.clientY - startY, ROW_H));
+        latest = tabComps().map(c => c.id === comp.id ? { ...c, x: nx, y: ny } : { ...c });
+        if (state.layout.push) latest = pushLayout(latest, comp.id);
+        const me = latest.find(c => c.id === comp.id);
+        showPlaceholder(board, me.x, me.y, me.w, me.h, unit);
+        const others = new Set(latest.filter(c => c.id !== comp.id).map(c => c.id));
+        paintPositions(board, latest, unit, others);
+      };
+      const up = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        if (state.layout.compactOnDrop) latest = compactLayout(latest);
+        endInteract(latest);
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    };
+  }
+
+  el.querySelectorAll('[data-resize]').forEach(h => {
+    h.onmousedown = e => {
+      e.preventDefault(); e.stopPropagation();
+      pushUndo();
+      beginInteract();
+      const mode = h.dataset.resize;
+      const startX = e.clientX, startY = e.clientY;
+      const ow = comp.w, oh = comp.h, ox = comp.x, oy = comp.y;
+      const min = minWH(comp);
+      let latest = tabComps().map(c => ({ ...c }));
+      const move = ev => {
+        const ddx = snap(ev.clientX - startX, unit);
+        const ddy = snap(ev.clientY - startY, ROW_H);
+        let nx = ox, ny = oy, nw = ow, nh = oh;
+        if (mode.includes('e')) nw = Math.max(min.w, Math.min(COL - ox, ow + ddx));
+        if (mode.includes('s')) nh = Math.max(min.h, oh + ddy);
+        if (mode.includes('w')) {
+          const right = ox + ow;
+          nw = Math.max(min.w, Math.min(right, ow - ddx));
+          nx = right - nw;
+        }
+        if (mode.includes('n')) {
+          const bottom = oy + oh;
+          nh = Math.max(min.h, Math.min(bottom, oh - ddy));
+          ny = bottom - nh;
+        }
+        nx = Math.max(0, Math.min(COL - nw, nx));
+        ny = Math.max(0, ny);
+        nw = Math.max(min.w, Math.min(COL - nx, nw));
+        nh = Math.max(min.h, nh);
+        latest = tabComps().map(c => c.id === comp.id ? { ...c, x: nx, y: ny, w: nw, h: nh } : { ...c });
+        if (state.layout.push) latest = pushLayout(latest, comp.id);
+        const me = latest.find(c => c.id === comp.id);
+        showPlaceholder(board, me.x, me.y, me.w, me.h, unit);
+        paintPositions(board, latest, unit, new Set(latest.filter(c => c.id !== comp.id).map(c => c.id)));
+      };
+      const up = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        if (state.layout.compactOnDrop) latest = compactLayout(latest);
+        endInteract(latest);
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    };
+  });
+}
+
+function fitBoardHeight(board, comps) {
+  if (!board) return;
+  const list = comps || tabComps();
+  const rows = contentRows(list) + EXTRA_ROWS;
+  board.style.height = (rows * ROW_H + Math.max(0, rows - 1) * GAP + boardPad()) + 'px';
+}
+
+function wireTablePager(box, ch, el, comp, totalPages, page) {
+  box.querySelectorAll('[data-tp]').forEach(btn => {
+    btn.onclick = e => {
+      e.stopPropagation();
+      if (btn.dataset.tp === 'prev') ch._page = Math.max(1, page - 1);
+      else ch._page = Math.min(totalPages, page + 1);
+      paintChart(el, comp);
+    };
+  });
+}
+
+function paintTableChart(el, comp, ch, st, rows) {
+  const box = el.querySelector('[data-table]');
+  if (!box) return;
+  const fmt = ch.encode.format;
+  const stripe = st.stripe !== false ? 'stripe' : '';
+
+  if (ch.chartType === 'pivot') {
+    const piv = pivotAggregate(rows, ch.encode.category, ch.encode.colDim, ch.encode.value, ch.encode.agg || 'SUM');
+    const rowLab = fieldMeta(ch.datasetId, ch.encode.category)?.label || ch.encode.category;
+    const showRT = st.showRowTotal !== false;
+    const showCT = st.showColTotal !== false;
+    const head = st.showHeader !== false
+      ? `<thead><tr><th class="corner">${esc(rowLab)} \\ ${esc(fieldMeta(ch.datasetId, ch.encode.colDim)?.label || ch.encode.colDim)}</th>${
+          piv.colKeys.map(c => `<th class="num">${esc(c)}</th>`).join('')
+        }${showRT ? '<th class="num">行合计</th>' : ''}</tr></thead>` : '';
+    const body = piv.matrix.map(r => `<tr>
+      <td class="row-head">${esc(r.row)}</td>
+      ${r.vals.map(v => `<td class="num">${formatVal(v, fmt)}</td>`).join('')}
+      ${showRT ? `<td class="num">${formatVal(r.total, fmt)}</td>` : ''}
+    </tr>`).join('');
+    const foot = showCT ? `<tr class="total">
+      <td class="row-head">列合计</td>
+      ${piv.colTotals.map(v => `<td class="num">${formatVal(v, fmt)}</td>`).join('')}
+      ${showRT ? `<td class="num">${formatVal(piv.grand, fmt)}</td>` : ''}
+    </tr>` : '';
+    box.innerHTML = `<table class="dt pivot ${stripe}">${head}<tbody>${body || '<tr><td colspan="2">暂无数据</td></tr>'}${foot}</tbody></table>
+      <div class="table-pager"><span>${piv.rowKeys.length} 行 · ${piv.colKeys.length} 列 · ${ch.encode.agg || 'SUM'}(${esc(ch.encode.value)})</span><span>透视交叉表</span></div>`;
+    return;
+  }
+
+  if (ch.chartType === 'grouptable') {
+    const data = aggregate(rows, ch.encode.category, ch.encode.value, ch.encode.agg || 'SUM');
+    const catLab = fieldMeta(ch.datasetId, ch.encode.category)?.label || ch.encode.category;
+    const valLab = fieldMeta(ch.datasetId, ch.encode.value)?.label || ch.encode.value;
+    const pageSize = st.pageSize || 10;
+    const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+    if (!ch._page || ch._page > totalPages) ch._page = 1;
+    const page = ch._page;
+    const slice = data.slice((page - 1) * pageSize, page * pageSize);
+    const total = data.reduce((s, r) => s + r.value, 0);
+    const head = st.showHeader !== false
+      ? `<thead><tr><th>${esc(catLab)}</th><th class="num">${esc(valLab)}</th></tr></thead>` : '';
+    box.innerHTML = `<table class="dt ${stripe}">${head}
+      <tbody>
+        ${slice.map(r => `<tr><td>${esc(r.name)}</td><td class="num">${formatVal(r.value, fmt)}</td></tr>`).join('') || '<tr><td colspan="2">暂无数据</td></tr>'}
+        ${st.showRowTotal !== false ? `<tr class="total"><td>合计</td><td class="num">${formatVal(total, fmt)}</td></tr>` : ''}
+      </tbody></table>
+      <div class="table-pager">
+        <span>${page} / ${totalPages} · 共 ${data.length} 组</span>
+        <span>
+          <button type="button" data-tp="prev" ${page<=1?'disabled':''}>上一页</button>
+          <button type="button" data-tp="next" ${page>=totalPages?'disabled':''}>下一页</button>
+        </span>
+      </div>`;
+    wireTablePager(box, ch, el, comp, totalPages, page);
+    return;
+  }
+
+  // 明细表：原始行
+  const dataset = ds(ch.datasetId);
+  const cols = (dataset?.fields || []).map(f => f.name);
+  const pageSize = st.pageSize || 5;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  if (!ch._page || ch._page > totalPages) ch._page = 1;
+  const page = ch._page;
+  const slice = rows.slice((page - 1) * pageSize, page * pageSize);
+  const head = st.showHeader !== false
+    ? `<thead><tr>${cols.map(c => {
+        const lab = fieldMeta(ch.datasetId, c)?.label || c;
+        const num = fieldMeta(ch.datasetId, c)?.group === 'quota';
+        return `<th class="${num?'num':''}">${esc(lab)}</th>`;
+      }).join('')}</tr></thead>` : '';
+  box.innerHTML = `<table class="dt ${stripe}">${head}
+    <tbody>${slice.map(r => `<tr>${cols.map(c => {
+      const num = fieldMeta(ch.datasetId, c)?.group === 'quota';
+      const v = r[c];
+      return `<td class="${num?'num':''}">${num ? formatVal(v, fmt || 'raw') : esc(v)}</td>`;
+    }).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length||1}">暂无数据</td></tr>`}</tbody></table>
+    <div class="table-pager">
+      <span>${page} / ${totalPages} · 共 ${rows.length} 行明细</span>
+      <span>
+        <button type="button" data-tp="prev" ${page<=1?'disabled':''}>上一页</button>
+        <button type="button" data-tp="next" ${page>=totalPages?'disabled':''}>下一页</button>
+      </span>
+    </div>`;
+  wireTablePager(box, ch, el, comp, totalPages, page);
+}
+
+function paintChart(el, comp) {
+  const ch = state.dash.charts[comp.chartId];
+  if (!ch || missingBind(ch).length) return;
+  const st = ensureStyle(ch);
+  const rows = filteredRows(ch);
+  const data = aggregate(rows, ch.encode.category, ch.encode.value, ch.encode.agg || 'SUM');
+  const theme = THEMES[state.dash.theme] || THEMES.default;
+
+  if (ch.chartType === 'kpi') {
+    const box = el.querySelector('[data-kpi]');
+    let v = data[0]?.value || 0;
+    let delta = 0;
+    if (ch.encode.calc === 'yoy') { delta = 0.126; }
+    if (ch.encode.calc === 'mom') { delta = 0.048; }
+    const alert = state.dash.alerts.find(a => a.enabled && a.chartId === ch.id);
+    let alertOn = false;
+    if (alert) {
+      if (alert.operator === 'lt') alertOn = v < alert.threshold;
+      if (alert.operator === 'gt') alertOn = v > alert.threshold;
+    }
+    const vColor = st.valueColor || '#1f2329';
+    const compact = (comp.h || 2) <= 2;
+    const vSize = st.valueSize || (compact ? 24 : 28);
+    const showInnerTitle = st.showTitle !== true; // 无卡片标题栏时，数值区内显示名称
+    box.innerHTML = `<div class="kpi-box ${compact ? 'compact' : ''} ${alertOn ? 'alert' : ''}">
+      ${showInnerTitle ? `<div class="kpi-label" style="color:${st.titleColor || 'var(--text-2)'}">${esc(ch.title)}</div>` : ''}
+      <div class="n" style="color:${vColor};font-size:${vSize}px">${formatVal(v, ch.encode.format)}</div>
+      <div class="d ${delta >= 0 ? 'up' : 'down'}">${ch.encode.calc !== 'none' ? `${delta >= 0 ? '↑' : '↓'} ${(delta * 100).toFixed(1)}% ${ch.encode.calc === 'yoy' ? '同比' : '环比'}` : `基于 ${rows.length} 行`}${alertOn ? ' · 触发告警' : ''}</div>
+    </div>`;
+    return;
+  }
+  if (isTableType(ch.chartType)) {
+    paintTableChart(el, comp, ch, st, rows);
+    return;
+  }
+  const dom = el.querySelector('[data-echart]');
+  if (!dom || !window.echarts) return;
+  let inst = state.chartInst[ch.id];
+  if (inst && inst.getDom() !== dom) {
+    disposeOneChart(ch.id);
+    inst = null;
+  }
+  if (!inst) {
+    inst = echarts.getInstanceByDom(dom) || echarts.init(dom);
+    state.chartInst[ch.id] = inst;
+  }
+  const names = data.map(d => d.name);
+  const vals = data.map(d => d.value);
+  const showLegend = st.showLegend !== false;
+  const legendPos = st.legendPos === 'bottom' ? 'bottom' : 'top';
+  const showLabel = !!st.showLabel;
+  let option = {};
+  if (ch.chartType === 'pie') {
+    option = {
+      color: theme.series,
+      tooltip: { trigger: 'item' },
+      legend: showLegend ? { top: legendPos === 'bottom' ? undefined : 0, bottom: legendPos === 'bottom' ? 0 : undefined } : { show: false },
+      series: [{
+        type: 'pie', radius: ['35%', '65%'],
+        label: { show: showLabel },
+        data: data.map(d => ({ name: d.name, value: d.value }))
+      }]
+    };
+  } else {
+    const isH = ch.chartType === 'hbar';
+    const isArea = ch.chartType === 'area';
+    const isLine = ch.chartType === 'line' || isArea;
+    const topPad = showLegend && legendPos === 'top' ? 36 : 24;
+    const botPad = showLegend && legendPos === 'bottom' ? 40 : 28;
+    option = {
+      color: theme.series,
+      grid: { left: 40, right: 16, top: topPad, bottom: botPad },
+      legend: showLegend ? { data: [ch.title], top: legendPos === 'top' ? 0 : undefined, bottom: legendPos === 'bottom' ? 0 : undefined } : { show: false },
+      tooltip: { trigger: 'axis' },
+      xAxis: isH ? { type:'value' } : { type:'category', data: names },
+      yAxis: isH ? { type:'category', data: names } : { type:'value' },
+      series: [{
+        name: ch.title,
+        type: isLine ? 'line' : 'bar',
+        data: vals,
+        areaStyle: isArea ? {} : undefined,
+        smooth: isLine ? st.smooth !== false : undefined,
+        label: { show: showLabel, position: isH ? 'right' : 'top', fontSize: 10 }
+      }]
+    };
+  }
+  inst.setOption(option, true);
+  inst.off('click');
+  inst.on('click', params => {
+    const name = params.name || params.value;
+    const links = state.dash.linkages.filter(l => l.enabled && l.sourceChartId === ch.id);
+    const refreshIds = new Set();
+    if (links.length) {
+      state.linkageHits = links.map(l => ({
+        sourceChartId: ch.id, sourceField: l.sourceField, value: name,
+        targetChartId: l.targetChartId, targetField: l.targetField
+      }));
+      links.forEach(l => refreshIds.add(l.targetChartId));
+      toast(`联动：${name}`, 'ok');
+    }
+    if (state.phase !== 'a' && ch.encode.category === 'region') {
+      state.drillStack.push({ chartId: ch.id, field: 'region', value: name, next: 'product' });
+      pushUndo();
+      ch.encode.category = 'product';
+      toast(`下钻到产品 · ${name}`, 'ok');
+      refreshIds.add(ch.id);
+    }
+    if (state.phase === 'c') {
+      const jump = state.dash.jumps.find(j => j.sourceChartId === ch.id);
+      if (jump) toast(`跳转：${jump.target.replace('{value}', name)}`);
+    }
+    refreshIds.forEach(cid => {
+      const c = findCompByChartId(cid);
+      if (c) refreshComp(c.id, { inspector: false, flash: true });
+    });
+  });
+}
+
+function openCtx(x, y, comp) {
+  const ctx = document.getElementById('ctx');
+  ctx.style.display = 'block';
+  ctx.style.left = x + 'px';
+  ctx.style.top = y + 'px';
+  ctx.innerHTML = `
+    <button data-a="copy">复制</button>
+    <button data-a="paste">粘贴</button>
+    <button data-a="data">查看数据</button>
+    ${state.phase==='c'?'<button data-a="sql">查看 SQL</button>':''}
+    <button data-a="top">置顶</button>
+    <button data-a="bottom">置底</button>
+    <button data-a="full">整行宽度</button>
+    <button data-a="del">删除</button>`;
+  const close = () => { ctx.style.display = 'none'; document.removeEventListener('click', close); };
+  setTimeout(() => document.addEventListener('click', close), 0);
+  ctx.querySelectorAll('button').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      const a = b.dataset.a;
+      if (a === 'copy') {
+        state.clipboard = clone(comp);
+        if (comp.chartId) state.clipboard._chart = clone(state.dash.charts[comp.chartId]);
+        toast('已复制', 'ok');
+      } else if (a === 'paste') pasteComp();
+      else if (a === 'data') openDataModal(comp);
+      else if (a === 'sql') openSqlModal(comp);
+      else if (a === 'top') { pushUndo(); comp.z = Math.max(...state.dash.components.map(c=>c.z)) + 1; markDirty(); render(); }
+      else if (a === 'bottom') { pushUndo(); comp.z = Math.min(...state.dash.components.map(c=>c.z)) - 1; markDirty(); render(); }
+      else if (a === 'full') {
+        pushUndo();
+        comp.w = 12; comp.x = 0;
+        let layout = tabComps().map(c => ({ ...c }));
+        if (state.layout.push) layout = pushLayout(layout, comp.id);
+        commitLayout(layout);
+        markDirty(); render();
+      }
+      else if (a === 'del') {
+        pushUndo();
+        state.dash.components = state.dash.components.filter(c => c.id !== comp.id);
+        if (comp.chartId) delete state.dash.charts[comp.chartId];
+        state.selectedId = null; markDirty(); render(); toast('已删除', 'ok');
+      }
+      ctx.style.display = 'none';
+    };
+  });
+}
+
+function pasteComp() {
+  if (!state.clipboard) { toast('剪贴板为空', 'warn'); return; }
+  pushUndo();
+  const c = clone(state.clipboard);
+  c.id = uid('w');
+  c.tabId = state.dash.activeTab;
+  const slot = findFreeSlot(c.w, c.h);
+  c.x = slot.x; c.y = slot.y;
+  c.z = state.dash.components.length + 1;
+  if (c._chart) {
+    const nc = clone(c._chart);
+    nc.id = uid('chart');
+    nc.title = nc.title + ' 副本';
+    state.dash.charts[nc.id] = nc;
+    c.chartId = nc.id;
+    delete c._chart;
+  }
+  state.dash.components.push(c);
+  state.selectedId = c.id;
+  let layout = tabComps().map(x => ({ ...x }));
+  if (state.layout.push) layout = pushLayout(layout, c.id);
+  commitLayout(layout);
+  markDirty();
+  render();
+  toast('已粘贴', 'ok');
+}
+
+function renderRight(el) {
+  if (!el) return;
+  const comp = state.dash.components.find(c => c.id === state.selectedId);
+  if (!comp) {
+    el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px;line-height:1.6">
+      点选组件进行配置<br/>画布支持拖拽 / 缩放 / 右键菜单
+    </div>`;
+    return;
+  }
+  if (state.rightTab === 'style') return renderStyle(el, comp);
+  if (state.rightTab === 'senior') return renderSenior(el, comp);
+  if (comp.type === 'chart') return renderDataPanel(el, comp);
+  if (comp.type === 'slicer') {
+    el.innerHTML = `<div class="sec"><h4>切片器</h4>
+      <div class="field"><label>字段</label>
+        <select id="sf"><option value="region">region</option><option value="product">product</option></select>
+      </div>
+      <div class="field"><label>显示名</label><input id="sl" value="${esc(comp.props.label||'')}" /></div>
+    </div>`;
+    el.querySelector('#sf').value = comp.props.field;
+    el.querySelector('#sf').onchange = e => { pushUndo(); comp.props.field = e.target.value; markDirty(); replaceWidget(comp); };
+    el.querySelector('#sl').onchange = e => { pushUndo(); comp.props.label = e.target.value; markDirty(); replaceWidget(comp); };
+    return;
+  }
+  if (comp.type === 'text') {
+    el.innerHTML = `<div class="field"><label>内容</label><textarea id="tx">${esc(comp.props.content||'')}</textarea></div>`;
+    el.querySelector('#tx').onchange = e => { pushUndo(); comp.props.content = e.target.value; markDirty(); replaceWidget(comp); };
+  }
+}
+
+function renderDataPanel(el, comp) {
+  const ch = state.dash.charts[comp.chartId];
+  const dataset = ds(ch.datasetId);
+  const meta = CHART_META[ch.chartType];
+  const miss = missingBind(ch);
+  el.innerHTML = `
+    <div class="sec">
+      <h4>图表</h4>
+      <div class="field"><label>标题</label><input id="ct" value="${esc(ch.title)}" /></div>
+      <div class="field"><label>类型</label>
+        <select id="ctype">${Object.entries(CHART_META).map(([k,v]) => `<option value="${k}" ${ch.chartType===k?'selected':''}>${v.label}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="sec">
+      <h4>1. 数据集</h4>
+      ${!ch.datasetId ? `<button class="btn primary" style="width:100%;justify-content:center;margin-bottom:8px" id="pickDs">从工作区选择数据集</button>` : ''}
+      <div class="field">
+        <select id="cds">
+          <option value="">请选择</option>
+          ${Object.values(DATASETS).map(d => `<option value="${d.id}" ${ch.datasetId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
+        </select>
+      </div>
+      ${ch.datasetId ? `<div style="font-size:11px;color:var(--text-3)">最近：${esc(dataset.name)}</div>` : ''}
+    </div>
+    ${dataset ? `
+    <div class="sec">
+      <h4>2. 字段银行（常驻）</h4>
+      ${fieldBankHtml(ch)}
+    </div>
+    <div class="sec">
+      <h4>3. 编码槽 ${ch.chartType==='pivot' ? '· 行 × 列 × 指标' : ch.chartType==='table' ? '· 明细行（选数据集即可）' : meta?.need?.length ? '· 需 ' + meta.need.map(s => slotLabel(ch.chartType, s)).join(' + ') : ''}</h4>
+      ${ch.chartType === 'table' ? `<p style="font-size:11px;color:var(--text-3);line-height:1.5;margin-bottom:8px">明细表展示过滤后的原始行；数值格式作用于指标列。</p>` : ''}
+      ${ch.chartType === 'pivot' ? slotHtml('category', '行维度', 'dim', ch) : ''}
+      ${ch.chartType === 'pivot' ? slotHtml('colDim', '列维度', 'dim', ch) : ''}
+      ${ch.chartType !== 'pivot' && ch.chartType !== 'table' && meta.need.includes('category') ? slotHtml('category', '维度', 'dim', ch) : ''}
+      ${ch.chartType !== 'table' ? slotHtml('value', '指标', 'quota', ch) : slotHtml('value', '高亮指标（可选）', 'quota', ch)}
+      ${ch.chartType === 'grouptable' || (state.phase!=='a' && !isTableType(ch.chartType)) ? slotHtml('color', ch.chartType==='grouptable' ? '二级分组（可选）' : '颜色/图例（可选）', 'dim', ch) : ''}
+      ${ch.chartType !== 'table' ? `<div class="field"><label>聚合</label>
+        <select id="agg">${['SUM','COUNT','AVG','MAX','MIN'].map(a => `<option ${ (ch.encode.agg||'SUM')===a?'selected':''}>${a}</option>`).join('')}</select>
+      </div>` : ''}
+      <div class="field"><label>数值格式</label>
+        <select id="fmt">
+          <option value="raw" ${ch.encode.format==='raw'?'selected':''}>原始</option>
+          <option value="thousand" ${ch.encode.format==='thousand'?'selected':''}>千分位</option>
+          <option value="fixed2" ${ch.encode.format==='fixed2'?'selected':''}>两位小数</option>
+          <option value="percent" ${ch.encode.format==='percent'?'selected':''}>百分比</option>
+        </select>
+      </div>
+    </div>` : ''}
+    ${miss.length ? `<div class="miss"><b>缺失要素</b>${miss.map(m=>`<button data-focus="${m.key}">→ ${esc(m.label)}</button>`).join('')}</div>` : ''}
+    <div class="sec">
+      <h4>联动配置</h4>
+      <button class="btn" style="width:100%;justify-content:center" id="cfgLink">配置图间联动…</button>
+    </div>
+    <div class="sec">
+      <h4>布局</h4>
+      <div class="lay-grid">
+        <div class="field"><label>X</label><input type="number" id="layX" min="0" max="11" value="${comp.x}" /></div>
+        <div class="field"><label>Y</label><input type="number" id="layY" min="0" value="${comp.y}" /></div>
+        <div class="field"><label>宽</label><input type="number" id="layW" min="1" max="12" value="${comp.w}" /></div>
+        <div class="field"><label>高</label><input type="number" id="layH" min="1" value="${comp.h}" /></div>
+      </div>
+      <div class="preset-row" style="margin-top:8px">
+        <button type="button" data-pw="12">整行</button>
+        <button type="button" data-pw="6">半宽</button>
+        <button type="button" data-pw="4">1/3</button>
+      </div>
+    </div>`;
+
+  el.querySelector('#ct').onchange = e => {
+    pushUndo(); ch.title = e.target.value;
+    patchChart(ch, { inspector: false, flash: false });
+  };
+  el.querySelector('#ctype').onchange = e => {
+    pushUndo();
+    ch.chartType = e.target.value;
+    ch.encode = { ...defaultEncode(ch.chartType), calc: ch.encode.calc || 'none' };
+    if (ch.datasetId) { /* keep dataset */ }
+    else ch.datasetId = 'ds_sales';
+    patchChart(ch, { inspector: true, flash: true });
+  };
+  el.querySelector('#cds').onchange = e => {
+    pushUndo();
+    ch.datasetId = e.target.value || null;
+    ch.encode = ch.datasetId ? defaultEncode(ch.chartType) : { agg: 'SUM', format: 'raw', calc: 'none' };
+    toast(ch.datasetId ? '已选数据集并套用默认字段' : '已清空', 'ok');
+    patchChart(ch, { inspector: true, flash: true });
+  };
+  el.querySelector('#pickDs')?.addEventListener('click', () => {
+    el.querySelector('#cds').value = 'ds_sales';
+    el.querySelector('#cds').dispatchEvent(new Event('change'));
+  });
+  if (dataset) {
+    el.querySelector('#agg') && (el.querySelector('#agg').onchange = e => {
+      pushUndo(); ch.encode.agg = e.target.value; patchChart(ch, { inspector: false });
+    });
+    el.querySelector('#fmt').onchange = e => {
+      pushUndo(); ch.encode.format = e.target.value; patchChart(ch, { inspector: false });
+    };
+    wireSlots(el, ch);
+  }
+  el.querySelector('#cfgLink').onclick = () => openLinkageModal(ch);
+  const applyLay = () => {
+    const min = minWH(comp);
+    let x = +el.querySelector('#layX').value, y = +el.querySelector('#layY').value;
+    let w = +el.querySelector('#layW').value, h = +el.querySelector('#layH').value;
+    if ([x,y,w,h].some(n => Number.isNaN(n))) return;
+    pushUndo();
+    w = Math.max(min.w, Math.min(COL, w));
+    h = Math.max(min.h, h);
+    x = Math.max(0, Math.min(COL - w, x));
+    y = Math.max(0, y);
+    Object.assign(comp, { x, y, w, h });
+    let layout = tabComps().map(c => ({ ...c }));
+    if (state.layout.push) layout = pushLayout(layout, comp.id);
+    commitLayout(layout);
+    markDirty();
+    const board = document.getElementById('board');
+    paintPositions(board, layout, colW(board));
+    Object.values(state.chartInst).forEach(c => { try { c.resize(); } catch (_) {} });
+  };
+  ['#layX','#layY','#layW','#layH'].forEach(sel => {
+    el.querySelector(sel).onchange = applyLay;
+  });
+  el.querySelectorAll('[data-pw]').forEach(b => {
+    b.onclick = () => {
+      el.querySelector('#layW').value = b.dataset.pw;
+      applyLay();
+    };
+  });
+}
+
+function slotHtml(slot, label, accept, ch) {
+  const name = ch.encode?.[slot];
+  const meta = name ? fieldMeta(ch.datasetId, name) : null;
+  const g = meta ? fieldRole(ch, meta) : (accept === 'quota' ? 'quota' : 'dim');
+  const tag = meta && isFieldConverted(ch, meta) ? ' ·转' : '';
+  return `<div class="field"><label>${label}</label>
+    <div class="slot" data-slot="${slot}" data-accept="${accept}">
+      ${meta ? `<span class="pill ${g}">${esc(meta.label)}${tag} <button data-clear="${slot}">×</button></span>` : `<span class="ph">拖入或点击字段</span>`}
+    </div></div>`;
+}
+
+function wireFieldBank(root, ch) {
+  const bank = root.querySelector('#fieldBank');
+  if (!bank) return;
+
+  root.querySelectorAll('[data-toggle-bank]').forEach(btn => {
+    btn.onclick = () => {
+      const g = btn.closest('.fb-group');
+      g?.classList.toggle('collapsed');
+    };
+  });
+
+  const search = root.querySelector('#fsearch');
+  const applySearch = () => {
+    const q = (search?.value || '').trim().toLowerCase();
+    let dimShow = 0, quoShow = 0;
+    root.querySelectorAll('.fchip').forEach(chip => {
+      const hit = !q || (chip.dataset.label || '').toLowerCase().includes(q) || (chip.dataset.f || '').toLowerCase().includes(q);
+      chip.style.display = hit ? '' : 'none';
+      if (hit && chip.dataset.g === 'dim') dimShow++;
+      if (hit && chip.dataset.g === 'quota') quoShow++;
+    });
+    const dimCnt = root.querySelector('#dimCnt');
+    const quoCnt = root.querySelector('#quoCnt');
+    if (dimCnt) dimCnt.textContent = q ? `${dimShow}/${fieldsByRole(ch, 'dim').length}` : String(fieldsByRole(ch, 'dim').length);
+    if (quoCnt) quoCnt.textContent = q ? `${quoShow}/${fieldsByRole(ch, 'quota').length}` : String(fieldsByRole(ch, 'quota').length);
+  };
+  if (search) {
+    if (state._fieldSearch) {
+      search.value = state._fieldSearch;
+      applySearch();
+    }
+    search.oninput = () => { state._fieldSearch = search.value; applySearch(); };
+  }
+
+  const doConvert = (fieldName) => {
+    pushUndo();
+    const before = fieldRole(ch, fieldName);
+    toggleFieldRole(ch, fieldName);
+    const after = fieldRole(ch, fieldName);
+    toast(`「${fieldMeta(ch.datasetId, fieldName)?.label || fieldName}」已转为${after === 'dim' ? '维度' : '指标'}`, 'ok');
+    patchChart(ch, { inspector: true, flash: false });
+  };
+
+  root.querySelectorAll('[data-conv]').forEach(btn => {
+    btn.onclick = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      doConvert(btn.dataset.conv);
+    };
+  });
+
+  root.querySelectorAll('.fchip').forEach(chip => {
+    chip.oncontextmenu = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const ctx = document.getElementById('ctx');
+      const role = chip.dataset.g;
+      const to = role === 'dim' ? '指标' : '维度';
+      ctx.style.display = 'block';
+      ctx.style.left = e.clientX + 'px';
+      ctx.style.top = e.clientY + 'px';
+      ctx.innerHTML = `
+        <button data-a="bind">绑定到槽位</button>
+        <button data-a="conv">转换为${to}</button>
+        <button data-a="reset">恢复物理类型</button>`;
+      const close = () => { ctx.style.display = 'none'; document.removeEventListener('click', close); };
+      setTimeout(() => document.addEventListener('click', close), 0);
+      ctx.querySelectorAll('button').forEach(b => {
+        b.onclick = ev => {
+          ev.stopPropagation();
+          if (b.dataset.a === 'conv') doConvert(chip.dataset.f);
+          else if (b.dataset.a === 'reset') {
+            pushUndo();
+            if (ch.fieldRoles) delete ch.fieldRoles[chip.dataset.f];
+            toast('已恢复物理类型', 'ok');
+            patchChart(ch, { inspector: true, flash: false });
+          } else if (b.dataset.a === 'bind') {
+            chip.click();
+          }
+          ctx.style.display = 'none';
+        };
+      });
+    };
+  });
+}
+
+function wireSlots(root, ch) {
+  let active = null;
+  wireFieldBank(root, ch);
+  root.querySelectorAll('.slot').forEach(slot => {
+    slot.onclick = e => {
+      if (e.target.closest('[data-clear]')) return;
+      root.querySelectorAll('.slot').forEach(s => s.classList.remove('over'));
+      slot.classList.add('over');
+      active = slot;
+    };
+    slot.ondragover = e => { e.preventDefault(); slot.classList.add('over'); };
+    slot.ondragleave = () => slot.classList.remove('over');
+    slot.ondrop = e => {
+      e.preventDefault();
+      const f = e.dataTransfer.getData('f'), g = e.dataTransfer.getData('g');
+      applySlot(ch, slot, f, g);
+    };
+  });
+  root.querySelectorAll('[data-clear]').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      pushUndo();
+      delete ch.encode[b.dataset.clear];
+      patchChart(ch, { inspector: true });
+    };
+  });
+  root.querySelectorAll('.fchip').forEach(chip => {
+    chip.ondragstart = e => {
+      if (e.target.closest('[data-conv]')) { e.preventDefault(); return; }
+      e.dataTransfer.setData('f', chip.dataset.f);
+      e.dataTransfer.setData('g', chip.dataset.g);
+    };
+    chip.onclick = e => {
+      if (e.target.closest('[data-conv]')) return;
+      let prefer = chip.dataset.g === 'dim' ? 'category' : 'value';
+      if (chip.dataset.g === 'dim' && ch.chartType === 'pivot') {
+        if (!ch.encode.category) prefer = 'category';
+        else if (!ch.encode.colDim) prefer = 'colDim';
+        else prefer = 'category';
+      }
+      const slot = active || root.querySelector(`.slot[data-slot="${prefer}"]`) || root.querySelector(`.slot[data-accept="${chip.dataset.g}"]`);
+      if (!slot) { toast('无可用槽位', 'warn'); return; }
+      applySlot(ch, slot, chip.dataset.f, chip.dataset.g);
+    };
+  });
+}
+
+function applySlot(ch, slot, field, group) {
+  if (slot.dataset.accept && slot.dataset.accept !== group && !(slot.dataset.slot==='color' && group==='dim')) {
+    toast('字段类型与槽位不匹配', 'warn'); return;
+  }
+  pushUndo();
+  ch.encode[slot.dataset.slot] = field;
+  toast(`已绑定 ${field}`, 'ok');
+  patchChart(ch, { inspector: true, flash: true });
+}
+
+function renderStyle(el, comp) {
+  const ch = comp.type === 'chart' ? state.dash.charts[comp.chartId] : null;
+  const st = ch ? ensureStyle(ch) : null;
+  const type = ch?.chartType || comp.type;
+
+  let typeSpecific = '';
+  if (isTableType(type) && st) {
+    typeSpecific = `
+      <div class="sec"><h4>${type==='pivot'?'透视表':type==='grouptable'?'汇总表':'明细表'}样式</h4>
+        ${type !== 'pivot' ? `<div class="field"><label>每页行数</label>
+          <select id="stPage">
+            ${[3,5,10,20].map(n => `<option value="${n}" ${st.pageSize===n?'selected':''}>${n} 行 / 页</option>`).join('')}
+          </select>
+        </div>` : ''}
+        <label class="chk"><input type="checkbox" id="stHead" ${st.showHeader?'checked':''}/> 显示表头</label>
+        <label class="chk"><input type="checkbox" id="stStripe" ${st.stripe?'checked':''}/> 斑马纹</label>
+        ${type === 'pivot' || type === 'grouptable' ? `
+          <label class="chk"><input type="checkbox" id="stRowTotal" ${st.showRowTotal!==false?'checked':''}/> ${type==='pivot'?'显示行合计':'显示合计行'}</label>
+        ` : ''}
+        ${type === 'pivot' ? `
+          <label class="chk"><input type="checkbox" id="stColTotal" ${st.showColTotal!==false?'checked':''}/> 显示列合计</label>
+        ` : ''}
+      </div>`;
+  } else if (type === 'kpi' && st) {
+    typeSpecific = `
+      <div class="sec"><h4>指标卡</h4>
+        <div class="field"><label>数值颜色</label>
+          <div class="color-row"><input type="color" id="stValColor" value="${st.valueColor || '#1f2329'}"/></div>
+        </div>
+        <div class="field"><label>数值字号</label>
+          <select id="stValSize">
+            <option value="24" ${st.valueSize==24?'selected':''}>24</option>
+            <option value="28" ${st.valueSize==28?'selected':''}>28</option>
+            <option value="32" ${!st.valueSize||st.valueSize==32?'selected':''}>32</option>
+            <option value="40" ${st.valueSize==40?'selected':''}>40</option>
+          </select>
+        </div>
+      </div>`;
+  } else if (['bar','hbar','line','area','pie'].includes(type) && st) {
+    typeSpecific = `
+      <div class="sec"><h4>图表</h4>
+        <label class="chk"><input type="checkbox" id="stLegend" ${st.showLegend?'checked':''}/> 显示图例</label>
+        <div class="field"><label>图例位置</label>
+          <div class="seg2" id="legPos">
+            <button type="button" data-lp="top" class="${st.legendPos==='top'?'on':''}">顶部</button>
+            <button type="button" data-lp="bottom" class="${st.legendPos==='bottom'?'on':''}">底部</button>
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="stLabel" ${st.showLabel?'checked':''}/> 显示数值标签</label>
+        ${['line','area'].includes(type) ? `<label class="chk"><input type="checkbox" id="stSmooth" ${st.smooth!==false?'checked':''}/> 平滑曲线</label>` : ''}
+      </div>`;
+  } else if (type === 'slicer') {
+    typeSpecific = `
+      <div class="sec"><h4>切片器</h4>
+        <div class="field"><label>背景色</label><div class="color-row"><input type="color" id="stBg" value="${comp.props?.bg || '#ffffff'}"/></div></div>
+        <div class="field"><label>文字颜色</label><div class="color-row"><input type="color" id="stTitle" value="${comp.props?.titleColor || '#1f2329'}"/></div></div>
+      </div>`;
+  } else if (type === 'text') {
+    typeSpecific = `
+      <div class="sec"><h4>文本</h4>
+        <div class="field"><label>背景色</label><div class="color-row"><input type="color" id="stBg" value="${comp.props?.bg || '#ffffff'}"/></div></div>
+        <div class="field"><label>字体颜色</label><div class="color-row"><input type="color" id="stTitle" value="${comp.props?.color || '#1f2329'}"/></div></div>
+        <div class="field"><label>字号</label>
+          <select id="stSize"><option value="14">14</option><option value="16" selected>16</option><option value="20">20</option><option value="24">24</option></select>
+        </div>
+      </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="sec"><h4>画布主题色板</h4>
+      <div class="theme-swatch" id="themes">
+        ${Object.entries(THEMES).map(([k,v]) => `<button class="${state.dash.theme===k?'on':''}" data-th="${k}" style="background:${v.brand}" title="${k}"></button>`).join('')}
+      </div>
+    </div>
+    ${ch ? `
+    <div class="sec"><h4>卡片外观</h4>
+      <label class="chk"><input type="checkbox" id="stShowTitle" ${st.showTitle!==false?'checked':''}/> 显示标题栏</label>
+      <div class="field"><label>背景颜色</label>
+        <div class="color-row">
+          <input type="color" id="stBg" value="${st.bg || '#ffffff'}"/>
+          <button class="btn ghost" id="stBgReset" style="height:28px">重置白</button>
+        </div>
+      </div>
+      <div class="field"><label>标题颜色</label>
+        <div class="color-row"><input type="color" id="stTitle" value="${st.titleColor || '#1f2329'}"/></div>
+      </div>
+      <div class="field"><label>标题字号</label>
+        <select id="stTitleSize">
+          ${[11,12,13,14,16].map(n => `<option value="${n}" ${(+st.titleSize||12)===n?'selected':''}>${n}px</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>圆角</label>
+        <select id="stRadius">
+          ${[0,6,10,16].map(n => `<option value="${n}" ${(+st.cardRadius||10)===n?'selected':''}>${n}px</option>`).join('')}
+        </select>
+      </div>
+    </div>` : ''}
+    ${typeSpecific}
+    <p style="font-size:11px;color:var(--text-3);line-height:1.5;margin-top:8px">样式按组件类型显示不同项；修改后画布即时刷新。</p>`;
+
+  el.querySelectorAll('[data-th]').forEach(b => b.onclick = () => {
+    pushUndo();
+    state.dash.theme = b.dataset.th;
+    markDirty();
+    el.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x.dataset.th === state.dash.theme));
+    repaintAllCharts();
+    toast('主题已应用', 'ok');
+  });
+
+  const softStyle = () => {
+    markDirty();
+    if (ch) patchChart(ch, { inspector: false, flash: false });
+    else replaceWidget(comp);
+  };
+
+  const bindStyle = (id, fn, { live = false } = {}) => {
+    const node = el.querySelector(id);
+    if (!node) return;
+    if (live || node.type === 'color') {
+      node.oninput = () => { fn(node); softStyle(); };
+      node.onchange = () => { pushUndo(); fn(node); softStyle(); };
+    } else {
+      node.onchange = () => { pushUndo(); fn(node); softStyle(); };
+    }
+  };
+
+  if (ch && st) {
+    bindStyle('#stShowTitle', n => { st.showTitle = n.checked; });
+    bindStyle('#stBg', n => { st.bg = n.value; }, { live: true });
+    el.querySelector('#stBgReset')?.addEventListener('click', () => {
+      pushUndo(); st.bg = '#ffffff'; softStyle();
+      const bg = el.querySelector('#stBg'); if (bg) bg.value = '#ffffff';
+    });
+    bindStyle('#stTitle', n => { st.titleColor = n.value; }, { live: true });
+    bindStyle('#stTitleSize', n => { st.titleSize = +n.value; });
+    bindStyle('#stRadius', n => { st.cardRadius = +n.value; });
+    bindStyle('#stPage', n => { st.pageSize = +n.value; });
+    bindStyle('#stHead', n => { st.showHeader = n.checked; });
+    bindStyle('#stStripe', n => { st.stripe = n.checked; });
+    bindStyle('#stRowTotal', n => { st.showRowTotal = n.checked; });
+    bindStyle('#stColTotal', n => { st.showColTotal = n.checked; });
+    bindStyle('#stValColor', n => { st.valueColor = n.value; }, { live: true });
+    bindStyle('#stValSize', n => { st.valueSize = +n.value; });
+    bindStyle('#stLegend', n => { st.showLegend = n.checked; });
+    bindStyle('#stLabel', n => { st.showLabel = n.checked; });
+    bindStyle('#stSmooth', n => { st.smooth = n.checked; });
+    el.querySelectorAll('[data-lp]').forEach(b => {
+      b.onclick = () => {
+        pushUndo(); st.legendPos = b.dataset.lp;
+        el.querySelectorAll('[data-lp]').forEach(x => x.classList.toggle('on', x.dataset.lp === st.legendPos));
+        softStyle();
+      };
+    });
+  }
+  if (comp.type === 'slicer' || comp.type === 'text') {
+    bindStyle('#stBg', n => { comp.props = comp.props || {}; comp.props.bg = n.value; }, { live: true });
+    bindStyle('#stTitle', n => {
+      comp.props = comp.props || {};
+      if (comp.type === 'text') comp.props.color = n.value;
+      else comp.props.titleColor = n.value;
+    }, { live: true });
+    bindStyle('#stSize', n => { comp.props = comp.props || {}; comp.props.fontSize = +n.value; });
+  }
+}
+
+function renderSenior(el, comp) {
+  const ch = comp.type === 'chart' ? state.dash.charts[comp.chartId] : null;
+  el.innerHTML = `
+    <div class="sec"><h4>高级计算 ${state.phase==='c'?'':'(Phase C)'}</h4>
+      <div class="field"><label>同比/环比</label>
+        <select id="calc" ${!ch?'disabled':''}>
+          <option value="none">无</option>
+          <option value="yoy">同比 YoY</option>
+          <option value="mom">环比 MoM</option>
+        </select>
+      </div>
+    </div>
+    <div class="sec"><h4>KPI 告警</h4>
+      <button class="btn" style="width:100%;justify-content:center" id="cfgAlert" ${!ch||ch.chartType!=='kpi'?'disabled':''}>配置阈值告警…</button>
+    </div>
+    <div class="sec"><h4>跳转</h4>
+      <button class="btn" style="width:100%;justify-content:center" id="cfgJump" ${!ch?'disabled':''}>配置跳转…</button>
+    </div>
+    <div class="sec"><h4>嵌入 SDK</h4>
+      <div class="code" id="embedBox">加载中…</div>
+    </div>
+    <div class="sec"><h4>调试</h4>
+      <p style="font-size:11px;color:var(--text-3)">contentId=${state.dash.contentId} · version=${state.dash.version}</p>
+    </div>`;
+  if (ch) {
+    el.querySelector('#calc').value = ch.encode.calc || 'none';
+    el.querySelector('#calc').onchange = e => { pushUndo(); ch.encode.calc = e.target.value; patchChart(ch, { inspector: false }); };
+  }
+  el.querySelector('#cfgAlert').onclick = () => openAlertModal(ch);
+  el.querySelector('#cfgJump').onclick = () => openJumpModal(ch);
+  const token = state.dash.share?.token || 'YOUR_TOKEN';
+  el.querySelector('#embedBox').textContent =
+`<iframe src="/embed/${token}" width="100%" height="480" frameborder="0"></iframe>
+
+// SDK
+DashboardEmbed.mount('#el', { token: '${token}', theme: '${state.dash.theme}' })`;
+}
+
+function renderPreview(app) {
+  const d = state.dash;
+  if (d.status === 'draft') {
+    app.innerHTML = `<div class="bar"><button class="btn ghost" id="back">←</button><b>尚未发布</b></div>
+      <div class="empty" style="position:relative;margin:40px"><p>请先发布</p><button class="btn primary" id="pub">发布</button></div>`;
+    app.querySelector('#back').onclick = () => { state.screen = 'editor'; render(); };
+    app.querySelector('#pub').onclick = () => { d.status = 'published'; render(); };
+    return;
+  }
+  app.innerHTML = `
+    <div class="bar">
+      <button class="btn ghost" id="back">← 编辑</button>
+      <b>${esc(d.name)}</b>
+      <span class="tag pub">已发布只读</span>
+      <div class="spacer"></div>
+      ${state.phase!=='a'?`<button class="btn ghost" id="mob">${state.mobile?'桌面':'移动'}宽</button>`:''}
+      <button class="btn" id="sh">分享</button>
+    </div>
+    <div class="qbar" id="qbar"></div>
+    <div class="canvas-wrap">
+      <div class="tab-strip" id="tabStrip"></div>
+      <div class="board" id="board"></div>
+    </div>`;
+  app.querySelector('#back').onclick = () => { state.screen = 'editor'; state.mobile = false; render(); };
+  app.querySelector('#sh').onclick = () => openShareModal();
+  app.querySelector('#mob')?.addEventListener('click', () => { state.mobile = !state.mobile; render(); });
+  renderQueryBar(app.querySelector('#qbar'));
+  renderTabStrip(app.querySelector('#tabStrip'));
+  renderBoard(app.querySelector('#board'));
+}
+
+/* ---------- modals ---------- */
+function showModal(html) {
+  const mask = document.getElementById('mask');
+  mask.classList.add('show');
+  mask.innerHTML = `<div class="modal">${html}</div>`;
+  mask.onclick = e => { if (e.target === mask) hideModal(); };
+}
+function hideModal() {
+  const mask = document.getElementById('mask');
+  mask.classList.remove('show');
+  mask.innerHTML = '';
+}
+
+function openShareModal() {
+  if (state.dash.status === 'draft') { toast('请先发布再分享', 'warn'); return; }
+  const existing = state.dash.share;
+  showModal(`
+    <h3>分享与权限</h3>
+    <div class="field"><label>可见性</label>
+      <select id="vis"><option value="org">组织内</option><option value="public">公开链接</option></select>
+    </div>
+    <div class="field"><label>权限</label>
+      <select id="perm"><option value="view">仅查看</option><option value="edit">可编辑</option></select>
+    </div>
+    <div class="field"><label>链接</label>
+      <input id="url" readonly value="${existing ? location.origin + existing.url : '创建后生成'}" />
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="c">取消</button>
+      <button class="btn" id="copy" ${existing?'':'disabled'}>复制链接</button>
+      <button class="btn primary" id="ok">创建分享</button>
+    </div>`);
+  if (existing) {
+    document.getElementById('vis').value = existing.visibility;
+    document.getElementById('perm').value = existing.permission;
+  }
+  document.getElementById('c').onclick = hideModal;
+  document.getElementById('ok').onclick = () => {
+    const token = 'sh_' + state.dash.id.slice(-4) + '_' + Math.random().toString(36).slice(2,8);
+    state.dash.share = {
+      token,
+      visibility: document.getElementById('vis').value,
+      permission: document.getElementById('perm').value,
+      url: '/share/' + token
+    };
+    document.getElementById('url').value = location.origin + state.dash.share.url;
+    document.getElementById('copy').disabled = false;
+    toast('分享已创建', 'ok');
+  };
+  document.getElementById('copy').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('url').value);
+      toast('已复制链接', 'ok');
+    } catch { toast(document.getElementById('url').value); }
+  };
+}
+
+function exportCsv() {
+  const comp = state.dash.components.find(c => c.id === state.selectedId && c.type === 'chart');
+  const ch = comp ? state.dash.charts[comp.chartId] : Object.values(state.dash.charts)[0];
+  if (!ch || missingBind(ch).length) { toast('请先选中已配置的图表', 'warn'); return; }
+  const rows = filteredRows(ch);
+  let csv;
+  if (ch.chartType === 'pivot' && ch.encode.category && ch.encode.colDim && ch.encode.value) {
+    const piv = pivotAggregate(rows, ch.encode.category, ch.encode.colDim, ch.encode.value, ch.encode.agg || 'SUM');
+    csv = [ch.encode.category, ...piv.colKeys, 'row_total'].join(',') + '\n' +
+      piv.matrix.map(r => [JSON.stringify(r.row), ...r.vals, r.total].join(',')).join('\n');
+  } else if (ch.chartType === 'table') {
+    const cols = Object.keys(rows[0] || {});
+    csv = cols.join(',') + '\n' + rows.map(r => cols.map(c => JSON.stringify(r[c] ?? '')).join(',')).join('\n');
+  } else {
+    const data = aggregate(rows, ch.encode.category, ch.encode.value, ch.encode.agg);
+    csv = 'name,value\n' + data.map(r => `${JSON.stringify(r.name)},${r.value}`).join('\n');
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `${ch.title}.csv`;
+  a.click();
+  toast('已导出 CSV', 'ok');
+}
+
+function openDataModal(comp) {
+  if (comp.type !== 'chart') { toast('仅图表支持查看数据', 'warn'); return; }
+  const ch = state.dash.charts[comp.chartId];
+  const rows = filteredRows(ch);
+  showModal(`<h3>查看数据 · ${esc(ch.title)}</h3>
+    <div class="table-wrap" style="max-height:360px">
+      <table class="dt"><thead><tr>${Object.keys(rows[0]||{empty:1}).map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.slice(0,50).map(r => `<tr>${Object.values(r).map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    </div>
+    <div class="actions"><button class="btn primary" id="c">关闭</button></div>`);
+  document.getElementById('c').onclick = hideModal;
+}
+
+function openSqlModal(comp) {
+  const ch = state.dash.charts[comp.chartId];
+  if (!ch?.datasetId) { toast('未绑定数据集', 'warn'); return; }
+  const agg = ch.encode.agg || 'SUM';
+  let sql;
+  if (ch.chartType === 'pivot') {
+    sql = `SELECT ${ch.encode.category} AS row_dim, ${ch.encode.colDim} AS col_dim, ${agg}(${ch.encode.value}) AS measure\nFROM dataset_${ch.datasetId}\nGROUP BY ${ch.encode.category}, ${ch.encode.colDim}\nORDER BY row_dim, col_dim`;
+  } else if (ch.chartType === 'table') {
+    sql = `SELECT *\nFROM dataset_${ch.datasetId}\n/* 明细表：应用页面筛选后返回原始行 */\nLIMIT ${ch.style?.pageSize || 100}`;
+  } else if (ch.encode.category) {
+    sql = `SELECT ${ch.encode.category} AS dim, ${agg}(${ch.encode.value}) AS measure\nFROM dataset_${ch.datasetId}\nGROUP BY ${ch.encode.category}\nORDER BY measure DESC`;
+  } else {
+    sql = `SELECT ${agg}(${ch.encode.value}) AS measure\nFROM dataset_${ch.datasetId}`;
+  }
+  showModal(`<h3>查看 SQL</h3><div class="code">${esc(sql)}</div>
+    <div class="actions"><button class="btn primary" id="c">关闭</button></div>`);
+  document.getElementById('c').onclick = hideModal;
+}
+
+function openLinkageModal(ch) {
+  const others = Object.values(state.dash.charts).filter(c => c.id !== ch.id);
+  const cur = state.dash.linkages.filter(l => l.sourceChartId === ch.id);
+  const rows = others.map(o => {
+    const on = cur.find(l => l.targetChartId === o.id);
+    const fields = ds(o.datasetId)?.fields || [{ name: 'region', label: 'region' }];
+    return `<label style="display:flex;gap:8px;align-items:center;margin:6px 0;font-size:12px;flex-wrap:wrap">
+      <input type="checkbox" data-t="${o.id}" ${on ? 'checked' : ''}/> ${esc(o.title)}
+      <select data-tf="${o.id}" style="margin-left:auto;height:28px">
+        ${fields.map(f => `<option value="${f.name}" ${on?.targetField === f.name ? 'selected' : ''}>${esc(f.label || f.name)}</option>`).join('')}
+      </select>
+    </label>`;
+  }).join('') || '<p style="font-size:12px;color:var(--text-3)">请先添加其他图表</p>';
+  showModal(`<h3>联动配置 · ${esc(ch.title)}</h3>
+    <p style="font-size:12px;color:var(--text-2);margin-bottom:10px">勾选目标图并映射字段（同/跨数据集）</p>
+    ${rows}
+    <div class="field" style="margin-top:10px"><label>源字段</label>
+      <select id="sf">${(ds(ch.datasetId)?.fields || []).map(f => `<option value="${f.name}">${esc(f.label)}</option>`).join('')}</select>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="c">取消</button>
+      <button class="btn primary" id="ok">保存</button>
+    </div>`);
+  const srcField = cur[0]?.sourceField || ch.encode.category || 'region';
+  const sf = document.getElementById('sf');
+  if (sf) sf.value = srcField;
+  document.getElementById('c').onclick = hideModal;
+  document.getElementById('ok').onclick = () => {
+    pushUndo();
+    state.dash.linkages = state.dash.linkages.filter(l => l.sourceChartId !== ch.id);
+    document.querySelectorAll('[data-t]').forEach(cb => {
+      if (!cb.checked) return;
+      const tid = cb.dataset.t;
+      const tf = document.querySelector(`[data-tf="${tid}"]`).value;
+      state.dash.linkages.push({
+        id: uid('l'), sourceChartId: ch.id, sourceField: sf?.value || 'region',
+        targetChartId: tid, targetField: tf, enabled: true
+      });
+    });
+    markDirty();
+    hideModal();
+    toast('联动已保存', 'ok');
+  };
+}
+
+function openAlertModal(ch) {
+  if (!ch || ch.chartType !== 'kpi') { toast('请选择 KPI 图', 'warn'); return; }
+  const cur = state.dash.alerts.find(a => a.chartId === ch.id) || { operator: 'lt', threshold: 300, enabled: true };
+  showModal(`<h3>KPI 阈值告警 · ${esc(ch.title)}</h3>
+    <div class="field"><label>条件</label>
+      <select id="op"><option value="lt">小于</option><option value="gt">大于</option><option value="lte">小于等于</option><option value="gte">大于等于</option></select>
+    </div>
+    <div class="field"><label>阈值</label><input id="th" type="number" value="${cur.threshold}" /></div>
+    <div class="field"><label><input type="checkbox" id="en" ${cur.enabled ? 'checked' : ''}/> 启用</label></div>
+    <div class="actions"><button class="btn ghost" id="c">取消</button><button class="btn primary" id="ok">保存</button></div>`);
+  document.getElementById('op').value = cur.operator;
+  document.getElementById('c').onclick = hideModal;
+  document.getElementById('ok').onclick = () => {
+    pushUndo();
+    state.dash.alerts = state.dash.alerts.filter(a => a.chartId !== ch.id);
+    state.dash.alerts.push({
+      id: uid('a'), chartId: ch.id, metricField: ch.encode.value,
+      operator: document.getElementById('op').value,
+      threshold: +document.getElementById('th').value,
+      enabled: document.getElementById('en').checked
+    });
+    markDirty(); hideModal(); toast('告警已保存', 'ok'); render();
+  };
+}
+
+function openJumpModal(ch) {
+  if (!ch) return;
+  const cur = state.dash.jumps.find(j => j.sourceChartId === ch.id) || {
+    targetType: 'url', target: 'https://example.com/detail?region={value}', triggerField: ch.encode.category || 'region'
+  };
+  showModal(`<h3>跳转配置 · ${esc(ch.title)}</h3>
+    <div class="field"><label>目标类型</label>
+      <select id="jt"><option value="url">URL</option><option value="dashboard">另一仪表盘</option></select>
+    </div>
+    <div class="field"><label>目标</label><input id="tg" value="${esc(cur.target)}" /></div>
+    <div class="field"><label>触发字段</label><input id="tf" value="${esc(cur.triggerField)}" /></div>
+    <p style="font-size:11px;color:var(--text-3)">URL 中可用 {value} 占位点击维值</p>
+    <div class="actions"><button class="btn ghost" id="c">取消</button><button class="btn primary" id="ok">保存</button></div>`);
+  document.getElementById('jt').value = cur.targetType;
+  document.getElementById('c').onclick = hideModal;
+  document.getElementById('ok').onclick = () => {
+    pushUndo();
+    state.dash.jumps = state.dash.jumps.filter(j => j.sourceChartId !== ch.id);
+    state.dash.jumps.push({
+      id: uid('j'), sourceChartId: ch.id,
+      targetType: document.getElementById('jt').value,
+      target: document.getElementById('tg').value,
+      triggerField: document.getElementById('tf').value
+    });
+    markDirty(); hideModal(); toast('跳转已保存', 'ok');
+  };
+}
+
+document.getElementById('phaseTabs').onclick = e => {
+  const b = e.target.closest('button[data-phase]');
+  if (!b) return;
+  state.phase = b.dataset.phase;
+  if (state.phase === 'a') state.mobile = false;
+  toast(`已切换 ${b.textContent}`, 'ok');
+  render();
+};
+
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); undo(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'c' && state.selectedId && state.screen === 'editor') {
+    const comp = state.dash.components.find(c => c.id === state.selectedId);
+    if (comp) {
+      state.clipboard = clone(comp);
+      if (comp.chartId) state.clipboard._chart = clone(state.dash.charts[comp.chartId]);
+    }
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'v' && state.screen === 'editor') pasteComp();
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (state.screen !== 'editor' || !state.selectedId) return;
+    if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+    const comp = state.dash.components.find(c => c.id === state.selectedId);
+    if (!comp) return;
+    pushUndo();
+    state.dash.components = state.dash.components.filter(c => c.id !== comp.id);
+    if (comp.chartId) delete state.dash.charts[comp.chartId];
+    state.selectedId = null;
+    markDirty();
+    render();
+  }
+});
+
+window.addEventListener('resize', () => {
+  if (state.screen === 'editor' || state.screen === 'preview') {
+    const board = document.getElementById('board');
+    if (board) renderBoard(board);
+  }
+});
+
+render();
+</script>
+</body>
+</html>

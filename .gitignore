@@ -20,5 +20,5 @@ coverage/
 # Third-party reference clones
 prototypes/vendor/editor/
 
-# Local Cursor transcript HTML export (may contain private chat content)
-.cursor-export/
+# Optional local re-exports; committed .cursor-export/ is the shareable snapshot
+# (do not put secrets into transcripts before regenerating).
