@@ -117,7 +117,7 @@
 |----|------|
 | NFR-01 | 配置层禁止直查业务库；取数仅经 Dataset |
 | NFR-02 | JSON 中 ID 为 string |
-| NFR-03 | 契约以 `docs/openapi.yaml` + 本文为准；实现差异须在设计文档标明 |
+| NFR-03 | 契约以 `docs/design/openapi.yaml` + 本文为准；实现差异须在设计文档标明 |
 | NFR-04 | 支持 `stub`（无库联调）与真实 JDBC（docker / local）两种运行时 |
 | NFR-05 | 一键部署：`./scripts/up.sh` 拉起 PG + API + Web |
 

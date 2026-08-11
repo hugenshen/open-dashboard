@@ -2,7 +2,7 @@
 
 JDK 21 · Spring Boot 3 · PostgreSQL · Flyway · **COLA 多模块**
 
-产品 API 入口。契约见 [`../docs/openapi.yaml`](../docs/openapi.yaml)。
+产品 API 入口。契约见 [`../docs/design/openapi.yaml`](../docs/design/openapi.yaml)。
 
 模块：`open-dashboard-domain` / `app` / `infrastructure` / `adapter` / `start`
 

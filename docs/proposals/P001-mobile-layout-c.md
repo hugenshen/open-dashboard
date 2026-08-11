@@ -1,9 +1,10 @@
 ---
 id: P001
 title: 移动端布局与样式（DataEase C 档）
-status: accepted
-target_spec: v0.2.0
+status: done
+milestone: v0.2.0
 date: 2026-08-03
+done: 2026-08-03
 implemented_in: v0.2.0
 prototype: prototypes/hi-fi/dashboard-commercial.html
 ---

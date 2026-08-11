@@ -3,10 +3,11 @@
 ---
 id: P003
 title: 在线报告 Umo 编辑器插入看板图与报告内新建图
-status: accepted
-target_spec: v0.4.0
+status: done
+milestone: v0.4.0
 implemented_in: v0.4.0
 date: 2026-08-03
+done: 2026-08-03
 ---
 
 ## 1. 背景

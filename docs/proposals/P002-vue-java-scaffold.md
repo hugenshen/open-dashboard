@@ -3,10 +3,11 @@
 ---
 id: P002
 title: Vue3 + JDK21 Spring Boot + PostgreSQL 核心工程落地
-status: accepted
-target_spec: v0.3.0
+status: done
+milestone: v0.3.0
 implemented_in: v0.3.0
 date: 2026-08-03
+done: 2026-08-03
 ---
 
 ## 背景

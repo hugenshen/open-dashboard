@@ -1,23 +1,21 @@
 # 产品演进路线图
 
 > 基于 [requirements.md](./requirements.md) 现状基线。  
-> 新能力建议：先补本文条目 → 实现 → 回写 requirements / design。
+> 新能力：本文挂条 → [proposals/](../proposals/) → design/OpenAPI → 实现 → 回写 requirements → 提案标 `done`。详见 [../process.md](../process.md)。
 
 ---
 
 ## 已交付里程碑
 
-| 版本 | 内容 | 状态 |
-|------|------|------|
-| v0.2 | 移动端独立布局（`mobile_json` + styleSync） | 已交付 |
-| v0.3 | 工程脚手架 + 仪表盘编辑器 + chartQuery / datasetQuery + 数据源 / 数据集 | 已交付 |
-| v0.4 | 在线报告（Umo）引用看板图 / 报告内新建图 + 实时取数 | 已交付（骨架可用） |
-
-历史提案与冻结规格见 [../archive/](../archive/)。
+| 版本 | 内容 | 状态 | 提案 |
+|------|------|------|------|
+| v0.2 | 移动端独立布局（`mobile_json` + styleSync） | 已交付 | [P001](../proposals/P001-mobile-layout-c.md) done |
+| v0.3 | 工程脚手架 + 仪表盘编辑器 + chartQuery / datasetQuery + 数据源 / 数据集 | 已交付 | [P002](../proposals/P002-vue-java-scaffold.md) done |
+| v0.4 | 在线报告（Umo）引用看板图 / 报告内新建图 + 实时取数 | 已交付（骨架可用） | [P003](../proposals/P003-report-umo-charts.md) done |
 
 ---
 
-## 下一阶段建议（v0.5+）
+## v0.5（进行中）
 
 ### P0 — 治理与安全补齐
 
@@ -32,16 +30,22 @@
 
 | 项 | 说明 |
 |----|------|
+| **对话分析（内测一期）** | 见提案 [P004](../proposals/P004-conversation.md) · 设计 [../design/conversation.md](../design/conversation.md) · 原型 `conversation-workspace.html` |
 | 查询控件深化 | 日期范围 / 枚举下拉作用于整页 `filterState` |
 | 维度下钻 | category 点击进下一层（encode / senior） |
 | Tab / 切片器组件 | 容器类组件产品化 |
 | 主题与 KPI 条件格式 | 3～5 套主题 |
 | CSV 之外的导出 | 画布 / 单图 PNG（或 PDF 报告导出） |
 
-### P2 — Quick BI 向深度
+---
+
+## 以后（v0.6+）
+
+### Quick BI 向深度
 
 | 项 | 说明 |
 |----|------|
+| **对话分析二期** | 监控告警、定时推送、多模型、Skills/MCP、指标口径知识沉淀、报告「数据解读/文本总结」深度、模拟数据一键构造 |
 | 跳转 | 图 → URL / 另一仪表盘（带参数） |
 | 同环比 | `encode.senior.calc` |
 | KPI 告警 | 阈值配置 + 通知通道（后置） |
@@ -49,7 +53,7 @@
 | 嵌入 | `/embed/{token}` + iframe / 轻量 SDK |
 | 行列权限 | Dataset 层 RLS / CLS 注入查询 |
 
-### P3 — 数据接入扩展
+### 数据接入扩展
 
 | 项 | 说明 |
 |----|------|
@@ -58,7 +62,7 @@
 | 跨库 / 多表 Join 数据集 | 建模深化 |
 | 数据集权限与共享 | 与看板 ACL 统一模型 |
 
-### P4 — 报告深化
+### 报告深化
 
 | 项 | 说明 |
 |----|------|
@@ -80,9 +84,10 @@
 
 ---
 
-## 版本约定（简化）
+## 版本约定
 
-1. **requirements.md** 始终反映「当前已交付」基线。  
-2. 本文记录「下一步」；落地后把条目迁入 requirements，并更新 design。  
-3. 重大设计变更在 `docs/design/` 同步修改；历史材料放 `docs/archive/`，不再作为契约源。  
-4. OpenAPI（`docs/openapi.yaml`）与实现冲突时：以**已上线行为**为准，并尽快修契约。
+1. **requirements.md** 始终是「当前已交付」唯一基线（不按版本拆多份文件）。  
+2. 本文按里程碑分组「下一步」；条目链到 `proposals/`；落地后写入 requirements，提案标 `done`。  
+3. 重大设计变更同步 `docs/design/`（含 `openapi.yaml`）。  
+4. OpenAPI 与实现冲突：以**已上线行为**为准，并尽快修契约。  
+5. 发版时建议打同号 git tag；旧基线用 `git show vX.Y.Z:docs/product/requirements.md` 查看。

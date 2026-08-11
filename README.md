@@ -97,9 +97,10 @@ open-dashboard/
 | [docs/design/frontend.md](docs/design/frontend.md) | 前端设计 |
 | [docs/design/backend.md](docs/design/backend.md) | 后端设计 |
 | [docs/design/auth.md](docs/design/auth.md) | 鉴权 SPI |
-| [docs/api/rest.md](docs/api/rest.md) · [docs/openapi.yaml](docs/openapi.yaml) | REST |
+| [docs/design/rest.md](docs/design/rest.md) · [docs/design/openapi.yaml](docs/design/openapi.yaml) | REST / OpenAPI |
+| [docs/process.md](docs/process.md) · [docs/guide.html](docs/guide.html) | 协作规范与使用说明 |
 | [docs/deploy.md](docs/deploy.md) | 部署与开箱 |
-| [docs/user-manual/index.html](docs/user-manual/index.html) | 用户操作手册（在线 `/help/`，顶栏「帮助」） |
+| [docs/user-manual/index.html](docs/user-manual/index.html) | 终端用户手册（在线 `/help/`，顶栏「帮助」） |
 
 ## 设计要点（摘要）
 

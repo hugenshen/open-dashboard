@@ -103,7 +103,7 @@ flowchart TB
 | `de_dataset` / `de_dataset_field` | 数据集与字段 |
 | `de_report` | 报告元数据 + 文档 |
 
-历史 `docs/archive/schema.sql` 仅供参考，**以 Flyway 为准**。
+库表演进**以 Flyway 为准**（勿另维护平行 schema 真相源）。
 
 ### 发布双副本
 

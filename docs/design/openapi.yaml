@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: Open Dashboard API
-  version: 0.4.0
+  version: 0.5.0-conversation
   description: |
-    Core APIs: dashboard editor, chartQuery + datasetQuery, mobile layout, report (Umo charts).
-    Auth resources: DASHBOARD, REPORT. IDs are strings in JSON.
+    Core APIs: dashboard editor, chartQuery + datasetQuery, mobile layout, report (Umo charts),
+    conversation (内测). Auth resources: DASHBOARD, REPORT, CONVERSATION. IDs are strings in JSON.
 servers:
   - url: /api
 tags:
@@ -16,8 +16,184 @@ tags:
   - name: datasource
   - name: dataset
   - name: catalog
+  - name: conversation
 
 paths:
+  /conversations/styles:
+    get:
+      tags: [conversation]
+      summary: List visual style presets for conversation generation
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Conversation feature disabled
+  /conversations:
+    get:
+      tags: [conversation]
+      summary: List conversations for current user
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [conversation]
+      summary: Create conversation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                datasetIds:
+                  type: array
+                  items: { type: string }
+                linkedDashboardId: { type: string }
+      responses:
+        '200':
+          description: OK
+  /conversations/{id}:
+    get:
+      tags: [conversation]
+      summary: Get conversation detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Not found
+    patch:
+      tags: [conversation]
+      summary: Update conversation meta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+    delete:
+      tags: [conversation]
+      summary: Delete conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: No Content
+  /conversations/{id}/messages:
+    get:
+      tags: [conversation]
+      summary: List messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+  /conversations/{id}/runs:
+    post:
+      tags: [conversation]
+      summary: Start a run; response is text/event-stream (SSE)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+                mode: { type: string, enum: [auto, plan] }
+                styleId: { type: string }
+                datasetIds:
+                  type: array
+                  items: { type: string }
+                selectedChartId: { type: string }
+                selectedEncode: { type: object }
+      responses:
+        '200':
+          description: SSE stream
+  /conversations/{id}/runs/{runId}/cancel:
+    post:
+      tags: [conversation]
+      summary: Cancel a streaming run
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+  /conversations/{id}/runs/{runId}/confirm-plan:
+    post:
+      tags: [conversation]
+      summary: Confirm plan mode and continue apply
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: SSE stream continuation
+  /conversations/{id}/revisions:
+    get:
+      tags: [conversation]
+      summary: List revisions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+  /conversations/{id}/revisions/{rev}/restore:
+    post:
+      tags: [conversation]
+      summary: Restore dashboard draft to revision snapshot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: rev
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+  /conversations/feature:
+    get:
+      tags: [conversation]
+      summary: Feature flag status for current env
+      responses:
+        '200':
+          description: '{ enabled: boolean }'
   /datasource:
     get:
       tags: [datasource]

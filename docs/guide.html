@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Dashboard · 文档协作使用说明</title>
+  <style>
+    :root {
+      --bg: #f7f4ef;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffcf8;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --warn: #9a3412;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #ddf4f0 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, #f3e8d8 0%, transparent 50%),
+        var(--bg);
+      line-height: 1.65;
+    }
+    .wrap {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 4rem;
+    }
+    header {
+      margin-bottom: 2rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 650;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin: 0 0 0.5rem;
+    }
+    h1 {
+      font-family: "Source Serif 4", "Noto Serif SC", "Songti SC", Georgia, serif;
+      font-size: clamp(1.75rem, 4vw, 2.35rem);
+      font-weight: 650;
+      line-height: 1.25;
+      margin: 0 0 0.75rem;
+    }
+    .lead { color: var(--muted); margin: 0; max-width: 40rem; }
+    nav.toc {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin: 1.5rem 0 2rem;
+    }
+    nav.toc strong { display: block; margin-bottom: 0.5rem; }
+    nav.toc ol { margin: 0; padding-left: 1.25rem; }
+    nav.toc a { color: var(--accent); text-decoration: none; }
+    nav.toc a:hover { text-decoration: underline; }
+    h2 {
+      font-size: 1.25rem;
+      margin: 2.25rem 0 0.75rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--line);
+    }
+    h3 { font-size: 1.05rem; margin: 1.35rem 0 0.5rem; }
+    p, li { color: var(--ink); }
+    .muted { color: var(--muted); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 0.75rem 0 1rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th { background: #f5f5f4; font-weight: 650; }
+    tr:last-child td { border-bottom: 0; }
+    code, .path {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: #f5f5f4;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+    pre {
+      background: #1c1917;
+      color: #fafaf9;
+      padding: 1rem 1.1rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    pre code { background: none; color: inherit; padding: 0; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 0.85rem 1rem;
+      border-radius: 0 10px 10px 0;
+      margin: 1rem 0;
+    }
+    .callout.warn {
+      border-left-color: var(--warn);
+      background: #ffedd5;
+    }
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+      margin: 0.75rem 0;
+    }
+    .steps li {
+      position: relative;
+      padding: 0.85rem 1rem 0.85rem 3rem;
+      margin-bottom: 0.6rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .steps li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0.85rem;
+      top: 0.85rem;
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <p class="eyebrow">Open Dashboard Docs</p>
+      <h1>文档与协作使用说明</h1>
+      <p class="lead">给参与产品演进的人与 AI：目录怎么读、新需求怎么走、版本与提案怎么管。终端用户操作手册见 <a href="./user-manual/index.html">user-manual</a>。</p>
+    </header>
+
+    <nav class="toc" aria-label="目录">
+      <strong>本页目录</strong>
+      <ol>
+        <li><a href="#layout">目录一览</a></li>
+        <li><a href="#flow">新需求怎么协作</a></li>
+        <li><a href="#version">版本（里程碑）怎么用</a></li>
+        <li><a href="#examples">场景实例</a></li>
+        <li><a href="#rules">硬规则</a></li>
+        <li><a href="#links">相关链接</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="layout">1. 目录一览</h2>
+    <table>
+      <thead>
+        <tr><th>路径</th><th>用途</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="path">product/overview.md</span></td><td>产品是什么</td></tr>
+        <tr><td><span class="path">product/requirements.md</span></td><td>仅<strong>已交付</strong>需求基线</td></tr>
+        <tr><td><span class="path">product/roadmap.md</span></td><td>下一步；按 v0.x 分组并链到提案</td></tr>
+        <tr><td><span class="path">design/</span></td><td>现行说明书 + <span class="path">openapi.yaml</span>（硬契约）</td></tr>
+        <tr><td><span class="path">proposals/</span></td><td>进行中 / 已交付规格（用 status 标记）</td></tr>
+        <tr><td><span class="path">process.md</span></td><td>协作规范正文</td></tr>
+        <tr><td><span class="path">prototypes/hi-fi/</span></td><td>当前高保原型（可改）</td></tr>
+        <tr><td><span class="path">prototypes/snapshots/</span></td><td>可选冻结快照（只读）</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <strong>没有 archive 目录。</strong>历史看 <span class="path">proposals</span> 里 <code>status: done</code>，或 git tag（例如 <code>v0.4.0</code>）。
+    </div>
+
+    <h2 id="flow">2. 新需求怎么协作</h2>
+    <ol class="steps">
+      <li><strong>立项</strong> — 在 <span class="path">roadmap.md</span> 对应里程碑下挂一条，链到即将创建的 Pxxx。</li>
+      <li><strong>写规格</strong> — 新建 <span class="path">proposals/Pxxx-*.md</span>：<code>draft</code> → 评审 <code>accepted</code> → 开工 <code>in-progress</code>。</li>
+      <li><strong>定契约</strong> — 跨前后端时，先改 <span class="path">design/openapi.yaml</span> 与相关 design 文，再改实现。</li>
+      <li><strong>原型（可选）</strong> — 有新交互则改 <span class="path">prototypes/hi-fi/</span>；大改前可拷到 snapshots。</li>
+      <li><strong>实现</strong> — 前端 / 后端按 OpenAPI 与提案实现；PR 注明 Pxxx。<strong>未验收不要写进 requirements。</strong></li>
+      <li><strong>交付</strong> — 验收点合并进 <span class="path">requirements.md</span>；roadmap 勾掉；提案改为 <code>status: done</code> 并填 <code>done</code> 日期。</li>
+    </ol>
+    <pre><code>roadmap → proposals/Pxxx → design + openapi → FE/BE → requirements → Pxxx done</code></pre>
+
+    <h3>短路径（不必走完全程）</h3>
+    <table>
+      <thead><tr><th>类型</th><th>做法</th></tr></thead>
+      <tbody>
+        <tr><td>纯 UI、契约不变</td><td>可不建提案；必要时补一句 design</td></tr>
+        <tr><td>文档与线上不符</td><td>无提案；改 openapi 或改代码</td></tr>
+        <tr><td>笔误</td><td>直接改对应文件</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="version">3. 版本（里程碑）怎么用</h2>
+    <p>版本用于<strong>排期与发版对齐</strong>，不是复制多份需求基线。</p>
+    <ul>
+      <li><span class="path">roadmap.md</span> 用 <code>## v0.5</code> 等分组计划项</li>
+      <li>提案文首写 <code>milestone: v0.5</code></li>
+      <li>发版时 docs / 前端 / 后端尽量打同号 tag（如 <code>v0.5.0</code>）</li>
+      <li><span class="path">requirements.md</span> 始终只有一份：当前已交付全集；顶部可注明「基线对齐 v0.x」</li>
+    </ul>
+    <div class="callout warn">
+      不要维护长期并存的 <code>requirements-v0.4.md</code> / <code>requirements-v0.5.md</code> 当日常入口。看旧版用 git：<code>git show v0.4.0:docs/product/requirements.md</code>。
+    </div>
+
+    <h2 id="examples">4. 场景实例</h2>
+    <h3>跨端新功能（如分享加密码）</h3>
+    <p class="muted">roadmap 挂条 → 新建提案 in-progress → 改 openapi + design → 前后端实现 → 写入 requirements → 提案标 done。</p>
+    <h3>纯前端（如画布吸附）</h3>
+    <p class="muted">可无提案；只改前端（可选补 design/frontend）。</p>
+    <h3>进行中大功能（对话分析 P004）</h3>
+    <p class="muted">以 <a href="./proposals/P004-conversation.md">P004</a> + <a href="./design/conversation.md">design/conversation.md</a> + 原型为准；未验收前 requirements 不写「已支持对话分析」。</p>
+
+    <h2 id="rules">5. 硬规则</h2>
+    <ul>
+      <li>现行契约 = <strong>requirements + design（含 OpenAPI）</strong>；仅非 done 的提案指导开发。</li>
+      <li><code>done</code> 提案只读追溯，不驱动新开发。</li>
+      <li>跨 FE/BE：先合文档契约，再合实现。</li>
+      <li>OpenAPI 与实现冲突：以<strong>已上线行为</strong>为准，并尽快修契约。</li>
+    </ul>
+
+    <h2 id="links">6. 相关链接</h2>
+    <ul>
+      <li><a href="./process.md">process.md</a> — 规范正文</li>
+      <li><a href="./README.md">docs/README.md</a> — 文档导航</li>
+      <li><a href="./proposals/README.md">proposals 索引</a></li>
+      <li><a href="../AGENTS.md">AGENTS.md</a> — 给 AI 的短地图</li>
+      <li><a href="./user-manual/index.html">终端用户手册</a></li>
+    </ul>
+
+    <footer>
+      本地打开本页：浏览器打开 <span class="path">docs/guide.html</span>。与 <span class="path">process.md</span> 冲突时以仓库最新提交为准。
+    </footer>
+  </div>
+</body>
+</html>
