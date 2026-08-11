@@ -484,6 +484,15 @@
     }
     .mod-nav button:hover { color: #fff; background: rgba(255,255,255,.06); }
     .mod-nav button.on { color: #fff; background: rgba(51,112,255,.28); font-weight: 600; }
+    .mod-nav .beta {
+      margin-left: 4px; font-size: 10px; font-weight: 600; color: #ffb4c8;
+      background: rgba(245,74,69,.25); padding: 1px 5px; border-radius: 4px; vertical-align: 1px;
+    }
+    .conv-frame {
+      flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; display: block;
+    }
+    .shell.mod-conversation #phaseTabs { opacity: .35; pointer-events: none; }
+    .shell.mod-conversation .topbar > span { opacity: .45; }
     .manage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .manage .bar .crumb { font-size: 12px; color: var(--text-3); }
     .manage .bar .crumb b { color: var(--text); font-weight: 600; }
@@ -1274,12 +1283,13 @@
     <strong>商用高保原型</strong>
     <nav class="mod-nav" id="modNav">
       <button data-mod="workbench" class="on">工作台</button>
+      <button data-mod="conversation">对话<span class="beta">内测</span></button>
       <button data-mod="datasource">数据源</button>
       <button data-mod="dataset">数据集</button>
       <button data-mod="dashboard">仪表盘</button>
       <button data-mod="report">报告</button>
     </nav>
-    <span style="opacity:.7;font-size:12px">数据源 → 数据集 → 仪表盘 → 报告 · Phase 仅作用于仪表盘编辑器</span>
+    <span style="opacity:.7;font-size:12px">数据源 → 数据集 → 对话/仪表盘 → 报告 · Phase 仅作用于仪表盘编辑器</span>
     <div class="tabs" id="phaseTabs">
       <button class="on" data-phase="a">Phase A</button>
       <button data-phase="b">Phase B</button>
@@ -2233,7 +2243,7 @@ const THEMES = {
 };
 
 const state = {
-  module: 'workbench', // workbench | datasource | dataset | dashboard | report
+  module: 'workbench', // workbench | conversation | datasource | dataset | dashboard | report
   screen: 'list',      // list | editor | preview（仪表盘）；报告用 list | editor
   phase: 'a',
   mobile: false,
@@ -2732,13 +2742,14 @@ function selectDash(id) {
   state.drillStack = [];
 }
 
-/** URL hash 路由：#/workbench | #/datasource/:id | #/dataset/:id | #/dashboard/:screen/:dashId | #/report/:screen/:reportId */
-const ROUTE_MODS = new Set(['workbench', 'datasource', 'dataset', 'dashboard', 'report']);
+/** URL hash 路由：#/workbench | #/conversation | #/datasource/:id | #/dataset/:id | #/dashboard/:screen/:dashId | #/report/:screen/:reportId */
+const ROUTE_MODS = new Set(['workbench', 'conversation', 'datasource', 'dataset', 'dashboard', 'report']);
 let _applyingRoute = false;
 
 function buildRouteHash() {
   const mod = ROUTE_MODS.has(state.module) ? state.module : 'workbench';
   if (mod === 'workbench') return '#/workbench';
+  if (mod === 'conversation') return '#/conversation';
   if (mod === 'datasource') return '#/datasource/' + encodeURIComponent(state.srcId || '');
   if (mod === 'dataset') {
     const tab = state.dsTab && state.dsTab !== 'fields' ? '/' + encodeURIComponent(state.dsTab) : '';
@@ -2777,6 +2788,10 @@ function applyRouteFromHash() {
     const mod = ROUTE_MODS.has(parts[0]) ? parts[0] : 'workbench';
     state.module = mod;
     if (mod === 'workbench') {
+      state.screen = 'list';
+      return;
+    }
+    if (mod === 'conversation') {
       state.screen = 'list';
       return;
     }
@@ -3355,10 +3370,12 @@ function render() {
   disposeCharts();
   const app = document.getElementById('app');
   app.classList.toggle('mobile-frame', state.mobile && state.screen === 'preview' && state.module === 'dashboard' && !useMobileLayout());
+  document.querySelector('.shell')?.classList.toggle('mod-conversation', state.module === 'conversation');
   syncModNav();
   document.querySelectorAll('#phaseTabs button').forEach(b => b.classList.toggle('on', b.dataset.phase === state.phase));
 
   if (state.module === 'workbench') renderWorkbench(app);
+  else if (state.module === 'conversation') renderConversation(app);
   else if (state.module === 'datasource') renderDatasource(app);
   else if (state.module === 'dataset') renderDataset(app);
   else if (state.module === 'report') {
@@ -3464,6 +3481,8 @@ function renderWorkbench(app) {
             <div class="pipe-arrow">→</div>
             <div class="pipe-step" data-go="dataset"><div class="n">02</div><div class="t">维护数据集</div><div class="d">选表 · 字段语义 · 预览取数</div></div>
             <div class="pipe-arrow">→</div>
+            <div class="pipe-step" data-go="conversation"><div class="n">02b</div><div class="t">对话分析 <span class="beta" style="color:#c43d6e;background:#fde8f0">内测</span></div><div class="d">自然语言生成 Dashboard draft</div></div>
+            <div class="pipe-arrow">→</div>
             <div class="pipe-step" data-go="dashboard"><div class="n">03</div><div class="t">配置仪表盘</div><div class="d">绑定数据集 · 编码槽 · 发布分享</div></div>
             <div class="pipe-arrow">→</div>
             <div class="pipe-step" data-go="report"><div class="n">04</div><div class="t">撰写报告</div><div class="d">Umo 排版 · 引用看板图 / 新建图</div></div>
@@ -3517,6 +3536,12 @@ function renderWorkbench(app) {
     state.srcId = el.dataset.src;
     gotoModule('datasource');
   });
+}
+
+/** 对话模块：嵌入 conversation-workspace.html，与同壳其它模块共用顶栏路由 */
+function renderConversation(app) {
+  const v = '20260812c';
+  app.innerHTML = `<iframe class="conv-frame" id="convFrame" title="对话分析" src="./conversation-workspace.html?embed=1&v=${v}"></iframe>`;
 }
 
 function renderDatasource(app) {
@@ -9397,6 +9422,82 @@ window.addEventListener('resize', () => {
     const board = document.getElementById('board');
     if (board) renderBoard(board);
   }
+});
+
+/** 对话生成的 draft → 写入/更新同壳仪表盘并打开编辑器 */
+function buildConversationOpsDash(payload = {}) {
+  const id = payload.dashId || 'dash_conv_ops';
+  const name = (payload.name || '企业经营分析仪表盘').replace(/\.dash$/i, '');
+  const d = emptyDash(name, id);
+  d.status = 'draft';
+  d.theme = 'default';
+  const ds = payload.dataset === 'mock' ? 'ds_sales' : (payload.dataset || 'ds_sales');
+  const kpi1 = mkChart('kpi', '累计营收', { value: 'amount', calc: 'yoy' }, { valueColor: '#1f2329', valueSize: 26 }, ds);
+  const kpi2 = mkChart('kpi', '累计利润', { value: 'profit', calc: 'yoy' }, { valueColor: '#059669', valueSize: 26 }, ds);
+  const kpi3 = mkChart('kpi', '平均利润率', { value: 'profit', calc: 'none' }, { valueColor: '#0ea5e9', valueSize: 26 }, ds);
+  const kpi4 = mkChart('kpi', '累计客户', { value: 'order_cnt', format: 'raw', calc: 'yoy' }, { valueColor: '#7c3aed', valueSize: 26 }, ds);
+  const line = mkChart('line', '月度营收与利润趋势', { category: 'product', value: 'amount' }, { smooth: true }, ds);
+  const bar = mkChart('bar', '月度收入·成本·利润堆叠', { category: 'region', value: 'amount' }, { showLabel: true }, ds);
+  assembleDash(d, [
+    { type: 'text', props: { text: '对话生成 · ' + (payload.styleName || '飞书蓝') + ' · 模拟数据请标注', html: false }, x: 0, y: 0, w: 12, h: 1 },
+    { type: 'slicer', props: { field: 'channel', label: '渠道筛选' }, x: 0, y: 1, w: 12, h: 1 },
+    { type: 'chart', ref: kpi1, x: 0, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: kpi2, x: 3, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: kpi3, x: 6, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: kpi4, x: 9, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: line, x: 0, y: 4, w: 7, h: 5 },
+    { type: 'chart', ref: bar, x: 7, y: 4, w: 5, h: 5 }
+  ]);
+  return packDash(d, {
+    folder: '对话生成',
+    desc: '由对话分析写入的 Dashboard draft · 可在编辑器继续改图',
+    updateBy: '对话 AI',
+    updateTime: '刚刚'
+  });
+}
+
+function openConversationDashInEditor(payload = {}) {
+  const id = payload.dashId || 'dash_conv_ops';
+  let d = state.dashboards.find(x => x.id === id);
+  if (!d) {
+    d = buildConversationOpsDash(payload);
+    state.dashboards.unshift(d);
+  } else {
+    /* 刷新名称与时间，保留用户可能已改过的布局时可选择重建 —— 原型直接重建对齐对话产物 */
+    const rebuilt = buildConversationOpsDash({ ...payload, dashId: id });
+    const idx = state.dashboards.findIndex(x => x.id === id);
+    state.dashboards[idx] = rebuilt;
+    d = rebuilt;
+  }
+  selectDash(d.id);
+  state.module = 'dashboard';
+  state.screen = 'editor';
+  render();
+  toast('已打开对话生成的看板编辑页', 'ok');
+}
+
+window.addEventListener('message', (e) => {
+  const data = e.data;
+  if (!data || typeof data !== 'object') return;
+  if (data.type === 'od-open-conversation-dash') {
+    openConversationDashInEditor(data);
+    return;
+  }
+  if (data.type !== 'od-goto-module') return;
+  const mod = data.module;
+  if (!ROUTE_MODS.has(mod)) return;
+  if (mod === 'dashboard' && data.screen === 'editor') {
+    openConversationDashInEditor({ dashId: data.dashId || 'dash_conv_ops', name: data.name });
+    return;
+  }
+  if (mod === 'dashboard' && data.screen === 'list') {
+    state.module = 'dashboard';
+    state.screen = 'list';
+    render();
+    return;
+  }
+  gotoModule(mod);
+  toast('已从对话跳转 · ' + mod, 'ok');
 });
 
 window.addEventListener('hashchange', () => {

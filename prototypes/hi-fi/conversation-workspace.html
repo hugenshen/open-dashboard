@@ -23,9 +23,9 @@
       --shadow: 0 6px 24px rgba(31, 35, 41, 0.08);
       --shadow-lg: 0 16px 40px rgba(31, 35, 41, 0.12);
       --font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-      --side: 168px;
-      --chat: 400px;
-      --files: 240px;
+      --side: 220px;
+      --chat: 440px;
+      --files: 260px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; font-family: var(--font); color: var(--ink); background: #fff; }
@@ -41,25 +41,38 @@
 
     .app { height: 100%; display: flex; flex-direction: column; }
 
-    /* ===== Top bar（对齐 marmos：品牌在顶栏左侧） ===== */
+    /* ===== Top bar（复用产品 ModuleTopbar 信息架构） ===== */
     .top {
-      height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px;
-      padding: 0 16px 0 14px; border-bottom: 1px solid var(--line); background: #fff; z-index: 40;
+      height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 0 16px 0 12px; border-bottom: 1px solid var(--line); background: #fff; z-index: 40;
     }
+    .nav-left { display: flex; align-items: center; gap: 20px; min-width: 0; }
     .logo {
       display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; letter-spacing: -.02em;
+      text-decoration: none; color: inherit; flex-shrink: 0;
     }
     .logo i {
       width: 22px; height: 22px; border-radius: 6px; background: var(--brand);
       display: grid; place-items: center; color: #fff; font-size: 10px; font-weight: 800;
     }
+    .primary-nav { display: flex; align-items: center; gap: 2px; }
+    .primary-nav a, .primary-nav span {
+      height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13.5px; font-weight: 500;
+      color: var(--muted); display: inline-flex; align-items: center; text-decoration: none; cursor: pointer;
+    }
+    .primary-nav a:hover, .primary-nav span:hover { background: var(--soft); color: var(--ink); }
+    .primary-nav .on { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
     .badge-sec {
       font-size: 11px; font-weight: 600; color: #c43d6e; background: #fde8f0;
-      padding: 2px 7px; border-radius: 6px;
+      padding: 2px 7px; border-radius: 6px; margin-left: 4px;
     }
-    .crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--faint); min-width: 0; }
-    .crumbs b { color: var(--ink); font-weight: 560; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .top .sp { flex: 1; }
+    .nav-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .crumbs { display: none; }
+    .proto-chip {
+      font-size: 11.5px; color: var(--faint); padding: 4px 8px; border-radius: 6px; background: var(--soft);
+      white-space: nowrap;
+    }
+    .proto-chip b { color: var(--brand); font-weight: 650; }
     .ico {
       width: 30px; height: 30px; border-radius: 8px; color: var(--muted);
       display: inline-grid; place-items: center;
@@ -74,6 +87,21 @@
       font-size: 12px; color: var(--muted); padding: 4px 8px; border-radius: 6px; text-decoration: none;
     }
     .hi-fi-link:hover { background: var(--soft); color: var(--brand); }
+
+    .bridge-bar {
+      display: none; height: 36px; align-items: center; gap: 8px; padding: 0 12px;
+      border-bottom: 1px solid var(--line); background: #f7f9fc; flex-shrink: 0;
+      font-size: 12px; color: var(--muted);
+    }
+    .stage.workspace.has-dash .bridge-bar { display: flex; }
+    .bridge-bar .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--ink); }
+    .bridge-bar .sp { flex: 1; }
+    .bridge-bar .bbtn {
+      height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line-2);
+      background: #fff; font-size: 12px; color: var(--ink); font-weight: 560;
+    }
+    .bridge-bar .bbtn.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .bridge-bar .bbtn:hover { filter: brightness(.98); }
 
     /* ===== Body ===== */
     .body { flex: 1; min-height: 0; display: flex; }
@@ -97,13 +125,13 @@
     .side-foot { display: flex; flex-direction: column; gap: 2px; }
 
     /* Stage */
-    .stage { flex: 1; min-width: 0; display: flex; position: relative; background: #fff; }
+    .stage { flex: 1; min-width: 0; display: flex; position: relative; background: #fff; overflow: hidden; }
 
     /* ---- Chat ---- */
     .chat {
       width: var(--chat); flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
       background: #fff; border-right: 1px solid var(--line);
-      transition: width .2s ease;
+      transition: width .28s cubic-bezier(.2,.8,.2,1);
     }
     .chat.right { order: 4; border-right: 0; border-left: 1px solid var(--line); }
     .chat-hd {
@@ -112,7 +140,7 @@
     }
     .chat-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-    /* ===== 落地页（刚进来）：整页主舞台 + 大输入，对齐 marmos 新对话 ===== */
+    /* ===== 落地页（刚进来）：Kimi 式居中 —— 品牌 + 大输入在视口中央 ===== */
     .stage.landing .files,
     .stage.landing .canvas,
     .stage.landing .insp { display: none !important; }
@@ -120,52 +148,178 @@
       width: 100%;
       border: 0;
     }
-    .stage.landing .chat-hd { padding-left: 24px; border: 0; }
+    .stage.landing .chat-hd,
+    .stage.landing .flow-bar,
+    .stage.landing .chat-hint,
+    .stage.landing .msgs { display: none !important; }
+    .stage.landing .chat-main {
+      justify-content: flex-start;
+      align-items: center;
+      padding: min(16vh, 120px) 24px 48px;
+      overflow: auto;
+    }
+    .stage.landing .landing-stack {
+      width: min(960px, 94%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
     .stage.landing .hero-zone {
-      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      padding: 32px 24px 12px; text-align: center;
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 0 28px;
+      text-align: center;
     }
-    .stage.landing .hero-zone h1 { font-size: 28px; letter-spacing: -.03em; }
-    .stage.landing .hero-zone p {
-      margin-top: 12px; max-width: 440px; font-size: 14px; line-height: 1.65; color: var(--muted);
+    .stage.landing .hero-zone .brand-mark {
+      font-size: clamp(36px, 5vw, 48px);
+      font-weight: 800;
+      letter-spacing: -.045em;
+      line-height: 1.1;
+      color: var(--ink);
     }
-    .stage.landing .btn-ctx {
-      margin-top: 20px; height: 36px; padding: 0 16px; font-size: 13px;
+    .stage.landing .hero-zone .brand-mark em {
+      font-style: normal;
+      color: var(--brand);
+    }
+    .stage.landing .hero-zone .brand-sub {
+      margin-top: 10px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.5;
     }
     .stage.landing .dock {
-      padding: 0 24px 32px; align-items: center; border: 0;
+      width: 100%;
+      padding: 0;
+      align-items: stretch;
+      border: 0;
+      flex: 0 0 auto;
     }
-    .stage.landing .dock-inner { width: min(760px, 92%); }
-    .stage.landing .chips { justify-content: center; gap: 8px; margin-bottom: 12px; }
-    .stage.landing .chip { height: 30px; padding: 0 12px; font-size: 12.5px; }
+    .stage.landing .dock-inner {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
     .stage.landing .composer {
-      border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow-lg);
+      order: 1;
+      border-radius: 22px;
+      padding: 16px 18px 14px;
+      box-shadow: 0 8px 32px rgba(31, 35, 41, 0.08);
+      border-color: #e5e6eb;
     }
-    .stage.landing .composer textarea { min-height: 88px; font-size: 14px; }
-    .stage.landing .msgs { display: none !important; }
+    .stage.landing .composer textarea {
+      min-height: 108px;
+      font-size: 15.5px;
+      line-height: 1.55;
+    }
+    .stage.landing .ctx-row {
+      order: 2;
+      display: flex;
+      justify-content: flex-start;
+      margin-top: 10px;
+    }
+    .stage.landing .chips {
+      order: 3;
+      justify-content: center;
+      gap: 8px;
+      margin: 18px 0 0;
+    }
+    .stage.landing .chip {
+      height: 32px;
+      padding: 0 14px;
+      font-size: 13px;
+      border-radius: 999px;
+    }
+    .stage.landing .chip.lead { display: none; }
+    .stage.landing .recent {
+      order: 4;
+      width: 100%;
+      margin-top: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .stage.landing .recent-hd {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--faint);
+      padding: 0 4px 8px;
+    }
+    .stage.landing .recent-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      color: var(--ink);
+      text-align: left;
+      width: 100%;
+    }
+    .stage.landing .recent-item:hover { background: var(--soft); }
+    .stage.landing .recent-item .dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--brand); flex-shrink: 0;
+    }
+    .stage.landing .recent-item .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stage.landing .recent-item .st { font-size: 12px; color: var(--faint); flex-shrink: 0; }
+    .stage.landing .foot-note { order: 5; margin-top: 20px; }
+    .ctx-row { display: none; }
+    .recent { display: none; }
+    .landing-stack { display: contents; }
 
-    /* ===== 工作台（发送后 / 打开示例）：对话列 + 文件 + 画布 ===== */
-    .stage.workspace .hero-zone { display: none; }
-    .stage.workspace.idle .hero-zone {
-      display: flex; flex: 1; align-items: center; justify-content: center;
-      padding: 16px 14px; text-align: center;
+    /* 嵌入商用高保 #/conversation：隐藏本页顶栏，由父壳提供模块导航 */
+    body.embed .top { display: none !important; }
+    body.embed .app { height: 100%; }
+    html.embed, body.embed { background: #fff; }
+
+    /* ===== 工作台（发送后 / 打开示例）：对话列 → 画布 → 文件，分步展开 ===== */
+    .stage.workspace .landing-stack {
+      display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%;
     }
-    .stage.workspace.idle .hero-zone h1 { font-size: 18px; }
-    .stage.workspace.idle .hero-zone p { font-size: 12px; margin-top: 8px; }
-    .stage.workspace.idle .btn-ctx { margin-top: 12px; height: 30px; font-size: 12px; }
-    .stage.workspace.chatting .hero-zone { display: none !important; }
+    .stage.workspace .hero-zone { display: none !important; }
+    .stage.workspace .recent,
+    .stage.workspace .ctx-row { display: none !important; }
+    .stage.workspace .dock-inner { display: flex; flex-direction: column; }
+    .stage.workspace .chips { order: 0; margin-bottom: 10px; }
+    .stage.workspace .composer { order: 1; }
+    .stage.workspace .foot-note { order: 2; }
     .stage.workspace.chatting .chips { display: none; }
     .stage.workspace.chatting .foot-note { display: none; }
+    .stage.workspace .chat-hint {
+      display: none; flex: 1; align-items: center; justify-content: center;
+      padding: 24px 20px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.6;
+    }
+    .stage.workspace.idle:not(.chatting) .chat-hint { display: flex; }
+    .stage.workspace .msgs { order: 0; }
+    .stage.workspace .dock { order: 1; }
+    .stage.workspace .files,
+    .stage.workspace .canvas {
+      animation: panelIn .32s cubic-bezier(.2,.8,.2,1) both;
+    }
+    .stage.workspace .files { animation-delay: .08s; }
+    .stage.workspace .canvas { animation-delay: .02s; }
+    @keyframes panelIn {
+      from { opacity: 0; transform: translateX(12px); }
+      to { opacity: 1; transform: none; }
+    }
+    .stage.workspace.generating .canvas { outline: 2px solid transparent; }
+    .flow-bar {
+      display: none; height: 32px; align-items: center; gap: 8px; padding: 0 14px;
+      border-bottom: 1px solid var(--line); background: #fafbfd; flex-shrink: 0;
+      font-size: 12px; color: var(--faint);
+    }
+    .stage.workspace .flow-bar { display: flex; }
+    .flow-bar .step-dot {
+      display: inline-flex; align-items: center; gap: 6px; color: var(--faint);
+    }
+    .flow-bar .step-dot.on { color: var(--brand); font-weight: 600; }
+    .flow-bar .step-dot.done { color: var(--ok); }
+    .flow-bar .sep { color: var(--line-2); }
 
-    .hero-zone h1 {
-      font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1.35;
-    }
-    .hero-zone h1 em {
-      font-style: normal; box-shadow: inset 0 -3px 0 rgba(51, 112, 255, 0.35);
-    }
-    .hero-zone p { margin-top: 10px; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
     .btn-ctx {
-      margin-top: 14px; height: 32px; padding: 0 12px; border-radius: 999px;
+      height: 30px; padding: 0 12px; border-radius: 999px;
       border: 1px solid var(--line-2); background: #fff; font-size: 12.5px; color: var(--ink);
       display: inline-flex; align-items: center; gap: 6px;
     }
@@ -203,8 +357,11 @@
       width: 100%; border: 0; outline: 0; resize: none; min-height: 72px; max-height: 160px;
       font-size: 13.5px; line-height: 1.55; background: transparent;
     }
-    .stage.workspace .composer { box-shadow: none; }
-    .stage.workspace .composer textarea { min-height: 64px; }
+    .stage.workspace .composer { box-shadow: none; border-radius: 12px; padding: 8px; }
+    .stage.workspace .composer textarea { min-height: 56px; font-size: 13px; }
+    .stage.workspace .pill { height: 26px; padding: 0 6px; font-size: 11.5px; }
+    .stage.workspace .gbtn { height: 26px; font-size: 12px; }
+    .stage.workspace .comp-row { flex-wrap: wrap; row-gap: 4px; }
     .pill {
       height: 28px; padding: 0 8px; border-radius: 8px; font-size: 12px; color: var(--muted);
       display: inline-flex; align-items: center; gap: 4px;
@@ -259,25 +416,28 @@
       border: 1px solid var(--line-2); background: #fff; display: inline-flex; align-items: center;
     }
     .btn.primary { background: #1f2329; color: #fff; border-color: #1f2329; }
-    .attach {
-      display: inline-flex; margin-top: 8px; font-size: 12px; color: var(--brand);
-      background: var(--brand-soft); padding: 3px 8px; border-radius: 6px;
-    }
+    .pop-item .d { font-size: 11.5px; color: var(--faint); margin-top: 2px; }
 
     /* 工作台画布：铺满剩余宽度，去掉两侧大留白 */
     .explore {
-      width: 100%; height: 100%; padding: 24px 28px 36px; box-sizing: border-box;
+      width: 100%; min-height: 100%; padding: 28px 32px 40px; box-sizing: border-box;
     }
     .explore h2 {
       font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 8px;
     }
-    .explore .sub { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 16px; max-width: 560px; }
+    .explore .sub { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 16px; max-width: 640px; }
     .explore .cta {
       height: 40px; padding: 0 18px; border-radius: 999px; background: var(--brand); color: #fff;
       font-size: 14px; font-weight: 560; display: inline-flex; align-items: center; gap: 8px; margin-bottom: 20px;
     }
     .explore .cta:hover { background: #2860e1; }
-    .ex-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .ex-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
+      width: 100%; max-width: none;
+    }
+    @media (min-width: 1400px) {
+      .ex-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 960px; }
+    }
     .ex-card {
       background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
       cursor: pointer; text-align: left; box-shadow: 0 1px 3px rgba(31,35,41,.04);
@@ -299,7 +459,7 @@
     .ex-card .body b { display: block; font-size: 14px; margin-bottom: 4px; }
     .ex-card .body span { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
 
-    .dash { width: 100%; max-width: none; padding: 4px 8px 24px; }
+    .dash { width: 100%; max-width: none; margin: 0; padding: 4px 8px 24px; }
 
     /* Files */
     .files {
@@ -311,9 +471,14 @@
       width: 100%; height: 32px; border-radius: 8px; border: 1px solid var(--line-2);
       padding: 0 10px; background: #fff; font-size: 12.5px; outline: 0;
     }
-    .ftabs { display: flex; gap: 2px; padding: 0 8px 8px; }
+    .ftabs {
+      display: flex; flex-wrap: nowrap; gap: 2px; padding: 0 8px 8px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .ftabs::-webkit-scrollbar { display: none; }
     .ftab {
       height: 26px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: var(--muted);
+      flex-shrink: 0; white-space: nowrap;
     }
     .ftab.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
     .tree { flex: 1; overflow: auto; padding: 4px 8px 12px; }
@@ -324,6 +489,17 @@
     }
     .file:hover { background: #fff; }
     .file.on { background: #eef2f7; }
+    .file[data-kind="dataset"] span:first-child { color: var(--brand); }
+    .tree .ws.hidden, .tree .file.hidden { display: none !important; }
+    .attach {
+      display: inline-flex; margin-top: 8px; font-size: 12px; color: var(--brand);
+      background: var(--brand-soft); padding: 3px 8px; border-radius: 6px; cursor: pointer;
+      border: 0; font: inherit;
+    }
+    .attach:hover { filter: brightness(.97); text-decoration: underline; }
+    .kpi.refreshing .v, .ccard.refreshing { animation: blink 0.6s ease; }
+    @keyframes blink { 50% { opacity: .45; } }
+    .filters select { cursor: pointer; }
 
     /* Canvas */
     .canvas {
@@ -348,14 +524,13 @@
     .seg button { width: 28px; height: 24px; border-radius: 6px; color: var(--muted); }
     .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
 
-    .cbody { flex: 1; overflow: auto; padding: 16px; position: relative; }
+    .cbody { flex: 1; overflow: auto; padding: 12px 14px; position: relative; }
     .cbody.phone { display: flex; justify-content: center; background: #e8eaed; }
     .phone {
       width: 390px; min-height: 680px; background: #fff; border-radius: 28px;
       border: 6px solid #2f343c; box-shadow: var(--shadow-lg); overflow: hidden; padding: 12px;
     }
 
-    .dash { max-width: 1080px; margin: 0 auto; }
     .dash-hd { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
     .dash-hd h2 { font-size: 20px; font-weight: 700; }
     .dash-hd .meta { margin-top: 4px; font-size: 13px; color: var(--muted); }
@@ -556,18 +731,29 @@
 </head>
 <body>
   <div class="app">
+    <!-- 产品壳：与 Vue ModuleTopbar 同一套模块，对话是其中一项 -->
     <header class="top">
-      <div class="logo"><i>OD</i> Open Dashboard</div>
-      <span class="badge-sec">内测</span>
-      <div class="crumbs" id="crumbs"><span>对话</span><span>/</span><b id="crumb">新对话</b></div>
-      <div class="sp"></div>
-      <a class="hi-fi-link" href="./dashboard-commercial.html" title="同一套 hi-fi 目录">仪表盘高保</a>
-      <button class="ico" type="button" title="主题">☾</button>
-      <button class="ico" type="button" id="btn-layout" title="布局">▦</button>
-      <span class="avatar">演</span>
+      <div class="nav-left">
+        <a class="logo" href="./dashboard-commercial.html#/workbench" id="brand-home" title="产品首页 /workbench"><i>OD</i> Open Dashboard</a>
+        <nav class="primary-nav" aria-label="产品主导航">
+          <a href="./dashboard-commercial.html#/workbench" data-mod="workbench">工作台</a>
+          <span class="on" data-mod="conversations">对话<span class="badge-sec">内测</span></span>
+          <a href="./dashboard-commercial.html#/datasource" data-mod="datasources">数据源</a>
+          <a href="./dashboard-commercial.html#/dataset" data-mod="datasets">数据集</a>
+          <a href="./dashboard-commercial.html#/dashboard" data-mod="dashboards">仪表盘</a>
+          <a href="./dashboard-commercial.html#/report" data-mod="reports">报告</a>
+        </nav>
+      </div>
+      <div class="nav-right">
+        <span class="proto-chip">融合入口 <b>dashboard-commercial.html#/conversation</b></span>
+        <a class="hi-fi-link" href="./dashboard-commercial.html">仪表盘编辑器高保</a>
+        <button class="ico" type="button" id="btn-layout" title="对话区布局">▦</button>
+        <span class="avatar">演</span>
+      </div>
     </header>
 
     <div class="body">
+      <!-- 对话模块内侧栏（不是第二套产品导航） -->
       <nav class="side" id="side">
         <button class="nav on" type="button" id="nav-new">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
@@ -576,6 +762,11 @@
         <button class="nav" type="button" id="nav-history">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
           <span class="nav-txt">对话历史</span>
+        </button>
+        <div class="side-div"></div>
+        <button class="nav" type="button" id="nav-ex">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span class="nav-txt">探索示例</span>
         </button>
         <button class="nav soon" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 8h8v8H8zM4 12h4M16 12h4M12 4v4M12 16v4"/></svg>
@@ -588,19 +779,6 @@
         <button class="nav soon" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7M13.7 21a2 2 0 01-3.4 0"/></svg>
           <span class="nav-txt">数据告警<span class="tag-soon">二期</span></span>
-        </button>
-        <button class="nav" type="button" id="nav-ds">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>
-          <span class="nav-txt">数据源</span>
-        </button>
-        <button class="nav" type="button" id="nav-tpl">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
-          <span class="nav-txt">模版库</span>
-        </button>
-        <div class="side-div"></div>
-        <button class="nav" type="button" id="nav-ex">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-          <span class="nav-txt">探索示例</span>
         </button>
         <div class="gap"></div>
         <div class="side-foot">
@@ -621,40 +799,65 @@
             <span id="chat-title">新对话</span>
             <button class="ico" type="button" id="btn-share-chat" title="分享">⤴</button>
           </div>
+          <div class="flow-bar" id="flow-bar">
+            <span class="step-dot on" data-flow="ask">① 提问</span>
+            <span class="sep">→</span>
+            <span class="step-dot" data-flow="run">② 生成</span>
+            <span class="sep">→</span>
+            <span class="step-dot" data-flow="dash">③ 看板</span>
+            <span class="sep">→</span>
+            <span class="step-dot" data-flow="iterate">④ 追问 / 拾取</span>
+          </div>
 
           <div class="chat-main" id="chat-main">
-            <div class="hero-zone" id="hero">
-              <h1>数据仪表盘 交给 <em>对话</em></h1>
-              <p>自研数据可视化引擎，帮你分析问题、生成图表，并搭建可交互的仪表盘。</p>
-              <button class="btn-ctx" type="button" id="btn-ctx">＋ 添加数据或文件作为上下文</button>
-            </div>
-
-            <div class="msgs hidden" id="msgs"></div>
-
-            <div class="dock">
-              <div class="dock-inner">
-                <div class="chips" id="chips">
-                  <button class="chip lead" type="button">试试</button>
-                  <button class="chip" type="button" data-p="请先自行构造一份贴近真实业务的模拟经营数据（明确标注为模拟），再生成可交互经营分析仪表盘，突出核心指标、趋势和关键结论。">生成经营仪表盘</button>
-                  <button class="chip" type="button" data-p="基于所选数据集，分析收入变化并拆解关键驱动因素，生成趋势与结构图。">分析收入变化</button>
-                  <button class="chip" type="button" data-p="帮我定位业务异常：找出环比下滑最明显的维度，并生成对比看板。">定位业务异常</button>
-                </div>
-                <div class="composer" id="composer">
-                  <div class="comp-row">
-                    <button class="gbtn" type="button" id="btn-add">＋ 添加 ▾</button>
-                    <button class="gbtn soon" type="button">技能 <span class="tag-soon">二期</span></button>
-                    <span class="sp"></span>
+            <div class="landing-stack" id="landing-stack">
+              <div class="hero-zone" id="hero">
+                <div class="brand-mark">对话</div>
+                <div class="brand-sub">数据仪表盘交给自然语言 · 产物写入可编辑 Dashboard</div>
+              </div>
+              <div class="chat-hint" id="chat-hint">在下方继续提问，或从右侧打开示例看板。<br/>生成后可在此多轮追问、AI 拾取改图。</div>
+              <div class="msgs hidden" id="msgs"></div>
+              <div class="dock">
+                <div class="dock-inner">
+                  <div class="composer" id="composer">
+                    <div class="comp-row">
+                      <button class="gbtn" type="button" id="btn-add">＋ 添加 ▾</button>
+                      <button class="gbtn soon" type="button">技能 <span class="tag-soon">二期</span></button>
+                      <span class="sp"></span>
+                    </div>
+                    <textarea id="input" placeholder="问点什么，或输入 / 选择分析技能…"></textarea>
+                    <div class="comp-row">
+                      <button class="pill" type="button" id="btn-model">⚡ <b>Auto</b> ▾</button>
+                      <button class="pill" type="button" id="btn-mode">◎ <b id="mode-label">自动模式</b> ▾</button>
+                      <button class="pill" type="button" id="btn-style">▦ <b id="style-label">智能风格</b> ▾</button>
+                      <span class="sp"></span>
+                      <button class="send" type="button" id="btn-send">↑</button>
+                    </div>
                   </div>
-                  <textarea id="input" placeholder="直接提问，@引用数据集、/选择技能；支持多轮追问"></textarea>
-                  <div class="comp-row">
-                    <button class="pill" type="button" id="btn-model">⚡ <b>Auto</b> ▾</button>
-                    <button class="pill" type="button" id="btn-mode">◎ <b id="mode-label">自动模式</b> ▾</button>
-                    <button class="pill" type="button" id="btn-style">▦ <b id="style-label">智能风格</b> ▾</button>
-                    <span class="sp"></span>
-                    <button class="send" type="button" id="btn-send">↑</button>
+                  <div class="ctx-row">
+                    <button class="btn-ctx" type="button" id="btn-ctx">📁 选择数据集 / 文件作为上下文</button>
                   </div>
+                  <div class="chips" id="chips">
+                    <button class="chip lead" type="button">试试</button>
+                    <button class="chip" type="button" data-p="请先自行构造一份贴近真实业务的模拟经营数据（明确标注为模拟），再生成可交互经营分析仪表盘，突出核心指标、趋势和关键结论。">生成经营仪表盘</button>
+                    <button class="chip" type="button" data-p="基于所选数据集，分析收入变化并拆解关键驱动因素，生成趋势与结构图。">分析收入变化</button>
+                    <button class="chip" type="button" data-p="帮我定位业务异常：找出环比下滑最明显的维度，并生成对比看板。">定位业务异常</button>
+                    <button class="chip" type="button" id="chip-ex">探索示例</button>
+                  </div>
+                  <div class="recent" id="recent">
+                    <div class="recent-hd">最近对话</div>
+                    <button class="recent-item" type="button" data-recent="经营">
+                      <span class="dot"></span><span class="t">模拟经营数据 · 经营分析仪表盘</span><span class="st">已完成</span>
+                    </button>
+                    <button class="recent-item" type="button" data-recent="房产">
+                      <span class="dot"></span><span class="t">房产交易分析看板</span><span class="st">已完成</span>
+                    </button>
+                    <button class="recent-item" type="button" data-recent="奖牌">
+                      <span class="dot"></span><span class="t">奥运会奖牌分析</span><span class="st">已完成</span>
+                    </button>
+                  </div>
+                  <div class="foot-note">Open Dashboard 内测 · 内容由 AI 生成，请注意甄别</div>
                 </div>
-                <div class="foot-note">Open Dashboard 内测 · 内容由 AI 生成，请注意甄别</div>
               </div>
             </div>
           </div>
@@ -662,24 +865,32 @@
 
         <aside class="files hidden" id="files">
           <div class="files-hd"><input class="search" placeholder="搜索文件名或数据集 ID" /></div>
-          <div class="ftabs">
-            <button class="ftab on" type="button">全部</button>
-            <button class="ftab" type="button">数据集</button>
-            <button class="ftab" type="button">数据看板</button>
+          <div class="ftabs" id="ftabs">
+            <button class="ftab on" type="button" data-filter="all">全部</button>
+            <button class="ftab" type="button" data-filter="dataset">数据集</button>
+            <button class="ftab" type="button" data-filter="dash">数据看板</button>
             <button class="ftab soon" type="button">知识库<span class="tag-soon">二期</span></button>
           </div>
-          <div class="tree">
-            <div class="ws">个人工作区</div>
-            <div class="file" id="file-dash"><span>▦</span> （生成后出现 .dash）</div>
-            <div class="ws">示例工作区</div>
-            <div class="file" id="ex-house"><span>▦</span> 房产交易分析看板.dash</div>
-            <div class="file" id="ex-olympic"><span>▦</span> 奥运会奖牌分析看板.dash</div>
-            <div class="file"><span>●</span> 公开数据集 · 电商经营</div>
-            <div class="file"><span>●</span> 公开数据集 · 出境游</div>
+          <div class="tree" id="file-tree">
+            <div class="ws" data-sec="session">本会话产物 · 写入产品 Dashboard</div>
+            <div class="file" id="file-dash" data-kind="dash" data-id="session"><span>▦</span> <span id="file-dash-name">（生成后出现 .dash）</span></div>
+            <div class="ws" data-sec="assets">产品资产 · 数据集 / 看板</div>
+            <div class="file" id="ex-house" data-kind="dash" data-jump="dash"><span>▦</span> 房产交易分析看板.dash</div>
+            <div class="file" id="ex-olympic" data-kind="dash" data-jump="dash"><span>▦</span> 奥运会奖牌分析看板.dash</div>
+            <div class="file" data-kind="dataset" data-jump="dataset" id="file-ds-ecom"><span>●</span> 公开数据集 · 电商经营</div>
+            <div class="file" data-kind="dataset" data-jump="dataset" id="file-ds-travel"><span>●</span> 公开数据集 · 出境游</div>
           </div>
         </aside>
 
         <section class="canvas hidden" id="canvas">
+          <div class="bridge-bar" id="bridge-bar">
+            <span>产物已写入现有 Dashboard draft</span>
+            <code class="path" id="bridge-path">/dashboards/d_conv_demo/edit</code>
+            <span class="sp"></span>
+            <button class="bbtn" type="button" id="btn-goto-ds">去数据集</button>
+            <button class="bbtn" type="button" id="btn-goto-list">仪表盘列表</button>
+            <button class="bbtn primary" type="button" id="btn-open-editor">在编辑器打开</button>
+          </div>
           <div class="cbar">
             <button class="ctab on" type="button" id="ctab">探索示例</button>
             <span class="sp"></span>
@@ -791,8 +1002,8 @@
   </div>
   <div class="pop" id="export-pop" style="min-width:260px">
     <h5>截图方式</h5>
-    <button class="pop-item" type="button"><div><div class="t">快速导出</div><div class="d">适合即时分享</div></div></button>
-    <button class="pop-item" type="button"><div><div class="t">高质量导出</div><div class="d">更慢更好</div></div></button>
+    <button class="pop-item" type="button" data-export="fast"><div><div class="t">快速导出</div><div class="d">适合即时分享</div></div></button>
+    <button class="pop-item" type="button" data-export="hq"><div><div class="t">高质量导出</div><div class="d">更慢更好</div></div></button>
     <button class="pop-item soon" type="button"><div class="t">完美导出（云端）<span class="tag-soon">二期</span></div></button>
     <hr /><h5>清晰度</h5>
     <label class="radio"><input type="radio" name="dpi" /> 标清 1x</label>
@@ -806,6 +1017,7 @@
     <hr /><h5>辅助与历史</h5>
     <button class="pop-item" type="button" id="btn-open-ver"><div class="t">版本历史</div></button>
     <button class="pop-item" type="button" id="btn-related"><div class="t">关联对话</div></button>
+    <button class="pop-item" type="button" id="btn-open-editor-more"><div class="t">在编辑器打开</div></button>
   </div>
 
   <div class="mask" id="share-mask">
@@ -828,11 +1040,17 @@
   <div class="mask" id="cap-mask">
     <div class="modal" style="width:min(520px,100%)">
       <h3>能力边界</h3>
-      <div class="sub">高保交互对齐 <a href="https://mp.weixin.qq.com/s/1VXH-tv51O7O5ICyN6AmBg" target="_blank" rel="noopener">marmos 实测文</a>；一期交付仍走 DashboardPatch。</div>
+      <div class="sub">高保模拟的是产品内 <b>/conversations</b>，不是独立站点。交互对齐 <a href="https://mp.weixin.qq.com/s/1VXH-tv51O7O5ICyN6AmBg" target="_blank" rel="noopener">marmos</a>；落地走现有 Dashboard / chartQuery。</div>
       <div style="margin-top:12px;font-size:13px;line-height:1.7">
-        <p><b>一期</b>：新对话首页 · 布局（对话左右 / 文件目录 / 编辑器）· Auto/Plan · 风格 · 流式生成 draft · 手机/电脑 · AI 拾取 · 版本回滚 · 分享 · 导出示意</p>
+        <p><b>与现有产品的结合</b></p>
+        <ul style="padding-left:18px;margin-top:6px">
+          <li>顶栏：工作台 / <b>对话</b> / 数据源 / 数据集 / 仪表盘 / 报告（同 ModuleTopbar）</li>
+          <li>产物：Dashboard draft → 可在 <code>/dashboards/:id/edit</code> 继续编辑</li>
+          <li>取数：现有 datasetQuery / chartQuery；分享复用 <code>/share/:token</code></li>
+          <li>第二入口：仪表盘/报告编辑器内 AI 侧栏（与本会话可共享 conversationId）</li>
+        </ul>
+        <p style="margin-top:10px"><b>一期</b>：落地→工作台 · Auto/Plan · 风格 · 流式 draft · AI 拾取 · 版本 · 分享</p>
         <p style="margin-top:8px"><b>二期</b>：多模型 · 技能 · 推送 · 告警 · 知识库</p>
-        <p style="margin-top:8px"><b>与 marmos 刻意差异</b>：不写死 HTML 数据；产物是 layout + ChartView encode。</p>
       </div>
       <div class="modal-foot"><button class="btn primary" type="button" data-x="cap">知道了</button></div>
     </div>
@@ -843,9 +1061,11 @@
     const S = {
       mode: 'auto', styleId: 'feishu-blue', styleName: '飞书蓝', dataset: 'mock',
       streaming: false, cancelled: false, hasDash: false,
-      /* 落地页默认关面板；发送/打开示例后进入工作台 */
+      /* 落地页默认关面板；发送后先开画布，生成完成再开文件目录 */
       showFiles: false, showEditor: false, chatRight: false, aiPick: false, picked: null,
-      revisions: [], device: 'desk', phase: 'landing' // landing | workspace
+      revisions: [], device: 'desk', phase: 'landing', // landing | workspace
+      flow: 'ask', // ask | run | dash | iterate
+      linkedDashId: null, linkedSource: null, channel: '全部渠道', fileFilter: 'all'
     };
     const $ = (s, el = document) => el.querySelector(s);
     const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -858,13 +1078,50 @@
       pop.classList.add('open');
     }
 
-    /** 进入工作台：打开文件目录 + 编辑器（一连串动作的第二步） */
-    function enterWorkspace({ keepHero = false } = {}) {
+    function setFlow(step) {
+      S.flow = step;
+      const order = ['ask', 'run', 'dash', 'iterate'];
+      const idx = order.indexOf(step);
+      $$('#flow-bar .step-dot').forEach((el) => {
+        const i = order.indexOf(el.dataset.flow);
+        el.classList.toggle('on', i === idx);
+        el.classList.toggle('done', i < idx);
+      });
+    }
+
+    /**
+     * 进入工作台（一连串动作的第二步）
+     * mode: generate — 发送后：对话 + 画布（生成中），稍后开文件
+     *       explore  — 仅打开探索/示例区
+     *       example  — 打开示例：对话 + 文件 + 画布
+     */
+    function enterWorkspace({ mode = 'generate', keepToast = false } = {}) {
       S.phase = 'workspace';
-      S.showFiles = true;
       S.showEditor = true;
+      if (mode === 'example') {
+        S.showFiles = true;
+        setFlow('dash');
+      } else if (mode === 'explore') {
+        S.showFiles = true;
+        setFlow('ask');
+      } else {
+        /* generate：先不挤文件栏，画布优先 */
+        S.showFiles = false;
+        setFlow('run');
+      }
       sync();
-      if (!keepHero) toast('已进入工作台 · 对话 | 文件 | 画布');
+      if (!keepToast) {
+        if (mode === 'generate') toast('①→② 进入工作台 · 正在生成');
+        else if (mode === 'example') toast('已打开示例看板');
+        else toast('已打开探索面板');
+      }
+    }
+
+    function revealFiles() {
+      S.showFiles = true;
+      $('#chk-files').checked = true;
+      $('#files').classList.remove('hidden');
+      sync();
     }
 
     function sync() {
@@ -876,6 +1133,8 @@
       stage.classList.toggle('workspace', !landing);
       stage.classList.toggle('chatting', chatting);
       stage.classList.toggle('idle', !landing && !chatting && !S.hasDash);
+      stage.classList.toggle('generating', S.streaming);
+      stage.classList.toggle('has-dash', S.hasDash);
 
       $('#files').classList.toggle('hidden', landing || !S.showFiles);
       $('#canvas').classList.toggle('hidden', landing || (!S.showEditor && !S.hasDash));
@@ -890,8 +1149,8 @@
       if (radio) radio.checked = true;
 
       if (landing) {
-        $('#crumb').textContent = '新对话';
         $('#chat-title').textContent = '新对话';
+        setFlow('ask');
         return;
       }
 
@@ -899,13 +1158,13 @@
         $('#explore').classList.add('hidden');
         $('#cempty').classList.add('hidden');
         $('#dash').classList.remove('hidden');
-        $('#crumb').textContent = $('#ctab').textContent || '看板';
       } else if (S.showEditor) {
-        $('#explore').classList.remove('hidden');
-        $('#cempty').classList.add('hidden');
-        $('#dash').classList.add('hidden');
-        $('#ctab').textContent = '探索示例';
-        $('#crumb').textContent = chatting ? '新对话' : '探索示例';
+        if (!S.streaming) {
+          $('#explore').classList.remove('hidden');
+          $('#cempty').classList.add('hidden');
+          $('#dash').classList.add('hidden');
+          $('#ctab').textContent = '探索示例';
+        }
       }
     }
 
@@ -926,8 +1185,12 @@
     };
     $('#chk-editor').onchange = () => {
       S.showEditor = $('#chk-editor').checked;
-      if (S.showEditor) S.phase = 'workspace';
-      else if (!S.showFiles && !S.hasDash && !$('#msgs').childElementCount) S.phase = 'landing';
+      if (S.showEditor) {
+        S.phase = 'workspace';
+        enterWorkspace({ mode: 'explore', keepToast: true });
+        return;
+      }
+      if (!S.showFiles && !S.hasDash && !$('#msgs').childElementCount) S.phase = 'landing';
       sync();
     };
 
@@ -974,6 +1237,7 @@
     $('#btn-style-x').onclick = () => $('#style-mask').classList.remove('open');
 
     $('#chips').onclick = (e) => {
+      if (e.target.closest('#chip-ex')) { openExample('房产交易分析看板.dash'); return; }
       const b = e.target.closest('.chip[data-p]'); if (!b) return;
       $('#input').value = b.dataset.p; send();
     };
@@ -990,10 +1254,17 @@
       return el;
     }
 
-    function dashHtml() {
-      return `<div class="dash-hd"><div><h2>企业经营分析仪表盘</h2><div class="meta">2025年1月 — 2026年7月 · 月度经营全景</div></div><div class="mock">⚠ 模拟数据（非真实业务，仅供演示）</div></div>
-        <div class="filters"><span>渠道筛选</span><select><option>全部渠道</option><option>线上商城</option><option>线下门店</option></select><span style="font-size:12px">筛选联动下方图表（示意）</span></div>
-        <div class="kpis">${[['累计营收','2.03亿','+41%'],['累计利润','6,465.9万','+78%'],['平均利润率','31.8%','收入-成本/收入'],['累计客户','1,040 千','+43%'],['客单价','¥1,952','营收/客户'],['月均营收','1,068万','19 个月'],['峰值月','1,482万','2026-03'],['ROI','0.47','示意']].map((k,i)=>`<div class="kpi" data-el="kpi-${i}" data-lab="${k[0]}"><div class="l">${k[0]}</div><div class="v">${k[1]}</div><div class="d">${k[2]}</div></div>`).join('')}</div>
+    function dashHtml(channel = '全部渠道') {
+      const online = channel.includes('线上');
+      const offline = channel.includes('线下');
+      const kpis = online
+        ? [['累计营收','1.42亿','+38%'],['累计利润','4,520万','+66%'],['平均利润率','31.8%','线上'],['累计客户','720 千','+40%'],['客单价','¥1,972','营收/客户'],['月均营收','748万','19 个月'],['峰值月','1,020万','2026-03'],['ROI','0.51','示意']]
+        : offline
+          ? [['累计营收','0.61亿','+48%'],['累计利润','1,946万','+92%'],['平均利润率','31.9%','线下'],['累计客户','320 千','+50%'],['客单价','¥1,906','营收/客户'],['月均营收','320万','19 个月'],['峰值月','462万','2026-03'],['ROI','0.39','示意']]
+          : [['累计营收','2.03亿','+41%'],['累计利润','6,465.9万','+78%'],['平均利润率','31.8%','收入-成本/收入'],['累计客户','1,040 千','+43%'],['客单价','¥1,952','营收/客户'],['月均营收','1,068万','19 个月'],['峰值月','1,482万','2026-03'],['ROI','0.47','示意']];
+      return `<div class="dash-hd"><div><h2>企业经营分析仪表盘</h2><div class="meta">2025年1月 — 2026年7月 · 月度经营全景 · 渠道：${esc(channel)}</div></div><div class="mock">⚠ 模拟数据（非真实业务，仅供演示）</div></div>
+        <div class="filters"><span>渠道筛选</span><select id="ch-filter"><option${channel==='全部渠道'?' selected':''}>全部渠道</option><option${online?' selected':''}>线上商城</option><option${offline?' selected':''}>线下门店</option></select><span style="font-size:12px">筛选联动下方图表</span></div>
+        <div class="kpis">${kpis.map((k,i)=>`<div class="kpi" data-el="kpi-${i}" data-lab="${k[0]}"><div class="l">${k[0]}</div><div class="v">${k[1]}</div><div class="d">${k[2]}</div></div>`).join('')}</div>
         <div class="sec-t">核心趋势</div>
         <div class="charts">
           <div class="ccard" data-el="c1" data-lab="月度营收与利润趋势"><h3>月度营收与利润趋势</h3><div class="line"></div></div>
@@ -1004,7 +1275,10 @@
     function bindPick() {
       $$('#dash [data-el]').forEach((el) => {
         el.onclick = () => {
-          if (!S.aiPick) return;
+          if (!S.aiPick) {
+            toast('先开启右上角「AI 拾取」再点图表');
+            return;
+          }
           $$('#dash .pick').forEach((x) => x.classList.remove('pick'));
           el.classList.add('pick');
           S.picked = { id: el.dataset.el, lab: el.dataset.lab };
@@ -1016,16 +1290,84 @@
       });
     }
 
-    function renderDash() {
+    function bindDashInteract() {
+      bindPick();
+      const sel = $('#ch-filter');
+      if (sel) sel.onchange = () => {
+        S.channel = sel.value;
+        renderDash(S.channel);
+        toast('chartQuery · 渠道=' + sel.value);
+      };
+    }
+
+    function renderDash(channel) {
       $('#explore').classList.add('hidden');
       $('#cempty').classList.add('hidden');
       const d = $('#dash');
       d.classList.remove('hidden');
-      d.innerHTML = dashHtml();
-      bindPick();
+      d.innerHTML = dashHtml(channel || S.channel || '全部渠道');
+      bindDashInteract();
       $('#chat-title').textContent = '经营分析';
       $('#ctab').textContent = '经营分析仪表盘-模拟数据';
-      $('#crumb').textContent = '经营分析仪表盘-模拟数据.dash';
+      $('#bridge-path').textContent = '/dashboards/' + (S.linkedDashId || 'dash_conv_ops') + '/edit';
+    }
+
+    function postParent(payload) {
+      if (document.body.classList.contains('embed') && window.parent !== window) {
+        window.parent.postMessage(payload, '*');
+        return true;
+      }
+      return false;
+    }
+
+    function openInEditor() {
+      if (!S.hasDash) {
+        toast('请先生成或打开看板');
+        return;
+      }
+      const name = ($('#ctab')?.textContent || '对话生成仪表盘').replace(/\.dash$/, '');
+      const payload = {
+        type: 'od-open-conversation-dash',
+        dashId: S.linkedDashId || 'dash_conv_ops',
+        name,
+        styleName: S.styleName,
+        dataset: S.dataset,
+        source: S.linkedSource || 'generate'
+      };
+      if (postParent(payload)) return;
+      /* 独立打开：跳到商用高保并带上意图 */
+      location.href = './dashboard-commercial.html#/dashboard/editor/' + encodeURIComponent(payload.dashId);
+    }
+
+    function gotoModule(mod, screen) {
+      const payload = { type: 'od-goto-module', module: mod };
+      if (screen) payload.screen = screen;
+      if (postParent(payload)) return;
+      const map = {
+        dataset: './dashboard-commercial.html#/dataset',
+        dashboard: './dashboard-commercial.html#/dashboard' + (screen === 'list' ? '' : '/editor'),
+        workbench: './dashboard-commercial.html#/workbench'
+      };
+      location.href = map[mod] || './dashboard-commercial.html#/workbench';
+    }
+
+    function filterFiles(kind) {
+      $$('#ftabs .ftab[data-filter]').forEach((t) => t.classList.toggle('on', t.dataset.filter === kind));
+      $$('#file-tree .file').forEach((f) => {
+        const show = kind === 'all' || f.dataset.kind === kind;
+        f.classList.toggle('hidden', !show);
+      });
+      const hasSession = !$('#file-dash').classList.contains('hidden') && S.hasDash;
+      const hasAssetDash = kind === 'all' || kind === 'dash';
+      const hasAssetDs = kind === 'all' || kind === 'dataset';
+      $$('#file-tree [data-sec="session"]').forEach((el) => el.classList.toggle('hidden', kind === 'dataset' || (!S.hasDash && kind !== 'all')));
+      $$('#file-tree [data-sec="assets"]').forEach((el) => el.classList.toggle('hidden', false));
+      if (!S.hasDash) $('#file-dash').classList.add('hidden');
+      else if (kind === 'all' || kind === 'dash') $('#file-dash').classList.remove('hidden');
+    }
+
+    function selectFile(el) {
+      $$('#file-tree .file').forEach((x) => x.classList.toggle('on', x === el));
     }
 
     function addRev(label) {
@@ -1034,8 +1376,13 @@
       $('#ver-list').innerHTML = S.revisions.map((r, i) => `
         <div class="ver"><div class="row">${r.id} <span class="badge">AI 生成</span>${i===0?'<span class="badge latest">最新</span>':''}</div>
         <div class="time">${r.time} · ${r.label}</div>
-        <div class="acts"><button class="btn" type="button">预览</button><button class="btn" type="button" data-rb="${r.id}">回滚</button></div></div>`).join('');
-      $$('#ver-list [data-rb]').forEach((b) => b.onclick = () => toast('回滚 ' + b.dataset.rb));
+        <div class="acts"><button class="btn" type="button" data-prev="${r.id}">预览</button><button class="btn" type="button" data-rb="${r.id}">回滚</button></div></div>`).join('');
+      $$('#ver-list [data-rb]').forEach((b) => b.onclick = () => {
+        toast('已回滚到 ' + b.dataset.rb);
+        $('#versions').classList.remove('open');
+        renderDash(S.channel);
+      });
+      $$('#ver-list [data-prev]').forEach((b) => b.onclick = () => toast('预览版本 ' + b.dataset.prev));
     }
 
     function finish(reason) {
@@ -1044,10 +1391,23 @@
       $('#btn-send').textContent = '↑';
       $('#gen').classList.add('hidden');
       if (reason === 'succeeded') {
-        S.hasDash = true; S.showFiles = true; S.showEditor = true;
-        sync(); renderDash(); addRev(S.styleName);
-        toast('finish · succeeded');
+        S.hasDash = true;
+        S.showEditor = true;
+        S.linkedDashId = 'dash_conv_ops';
+        S.linkedSource = 'generate';
+        revealFiles();
+        renderDash();
+        addRev(S.styleName);
+        $('#file-dash-name').textContent = '经营分析仪表盘-模拟数据.dash';
+        $('#file-dash').classList.add('on');
+        $('#file-dash').classList.remove('hidden');
+        $('#bridge-path').textContent = '/dashboards/dash_conv_ops/edit';
+        filterFiles(($('#ftabs .ftab.on') && $('#ftabs .ftab.on').dataset.filter) || 'all');
+        setFlow('dash');
+        setTimeout(() => setFlow('iterate'), 900);
+        toast('③ 看板已写入 draft · 可追问 / AI 拾取');
       } else toast('finish · ' + reason);
+      sync();
     }
 
     function send() {
@@ -1057,18 +1417,21 @@
       S.streaming = true; S.cancelled = false;
       $('#btn-send').classList.add('stop');
       $('#btn-send').textContent = '■';
-      enterWorkspace({ keepHero: true });
+      enterWorkspace({ mode: 'generate', keepToast: true });
+      toast('② 生成中 · Schema → Patch → 预览');
       $('#explore').classList.add('hidden');
       $('#cempty').classList.remove('hidden');
       $('#dash').classList.add('hidden');
       $('#gen').classList.remove('hidden');
+      $('#ctab').textContent = '生成中…';
       append('user', esc(text));
+      sync();
       const shell = append('ai', `<div class="steps"></div><div class="plan-slot"></div><div class="tail"></div>`);
       const steps = shell.querySelector('.steps');
       const seq = [
-        ['Schema Guard · 读取字段语义', 450],
-        ['分析规划 · KPI / 趋势 / 结构', 650],
-        [S.mode === 'plan' ? '生成 Plan 待确认' : '生成 DashboardPatch', 500]
+        ['Schema Guard · 读取字段语义', 700],
+        ['分析规划 · KPI / 趋势 / 结构', 900],
+        [S.mode === 'plan' ? '生成 Plan 待确认' : '生成 DashboardPatch', 700]
       ];
       let i = 0;
       const tick = () => {
@@ -1120,10 +1483,11 @@
         setTimeout(() => {
           if (S.cancelled) return;
           r2.classList.remove('run'); r2.classList.add('done');
-          shell.querySelector('.tail').innerHTML = `<p>已生成可刷新看板草稿。</p><span class="attach">▦ linked_dashboard · draft</span>`;
+          shell.querySelector('.tail').innerHTML = `<p>已生成可刷新看板草稿。</p><button class="attach" type="button" data-open-dash>▦ linked_dashboard · draft</button>`;
+          shell.querySelector('[data-open-dash]').onclick = () => openInEditor();
           finish('succeeded');
-        }, 550);
-      }, 450);
+        }, 700);
+      }, 600);
     }
 
     $('#device').onclick = (e) => {
@@ -1150,9 +1514,26 @@
     $('#btn-pick').onclick = () => {
       S.aiPick = !S.aiPick;
       $('#btn-pick').classList.toggle('on', S.aiPick);
-      toast(S.aiPick ? 'AI 拾取开启' : 'AI 拾取关闭');
+      if (S.aiPick) toast('AI 拾取开启 · 点击 KPI / 图表');
+      else {
+        $('#insp').classList.add('hidden');
+        $$('#dash .pick').forEach((x) => x.classList.remove('pick'));
+        toast('AI 拾取关闭');
+      }
     };
     $('#btn-insp-x').onclick = () => { $('#insp').classList.add('hidden'); $$('#dash .pick').forEach((x) => x.classList.remove('pick')); };
+    $('#prop-text').onchange = () => {
+      if (!S.picked) return;
+      const el = $(`#dash [data-el="${S.picked.id}"]`);
+      if (!el) return;
+      const lab = $('#prop-text').value.trim();
+      if (!lab) return;
+      S.picked.lab = lab;
+      el.dataset.lab = lab;
+      const title = el.querySelector('h3, .l');
+      if (title) title.textContent = lab;
+      toast('属性已更新 · ' + lab);
+    };
     $$('.insp-tabs button').forEach((b) => b.onclick = () => {
       $$('.insp-tabs button').forEach((x) => x.classList.toggle('on', x === b));
       $('#insp-props').classList.toggle('hidden', b.dataset.t !== 'props');
@@ -1161,45 +1542,149 @@
     $('#btn-prompt').onclick = () => {
       const t = $('#prompt-ta').value.trim(); if (!t) return;
       const ctx = S.picked ? `【元素: ${S.picked.lab}】` : '【整页】';
-      $('#input').value = ctx + t; $('#prompt-ta').value = ''; toast('已带拾取上下文');
+      $('#input').value = ctx + t; $('#prompt-ta').value = '';
+      toast('已写入输入框 · 回车发送');
+      $('#input').focus();
     };
 
     $('#btn-share').onclick = () => $('#share-mask').classList.add('open');
     $('#btn-share-chat').onclick = () => $('#share-mask').classList.add('open');
-    $('#btn-share-ok').onclick = () => { $('#share-mask').classList.remove('open'); toast('已创建 /share/demoToken'); };
+    $('#btn-share-ok').onclick = () => {
+      const url = location.origin + location.pathname.replace(/[^/]+$/, '') + 'dashboard-commercial.html#/share/demoToken';
+      const fallback = './dashboard-commercial.html#/share/demoToken';
+      const text = (location.protocol.startsWith('http') ? url : fallback);
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).catch(() => {});
+      $('#share-mask').classList.remove('open');
+      toast('已创建分享链接（已尝试复制）');
+    };
     $$('#share-mask .choice').forEach((b) => b.onclick = () => $$('#share-mask .choice').forEach((x) => x.classList.toggle('on', x === b)));
     $$('#share-mask .cline').forEach((b) => b.onclick = () => {
       $$('#share-mask .cline').forEach((x) => { x.classList.toggle('on', x === b); x.querySelector('span').textContent = x === b ? '●' : '○'; });
     });
     $('#btn-open-ver').onclick = () => { closePops(); $('#versions').classList.add('open'); };
     $('#btn-ver-x').onclick = () => $('#versions').classList.remove('open');
-    $('#btn-refresh').onclick = () => toast('chartQuery 刷新（示意）');
-    $('#btn-related').onclick = () => { closePops(); toast('关联当前会话'); };
-    $('#export-pop').onclick = (e) => { if (e.target.closest('.pop-item:not(.soon)')) { toast('导出已排队'); closePops(); } };
+    $('#btn-refresh').onclick = () => {
+      if (!S.hasDash) { toast('暂无看板可刷新'); return; }
+      $$('#dash .kpi, #dash .ccard').forEach((el) => el.classList.add('refreshing'));
+      setTimeout(() => {
+        $$('#dash .kpi, #dash .ccard').forEach((el) => el.classList.remove('refreshing'));
+        renderDash(S.channel);
+        toast('chartQuery 已刷新');
+      }, 450);
+    };
+    $('#btn-related').onclick = () => { closePops(); toast('已关联当前会话 conversationId'); };
+    $('#export-pop').onclick = (e) => {
+      const b = e.target.closest('[data-export]'); if (!b) return;
+      e.stopPropagation();
+      const name = (S.linkedDashId || 'dash') + '-' + b.dataset.export + '.png';
+      const blob = new Blob([`Open Dashboard export stub\n${name}\nchannel=${S.channel}\n`], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name.replace(/\.png$/, '.txt');
+      a.click();
+      URL.revokeObjectURL(a.href);
+      closePops();
+      toast('已导出 · ' + b.dataset.export);
+    };
+    $('#btn-open-editor-more').onclick = (e) => { e.stopPropagation(); closePops(); openInEditor(); };
+    $('#ctab').onclick = () => { if (S.hasDash) openInEditor(); };
+
+    $('#ftabs').onclick = (e) => {
+      const t = e.target.closest('.ftab[data-filter]'); if (!t) return;
+      S.fileFilter = t.dataset.filter;
+      filterFiles(S.fileFilter);
+    };
+    $('#file-dash').onclick = () => {
+      if (!S.hasDash) { toast('尚未生成看板'); return; }
+      selectFile($('#file-dash'));
+      renderDash(S.channel);
+      toast('已打开本会话产物');
+    };
 
     function openExample(name) {
-      enterWorkspace({ keepHero: true });
+      enterWorkspace({ mode: 'example', keepToast: true });
       S.hasDash = true;
+      S.linkedSource = 'example';
+      S.linkedDashId = name.includes('房产') ? 'dash_conv_house' : 'dash_conv_olympic';
       sync();
       renderDash();
       $('#ctab').textContent = name;
-      $('#crumb').textContent = name;
+      $('#bridge-path').textContent = '/dashboards/' + S.linkedDashId + '/edit';
+      $('#file-dash-name').textContent = name;
+      $('#file-dash').classList.add('on');
+      $('#file-dash').classList.remove('hidden');
       if (!$('#msgs').childElementCount) {
-        append('ai', `<p>已打开示例「${name}」。可继续在左侧追问改图，或点「新对话」重新从落地页开始。</p>`);
+        append('ai', `<p>已打开示例「${name}」。可继续在左侧追问改图，或点「新对话」重新从落地页开始。</p>
+          <button class="attach" type="button" data-open-dash>▦ 在编辑器打开</button>`);
+        $('#msgs [data-open-dash]')?.addEventListener('click', openInEditor);
       }
+      setFlow('iterate');
+      filterFiles(S.fileFilter || 'all');
       sync();
-      toast('打开示例 → 工作台');
+      toast('示例已打开 · 可追问 / AI 拾取');
     }
     $('#nav-ex').onclick = () => openExample('奥运会奖牌分析看板.dash');
-    $('#ex-olympic').onclick = () => openExample('奥运会奖牌分析看板.dash');
-    $('#ex-house').onclick = () => openExample('房产交易分析看板.dash');
+    $('#ex-olympic').onclick = () => { selectFile($('#ex-olympic')); openExample('奥运会奖牌分析看板.dash'); };
+    $('#ex-house').onclick = () => { selectFile($('#ex-house')); openExample('房产交易分析看板.dash'); };
     $('#btn-browse').onclick = () => openExample('奥运会奖牌分析看板.dash');
     $$('.ex-card').forEach((c) => c.onclick = () => {
       openExample(c.dataset.ex === 'house' ? '房产交易分析看板.dash' : '奥运会奖牌分析看板.dash');
     });
-    $('#nav-ds').onclick = () => toast('跳转产品数据源模块（示意）');
-    $('#nav-tpl').onclick = () => toast('模版库（示意）');
-    $('#nav-history').onclick = () => toast('对话历史列表（示意）');
+    $$('#recent .recent-item').forEach((b) => b.onclick = () => {
+      const k = b.dataset.recent;
+      if (k === '经营') {
+        $('#input').value = '请先自行构造一份贴近真实业务的模拟经营数据（明确标注为模拟），再生成可交互经营分析仪表盘，突出核心指标、趋势和关键结论。';
+        send();
+      } else if (k === '房产') openExample('房产交易分析看板.dash');
+      else openExample('奥运会奖牌分析看板.dash');
+    });
+    $$('.primary-nav a[data-mod]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        if (document.body.classList.contains('embed')) {
+          e.preventDefault();
+          const map = {
+            workbench: 'workbench',
+            datasources: 'datasource',
+            datasets: 'dataset',
+            dashboards: 'dashboard',
+            reports: 'report'
+          };
+          postParent({ type: 'od-goto-module', module: map[el.dataset.mod] });
+        }
+      });
+    });
+    $('#brand-home').onclick = (e) => {
+      if (document.body.classList.contains('embed')) {
+        e.preventDefault();
+        postParent({ type: 'od-goto-module', module: 'workbench' });
+      }
+    };
+    $('#btn-open-editor').onclick = openInEditor;
+    $('#btn-goto-list').onclick = () => gotoModule('dashboard', 'list');
+    $('#btn-goto-ds').onclick = () => gotoModule('dataset');
+    $$('[data-jump="dataset"]').forEach((el) => el.onclick = () => {
+      selectFile(el);
+      S.dataset = el.id === 'file-ds-travel' ? 'ds_travel' : 'ds_sales';
+      toast('已绑定数据集上下文 · ' + el.textContent.trim());
+      filterFiles('dataset');
+    });
+    $('#nav-history').onclick = () => {
+      enterWorkspace({ mode: 'explore', keepToast: true });
+      append('ai', `<p>对话历史（示意）</p>
+        <button class="attach" type="button" data-h="经营">模拟经营数据 · 经营分析</button>
+        <button class="attach" type="button" data-h="房产">房产交易分析看板</button>`);
+      $$('#msgs [data-h]').forEach((b) => b.onclick = () => {
+        if (b.dataset.h === '经营') { $('#input').value = '继续上一轮经营分析，补充客单价趋势'; send(); }
+        else openExample('房产交易分析看板.dash');
+      });
+      toast('已打开历史入口');
+    };
+
+    /* 嵌入商用高保时隐藏本页顶栏 */
+    if (new URLSearchParams(location.search).get('embed') === '1' || window.parent !== window) {
+      document.documentElement.classList.add('embed');
+      document.body.classList.add('embed');
+    }
 
     sync();
   </script>

@@ -19,22 +19,21 @@
 
 ## 信息架构（对齐 marmos）
 
-与仪表盘高保同目录：
+与仪表盘高保同壳（`dashboard-commercial.html` 顶栏路由）：
 
-- 对话：[`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html)
-- 仪表盘：[`dashboard-commercial.html`](../../prototypes/hi-fi/dashboard-commercial.html)
-- 启动：`prototypes/hi-fi/start.sh`（默认对话；`./start.sh dashboard` 打开仪表盘）
+- **融合入口**：[`dashboard-commercial.html#/conversation`](../../prototypes/hi-fi/dashboard-commercial.html)（推荐）
+- 对话交互页：[`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html)（`?embed=1` 时嵌入壳内）
+- 启动：`prototypes/hi-fi/start.sh`（默认打开 `#/conversation`）
 
 ### 壳层
 
 ```
-顶栏：品牌 + 内测标 + 面包屑 + 布局设置 + 用户
-左侧导航：新对话 / 历史 /（二期灰）推送告警 / 数据源 / 模版 / 探索示例
+顶栏（与工作台/数据源等同级）：工作台 | 对话(内测) | 数据源 | 数据集 | 仪表盘 | 报告
+对话模块内侧栏：新对话 / 历史 / 探索示例 /（二期灰）
 主舞台分两段（一连串动作，不是单页）：
-  1) 落地页（默认）：关面板 · 整页 Hero + 大输入（~760px）· 对齐 marmos 新对话
-  2) 发送 / 点示例 / 勾选面板 → 进入工作台：导航 | 对话列(~400) | 文件 | 画布铺满
-布局 ▦：仍可手动开关文件目录/编辑器；全关且无消息时回到落地页
-对话框位置：左 | 右
+  1) 落地页（默认）：Kimi 式居中 —— 品牌词 + 大输入（~960px）+ 建议词/最近对话
+  2) 发送 / 点示例 → 工作台：对话列(~440) | 文件 | 画布；可跳回仪表盘编辑器
+产物桥接：Dashboard draft → 同壳「仪表盘」模块；分享复用现有语义
 ```
 
 ### 生成后
