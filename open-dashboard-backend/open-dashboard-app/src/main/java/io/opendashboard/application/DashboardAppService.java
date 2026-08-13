@@ -339,6 +339,22 @@ public class DashboardAppService {
         return Optional.of(vo);
     }
 
+    public boolean deleteChart(String dashboardId, String chartId) {
+        DashboardGateway repo = repository.getIfAvailable();
+        if (repo != null) {
+            try {
+                return repo.deleteChart(Long.parseLong(dashboardId), Long.parseLong(chartId));
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
+        MemDash d = mem.get(dashboardId);
+        if (d == null) return false;
+        if (d.charts.remove(chartId) == null) return false;
+        bump(d);
+        return true;
+    }
+
     public Optional<DashboardStatusVO> publish(String id) {
         DashboardGateway repo = repository.getIfAvailable();
         if (repo != null) {

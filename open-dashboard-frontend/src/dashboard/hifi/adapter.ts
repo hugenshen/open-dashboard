@@ -105,27 +105,45 @@ export function datasetsToHiFi(details: DatasetDetailVO[]): Record<string, unkno
         label: f.label,
         group: f.group === 'quota' ? 'quota' : 'dim'
       })),
-      rows: STUB_ROWS[id] || synthesizeRows(d)
+      // Prefer real preview rows later; never invent demo numbers for product datasets.
+      rows: STUB_ROWS[id] ? STUB_ROWS[id] : []
     }
   }
   return out
 }
 
-function synthesizeRows(d: DatasetDetailVO): Record<string, unknown>[] {
-  const dims = d.fields.filter((f) => f.group === 'dim')
-  const quotas = d.fields.filter((f) => f.group === 'quota')
-  const rows: Record<string, unknown>[] = []
-  for (let i = 0; i < 6; i++) {
-    const row: Record<string, unknown> = { date: `2026-07-0${(i % 9) + 1}` }
-    dims.forEach((f, di) => {
-      row[f.name] = `${f.label || f.name}${String.fromCharCode(65 + ((i + di) % 4))}`
+/** Fill DATASETS.rows from POST /dataset/{id}/preview so editor matches chartQuery. */
+export async function hydrateHiFiDatasetRows(
+  details: DatasetDetailVO[],
+  datasets: Record<string, unknown>,
+  preview: (id: string) => Promise<{
+    columns: Array<{ name: string; type?: string; dataType?: string }>
+    rows: unknown[][]
+  }>
+): Promise<void> {
+  await Promise.all(
+    details.map(async (d) => {
+      const id = d.meta.id
+      const slot = datasets[id] as { rows?: Record<string, unknown>[] } | undefined
+      if (!slot) return
+      if (STUB_ROWS[id]) return
+      try {
+        const res = await preview(id)
+        const cols = (res.columns || []).map((c) => c.name)
+        const fieldNames = d.fields.map((f) => f.name)
+        const names = cols.length ? cols : fieldNames
+        slot.rows = (res.rows || []).map((row) => {
+          const obj: Record<string, unknown> = {}
+          names.forEach((name, i) => {
+            obj[name] = Array.isArray(row) ? row[i] : undefined
+          })
+          return obj
+        })
+      } catch {
+        slot.rows = []
+      }
     })
-    quotas.forEach((f, qi) => {
-      row[f.name] = 40 + i * 17 + qi * 11
-    })
-    rows.push(row)
-  }
-  return rows
+  )
 }
 
 /** Product layout uses 72 cols; hi-fi editor canvas uses 12 cols. */

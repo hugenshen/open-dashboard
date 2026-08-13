@@ -93,7 +93,8 @@
       border-bottom: 1px solid var(--line); background: #f7f9fc; flex-shrink: 0;
       font-size: 12px; color: var(--muted);
     }
-    .stage.workspace.has-dash .bridge-bar { display: flex; }
+    .stage.workspace.has-dash .bridge-bar,
+    .stage.workspace.has-ask .bridge-bar { display: flex; }
     .bridge-bar .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--ink); }
     .bridge-bar .sp { flex: 1; }
     .bridge-bar .bbtn {
@@ -497,6 +498,120 @@
       border: 0; font: inherit;
     }
     .attach:hover { filter: brightness(.97); text-decoration: underline; }
+    .ask-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .ask-result {
+      background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 0;
+      box-shadow: var(--shadow); max-width: 860px; overflow: hidden;
+    }
+    .ask-result .ask-hd {
+      display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+      border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #fafbfd, #fff);
+    }
+    .ask-result .ask-hd .badge {
+      flex-shrink: 0; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11px; font-weight: 700;
+      line-height: 22px; background: #e8f3ff; color: #1677ff;
+    }
+    .ask-result .badge.diag {
+      background: #fff1f0; color: #cf1322;
+    }
+    .ask-drivers {
+      margin: 12px 16px 0; display: grid; gap: 8px;
+    }
+    .ask-drivers .drv {
+      display: grid; grid-template-columns: 88px 1fr auto; gap: 10px; align-items: center;
+      padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: #fff;
+      font-size: 12.5px;
+    }
+    .ask-drivers .drv .k { font-weight: 700; color: var(--ink); }
+    .ask-drivers .drv .d { color: var(--muted); line-height: 1.45; }
+    .ask-drivers .drv .delta.neg { color: #cf1322; font-weight: 700; }
+    .ask-drivers .drv .delta.pos { color: #08979c; font-weight: 700; }
+    .ask-contrib {
+      display: flex; height: 10px; border-radius: 999px; overflow: hidden; margin: 10px 16px 0; background: #f0f2f5;
+    }
+    .ask-contrib i { display: block; height: 100%; }
+    .ask-contrib-legend {
+      display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 16px 0; font-size: 11.5px; color: var(--muted);
+    }
+    .ask-contrib-legend span::before {
+      content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 1px;
+    }
+    .ask-result .ask-hd h3 { font-size: 15px; margin: 0 0 4px; letter-spacing: -.01em; }
+    .ask-result .meta { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .ask-result .insight {
+      margin: 12px 16px 0; padding: 10px 12px; border-radius: 10px;
+      background: #f7f9fc; border: 1px solid #e8ecf2; font-size: 13px; line-height: 1.55; color: var(--ink);
+    }
+    .ask-result .insight b { color: var(--brand); }
+    .ask-result .ask-body { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; padding: 14px 16px; }
+    @media (max-width: 900px) { .ask-result .ask-body { grid-template-columns: 1fr; } }
+    .ask-result .viz {
+      border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: #fbfcfe; min-height: 180px;
+    }
+    .ask-result .viz .vl { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+    .ask-bars { display: flex; align-items: flex-end; gap: 10px; height: 140px; margin: 8px 0 6px; padding: 0 4px; }
+    .ask-bars span {
+      flex: 1; background: linear-gradient(180deg, #7aa2ff, #3370ff); border-radius: 5px 5px 2px 2px;
+      min-height: 12px; position: relative;
+    }
+    .ask-bars .lab,
+    .ask-result .lab {
+      display: flex; justify-content: space-between; gap: 4px; font-size: 11px; color: var(--faint); margin-top: 4px;
+    }
+    .ask-result table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .ask-result th, .ask-result td { border-bottom: 1px solid var(--line); padding: 9px 6px; text-align: left; }
+    .ask-result th { color: var(--muted); font-weight: 600; background: #fafbfc; }
+    .ask-result tr:hover td { background: #f7f9fc; }
+    .ask-encode {
+      display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 12px;
+    }
+    .ask-encode .tag {
+      font-size: 11.5px; padding: 3px 8px; border-radius: 999px; background: var(--soft); color: var(--muted);
+      border: 1px solid var(--line);
+    }
+    .ask-encode .tag em { font-style: normal; color: var(--ink); font-weight: 650; }
+    .ask-foot {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      padding: 12px 16px; border-top: 1px solid var(--line); background: #fafbfc;
+    }
+    .ask-foot .sp { flex: 1; }
+    .ask-follow { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 14px; }
+    .ask-follow .chip {
+      height: 28px; padding: 0 10px; border-radius: 999px; border: 1px dashed var(--line-2);
+      background: #fff; font-size: 12px; color: var(--muted); cursor: pointer;
+    }
+    .ask-follow .chip:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+    .pill.on-intent { background: var(--brand-soft); color: var(--brand); border-color: #c9d7ff; font-weight: 650; }
+    .pill.gen-only { display: none; }
+    .stage.intent-gen .pill.gen-only { display: inline-flex; }
+    .intent-hint { font-size: 11.5px; color: var(--faint); margin: 0 0 6px; }
+    .ask-pane {
+      padding: 16px; overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 12px;
+      background: linear-gradient(180deg, #f3f5f8 0%, var(--bg) 120px);
+    }
+    .ask-toolbar {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    }
+    .ask-toolbar .ttl { font-size: 13px; font-weight: 650; }
+    .ask-toolbar .muted { font-size: 12px; color: var(--muted); }
+    .ask-toolbar .sp { flex: 1; }
+    .bridge-bar.ask-mode {
+      background: #eef6ff; border-bottom-color: #d6e8ff;
+    }
+    .bridge-bar.ask-mode .path { color: var(--brand); }
+    .chip.secondary { opacity: .78; border-style: dashed; }
+    .chip.ask-primary { border-color: #c9d7ff; background: #f5f8ff; color: #1f4fd6; font-weight: 600; }
+    .ctx-pill {
+      display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
+      border-radius: 999px; background: var(--soft); border: 1px solid var(--line); font-size: 12px; color: var(--muted);
+    }
+    .ctx-pill b { color: var(--ink); font-weight: 650; }
+    .msg .sql-preview {
+      margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #0f172a; color: #cbd5e1;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; line-height: 1.45;
+      overflow: auto;
+    }
     .kpi.refreshing .v, .ccard.refreshing { animation: blink 0.6s ease; }
     @keyframes blink { 50% { opacity: .45; } }
     .filters select { cursor: pointer; }
@@ -802,61 +917,64 @@
           <div class="flow-bar" id="flow-bar">
             <span class="step-dot on" data-flow="ask">① 提问</span>
             <span class="sep">→</span>
-            <span class="step-dot" data-flow="run">② 生成</span>
+            <span class="step-dot" data-flow="run">② 问数 / 规划</span>
             <span class="sep">→</span>
-            <span class="step-dot" data-flow="dash">③ 看板</span>
+            <span class="step-dot" data-flow="dash">③ 结果</span>
             <span class="sep">→</span>
-            <span class="step-dot" data-flow="iterate">④ 追问 / 拾取</span>
+            <span class="step-dot" data-flow="iterate">④ 保存 / 生成看板</span>
           </div>
 
           <div class="chat-main" id="chat-main">
             <div class="landing-stack" id="landing-stack">
               <div class="hero-zone" id="hero">
-                <div class="brand-mark">对话</div>
-                <div class="brand-sub">数据仪表盘交给自然语言 · 产物写入可编辑 Dashboard</div>
+                <div class="brand-mark">先<em>问数</em></div>
+                <div class="brand-sub">看清结论后再决定：保存到仪表盘，或一键生成整页看板</div>
               </div>
-              <div class="chat-hint" id="chat-hint">在下方继续提问，或从右侧打开示例看板。<br/>生成后可在此多轮追问、AI 拾取改图。</div>
+              <div class="chat-hint" id="chat-hint">默认<strong>问数</strong>：会话内表 / 图预览，不自动改看板。<br/>结果上可「保存到仪表盘」或「直接生成仪表盘」。</div>
               <div class="msgs hidden" id="msgs"></div>
               <div class="dock">
                 <div class="dock-inner">
+                  <div class="intent-hint" id="intent-hint">当前意图：问数 · 结果仅会话预览</div>
                   <div class="composer" id="composer">
                     <div class="comp-row">
-                      <button class="gbtn" type="button" id="btn-add">＋ 添加 ▾</button>
-                      <button class="gbtn soon" type="button">技能 <span class="tag-soon">二期</span></button>
+                      <button class="gbtn" type="button" id="btn-add">＋ 数据集 ▾</button>
+                      <span class="ctx-pill" id="ctx-pill">上下文 <b id="ctx-name">模拟经营</b></span>
                       <span class="sp"></span>
                     </div>
-                    <textarea id="input" placeholder="问点什么，或输入 / 选择分析技能…"></textarea>
+                    <textarea id="input" placeholder="问一句业务问题，例如：各区域销售额是多少？"></textarea>
                     <div class="comp-row">
+                      <button class="pill on-intent" type="button" id="btn-intent"><b id="intent-label">问数</b> ▾</button>
                       <button class="pill" type="button" id="btn-model">⚡ <b>Auto</b> ▾</button>
-                      <button class="pill" type="button" id="btn-mode">◎ <b id="mode-label">自动模式</b> ▾</button>
-                      <button class="pill" type="button" id="btn-style">▦ <b id="style-label">智能风格</b> ▾</button>
+                      <button class="pill gen-only" type="button" id="btn-mode">◎ <b id="mode-label">自动模式</b> ▾</button>
+                      <button class="pill gen-only" type="button" id="btn-style">▦ <b id="style-label">智能风格</b> ▾</button>
                       <span class="sp"></span>
                       <button class="send" type="button" id="btn-send">↑</button>
                     </div>
                   </div>
                   <div class="ctx-row">
-                    <button class="btn-ctx" type="button" id="btn-ctx">📁 选择数据集 / 文件作为上下文</button>
+                    <button class="btn-ctx" type="button" id="btn-ctx">更换数据集上下文</button>
                   </div>
                   <div class="chips" id="chips">
-                    <button class="chip lead" type="button">试试</button>
-                    <button class="chip" type="button" data-p="请先自行构造一份贴近真实业务的模拟经营数据（明确标注为模拟），再生成可交互经营分析仪表盘，突出核心指标、趋势和关键结论。">生成经营仪表盘</button>
-                    <button class="chip" type="button" data-p="基于所选数据集，分析收入变化并拆解关键驱动因素，生成趋势与结构图。">分析收入变化</button>
-                    <button class="chip" type="button" data-p="帮我定位业务异常：找出环比下滑最明显的维度，并生成对比看板。">定位业务异常</button>
-                    <button class="chip" type="button" id="chip-ex">探索示例</button>
+                    <button class="chip lead" type="button">试试问数</button>
+                    <button class="chip ask-primary" type="button" data-intent="ask" data-ask="region" data-p="各区域销售额分别是多少？按从高到低排一下。">区域销售额</button>
+                    <button class="chip ask-primary" type="button" data-intent="ask" data-ask="channel" data-p="线上和线下渠道的利润对比如何？">渠道利润对比</button>
+                    <button class="chip ask-primary" type="button" data-intent="ask" data-ask="trend" data-p="近几个月营收趋势怎么样？哪个月最高？">营收趋势</button>
+                    <button class="chip secondary" type="button" data-intent="gen" data-p="请先自行构造一份贴近真实业务的模拟经营数据（明确标注为模拟），再生成可交互经营分析仪表盘，突出核心指标、趋势和关键结论。">直接生成仪表盘</button>
+                    <button class="chip" type="button" id="chip-ex">探索示例看板</button>
                   </div>
                   <div class="recent" id="recent">
                     <div class="recent-hd">最近对话</div>
+                    <button class="recent-item" type="button" data-recent="ask-region">
+                      <span class="dot"></span><span class="t">问数 · 各区域销售额</span><span class="st">可保存</span>
+                    </button>
                     <button class="recent-item" type="button" data-recent="经营">
-                      <span class="dot"></span><span class="t">模拟经营数据 · 经营分析仪表盘</span><span class="st">已完成</span>
+                      <span class="dot"></span><span class="t">模拟经营 · 经营分析仪表盘</span><span class="st">已生成</span>
                     </button>
                     <button class="recent-item" type="button" data-recent="房产">
-                      <span class="dot"></span><span class="t">房产交易分析看板</span><span class="st">已完成</span>
-                    </button>
-                    <button class="recent-item" type="button" data-recent="奖牌">
-                      <span class="dot"></span><span class="t">奥运会奖牌分析</span><span class="st">已完成</span>
+                      <span class="dot"></span><span class="t">房产交易分析看板</span><span class="st">示例</span>
                     </button>
                   </div>
-                  <div class="foot-note">Open Dashboard 内测 · 内容由 AI 生成，请注意甄别</div>
+                  <div class="foot-note">Open Dashboard 内测 · 问数结果为会话预览，写入看板前不落查询结果行</div>
                 </div>
               </div>
             </div>
@@ -872,8 +990,9 @@
             <button class="ftab soon" type="button">知识库<span class="tag-soon">二期</span></button>
           </div>
           <div class="tree" id="file-tree">
-            <div class="ws" data-sec="session">本会话产物 · 写入产品 Dashboard</div>
-            <div class="file" id="file-dash" data-kind="dash" data-id="session"><span>▦</span> <span id="file-dash-name">（生成后出现 .dash）</span></div>
+            <div class="ws" data-sec="session">本会话产物</div>
+            <div class="file hidden" id="file-ask" data-kind="dataset" data-id="ask"><span>●</span> <span id="file-ask-name">问数结果（会话预览）</span></div>
+            <div class="file" id="file-dash" data-kind="dash" data-id="session"><span>▦</span> <span id="file-dash-name">（写入看板后出现 .dash）</span></div>
             <div class="ws" data-sec="assets">产品资产 · 数据集 / 看板</div>
             <div class="file" id="ex-house" data-kind="dash" data-jump="dash"><span>▦</span> 房产交易分析看板.dash</div>
             <div class="file" id="ex-olympic" data-kind="dash" data-jump="dash"><span>▦</span> 奥运会奖牌分析看板.dash</div>
@@ -884,7 +1003,7 @@
 
         <section class="canvas hidden" id="canvas">
           <div class="bridge-bar" id="bridge-bar">
-            <span>产物已写入现有 Dashboard draft</span>
+            <span id="bridge-label">产物已写入现有 Dashboard draft</span>
             <code class="path" id="bridge-path">/dashboards/d_conv_demo/edit</code>
             <span class="sp"></span>
             <button class="bbtn" type="button" id="btn-goto-ds">去数据集</button>
@@ -906,8 +1025,8 @@
           </div>
           <div class="cbody" id="cbody">
             <div class="explore" id="explore">
-              <h2>从真实场景开始你的数据分析</h2>
-              <div class="sub">打开示例看板，或继续在左侧对话里生成可刷新的经营分析草稿。</div>
+              <h2>从问数开始，再落到可编辑看板</h2>
+              <div class="sub">左侧提问即可出表/图预览；满意后再保存到仪表盘，或直接生成整页 draft。</div>
               <button class="cta" type="button" id="btn-browse">🔍 浏览公开数据集 / 示例</button>
               <div class="ex-grid">
                 <button class="ex-card" type="button" data-ex="house">
@@ -921,11 +1040,12 @@
               </div>
             </div>
             <div class="empty-c hidden" id="cempty">
-              <div><div style="font-weight:650;color:var(--ink);margin-bottom:6px">正在准备画布…</div>生成中，看板将出现在这里</div>
+              <div><div style="font-weight:650;color:var(--ink);margin-bottom:6px">正在准备画布…</div><span id="cempty-txt">问数 / 生成进行中</span></div>
             </div>
             <div class="dash hidden" id="dash"></div>
+            <div class="ask-pane hidden" id="ask-pane"></div>
             <div class="gen hidden" id="gen">
-              <div class="gen-card"><div class="spin"></div><div style="font-weight:650;margin-bottom:6px">正在生成看板…</div><div style="font-size:12.5px;color:var(--muted)">读取 Schema · 规划指标 · 写入 Dashboard draft</div></div>
+              <div class="gen-card"><div class="spin"></div><div style="font-weight:650;margin-bottom:6px" id="gen-title">正在问数…</div><div style="font-size:12.5px;color:var(--muted)" id="gen-sub">Schema Guard · 聚合预览 · 不写看板</div></div>
             </div>
           </div>
         </section>
@@ -985,6 +1105,10 @@
     <label class="check"><input type="checkbox" id="chk-files" /> 文件目录</label>
     <label class="check"><input type="checkbox" id="chk-editor" /> 编辑器</label>
   </div>
+  <div class="pop" id="intent-pop">
+    <button class="pop-item on" type="button" data-intent="ask"><div><div class="t">问数（默认）</div><div class="d">先出表/图结论，不自动改看板</div></div></button>
+    <button class="pop-item" type="button" data-intent="gen"><div><div class="t">生成看板</div><div class="d">直接写入 Dashboard draft</div></div></button>
+  </div>
   <div class="pop" id="model-pop" style="min-width:280px">
     <button class="pop-item on" type="button"><span class="mico">⚡</span><div><div class="t">Auto 推荐</div><div class="d">默认配置，成本及效果最优（一期）</div></div></button>
     <button class="pop-item soon" type="button"><span class="mico" style="background:#4d6bfe">DS</span><div><div class="t">DeepSeek <span class="tag-soon">二期</span></div><div class="d">示意未接入</div></div></button>
@@ -1040,17 +1164,16 @@
   <div class="mask" id="cap-mask">
     <div class="modal" style="width:min(520px,100%)">
       <h3>能力边界</h3>
-      <div class="sub">高保模拟的是产品内 <b>/conversations</b>，不是独立站点。交互对齐 <a href="https://mp.weixin.qq.com/s/1VXH-tv51O7O5ICyN6AmBg" target="_blank" rel="noopener">marmos</a>；落地走现有 Dashboard / chartQuery。</div>
+      <div class="sub">高保模拟产品内 <b>/conversations</b>（壳：<code>#/conversation</code>）。架构见 design <b>ai-architecture.md</b>：问数优先。</div>
       <div style="margin-top:12px;font-size:13px;line-height:1.7">
-        <p><b>与现有产品的结合</b></p>
+        <p><b>默认：问数</b></p>
         <ul style="padding-left:18px;margin-top:6px">
-          <li>顶栏：工作台 / <b>对话</b> / 数据源 / 数据集 / 仪表盘 / 报告（同 ModuleTopbar）</li>
-          <li>产物：Dashboard draft → 可在 <code>/dashboards/:id/edit</code> 继续编辑</li>
-          <li>取数：现有 datasetQuery / chartQuery；分享复用 <code>/share/:token</code></li>
-          <li>第二入口：仪表盘/报告编辑器内 AI 侧栏（与本会话可共享 conversationId）</li>
+          <li>会话内表 / 临时图；取数走 datasetQuery / chartQuery 语义</li>
+          <li><b>保存到仪表盘</b>：本题 → DashboardPatch（不落结果行）</li>
+          <li><b>直接生成仪表盘</b>：以本题证据扩展为整页 draft</li>
         </ul>
-        <p style="margin-top:10px"><b>一期</b>：落地→工作台 · Auto/Plan · 风格 · 流式 draft · AI 拾取 · 版本 · 分享</p>
-        <p style="margin-top:8px"><b>二期</b>：多模型 · 技能 · 推送 · 告警 · 知识库</p>
+        <p style="margin-top:10px"><b>快捷：生成看板</b> — 可不经单题问数，直出可编辑看板</p>
+        <p style="margin-top:8px"><b>对照</b>：DataEase 分层 IA + SQLBot 旁路；DeerFlow SSE/Plan；JoyAgent 先问数再报告 — 见 ai-architecture.md</p>
       </div>
       <div class="modal-foot"><button class="btn primary" type="button" data-x="cap">知道了</button></div>
     </div>
@@ -1059,8 +1182,11 @@
 
   <script>
     const S = {
+      intent: 'ask', // ask | gen — 问数优先
+      askKind: 'region',
       mode: 'auto', styleId: 'feishu-blue', styleName: '飞书蓝', dataset: 'mock',
-      streaming: false, cancelled: false, hasDash: false,
+      streaming: false, cancelled: false, hasDash: false, hasAsk: false,
+      lastAsk: null,
       /* 落地页默认关面板；发送后先开画布，生成完成再开文件目录 */
       showFiles: false, showEditor: false, chatRight: false, aiPick: false, picked: null,
       revisions: [], device: 'desk', phase: 'landing', // landing | workspace
@@ -1135,6 +1261,25 @@
       stage.classList.toggle('idle', !landing && !chatting && !S.hasDash);
       stage.classList.toggle('generating', S.streaming);
       stage.classList.toggle('has-dash', S.hasDash);
+      stage.classList.toggle('has-ask', S.hasAsk && !S.hasDash);
+      stage.classList.toggle('intent-gen', S.intent === 'gen');
+      stage.classList.toggle('intent-ask', S.intent === 'ask');
+
+      const bridge = $('#bridge-bar');
+      if (bridge) {
+        bridge.classList.toggle('ask-mode', S.hasAsk && !S.hasDash);
+        if (S.hasAsk && !S.hasDash) {
+          const insight = S.lastAsk?.mode === 'insight';
+          $('#bridge-label').textContent = insight
+            ? '洞察会话预览 · 归因证据尚未写入看板'
+            : '问数会话预览 · 尚未写入看板';
+          $('#bridge-path').textContent = insight ? 'answer_insight · ephemeral' : 'answer_chart · ephemeral';
+          $('#btn-open-editor').textContent = insight ? '先保存证据图' : '先保存到仪表盘';
+        } else if (S.hasDash) {
+          $('#bridge-label').textContent = '产物已写入现有 Dashboard draft';
+          $('#btn-open-editor').textContent = '在编辑器打开';
+        }
+      }
 
       $('#files').classList.toggle('hidden', landing || !S.showFiles);
       $('#canvas').classList.toggle('hidden', landing || (!S.showEditor && !S.hasDash));
@@ -1157,12 +1302,19 @@
       if (S.hasDash) {
         $('#explore').classList.add('hidden');
         $('#cempty').classList.add('hidden');
+        $('#ask-pane').classList.add('hidden');
         $('#dash').classList.remove('hidden');
+      } else if (S.hasAsk) {
+        $('#explore').classList.add('hidden');
+        $('#cempty').classList.add('hidden');
+        $('#dash').classList.add('hidden');
+        $('#ask-pane').classList.remove('hidden');
       } else if (S.showEditor) {
         if (!S.streaming) {
           $('#explore').classList.remove('hidden');
           $('#cempty').classList.add('hidden');
           $('#dash').classList.add('hidden');
+          $('#ask-pane').classList.add('hidden');
           $('#ctab').textContent = '探索示例';
         }
       }
@@ -1204,12 +1356,39 @@
 
     $('#btn-model').onclick = (e) => { e.stopPropagation(); closePops(); place($('#model-pop'), e.currentTarget); };
     $('#btn-mode').onclick = (e) => { e.stopPropagation(); closePops(); place($('#mode-pop'), e.currentTarget); };
+    $('#btn-intent').onclick = (e) => { e.stopPropagation(); closePops(); place($('#intent-pop'), e.currentTarget); };
     $('#btn-add').onclick = (e) => { e.stopPropagation(); closePops(); place($('#add-pop'), e.currentTarget); };
     $('#btn-style').onclick = (e) => { e.stopPropagation(); closePops(); $('#style-mask').classList.add('open'); };
     $('#btn-export').onclick = (e) => { e.stopPropagation(); closePops(); place($('#export-pop'), e.currentTarget); };
     $('#btn-more').onclick = (e) => { e.stopPropagation(); closePops(); place($('#more-pop'), e.currentTarget); };
     document.onclick = closePops;
 
+    $('#intent-pop').onclick = (e) => {
+      const b = e.target.closest('[data-intent]'); if (!b) return;
+      e.stopPropagation();
+      $$('#intent-pop .pop-item').forEach((x) => x.classList.toggle('on', x === b));
+      setIntent(b.dataset.intent);
+      closePops();
+    };
+    function setIntent(intent) {
+      S.intent = intent === 'gen' ? 'gen' : 'ask';
+      $('#intent-label').textContent = S.intent === 'gen' ? '生成看板' : '问数';
+      $('#btn-intent').classList.toggle('on-intent', true);
+      const hint = $('#intent-hint');
+      if (hint) {
+        hint.textContent = S.intent === 'gen'
+          ? '当前意图：直接生成仪表盘（写入 draft）'
+          : '当前意图：问数 · 结果仅会话预览';
+      }
+      const ta = $('#input');
+      if (ta) {
+        ta.placeholder = S.intent === 'gen'
+          ? '描述要生成的看板，例如：经营分析 KPI + 趋势…'
+          : '问一句业务问题，例如：各区域销售额是多少？';
+      }
+      $('#stage')?.classList.toggle('intent-gen', S.intent === 'gen');
+      $('#stage')?.classList.toggle('intent-ask', S.intent === 'ask');
+    }
     $('#mode-pop').onclick = (e) => {
       const b = e.target.closest('[data-mode]'); if (!b) return;
       e.stopPropagation();
@@ -1221,10 +1400,15 @@
     $('#add-pop').onclick = (e) => {
       const b = e.target.closest('[data-add]'); if (!b) return;
       S.dataset = b.dataset.add === 'mock' ? 'mock' : 'ds_sales';
+      $('#ctx-name').textContent = S.dataset === 'mock' ? '模拟经营' : '销售明细';
       toast(S.dataset === 'mock' ? '已用模拟数据' : '已绑定数据集');
       closePops();
     };
-    $('#btn-ctx').onclick = () => { S.dataset = 'ds_sales'; toast('已添加数据集上下文'); };
+    $('#btn-ctx').onclick = () => {
+      S.dataset = 'ds_sales';
+      $('#ctx-name').textContent = '销售明细';
+      toast('已添加数据集上下文 · 销售明细');
+    };
 
     $('#scar').onclick = (e) => {
       const b = e.target.closest('.sthumb'); if (!b) return;
@@ -1239,6 +1423,8 @@
     $('#chips').onclick = (e) => {
       if (e.target.closest('#chip-ex')) { openExample('房产交易分析看板.dash'); return; }
       const b = e.target.closest('.chip[data-p]'); if (!b) return;
+      if (b.dataset.intent) setIntent(b.dataset.intent);
+      if (b.dataset.ask) S.askKind = b.dataset.ask;
       $('#input').value = b.dataset.p; send();
     };
     $('#btn-send').onclick = () => { if (S.streaming) { S.cancelled = true; finish('cancelled'); return; } send(); };
@@ -1321,8 +1507,13 @@
     }
 
     function openInEditor() {
+      if (S.hasAsk && !S.hasDash) {
+        const shell = $('#msgs .msg.ai:last-child');
+        adoptAskToDash(shell || $('#msgs'), false);
+        return;
+      }
       if (!S.hasDash) {
-        toast('请先生成或打开看板');
+        toast('请先问数并保存，或生成看板');
         return;
       }
       const name = ($('#ctab')?.textContent || '对话生成仪表盘').replace(/\.dash$/, '');
@@ -1357,13 +1548,11 @@
         const show = kind === 'all' || f.dataset.kind === kind;
         f.classList.toggle('hidden', !show);
       });
-      const hasSession = !$('#file-dash').classList.contains('hidden') && S.hasDash;
-      const hasAssetDash = kind === 'all' || kind === 'dash';
-      const hasAssetDs = kind === 'all' || kind === 'dataset';
-      $$('#file-tree [data-sec="session"]').forEach((el) => el.classList.toggle('hidden', kind === 'dataset' || (!S.hasDash && kind !== 'all')));
-      $$('#file-tree [data-sec="assets"]').forEach((el) => el.classList.toggle('hidden', false));
+      $$('#file-tree [data-sec="session"]').forEach((el) => el.classList.toggle('hidden', kind === 'dataset' && !S.hasAsk));
       if (!S.hasDash) $('#file-dash').classList.add('hidden');
       else if (kind === 'all' || kind === 'dash') $('#file-dash').classList.remove('hidden');
+      if (S.hasAsk && (kind === 'all' || kind === 'dataset')) $('#file-ask').classList.remove('hidden');
+      else if (!S.hasAsk) $('#file-ask').classList.add('hidden');
     }
 
     function selectFile(el) {
@@ -1392,9 +1581,11 @@
       $('#gen').classList.add('hidden');
       if (reason === 'succeeded') {
         S.hasDash = true;
+        S.hasAsk = false;
         S.showEditor = true;
         S.linkedDashId = 'dash_conv_ops';
-        S.linkedSource = 'generate';
+        S.linkedSource = S.lastAsk ? 'ask-adopt' : 'generate';
+        $('#ask-pane').classList.add('hidden');
         revealFiles();
         renderDash();
         addRev(S.styleName);
@@ -1405,7 +1596,9 @@
         filterFiles(($('#ftabs .ftab.on') && $('#ftabs .ftab.on').dataset.filter) || 'all');
         setFlow('dash');
         setTimeout(() => setFlow('iterate'), 900);
-        toast('③ 看板已写入 draft · 可追问 / AI 拾取');
+        toast(S.linkedSource === 'ask-adopt'
+          ? '④ 已写入 draft · 可在编辑器打开'
+          : '③ 看板已写入 draft · 可追问 / AI 拾取');
       } else toast('finish · ' + reason);
       sync();
     }
@@ -1418,21 +1611,51 @@
       $('#btn-send').classList.add('stop');
       $('#btn-send').textContent = '■';
       enterWorkspace({ mode: 'generate', keepToast: true });
-      toast('② 生成中 · Schema → Patch → 预览');
+      const isAsk = S.intent === 'ask';
+      if (isAsk) {
+        if (/为什么|原因|归因|驱动|异常|下滑|下跌|下降/.test(text)) S.askKind = 'insight';
+        else if (/渠道|线上|线下|利润对比/.test(text)) S.askKind = 'channel';
+        else if (/趋势|近.*月|营收趋势/.test(text)) S.askKind = 'trend';
+        else if (/区域|省市|销售额/.test(text)) S.askKind = 'region';
+      }
+      const isInsight = isAsk && S.askKind === 'insight';
+      toast(isInsight ? '② 洞察中 · 异常定位 → 拆解驱动' : (isAsk ? '② 问数中 · Schema → 聚合预览' : '② 生成中 · Schema → Patch → 预览'));
       $('#explore').classList.add('hidden');
+      $('#ask-pane').classList.add('hidden');
       $('#cempty').classList.remove('hidden');
+      $('#cempty-txt').textContent = isInsight
+        ? '洞察进行中，归因结论将出现在这里'
+        : (isAsk ? '问数进行中，结果将出现在这里' : '生成中，看板将出现在这里');
       $('#dash').classList.add('hidden');
       $('#gen').classList.remove('hidden');
-      $('#ctab').textContent = '生成中…';
+      $('#gen-title').textContent = isInsight ? '正在洞察…' : (isAsk ? '正在问数…' : '正在生成看板…');
+      $('#gen-sub').textContent = isInsight
+        ? '定位异常 · 拆解驱动因素 · 证据表（会话预览）'
+        : (isAsk
+          ? 'Schema Guard · 聚合预览 · 不写看板'
+          : '读取 Schema · 规划指标 · 写入 Dashboard draft');
+      $('#ctab').textContent = isInsight ? '洞察中…' : (isAsk ? '问数中…' : '生成中…');
       append('user', esc(text));
       sync();
       const shell = append('ai', `<div class="steps"></div><div class="plan-slot"></div><div class="tail"></div>`);
       const steps = shell.querySelector('.steps');
-      const seq = [
-        ['Schema Guard · 读取字段语义', 700],
-        ['分析规划 · KPI / 趋势 / 结构', 900],
-        [S.mode === 'plan' ? '生成 Plan 待确认' : '生成 DashboardPatch', 700]
-      ];
+      const seq = isInsight
+        ? [
+            ['定位异常 · 华南销售额环比 -3%', 550],
+            ['拆解驱动 · 渠道 × 产品', 750],
+            ['汇总结论 · 证据表（不落结果行）', 650]
+          ]
+        : isAsk
+        ? [
+            ['Schema Guard · 读取字段语义', 600],
+            ['问数规划 · 维度 / 度量', 700],
+            ['datasetQuery 预览（会话内）', 700]
+          ]
+        : [
+            ['Schema Guard · 读取字段语义', 700],
+            ['分析规划 · KPI / 趋势 / 结构', 900],
+            [S.mode === 'plan' ? '生成 Plan 待确认' : '生成 DashboardPatch', 700]
+          ];
       let i = 0;
       const tick = () => {
         if (S.cancelled) return;
@@ -1447,6 +1670,10 @@
           return;
         }
         steps.querySelectorAll('.step.run').forEach((s) => { s.classList.remove('run'); s.classList.add('done'); });
+        if (isAsk) {
+          finishAsk(shell, text);
+          return;
+        }
         if (S.mode === 'plan') {
           $('#gen').classList.add('hidden');
           const slot = shell.querySelector('.plan-slot');
@@ -1466,7 +1693,310 @@
       tick();
     }
 
-    function apply(shell) {
+    function resolveAskPack(question) {
+      const q = question || '';
+      const kind = (/为什么|原因|归因|驱动|异常|下滑|下跌|下降/.test(q) || S.askKind === 'insight')
+        ? 'insight'
+        : (S.askKind || 'region');
+
+      if (kind === 'insight') {
+        return {
+          mode: 'insight',
+          kind: 'insight',
+          title: '华南下滑归因',
+          headline: '华南销售额环比 <strong>-3%</strong>，主因是<strong>线下门店下滑</strong>，线上仍小幅增长。',
+          insight: '结论：线下贡献了约 <b>72%</b> 的下滑幅度；其中「产品 C · 线下」拖累最大。建议先核对华南线下促销节奏与库存。',
+          encode: { category: 'channel', value: 'amount', agg: 'SUM', filter: 'region=华南' },
+          drivers: [
+            { k: '线下门店', d: '华南线下销售额环比 -8.4%，贡献大部分跌幅', delta: '-72 万', neg: true },
+            { k: '产品 C', d: '线下产品 C 动销走弱，客单与件数双降', delta: '-41 万', neg: true },
+            { k: '线上商城', d: '线上仍 +2.1%，无法完全对冲线下下滑', delta: '+18 万', neg: false }
+          ],
+          rows: [
+            ['线下门店', '产品 C', '186 万', '-18%', '主因'],
+            ['线下门店', '产品 B', '142 万', '-6%', '次因'],
+            ['线上商城', '产品 A', '268 万', '+4%', '对冲'],
+            ['线上商城', '产品 C', '96 万', '-2%', '弱对冲']
+          ],
+          cols: ['渠道', '产品', '销售额', '环比', '角色'],
+          follows: ['只看华南线下明细', '对比华东线下是否同步', '生成华南诊断看板'],
+          evidenceNote: '证据表 · 归因拆解（不是区域对比图）'
+        };
+      }
+      if (kind === 'channel' || (/渠道|线上|线下/.test(q) && !/为什么|下滑/.test(q))) {
+        return {
+          mode: 'ask',
+          kind: 'channel',
+          title: '渠道利润对比',
+          insight: '线下利润率略高，但<strong>线上贡献了约 68% 营收</strong>；建议优先看线上获客成本与客单价。',
+          encode: { category: 'channel', value: 'profit', agg: 'SUM' },
+          heights: [72, 48],
+          labels: ['线上', '线下'],
+          rows: [['线上商城', '4,520 万', '31.8%', '1.42 亿'], ['线下门店', '1,946 万', '31.9%', '0.61 亿']],
+          cols: ['渠道', '利润', '利润率', '营收'],
+          follows: ['拆到区域看线上利润', '对比客单价', '生成经营分析看板']
+        };
+      }
+      if (kind === 'trend' || (/趋势|近.*月/.test(q) && !/为什么|下滑/.test(q))) {
+        return {
+          mode: 'ask',
+          kind: 'trend',
+          title: '近月营收趋势',
+          insight: '近 6 个月营收整体上行，<strong>峰值在 2026-03（约 1,482 万）</strong>；4–5 月略回落但仍高于年初。',
+          encode: { category: 'month', value: 'amount', agg: 'SUM' },
+          heights: [42, 55, 70, 88, 62, 74],
+          labels: ['1月', '2月', '3月', '4月', '5月', '6月'],
+          rows: [
+            ['2026-01', '980 万', '+6%'],
+            ['2026-02', '1,120 万', '+14%'],
+            ['2026-03', '1,482 万', '+32%'],
+            ['2026-04', '1,050 万', '-29%'],
+            ['2026-05', '1,180 万', '+12%'],
+            ['2026-06', '1,260 万', '+7%']
+          ],
+          cols: ['月份', '营收', '环比'],
+          follows: ['哪个月利润最高？', '按渠道拆趋势', '生成趋势看板']
+        };
+      }
+      return {
+        mode: 'ask',
+        kind: 'region',
+        title: '区域销售额',
+        insight: '华东领先，华南环比为负（<strong>-3%</strong>）；建议对华南做<strong>归因洞察</strong>（为什么下滑）。',
+        encode: { category: 'region', value: 'amount', agg: 'SUM' },
+        heights: [88, 70, 62, 40],
+        labels: ['华东', '华北', '华南', '西部'],
+        rows: [
+          ['华东', '1,240 万', '+12%'],
+          ['华北', '980 万', '+8%'],
+          ['华南', '860 万', '-3%'],
+          ['西部', '520 万', '+5%']
+        ],
+        cols: ['区域', '销售额', '环比'],
+        follows: ['华南为什么下滑？', '只看线上区域', '生成经营分析看板']
+      };
+    }
+
+    function askResultHtml(question) {
+      const pack = resolveAskPack(question);
+      S.lastAsk = { question, encode: pack.encode, kind: pack.kind, title: pack.title, mode: pack.mode };
+      const ds = S.dataset === 'mock' ? '模拟经营' : '销售明细';
+      const isInsight = pack.mode === 'insight';
+
+      if (isInsight) {
+        const contrib = [
+          { name: '线下门店', pct: 72, color: '#ff7875' },
+          { name: '产品结构', pct: 18, color: '#ffc069' },
+          { name: '其它', pct: 10, color: '#d9d9d9' }
+        ];
+        return `
+        <div class="ask-toolbar">
+          <span class="ttl">洞察诊断</span>
+          <span class="muted">归因结论 · 证据表 · 不是普通问数图</span>
+          <span class="sp"></span>
+          <button class="btn" type="button" data-act="copy">复制结论</button>
+          <button class="btn" type="button" data-act="gen">生成诊断看板</button>
+          <button class="btn primary" type="button" data-act="save">保存证据图到仪表盘</button>
+        </div>
+        <div class="ask-result">
+          <div class="ask-hd">
+            <span class="badge diag">DIAG</span>
+            <div>
+              <h3>${esc(pack.title)}</h3>
+              <div class="meta">基于上一题问数继续下钻 · ${esc(ds)} · 「${esc(question.slice(0, 48))}${question.length > 48 ? '…' : ''}」</div>
+            </div>
+          </div>
+          <div class="insight">${pack.headline}<br/>${pack.insight}</div>
+          <div class="ask-drivers">
+            ${pack.drivers.map((d) => `
+              <div class="drv">
+                <div class="k">${esc(d.k)}</div>
+                <div class="d">${esc(d.d)}</div>
+                <div class="delta ${d.neg ? 'neg' : 'pos'}">${esc(d.delta)}</div>
+              </div>`).join('')}
+          </div>
+          <div class="ask-contrib">${contrib.map((c) => `<i style="width:${c.pct}%;background:${c.color}" title="${esc(c.name)}"></i>`).join('')}</div>
+          <div class="ask-contrib-legend">${contrib.map((c) => `<span><i style="background:${c.color};display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px"></i>${esc(c.name)} ${c.pct}%</span>`).join('')}</div>
+          <div class="ask-body" style="grid-template-columns:1fr">
+            <div class="viz">
+              <div class="vl">${esc(pack.evidenceNote || '证据表 · 归因拆解')}</div>
+              <table><thead><tr>${pack.cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+              <tbody>${pack.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+            </div>
+          </div>
+          <div class="ask-encode">
+            <span class="tag">filter · <em>${esc(pack.encode.filter || 'region=华南')}</em></span>
+            <span class="tag">dim · <em>channel × product</em></span>
+            <span class="tag">measure · <em>${esc(pack.encode.value)}</em></span>
+          </div>
+          <div class="ask-follow">
+            ${pack.follows.map((f) => `<button class="chip" type="button" data-follow="${esc(f)}">${esc(f)}</button>`).join('')}
+          </div>
+          <div class="ask-foot">
+            <span class="muted">洞察 ≠ 再画一张区域对比图；证据可采纳为看板组件</span>
+            <span class="sp"></span>
+            <button class="btn" type="button" data-act="gen">生成诊断看板</button>
+            <button class="btn primary" type="button" data-act="save">保存证据图到仪表盘</button>
+          </div>
+        </div>`;
+      }
+
+      return `
+        <div class="ask-toolbar">
+          <span class="ttl">问数结果</span>
+          <span class="muted">会话预览 · 不落结果行</span>
+          <span class="sp"></span>
+          <button class="btn" type="button" data-act="copy">复制结论</button>
+          <button class="btn" type="button" data-act="gen">直接生成仪表盘</button>
+          <button class="btn primary" type="button" data-act="save">保存到仪表盘</button>
+        </div>
+        <div class="ask-result">
+          <div class="ask-hd">
+            <span class="badge">ASK</span>
+            <div>
+              <h3>${esc(pack.title)}</h3>
+              <div class="meta">数据集 · ${esc(ds)} · 「${esc(question.slice(0, 48))}${question.length > 48 ? '…' : ''}」</div>
+            </div>
+          </div>
+          <div class="insight">${pack.insight}</div>
+          <div class="ask-body">
+            <div class="viz">
+              <div class="vl">临时图 · answer_chart</div>
+              <div class="ask-bars">${pack.heights.map((h, i) => `<span style="height:${h}%" title="${esc(pack.labels[i] || '')}"></span>`).join('')}</div>
+              <div class="lab">${pack.labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+            </div>
+            <div class="viz">
+              <div class="vl">明细表 · answer_table</div>
+              <table><thead><tr>${pack.cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+              <tbody>${pack.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+            </div>
+          </div>
+          <div class="ask-encode">
+            <span class="tag">dim · <em>${esc(pack.encode.category)}</em></span>
+            <span class="tag">measure · <em>${esc(pack.encode.value)}</em></span>
+            <span class="tag">agg · <em>${esc(pack.encode.agg)}</em></span>
+          </div>
+          <div class="ask-follow">
+            ${pack.follows.map((f) => `<button class="chip" type="button" data-follow="${esc(f)}">${esc(f)}</button>`).join('')}
+          </div>
+          <div class="ask-foot">
+            <span class="muted">下一步：写入 DashboardPatch（仅配置，不含结果行）</span>
+            <span class="sp"></span>
+            <button class="btn" type="button" data-act="gen">直接生成仪表盘</button>
+            <button class="btn primary" type="button" data-act="save">保存到仪表盘</button>
+          </div>
+        </div>`;
+    }
+
+    function bindAskActions(shell) {
+      const roots = [shell, $('#ask-pane')].filter(Boolean);
+      roots.forEach((root) => {
+        root.querySelectorAll('[data-act="save"]').forEach((b) => {
+          b.onclick = () => adoptAskToDash(shell, false);
+        });
+        root.querySelectorAll('[data-act="gen"]').forEach((b) => {
+          b.onclick = () => adoptAskToDash(shell, true);
+        });
+        root.querySelectorAll('[data-act="copy"]').forEach((b) => {
+          b.onclick = () => {
+            const text = ($('#ask-pane .insight')?.textContent || '').replace(/\s+/g, ' ').trim();
+            if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text);
+            toast('已复制结论');
+          };
+        });
+        root.querySelectorAll('[data-follow]').forEach((b) => {
+          b.onclick = () => {
+            const t = b.dataset.follow || '';
+            if (/生成/.test(t)) {
+              setIntent('gen');
+              $('#input').value = '基于刚才的问数结果，生成经营分析仪表盘，突出 KPI 与趋势。';
+              send();
+              return;
+            }
+            setIntent('ask');
+            if (/为什么|原因|归因|下滑|下跌|下降|异常/.test(t)) S.askKind = 'insight';
+            else if (/渠道|线上/.test(t) && !/为什么|下滑/.test(t)) S.askKind = 'channel';
+            else if (/趋势|月/.test(t)) S.askKind = 'trend';
+            else if (/区域|华南线下|明细/.test(t)) S.askKind = 'region';
+            $('#input').value = t;
+            send();
+          };
+        });
+      });
+    }
+
+    function finishAsk(shell, question) {
+      $('#gen').classList.add('hidden');
+      $('#cempty').classList.add('hidden');
+      S.hasAsk = true;
+      S.showFiles = true;
+      const html = askResultHtml(question);
+      $('#ask-pane').innerHTML = html;
+      $('#ask-pane').classList.remove('hidden');
+      $('#ctab').textContent = (S.lastAsk?.mode === 'insight' ? '洞察 · ' : '问数 · ') + (S.lastAsk?.title || '结果');
+      $('#chat-title').textContent = (S.lastAsk?.mode === 'insight' ? '洞察 · ' : '问数 · ') + (S.lastAsk?.title || '分析');
+      setFlow('dash');
+      const pack = S.lastAsk;
+      shell.querySelector('.tail').innerHTML = S.lastAsk?.mode === 'insight'
+        ? `<p>已完成<strong>洞察诊断</strong>（非普通问数图）。右侧为归因结论与证据表。</p>
+        <div class="sql-preview">-- 归因拆解示意\nSELECT channel, product, SUM(amount)\nFROM dataset\nWHERE region = '华南'\nGROUP BY 1, 2;</div>
+        <div class="ask-actions">
+          <button class="btn primary" type="button" data-act="save">保存证据图到仪表盘</button>
+          <button class="btn" type="button" data-act="gen">生成诊断看板</button>
+        </div>`
+        : `<p>已完成问数（会话内预览）。结论已同步到右侧画布。</p>
+        <div class="sql-preview">-- dry-run 示意（非任意 SQL）\nSELECT ${esc(pack.encode.category)}, ${esc(pack.encode.agg)}(${esc(pack.encode.value)})\nFROM dataset\nGROUP BY 1\nORDER BY 2 DESC;</div>
+        <div class="ask-actions">
+          <button class="btn primary" type="button" data-act="save">保存到仪表盘</button>
+          <button class="btn" type="button" data-act="gen">直接生成仪表盘</button>
+        </div>`;
+      bindAskActions(shell);
+      $('#file-ask-name').textContent = `问数 · ${S.lastAsk?.title || '结果'}（会话预览）`;
+      $('#file-ask').classList.remove('hidden');
+      $('#file-ask').classList.add('on');
+      revealFiles();
+      filterFiles(($('#ftabs .ftab.on') && $('#ftabs .ftab.on').dataset.filter) || 'all');
+      S.streaming = false;
+      $('#btn-send').classList.remove('stop');
+      $('#btn-send').textContent = '↑';
+      setTimeout(() => setFlow('iterate'), 700);
+      toast(S.lastAsk?.mode === 'insight' ? '③ 洞察结论就绪 · 含驱动拆解' : '③ 问数结果就绪 · 可保存或生成看板');
+      sync();
+    }
+
+    function adoptAskToDash(shell, fullBoard) {
+      if (S.streaming) return;
+      if (!shell || !shell.querySelector) {
+        shell = [...$$('#msgs .msg.ai')].pop() || append('ai', `<div class="steps"></div><div class="plan-slot"></div><div class="tail"></div>`);
+      }
+      if (!shell.querySelector('.steps')) {
+        shell.querySelector('.bub').innerHTML = `<div class="steps"></div><div class="plan-slot"></div><div class="tail"></div>`;
+      }
+      S.streaming = true;
+      $('#btn-send').classList.add('stop');
+      $('#btn-send').textContent = '■';
+      setIntent('gen');
+      setFlow('run');
+      $('#ask-pane').classList.add('hidden');
+      $('#gen').classList.remove('hidden');
+      $('#gen-title').textContent = fullBoard ? '正在生成仪表盘…' : '正在保存到仪表盘…';
+      $('#gen-sub').textContent = fullBoard
+        ? '以问数证据扩展 DashboardPatch · 写入 draft'
+        : '单图 Patch · upsert_chart（不落结果行）';
+      toast(fullBoard ? '④ 直接生成仪表盘' : '④ 保存到仪表盘');
+      const steps = shell.querySelector('.steps');
+      const row = document.createElement('div');
+      row.className = 'step run';
+      row.innerHTML = `<i></i><span>${fullBoard ? '扩展为整页 Patch' : 'emitPatch · 保存本题图'}</span>`;
+      steps.appendChild(row);
+      setTimeout(() => {
+        if (S.cancelled) return;
+        row.classList.remove('run'); row.classList.add('done');
+        apply(shell, { fromAsk: true, fullBoard });
+      }, 650);
+    }
+
+    function apply(shell, opts = {}) {
       $('#gen').classList.remove('hidden');
       const steps = shell.querySelector('.steps');
       const row = document.createElement('div');
@@ -1483,7 +2013,14 @@
         setTimeout(() => {
           if (S.cancelled) return;
           r2.classList.remove('run'); r2.classList.add('done');
-          shell.querySelector('.tail').innerHTML = `<p>已生成可刷新看板草稿。</p><button class="attach" type="button" data-open-dash>▦ linked_dashboard · draft</button>`;
+          const fromAsk = !!opts.fromAsk;
+          const full = opts.fullBoard !== false || !fromAsk;
+          const msg = fromAsk
+            ? (full
+              ? '已基于问数结果生成整页看板草稿。'
+              : '已将本题图保存到仪表盘 draft。')
+            : '已生成可刷新看板草稿。';
+          shell.querySelector('.tail').innerHTML = `<p>${msg}</p><button class="attach" type="button" data-open-dash>▦ linked_dashboard · draft</button>`;
           shell.querySelector('[data-open-dash]').onclick = () => openInEditor();
           finish('succeeded');
         }, 700);
@@ -1632,7 +2169,13 @@
     });
     $$('#recent .recent-item').forEach((b) => b.onclick = () => {
       const k = b.dataset.recent;
-      if (k === '经营') {
+      if (k === 'ask-region') {
+        setIntent('ask');
+        S.askKind = 'region';
+        $('#input').value = '各区域销售额分别是多少？按从高到低排一下。';
+        send();
+      } else if (k === '经营') {
+        setIntent('gen');
         $('#input').value = '请先自行构造一份贴近真实业务的模拟经营数据（明确标注为模拟），再生成可交互经营分析仪表盘，突出核心指标、趋势和关键结论。';
         send();
       } else if (k === '房产') openExample('房产交易分析看板.dash');
@@ -1686,6 +2229,7 @@
       document.body.classList.add('embed');
     }
 
+    setIntent('ask');
     sync();
   </script>
 </body>

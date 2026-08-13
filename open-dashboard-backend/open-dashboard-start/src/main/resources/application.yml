@@ -25,6 +25,19 @@ management:
 opendashboard:
   # When true, query endpoints return stub ResultTable without a live warehouse
   stub-query: true
+  conversation:
+    enabled: false
+    harness:
+      mode: deerflow
+      base-url: http://127.0.0.1:8091
+      internal-token: od-dev-internal
+      timeout-ms: 180000
+    llm:
+      enabled: false
+      base-url: https://api.openai.com/v1
+      api-key: ""
+      model: gpt-4o-mini
+      timeout-ms: 60000
   bootstrap:
     meta-datasource: false
   datasource:

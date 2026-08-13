@@ -22,6 +22,7 @@ import io.opendashboard.domain.DashboardDtos.DashboardTemplateVO;
 import io.opendashboard.adapter.security.RequireAuth;
 import io.opendashboard.adapter.security.RequirePermission;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -84,6 +85,15 @@ public class DashboardController {
             @RequestBody ChartViewSaveRequest request
     ) {
         return service.saveChart(id, chartId, request).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/dashboard/{id}/charts/{chartId}")
+    @RequirePermission("dashboard:manage")
+    public ResponseEntity<Void> deleteChart(
+            @PathVariable String id,
+            @PathVariable String chartId
+    ) {
+        return service.deleteChart(id, chartId) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }
 
     @PostMapping("/dashboard/{id}/publish")

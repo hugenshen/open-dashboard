@@ -1,5 +1,6 @@
 package io.opendashboard.adapter.security;
 
+import io.opendashboard.application.conversation.ConversationProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -10,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
  * to replace these without Spring Security.
  */
 @Configuration
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({AuthProperties.class, ConversationProperties.class})
 public class AuthSpiConfiguration {
 
     @Bean
@@ -21,7 +22,7 @@ public class AuthSpiConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(MenuProvider.class)
-    public MenuProvider menuProvider() {
-        return new DefaultMenuProvider();
+    public MenuProvider menuProvider(ConversationProperties conversationProperties) {
+        return new DefaultMenuProvider(conversationProperties);
     }
 }

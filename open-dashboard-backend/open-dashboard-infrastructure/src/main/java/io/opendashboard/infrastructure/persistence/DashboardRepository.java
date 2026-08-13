@@ -486,6 +486,18 @@ public class DashboardRepository implements DashboardGateway {
     }
 
     @Transactional
+    public boolean deleteChart(long dashboardId, long chartId) {
+        if (findNode(dashboardId).isEmpty()) return false;
+        ensureDraftBuckets(dashboardId);
+        int n = jdbc.update(
+                "DELETE FROM de_chart_view WHERE id = ? AND dashboard_id = ? AND copy_type = 'draft'",
+                chartId, dashboardId
+        );
+        if (n > 0) bumpContent(dashboardId);
+        return n > 0;
+    }
+
+    @Transactional
     public Optional<DashboardStatusVO> publish(long id) {
         Optional<DashboardNodeVO> metaOpt = findNode(id);
         if (metaOpt.isEmpty()) return Optional.empty();

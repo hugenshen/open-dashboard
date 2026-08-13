@@ -8,7 +8,9 @@
 
 | ID | 标题 | 状态 | 里程碑 | 文档 |
 |----|------|------|--------|------|
-| [P004](./P004-conversation.md) | 对话分析（内测一期） | in-progress | v0.5 | [design/conversation.md](../design/conversation.md) |
+| [P004](./P004-conversation.md) | 对话分析（内测一期） | in-progress | v0.5 | [design/conversation.md](../design/conversation.md) · [ai-architecture.md](../design/ai-architecture.md) |
+| [P006](./P006-ask-data.md) | 对话问数（Ask-data） | in-progress | v0.5 | [design/ai-architecture.md](../design/ai-architecture.md) |
+| [P005](./P005-insight-report.md) | 洞察报告（看板解读 → Umo） | draft | v0.6 | [design/conversation.md](../design/conversation.md) |
 
 ## 已交付（done）
 
@@ -18,7 +20,7 @@
 | [P002](./P002-vue-java-scaffold.md) | Vue3 + Spring Boot 脚手架 | v0.3 | — |
 | [P003](./P003-report-umo-charts.md) | 在线报告 Umo 插图 | v0.4 | — |
 
-下一号：`P005`。
+下一号：`P007`。
 
 ## 文首元数据
 

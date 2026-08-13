@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { shareApi } from '../../api/dashboard'
-import { datasetsToHiFi, detailToHiFi, type HiFiDash } from '../hifi/adapter'
+import { datasetsToHiFi, detailToHiFi, hydrateHiFiDatasetRows, type HiFiDash } from '../hifi/adapter'
 import type { DatasetDetailVO } from '../../dataset/api'
 import '../hifi/editor.css'
 
@@ -38,6 +38,12 @@ async function boot() {
       }
     }
     const datasets = datasetsToHiFi(details)
+    try {
+      const { datasetApi } = await import('../../dataset/api')
+      await hydrateHiFiDatasetRows(details, datasets, (id) => datasetApi.preview(id))
+    } catch {
+      /* public share may lack auth for preview */
+    }
 
     loading.value = false
     await nextTick()
@@ -74,8 +80,8 @@ onBeforeUnmount(() => {
     <div v-if="error" class="boot err">{{ error }}</div>
     <div class="app" id="od-share-app" />
     <div class="ctx" id="od-share-ctx" />
-    <div class="mask" id="od-share-mask" />
-    <div class="toasts" id="od-share-toasts" />
+    <div class="modal-mask" id="od-share-mask" />
+    <div class="toast-wrap" id="od-share-toasts" />
   </div>
 </template>
 

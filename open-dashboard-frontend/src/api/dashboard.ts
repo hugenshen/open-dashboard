@@ -27,7 +27,7 @@ import type {
  */
 
 export type HttpClient = <T>(opts: {
-  method: 'GET' | 'POST' | 'PUT'
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   url: string
   data?: unknown
   params?: Record<string, string>
@@ -40,7 +40,7 @@ export function setDashboardHttpClient(client: HttpClient) {
 }
 
 async function call<T>(opts: {
-  method: 'GET' | 'POST' | 'PUT'
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   url: string
   data?: unknown
   params?: Record<string, string>
@@ -76,6 +76,8 @@ export const dashboardApi = {
     call<DashboardComponentVO[]>({ method: 'PUT', url: `/dashboard/${id}/components`, data }),
   saveChart: (id: string, chartId: string, data: ChartViewSaveRequest) =>
     call<ChartViewVO>({ method: 'PUT', url: `/dashboard/${id}/charts/${chartId}`, data }),
+  deleteChart: (id: string, chartId: string) =>
+    call<void>({ method: 'DELETE', url: `/dashboard/${id}/charts/${chartId}` }),
   getLinkages: (id: string, view: ViewMode = 'draft') =>
     call<DashboardLinkageVO[]>({
       method: 'GET',

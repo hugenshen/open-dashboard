@@ -7,10 +7,12 @@ import {
   datasetsToHiFi,
   detailToHiFi,
   hiFiToSavePayload,
+  hydrateHiFiDatasetRows,
   type HiFiDash
 } from './adapter'
 import ModuleTopbar from '../../shell/ModuleTopbar.vue'
 import EditorOnboarding from './EditorOnboarding.vue'
+import ConversationAiPanel from '../../conversation/components/ConversationAiPanel.vue'
 import './editor.css'
 
 const props = defineProps<{
@@ -24,6 +26,8 @@ const loading = ref(true)
 const saving = ref(false)
 const guideReady = ref(false)
 const forceGuide = computed(() => route.query.guide === '1')
+const selectedChartId = ref<string | undefined>()
+const selectedEncode = ref<Record<string, unknown> | undefined>()
 
 let runtime: { getDash: () => HiFiDash; destroy: () => void; rerender: () => void } | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -31,6 +35,29 @@ let knownCompIds = new Set<string>()
 let knownChartIds = new Set<string>()
 
 const dashId = () => String(route.params.id || '')
+
+function pickCurrentChart() {
+  const dash = runtime?.getDash()
+  if (!dash) return
+  const selectedEl = document.querySelector('.widget.selected') as HTMLElement | null
+  const wid = selectedEl?.dataset?.wid
+  const comp =
+    dash.components.find((c) => c.id === wid && c.type === 'chart') ||
+    dash.components.find((c) => c.type === 'chart')
+  const chartId = comp?.chartId
+  if (!chartId) {
+    selectedChartId.value = undefined
+    selectedEncode.value = undefined
+    return
+  }
+  const chart = dash.charts[chartId]
+  selectedChartId.value = chartId
+  selectedEncode.value = {
+    ...(chart?.encode || {}),
+    datasetId: chart?.datasetId,
+    chartType: chart?.chartType
+  }
+}
 
 async function persist(dash: HiFiDash, { publish = false } = {}) {
   if (props.mode === 'preview') return
@@ -73,6 +100,14 @@ async function persist(dash: HiFiDash, { publish = false } = {}) {
         contentId
       })
     }
+    const deleteChartIds = [...knownChartIds].filter((cid) => !payload.charts[cid])
+    for (const chartId of deleteChartIds) {
+      try {
+        await dashboardApi.deleteChart(dash.id, chartId)
+      } catch {
+        /* chart may already be gone */
+      }
+    }
     knownChartIds = new Set(Object.keys(payload.charts))
 
     try {
@@ -105,11 +140,8 @@ async function boot() {
     const id = dashId()
     let detail
     if (props.mode === 'preview') {
-      try {
-        detail = await dashboardApi.get(id, 'published')
-      } catch {
-        detail = await dashboardApi.get(id, 'draft')
-      }
+      // 对齐高保：预览只读已发布版，不静默回退草稿
+      detail = await dashboardApi.get(id, 'published')
     } else {
       detail = await dashboardApi.get(id, 'draft')
     }
@@ -117,6 +149,8 @@ async function boot() {
     const list = await datasetApi.list()
     const details = await Promise.all(list.map((m) => datasetApi.get(m.id)))
     const dash = detailToHiFi(detail)
+    const datasets = datasetsToHiFi(details)
+    await hydrateHiFiDatasetRows(details, datasets, (id) => datasetApi.preview(id))
     try {
       const share = await dashboardApi.getShare(id)
       if (share?.token) {
@@ -141,7 +175,7 @@ async function boot() {
       mode: props.mode || 'editor',
       previewFrom: route.query.from === 'edit' ? 'editor' : 'list',
       dash,
-      datasets: datasetsToHiFi(details),
+      datasets,
       // 与 Vue 根 #app 隔离，避免渲染/销毁时清空整站
       rootIds: {
         app: 'od-hifi-app',
@@ -163,13 +197,13 @@ async function boot() {
       },
       onPreview: () => {
         const d = runtime?.getDash()
-        if (d) {
-          persist(d)
-            .then(() => router.push(`/dashboards/${id}/preview?from=edit`))
-            .catch((e) => {
-              error.value = e instanceof Error ? e.message : String(e)
-            })
-        } else router.push(`/dashboards/${id}/preview?from=edit`)
+        if (!d || d.status === 'draft') return
+        // 先落盘草稿再看已发布快照（发布后 status 非 draft）
+        persist(d)
+          .then(() => router.push(`/dashboards/${id}/preview?from=edit`))
+          .catch((e) => {
+            error.value = e instanceof Error ? e.message : String(e)
+          })
       },
       onPublish: async (d: HiFiDash) => {
         await persist(d, { publish: true })
@@ -227,6 +261,13 @@ onBeforeUnmount(() => {
     <div class="modal-mask" id="od-hifi-mask" />
     <div class="toast-wrap" id="od-hifi-toasts" />
     <div v-if="saving" class="save-chip">保存中…</div>
+    <ConversationAiPanel
+      v-if="!loading && !error && props.mode !== 'preview'"
+      :dashboard-id="dashId()"
+      :selected-chart-id="selectedChartId"
+      :selected-encode="selectedEncode"
+      @pick="pickCurrentChart"
+    />
     <EditorOnboarding
       v-if="guideReady && !loading && !error"
       :force="forceGuide"

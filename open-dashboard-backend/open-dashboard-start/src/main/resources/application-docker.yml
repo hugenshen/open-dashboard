@@ -13,6 +13,8 @@ spring:
 
 opendashboard:
   stub-query: false
+  conversation:
+    enabled: true
   bootstrap:
     meta-datasource: true
     host: postgres

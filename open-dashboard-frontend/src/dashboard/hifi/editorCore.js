@@ -92,7 +92,18 @@ function wireProductChrome() {
     back.onclick = () => opts.onBack();
   }
   const btnPreview = (root && root.querySelector('#btnPreview')) || document.getElementById('btnPreview');
-  if (btnPreview && opts.onPreview) btnPreview.onclick = () => opts.onPreview(clone(state.dash));
+  if (btnPreview && opts.onPreview) {
+    // 对齐高保：预览已发布版；草稿须先发布
+    btnPreview.onclick = () => {
+      const d = state.dash;
+      if (!d) return;
+      if (d.status === 'draft') {
+        toast('当前是草稿，请先点「发布」后再预览已发布版', 'warn');
+        return;
+      }
+      opts.onPreview(clone(d));
+    };
+  }
   const btnPub = (root && root.querySelector('#btnPub')) || document.getElementById('btnPub');
   if (btnPub) {
     btnPub.onclick = () => openPublishModal();
@@ -885,68 +896,68 @@ function findSchemaTable(srcId, tableName) {
 const CHART_META = {
   bar: {
     label:'柱状图', need:['category','value'], group:'比较', icon:'bar',
-    guide: '对比各类别数值。多维度拼合为组合标签，多指标生成多系列柱。',
+    guide: '对比各类别数值。多维度拼合为组合标签，多指标生成多系列柱；堆叠维可拆色堆叠。',
     slots: {
-      category: { max: 3, tip: '分类轴，多维拼合标签' },
-      value: { max: 5, tip: '每个指标一条系列' },
-      color: { max: 1, tip: '可选，按维拆色' }
+      category: { max: 3, tip: '分类轴，多维拼合标签 · 点 ▾ 设排序/别名' },
+      value: { max: 5, tip: '每个指标一条系列 · 点 ▾ 设聚合/格式' },
+      color: { max: 1, tip: '堆叠/拆色维（可选）' }
     }
   },
   hbar: {
     label:'条形图', need:['category','value'], group:'比较', icon:'hbar',
-    guide: '横向对比排序类数据。能力同柱状图：维度拼合轴，多指标多系列。',
+    guide: '横向对比排序类数据。能力同柱状图：维度拼合轴，多指标多系列，可堆叠。',
     slots: {
-      category: { max: 3, tip: '分类轴，多维拼合标签' },
-      value: { max: 5, tip: '每个指标一条系列' },
-      color: { max: 1, tip: '可选，按维拆色' }
+      category: { max: 3, tip: '分类轴，多维拼合标签 · 点 ▾ 设排序/别名' },
+      value: { max: 5, tip: '每个指标一条系列 · 点 ▾ 设聚合/格式' },
+      color: { max: 1, tip: '堆叠/拆色维（可选）' }
     }
   },
   line: {
     label:'折线图', need:['category','value'], group:'趋势', icon:'line',
     guide: '看趋势变化，维度宜少（常为时间）。多指标画多条折线便于对照。',
     slots: {
-      category: { max: 2, tip: '横轴，建议时间或有序维' },
-      value: { max: 5, tip: '每条折线一个指标' },
-      color: { max: 1, tip: '可选，拆分系列' }
+      category: { max: 2, tip: '横轴，建议时间或有序维 · 点 ▾ 设排序/别名' },
+      value: { max: 5, tip: '每条折线一个指标 · 点 ▾ 设聚合/格式' },
+      color: { max: 1, tip: '拆分系列维（可选）' }
     }
   },
   area: {
     label:'面积图', need:['category','value'], group:'趋势', icon:'area',
     guide: '趋势 + 量级对比。维度不宜过多，以免面积堆叠难读。',
     slots: {
-      category: { max: 2, tip: '横轴，建议时间或有序维' },
-      value: { max: 5, tip: '每条面积一个指标' },
-      color: { max: 1, tip: '可选，拆分系列' }
+      category: { max: 2, tip: '横轴，建议时间或有序维 · 点 ▾ 设排序/别名' },
+      value: { max: 5, tip: '每条面积一个指标 · 点 ▾ 设聚合/格式' },
+      color: { max: 1, tip: '拆分系列维（可选）' }
     }
   },
   pie: {
     label:'饼图', need:['category','value'], group:'分布', icon:'pie',
     guide: '看占比结构：仅支持 1 个维度 + 1 个指标，扇区过多时可读性差。',
     slots: {
-      category: { max: 1, tip: '扇区分类，仅 1 个' },
-      value: { max: 1, tip: '占比度量，仅 1 个' }
+      category: { max: 1, tip: '扇区分类，仅 1 个 · 点 ▾ 设排序/别名' },
+      value: { max: 1, tip: '占比度量，仅 1 个 · 点 ▾ 设聚合/格式' }
     }
   },
   kpi: {
     label:'指标卡', need:['value'], group:'指标', icon:'kpi',
     guide: '展示单一汇总结果。只需 1 个指标；维度请用页面筛选或切片器控制范围。',
     slots: {
-      value: { max: 1, tip: '汇总指标，仅 1 个' }
+      value: { max: 1, tip: '汇总指标，仅 1 个 · 点 ▾ 设聚合/格式' }
     }
   },
   table: {
     label:'明细表', need:[], group:'表格', icon:'table',
-    guide: '展示过滤后的原始行，无需绑定维度/指标。可选 1 个指标用于数值格式高亮。',
+    guide: '展示过滤后的原始行。拖入「显示列」控制列与顺序（未绑定时展示全部字段）；点 ▾ 可设别名与数值格式。',
     slots: {
-      value: { max: 1, tip: '可选，数值格式作用列' }
+      columns: { max: 20, tip: '显示列，可多选排序；留空则展示全部字段' }
     }
   },
   grouptable: {
     label:'汇总表', need:['category','value'], group:'表格', icon:'grouptable',
-    guide: '按维度分组聚合。多维度生成多分组列，多指标生成多度量列。',
+    guide: '按维度分组聚合。多维度生成多分组列，多指标生成多度量列；点 ▾ 设字段级聚合。',
     slots: {
-      category: { max: 5, tip: '分组列，可多选' },
-      value: { max: 5, tip: '度量列，可多选' },
+      category: { max: 5, tip: '分组列，可多选 · 点 ▾ 设排序/别名' },
+      value: { max: 5, tip: '度量列，可多选 · 点 ▾ 设聚合/格式' },
       color: { max: 1, tip: '可选二级分组' }
     }
   },
@@ -954,9 +965,9 @@ const CHART_META = {
     label:'透视表', need:['category','colDim','value'], group:'表格', icon:'pivot',
     guide: '默认商务蓝交叉表。行维 × 列维交叉汇总；拖入维度/指标即可，多指标时可选多层列头。',
     slots: {
-      category: { max: 3, tip: '行维，如「指标类型」' },
-      colDim: { max: 3, tip: '列维，如「全年目标 / 当月达成」' },
-      value: { max: 3, tip: '交叉度量，可多选' }
+      category: { max: 3, tip: '行维 · 点 ▾ 设排序/别名' },
+      colDim: { max: 3, tip: '列维 · 点 ▾ 设排序/别名' },
+      value: { max: 3, tip: '交叉度量 · 点 ▾ 设聚合/格式' }
     }
   }
 };
@@ -1005,7 +1016,7 @@ function chartIcon(kind) {
 
 function defaultChartStyle() {
   return {
-    // 卡片 / 背景（DataEase：背景 + 标题）
+    // 卡片 / 背景（DataEase §1 背景 + §11 边框）
     bg: '#ffffff',
     borderColor: '#e5e6eb',
     borderWidth: 1,
@@ -1018,37 +1029,127 @@ function defaultChartStyle() {
     titleAlign: 'left',
     titleBold: true,
     bodyColor: '#646a73',
-    // 图例 / 标签 / 提示
+    // 图例（§7）
     showLegend: true,
     legendPos: 'top',
+    legendFontSize: 11,
+    // 标签（§4）
     showLabel: false,
     labelSize: 10,
+    labelColor: '#1f2329',
+    labelName: true,
+    labelValue: true,
+    labelPercent: false,
+    labelMode: 'adaptive', // adaptive | all
+    showStackTotal: false,
+    // 提示（§5 / §10）
     showTooltip: true,
-    // 坐标轴 / 系列
-    showAxisName: false,
+    tooltipFontSize: 12,
+    tooltipCarousel: false,
+    tooltipStay: 2,
+    tooltipInterval: 3,
+    // 坐标轴
+    showXAxis: true,
+    xAxisPos: 'bottom', // top | bottom
+    showXAxisName: false,
     xAxisName: '',
+    xAxisNameColor: '#1f2329',
+    xAxisNameSize: 12,
+    showXAxisLine: true,
+    xAxisLineColor: '#c9cdd4',
+    xAxisLineWidth: 1,
+    xAxisLineType: 'solid',
+    showXSplitLine: false,
+    xSplitLineColor: '#eff0f1',
+    showXAxisLabel: true,
+    xAxisLabelColor: '#646a73',
+    xAxisLabelSize: 11,
+    xAxisLabelRotate: 0,
+    showYAxis: true,
+    yAxisPos: 'left', // left | right
+    showYAxisName: false,
     yAxisName: '',
-    showSplitLine: true,
+    yAxisNameColor: '#1f2329',
+    yAxisNameSize: 12,
+    showYAxisLine: true,
+    yAxisLineColor: '#c9cdd4',
+    yAxisLineWidth: 1,
+    yAxisLineType: 'solid',
+    showYSplitLine: true,
+    ySplitLineColor: '#eff0f1',
+    showYAxisLabel: true,
+    yAxisLabelColor: '#646a73',
+    yAxisLabelSize: 11,
+    axisUnit: 'none', // none | k | wan | yi
+    // 系列形态
     smooth: true,
     barRadius: 2,
+    barWidth: 0,
+    barGap: '30%',
+    stackMode: 'group',
+    lineWidth: 2,
+    showSymbol: true,
+    symbolSize: 6,
+    areaOpacity: 0.35,
+    seriesColors: [],
     // 饼图
     pieInner: 35,
     pieOuter: 65,
     pieRose: false,
-    // 表格（透视：列头 / 行头 / 角头可独立配色，对齐 DataEase）
+    piePadAngle: 0,
+    // 空值 / 条件样式
+    emptyValue: '-',
+    condEnabled: false,
+    condField: '',
+    condOp: 'gt',
+    condValue: '',
+    condBg: '#fff1f0',
+    condColor: '#cf1322',
+    // 表格
     pageSize: 5,
+    pageMode: 'page',
+    scrollRows: 3,
+    scrollInterval: 2,
     showHeader: true,
     stripe: true,
     headerBg: '#f5f6f7',
     headerColor: '#1f2329',
     headerBold: true,
+    headerSize: 12,
+    tableFontSize: 12,
+    cellBg: '#ffffff',
+    cellColor: '#1f2329',
+    cellAlign: 'left',
+    cellVAlign: 'middle',
+    cellBold: false,
+    cellItalic: false,
+    rowHeight: 36,
+    stripeBg: '#fafbfc',
+    totalBg: '#f0f4ff',
+    totalColor: '#1f2329',
+    colWidthMode: 'adaptive', // adaptive | fixed | custom
+    colWidthPx: 120,
+    colWidths: {}, // { field: number } 自定义列宽百分比
+    colWidthEditField: '',
+    freezeLeft: 0,
+    freezeTop: 0,
+    showIndex: false,
+    autoWrap: false,
+    mergeCells: false,
+    showHBorder: true,
+    showVBorder: true,
+    showTableBorder: true,
+    showTableTooltip: true,
+    scrollbarColor: '#c9cdd4',
+    tableOpacity: 100,
     rowHeadBg: '#ffffff',
     rowHeadColor: '#1f2329',
     rowHeadBold: true,
     cornerBg: '#eef2ff',
     cornerColor: '#1f2329',
-    cellAlign: 'right',
     pivotMultiHead: true,
+    pivotLayout: 'flat',
+    pivotMeasurePos: 'col',
     showRowTotal: true,
     showColTotal: true,
     // 指标卡
@@ -1057,7 +1158,8 @@ function defaultChartStyle() {
     valueAlign: 'left',
     valuePrefix: '',
     valueSuffix: '',
-    showCompare: true
+    showCompare: true,
+    kpiSubtitle: ''
   };
 }
 
@@ -1096,7 +1198,25 @@ function ensureStyle(ch) {
   const base = styleDefaultsFor(ch.chartType);
   if (!ch.style) ch.style = { ...base };
   else ch.style = { ...base, ...ch.style };
-  return ch.style;
+  // 旧字段迁移 → 横/纵轴分区
+  const st = ch.style;
+  if (st.showAxisName && !st.showXAxisName && !st.showYAxisName) {
+    st.showXAxisName = true;
+    st.showYAxisName = true;
+  }
+  if (st.showSplitLine === false && st.showYSplitLine === undefined) st.showYSplitLine = false;
+  if (st.showAxisLine === false) {
+    if (st.showXAxisLine === undefined) st.showXAxisLine = false;
+    if (st.showYAxisLine === undefined) st.showYAxisLine = false;
+  }
+  if (st.showAxisLabel === false) {
+    if (st.showXAxisLabel === undefined) st.showXAxisLabel = false;
+    if (st.showYAxisLabel === undefined) st.showYAxisLabel = false;
+  }
+  if (st.axisLabelSize && !st.xAxisLabelSize) st.xAxisLabelSize = st.axisLabelSize;
+  if (st.axisLabelSize && !st.yAxisLabelSize) st.yAxisLabelSize = st.axisLabelSize;
+  if (!st.colWidths || typeof st.colWidths !== 'object') st.colWidths = {};
+  return st;
 }
 
 function defaultPivotMetaValue() {
@@ -1126,15 +1246,15 @@ function ensureSenior(ch) {
 /** 样式面板能力说明（按组件） */
 function styleCaps(type) {
   const map = {
-    bar: ['卡片', '配色', '图例', '标签', '提示', '坐标轴', '柱形'],
-    hbar: ['卡片', '配色', '图例', '标签', '提示', '坐标轴', '条形'],
-    line: ['卡片', '配色', '图例', '标签', '提示', '坐标轴', '折线'],
-    area: ['卡片', '配色', '图例', '标签', '提示', '坐标轴', '面积'],
-    pie: ['卡片', '配色', '图例', '标签', '提示', '饼环'],
-    kpi: ['卡片', '数值', '对比区'],
-    table: ['卡片', '表头', '单元格', '分页'],
-    grouptable: ['卡片', '表头', '单元格', '合计', '分页'],
-    pivot: ['卡片', '列头', '行头', '角头', '多层表头', '合计'],
+    bar: ['背景', '配色', '图例', '标签', '提示', '坐标轴', '柱形', '堆叠'],
+    hbar: ['背景', '配色', '图例', '标签', '提示', '坐标轴', '条形', '堆叠'],
+    line: ['背景', '配色', '图例', '标签', '提示', '坐标轴', '折线', '拐点'],
+    area: ['背景', '配色', '图例', '标签', '提示', '坐标轴', '面积透明度'],
+    pie: ['背景', '配色', '图例', '标签内容', '提示', '饼环'],
+    kpi: ['背景', '数值', '对比区', '副标题'],
+    table: ['基础样式', '表头', '单元格', '冻结', '分页', '条件样式'],
+    grouptable: ['基础样式', '表头', '单元格', '冻结', '合计', '分页', '条件样式'],
+    pivot: ['基础样式', '列头', '行头', '角头', '单元格', '合计', '展示', '条件样式'],
     slicer: ['背景', '文字', '圆角'],
     text: ['背景', '文字', '字号', '对齐'],
     query: ['背景', '圆角', '内容分布']
@@ -1257,9 +1377,12 @@ function emptyDash(name='未命名仪表盘', id) {
 }
 
 function defaultEncode(kind) {
-  const base = { agg: 'SUM', format: 'thousand', calc: 'none' };
+  const base = { agg: 'SUM', format: 'thousand', calc: 'none', fieldCfg: {} };
   if (kind === 'kpi') return { ...base, value: 'amount', calc: 'yoy' };
-  if (kind === 'table') return { ...base, value: 'amount', format: 'raw' };
+  if (kind === 'table') {
+    const fields = (DATASETS.ds_sales?.fields || []).map(f => f.name);
+    return { ...base, columns: fields.length ? fields : ['region', 'product', 'channel', 'salesman', 'amount', 'qty'], format: 'raw' };
+  }
   if (kind === 'pivot') return { ...base, category: 'region', colDim: 'product', value: 'amount' };
   if (kind === 'grouptable') return { ...base, category: 'channel', value: 'amount' };
   if (kind === 'pie') return { ...base, category: 'channel', value: 'amount' };
@@ -1270,7 +1393,7 @@ function defaultEncode(kind) {
 
 /** 新建图表：不预填数据集与编码槽，由用户自选 */
 function emptyEncode(kind) {
-  const base = { agg: 'SUM', format: kind === 'table' ? 'raw' : 'thousand', calc: 'none' };
+  const base = { agg: 'SUM', format: kind === 'table' ? 'raw' : 'thousand', calc: 'none', fieldCfg: {} };
   if (kind === 'kpi') return { ...base, calc: 'none' };
   return { ...base };
 }
@@ -1284,10 +1407,11 @@ function adaptEncodeForChartType(prev, nextType) {
     agg: src.agg || base.agg,
     format: src.format || base.format,
     calc: src.calc || base.calc,
+    fieldCfg: src.fieldCfg && typeof src.fieldCfg === 'object' ? { ...src.fieldCfg } : {},
     filters: Array.isArray(src.filters) ? src.filters.map((f) => ({ ...f })) : []
   };
   const meta = CHART_META[nextType] || CHART_META.bar;
-  for (const slot of ['category', 'value', 'colDim', 'color']) {
+  for (const slot of ['category', 'value', 'colDim', 'color', 'columns']) {
     const fields = encodeFields(src, slot);
     if (!fields.length) continue;
     if (!meta.slots?.[slot]) {
@@ -1296,6 +1420,17 @@ function adaptEncodeForChartType(prev, nextType) {
       continue;
     }
     setEncodeFields(next, slot, fields.slice(0, slotMax(nextType, slot)));
+  }
+  // 切到明细表且无列：从原维度/指标或数据集补全
+  if (nextType === 'table' && !encodeFields(next, 'columns').length) {
+    const fromSlots = [
+      ...encodeFields(src, 'columns'),
+      ...encodeFields(src, 'category'),
+      ...encodeFields(src, 'colDim'),
+      ...encodeFields(src, 'value')
+    ];
+    const uniq = [...new Set(fromSlots)];
+    if (uniq.length) setEncodeFields(next, 'columns', uniq.slice(0, slotMax('table', 'columns')));
   }
   return next;
 }
@@ -2096,10 +2231,14 @@ function toggleFieldRole(ch, fieldName) {
   else ch.fieldRoles[fieldName] = next;
   // 若编码槽角色冲突则清空该槽
   const enc = ch.encode || {};
-  ['category', 'colDim', 'color', 'value'].forEach(slot => {
-    if (enc[slot] !== fieldName) return;
+  ['category', 'colDim', 'color', 'value', 'columns'].forEach(slot => {
+    const list = encodeFields(enc, slot);
+    if (!list.includes(fieldName)) return;
+    if (slot === 'columns') return; // 明细列允许任意角色
     const need = slot === 'value' ? 'quota' : 'dim';
-    if (fieldRole(ch, f) !== need) delete enc[slot];
+    if (fieldRole(ch, f) !== need) {
+      setEncodeFields(enc, slot, list.filter(n => n !== fieldName));
+    }
   });
   // 维度转指标时默认 COUNT 更合理
   if (next === 'quota' && f.group === 'dim') ch.encode.agg = 'COUNT';
@@ -2359,6 +2498,129 @@ function fieldLabelOf(datasetId, name) {
   return fieldMeta(datasetId, name)?.label || name;
 }
 
+/** 字段级配置（DataEase 风格：点 pill ▾） */
+function ensureFieldCfg(ch) {
+  if (!ch.encode) ch.encode = {};
+  if (!ch.encode.fieldCfg || typeof ch.encode.fieldCfg !== 'object') ch.encode.fieldCfg = {};
+  return ch.encode.fieldCfg;
+}
+
+function fieldCfgOf(ch, name) {
+  const bag = ensureFieldCfg(ch);
+  if (!bag[name]) bag[name] = {};
+  return bag[name];
+}
+
+function fieldAggOf(ch, name) {
+  return fieldCfgOf(ch, name).agg || ch.encode?.agg || 'SUM';
+}
+
+function fieldFormatOf(ch, name) {
+  return fieldCfgOf(ch, name).format || ch.encode?.format || 'raw';
+}
+
+function fieldSortOf(ch, name) {
+  return fieldCfgOf(ch, name).sort || 'none';
+}
+
+function displayFieldLabel(ch, name) {
+  const alias = fieldCfgOf(ch, name).alias;
+  if (alias && String(alias).trim()) return String(alias).trim();
+  return fieldLabelOf(ch.datasetId, name);
+}
+
+/** 明细表列：已绑 columns，否则回退数据集全部字段 */
+function tableColumnsOf(ch) {
+  const cols = encodeFields(ch.encode, 'columns');
+  if (cols.length) return cols;
+  return (ds(ch.datasetId)?.fields || []).map(f => f.name);
+}
+
+function fillTableColumnsFromDataset(ch) {
+  if (ch.chartType !== 'table') return;
+  if (encodeFields(ch.encode, 'columns').length) return;
+  const names = (ds(ch.datasetId)?.fields || []).map(f => f.name);
+  if (names.length) setEncodeFields(ch.encode, 'columns', names.slice(0, slotMax('table', 'columns')));
+}
+
+function sortSeriesPack(ch, pack) {
+  const cat = encodePrimary(ch.encode, 'category');
+  const sort = cat ? fieldSortOf(ch, cat) : 'none';
+  if (!pack?.categories?.length || sort === 'none') return pack;
+  const idx = pack.categories.map((_, i) => i);
+  const val0 = pack.series[0]?.data || [];
+  if (sort === 'asc' || sort === 'desc') {
+    idx.sort((a, b) => {
+      const va = +val0[a] || 0, vb = +val0[b] || 0;
+      return sort === 'asc' ? va - vb : vb - va;
+    });
+  } else if (sort === 'alpha' || sort === 'alpha_desc') {
+    idx.sort((a, b) => {
+      const cmp = String(pack.categories[a]).localeCompare(String(pack.categories[b]), 'zh');
+      return sort === 'alpha_desc' ? -cmp : cmp;
+    });
+  }
+  return {
+    categories: idx.map(i => pack.categories[i]),
+    series: pack.series.map(s => ({ ...s, data: idx.map(i => s.data[i]) }))
+  };
+}
+
+function sortPieData(ch, data) {
+  const cat = encodePrimary(ch.encode, 'category');
+  const sort = cat ? fieldSortOf(ch, cat) : 'none';
+  if (!data?.length || sort === 'none') return data;
+  const arr = [...data];
+  if (sort === 'asc') arr.sort((a, b) => a.value - b.value);
+  else if (sort === 'desc') arr.sort((a, b) => b.value - a.value);
+  else if (sort === 'alpha') arr.sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh'));
+  else if (sort === 'alpha_desc') arr.sort((a, b) => String(b.name).localeCompare(String(a.name), 'zh'));
+  return arr;
+}
+
+/** 按拆色维拆系列（柱/条/线堆叠或分组） */
+function aggregateByColor(rows, catFields, colorField, valueField, agg) {
+  if (!colorField || !valueField) return { categories: [], series: [] };
+  const cats = encodeFields({ category: catFields }, 'category');
+  const order = [];
+  const seen = new Set();
+  const colorOrder = [];
+  const colorSeen = new Set();
+  for (const r of rows) {
+    const k = dimKey(r, cats);
+    if (!seen.has(k)) { seen.add(k); order.push(k); }
+    const c = String(r[colorField] ?? '空');
+    if (!colorSeen.has(c)) { colorSeen.add(c); colorOrder.push(c); }
+  }
+  const series = colorOrder.map(cName => {
+    const bucket = new Map(order.map(k => [k, []]));
+    for (const r of rows) {
+      if (String(r[colorField] ?? '空') !== cName) continue;
+      const k = dimKey(r, cats);
+      if (bucket.has(k)) bucket.get(k).push(+r[valueField] || 0);
+    }
+    return {
+      field: colorField,
+      name: cName,
+      data: order.map(k => reduceAgg(bucket.get(k) || [], agg))
+    };
+  });
+  return { categories: order, series };
+}
+
+function pieLabelFormatter(st, tipVal) {
+  const showName = st.labelName !== false;
+  const showVal = st.labelValue !== false;
+  const showPct = !!st.labelPercent;
+  return (p) => {
+    const parts = [];
+    if (showName) parts.push(p.name);
+    if (showVal) parts.push(tipVal(p.value));
+    if (showPct) parts.push(`${p.percent}%`);
+    return parts.join('\n') || tipVal(p.value);
+  };
+}
+
 function dimKey(row, fields) {
   if (!fields?.length) return '合计';
   return fields.map(f => String(row[f] ?? 'null')).join(' · ');
@@ -2411,7 +2673,7 @@ function aggregate(rows, cat, val, agg='SUM') {
 }
 
 /** Multi-metric series aligned to shared category axis */
-function aggregateSeries(rows, cat, vals, agg='SUM', datasetId) {
+function aggregateSeries(rows, cat, vals, agg='SUM', datasetId, ch) {
   const cats = encodeFields({ category: cat }, 'category');
   const measures = encodeFields({ value: vals }, 'value');
   if (!measures.length) return { categories: [], series: [] };
@@ -2426,6 +2688,7 @@ function aggregateSeries(rows, cat, vals, agg='SUM', datasetId) {
     }
   }
   const series = measures.map(field => {
+    const useAgg = ch ? fieldAggOf(ch, field) : agg;
     const bucket = new Map(order.map(k => [k, []]));
     if (!cats.length) {
       bucket.set('合计', rows.map(r => +r[field] || 0));
@@ -2437,8 +2700,8 @@ function aggregateSeries(rows, cat, vals, agg='SUM', datasetId) {
     }
     return {
       field,
-      name: fieldLabelOf(datasetId, field),
-      data: order.map(k => reduceAgg(bucket.get(k) || [], agg))
+      name: ch ? displayFieldLabel(ch, field) : fieldLabelOf(datasetId, field),
+      data: order.map(k => reduceAgg(bucket.get(k) || [], useAgg))
     };
   });
   return { categories: order, series };
@@ -2523,11 +2786,72 @@ function formatVal(v, fmt) {
   return n.toLocaleString('zh-CN', { maximumFractionDigits: 2, minimumFractionDigits: 0 });
 }
 
+/** 轴单位换算展示（DataEase 纵轴单位） */
+function formatAxisVal(v, unit, fmt) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return formatEmpty(v, '-');
+  if (unit === 'k') return formatVal(n / 1000, fmt || 'fixed1') + '千';
+  if (unit === 'wan') return formatVal(n / 10000, fmt || 'fixed1') + '万';
+  if (unit === 'yi') return formatVal(n / 1e8, fmt || 'fixed2') + '亿';
+  return formatVal(n, fmt);
+}
+
+function formatEmpty(v, placeholder) {
+  if (v == null || v === '' || (typeof v === 'number' && Number.isNaN(v))) {
+    return placeholder == null ? '-' : String(placeholder);
+  }
+  return null; // 非空
+}
+
+function displayCellValue(ch, st, field, raw) {
+  const empty = formatEmpty(raw, st.emptyValue ?? '-');
+  if (empty != null) return empty;
+  const num = fieldMeta(ch.datasetId, field)?.group === 'quota';
+  if (num) return formatVal(raw, fieldFormatOf(ch, field));
+  return String(raw);
+}
+
+function matchCondStyle(st, field, raw) {
+  if (!st.condEnabled || !st.condField || st.condField !== field) return null;
+  const op = st.condOp || 'gt';
+  const target = st.condValue;
+  const num = Number(raw);
+  const tNum = Number(target);
+  let hit = false;
+  if (op === 'empty') hit = raw == null || raw === '';
+  else if (op === 'not_empty') hit = !(raw == null || raw === '');
+  else if (op === 'contains') hit = String(raw ?? '').includes(String(target ?? ''));
+  else if (Number.isFinite(num) && Number.isFinite(tNum)) {
+    if (op === 'gt') hit = num > tNum;
+    else if (op === 'gte') hit = num >= tNum;
+    else if (op === 'lt') hit = num < tNum;
+    else if (op === 'lte') hit = num <= tNum;
+    else if (op === 'eq') hit = num === tNum;
+    else if (op === 'ne') hit = num !== tNum;
+  } else if (op === 'eq') hit = String(raw) === String(target);
+  else if (op === 'ne') hit = String(raw) !== String(target);
+  if (!hit) return null;
+  return {
+    background: st.condBg || '#fff1f0',
+    color: st.condColor || '#cf1322'
+  };
+}
+
+function resolveSeriesColors(st, theme) {
+  const base = (theme?.series || []).slice();
+  const override = Array.isArray(st.seriesColors) ? st.seriesColors.filter(Boolean) : [];
+  if (!override.length) return base;
+  const out = base.slice();
+  override.forEach((c, i) => { if (c) out[i] = c; });
+  return out;
+}
+
 function slotLabel(chartType, slot) {
   if (slot === 'colDim') return '列维度';
   if (slot === 'category') return chartType === 'pivot' ? '行维度' : '维度';
   if (slot === 'value') return '指标';
-  if (slot === 'color') return '分组';
+  if (slot === 'color') return chartType === 'grouptable' ? '二级分组' : '堆叠/拆色';
+  if (slot === 'columns') return '显示列';
   return slot;
 }
 
@@ -3271,7 +3595,7 @@ function openDatasetStudio(opts = {}) {
       <div class="dss-head">
         <div>
           <h3>${isEdit ? '编辑数据集' : '新建数据集'}</h3>
-          <div class="sub">参考 DataEase / Quick BI · 从左侧选表，拖字段到右侧，底部即时预览</div>
+          <div class="sub">从左侧选表，拖字段到右侧，底部即时预览</div>
         </div>
         <div class="spacer"></div>
         <div class="field" style="margin:0;width:220px">
@@ -5550,7 +5874,15 @@ function applyCardStyleDom(el, comp) {
     hd.classList.toggle('bold', titleBold);
   }
   const bd = el.querySelector('.bd');
-  if (bd) bd.style.top = showTitle ? '32px' : '0px';
+  if (bd) {
+    bd.style.top = showTitle ? '32px' : '0px';
+    const pad = st.cardPadding != null ? st.cardPadding : 8;
+    if (bd.hasAttribute('data-table') || bd.classList.contains('table-wrap')) {
+      bd.style.padding = '0';
+    } else {
+      bd.style.padding = `${pad}px`;
+    }
+  }
 }
 
 function updateWidgetChrome(comp) {
@@ -7267,17 +7599,75 @@ function isDarkColor(hex) {
 
 function tableHeadStyle(st) {
   const bold = st.headerBold !== false ? 'font-weight:700;' : 'font-weight:500;';
-  return `background:${st.headerBg || '#f5f6f7'};color:${st.headerColor || '#1f2329'};${bold}`;
+  const size = `font-size:${st.headerSize || st.tableFontSize || 12}px;`;
+  return `background:${st.headerBg || '#f5f6f7'};color:${st.headerColor || '#1f2329'};${bold}${size}`;
 }
 
 function tableRowHeadStyle(st) {
   const bold = st.rowHeadBold !== false ? 'font-weight:700;' : 'font-weight:500;';
-  return `background:${st.rowHeadBg || '#fff'};color:${st.rowHeadColor || '#1f2329'};${bold}`;
+  const size = `font-size:${st.tableFontSize || 12}px;`;
+  return `background:${st.rowHeadBg || '#fff'};color:${st.rowHeadColor || '#1f2329'};${bold}${size}`;
 }
 
 function tableCornerStyle(st) {
   const bold = st.headerBold !== false ? 'font-weight:700;' : 'font-weight:500;';
-  return `background:${st.cornerBg || st.headerBg || '#eef2ff'};color:${st.cornerColor || st.headerColor || '#1f2329'};${bold}`;
+  const size = `font-size:${st.headerSize || st.tableFontSize || 12}px;`;
+  return `background:${st.cornerBg || st.headerBg || '#eef2ff'};color:${st.cornerColor || st.headerColor || '#1f2329'};${bold}${size}`;
+}
+
+function tableCellStyle(st) {
+  const align = st.cellAlign === 'center' ? 'center' : (st.cellAlign === 'right' ? 'right' : 'left');
+  const valign = st.cellVAlign === 'top' ? 'top' : (st.cellVAlign === 'bottom' ? 'bottom' : 'middle');
+  const wrap = st.autoWrap ? 'white-space:normal;word-break:break-word;' : 'white-space:nowrap;';
+  const bold = st.cellBold ? 'font-weight:700;' : '';
+  const italic = st.cellItalic ? 'font-style:italic;' : '';
+  const rh = Math.max(24, +st.rowHeight || 36);
+  return `background:${st.cellBg || '#fff'};color:${st.cellColor || '#1f2329'};font-size:${st.tableFontSize || 12}px;text-align:${align};vertical-align:${valign};height:${rh}px;${bold}${italic}${wrap}`;
+}
+
+function tableColWidthStyle(st, field) {
+  if (st.colWidthMode === 'fixed') {
+    const w = Math.max(60, +st.colWidthPx || 120);
+    return `min-width:${w}px;width:${w}px;`;
+  }
+  if (st.colWidthMode === 'custom' && field && st.colWidths && st.colWidths[field] != null) {
+    const pct = Math.max(1, Math.min(100, +st.colWidths[field] || 8));
+    return `width:${pct}%;min-width:${Math.max(48, Math.round(pct * 4))}px;`;
+  }
+  return '';
+}
+
+function tableColLeftOffset(st, fields, visualCol, showIdx) {
+  let left = 0;
+  for (let i = 0; i < visualCol; i++) {
+    if (showIdx && i === 0) { left += 36; continue; }
+    const fi = showIdx ? i - 1 : i;
+    const field = fields[fi];
+    if (st.colWidthMode === 'fixed') left += Math.max(60, +st.colWidthPx || 120);
+    else if (st.colWidthMode === 'custom' && field && st.colWidths?.[field] != null) {
+      left += Math.max(48, Math.round((+st.colWidths[field] / 100) * 480));
+    } else left += 96;
+  }
+  return left;
+}
+
+function tableTotalStyle(st) {
+  return `background:${st.totalBg || '#f0f4ff'};color:${st.totalColor || '#1f2329'};font-weight:600;`;
+}
+
+/** 合并相邻相同单元格（明细/汇总第一列示意，对齐 DataEase 合并单元格） */
+function mergeFlags(values) {
+  const flags = values.map(() => ({ show: true, rowspan: 1 }));
+  let i = 0;
+  while (i < values.length) {
+    let j = i + 1;
+    while (j < values.length && String(values[j]) === String(values[i])) j++;
+    const span = j - i;
+    flags[i] = { show: true, rowspan: span };
+    for (let k = i + 1; k < j; k++) flags[k] = { show: false, rowspan: 0 };
+    i = j;
+  }
+  return flags;
 }
 
 /** 多指标时按「列维 · 指标」拆成两行表头（对齐截图中 年月/指标 多层） */
@@ -7302,9 +7692,61 @@ function paintTableChart(el, comp, ch, st, rows) {
   const box = el.querySelector('[data-table]');
   if (!box) return;
   const fmt = ch.encode.format;
-  const stripe = st.stripe !== false ? 'stripe' : '';
+  const useStripe = st.stripe !== false && !st.mergeCells;
+  const stripe = useStripe ? 'stripe' : '';
   const hs = tableHeadStyle(st);
+  const csBase = tableCellStyle(st);
+  const cw = (field) => tableColWidthStyle(st, field);
+  const ts = tableTotalStyle(st);
   const sn = ensureSenior(ch);
+  const freezeN = Math.max(0, Math.min(3, +st.freezeLeft || 0));
+  const freezeTop = Math.max(0, Math.min(5, +st.freezeTop || 0));
+  const showIdx = !!st.showIndex;
+  const wrapCls = st.autoWrap ? 'wrap' : '';
+  const treeCls = st.pivotLayout === 'tree' ? 'pivot-tree' : '';
+  const borderCls = [
+    st.showHBorder === false ? 'no-h-border' : '',
+    st.showVBorder === false ? 'no-v-border' : '',
+    st.showTableBorder === false ? 'no-outer-border' : ''
+  ].filter(Boolean).join(' ');
+  const alignCls = st.cellAlign === 'center' ? 'cell-center' : (st.cellAlign === 'left' ? 'cell-left' : (st.cellAlign === 'right' ? 'cell-right' : ''));
+
+  // 斑马纹 / 滚动条 / 透明度 / 行高
+  if (useStripe && st.stripeBg) box.style.setProperty('--stripe-bg', st.stripeBg);
+  else box.style.removeProperty('--stripe-bg');
+  if (st.scrollbarColor) box.style.setProperty('--tbl-scroll', st.scrollbarColor);
+  else box.style.removeProperty('--tbl-scroll');
+  box.style.opacity = `${Math.max(40, Math.min(100, +st.tableOpacity || 100)) / 100}`;
+  box.style.setProperty('--row-h', `${Math.max(24, +st.rowHeight || 36)}px`);
+  if (st.borderColor) box.style.setProperty('--tbl-border', st.borderColor);
+
+  const stickyStyle = (colIdx, isHead, fields) => {
+    if (freezeN <= 0 || colIdx >= freezeN) return '';
+    const left = tableColLeftOffset(st, fields || [], colIdx, showIdx);
+    const z = isHead ? 4 : 2;
+    const bg = isHead ? (st.headerBg || '#f5f6f7') : (st.cellBg || '#fff');
+    return `position:sticky;left:${left}px;z-index:${z};background:${bg};box-shadow:1px 0 0 #eff0f1;`;
+  };
+  const headSticky = freezeTop > 0 ? 'position:sticky;top:0;z-index:5;' : '';
+  const bodySticky = (ri) => {
+    if (freezeTop <= 0 || ri >= freezeTop) return '';
+    const headH = st.showHeader === false ? 0 : Math.max(28, +st.rowHeight || 36);
+    const top = headH + ri * Math.max(24, +st.rowHeight || 36);
+    return `position:sticky;top:${top}px;z-index:3;background:${st.cellBg || '#fff'};`;
+  };
+
+  const pagerHtml = (page, totalPages, summary, enablePage) => {
+    if (!enablePage) {
+      return `<div class="table-pager muted"><span>${esc(summary)}</span></div>`;
+    }
+    return `<div class="table-pager">
+      <span>${page} / ${totalPages} · ${esc(summary)}</span>
+      <span>
+        <button type="button" data-tp="prev" ${page<=1?'disabled':''}>上一页</button>
+        <button type="button" data-tp="next" ${page>=totalPages?'disabled':''}>下一页</button>
+      </span>
+    </div>`;
+  };
 
   if (ch.chartType === 'pivot') {
     const rowFields = encodeFields(ch.encode, 'category');
@@ -7316,12 +7758,11 @@ function paintTableChart(el, comp, ch, st, rows) {
       piv.rowKeys = piv.rowKeys.slice(0, sn.resultLimit);
     }
     const rowLab = dimLabels(ch.datasetId, rowFields) || '指标类型';
-    const colLab = dimLabels(ch.datasetId, colFields);
     const showRT = st.showRowTotal === true;
     const showCT = st.showColTotal === true;
     const rhs = tableRowHeadStyle(st);
     const cs = tableCornerStyle(st);
-    const groups = st.pivotMultiHead !== false && valFields.length > 1
+    const groups = st.pivotMultiHead !== false && valFields.length > 1 && st.pivotMeasurePos !== 'row'
       ? groupPivotColHeaders(piv.colKeys, valFields)
       : null;
     const colSpan = 1 + piv.colKeys.length + (showRT ? 1 : 0);
@@ -7338,10 +7779,10 @@ function paintTableChart(el, comp, ch, st, rows) {
     if (st.showHeader !== false) {
       if (groups) {
         const topCols = groups.map(g =>
-          `<th class="num" colspan="${g.children.length}" style="${hs}">${esc(g.parent)}</th>`
-        ).join('') + (showRT ? `<th class="num" rowspan="2" style="${hs}">行合计</th>` : '');
+          `<th class="num" colspan="${g.children.length}" style="${hs}${cw()}">${esc(g.parent)}</th>`
+        ).join('') + (showRT ? `<th class="num" rowspan="2" style="${hs}${cw()}">行合计</th>` : '');
         const subCols = groups.flatMap(g => g.children.map(c =>
-          `<th class="num" style="${hs}">${esc(c.label)}</th>`
+          `<th class="num" style="${hs}${cw()}">${esc(c.label)}</th>`
         )).join('');
         head = `<thead>
           ${metaRow}
@@ -7352,96 +7793,183 @@ function paintTableChart(el, comp, ch, st, rows) {
         head = `<thead>
           ${metaRow}
           <tr><th class="corner" style="${cs}">${esc(rowLab)}</th>${
-          piv.colKeys.map(c => `<th class="num" style="${hs}">${esc(c)}</th>`).join('')
-        }${showRT ? `<th class="num" style="${hs}">行合计</th>` : ''}</tr></thead>`;
+          piv.colKeys.map(c => `<th class="num" style="${hs}${cw()}">${esc(c)}</th>`).join('')
+        }${showRT ? `<th class="num" style="${hs}${cw()}">行合计</th>` : ''}</tr></thead>`;
       }
     } else if (metaRow) {
       head = `<thead>${metaRow}</thead>`;
     }
+    const treePad = st.pivotLayout === 'tree' ? 'padding-left:18px;' : '';
     const body = piv.matrix.map(r => `<tr>
-      <td class="row-head" style="${rhs}">${esc(r.row)}</td>
-      ${r.vals.map(v => `<td class="num">${formatVal(v, fmt)}</td>`).join('')}
-      ${showRT ? `<td class="num">${formatVal(r.total, fmt)}</td>` : ''}
+      <td class="row-head" style="${rhs}${treePad}">${esc(r.row)}</td>
+      ${r.vals.map(v => `<td class="num" style="${csBase}${cw()}">${formatVal(v, fmt)}</td>`).join('')}
+      ${showRT ? `<td class="num" style="${csBase}${cw()}">${formatVal(r.total, fmt)}</td>` : ''}
     </tr>`).join('');
     const foot = showCT ? `<tr class="total">
-      <td class="row-head" style="${rhs}">列合计</td>
-      ${piv.colTotals.map(v => `<td class="num">${formatVal(v, fmt)}</td>`).join('')}
-      ${showRT ? `<td class="num">${formatVal(piv.grand, fmt)}</td>` : ''}
+      <td class="row-head" style="${rhs}${ts}">列合计</td>
+      ${piv.colTotals.map(v => `<td class="num" style="${ts}${cw()}">${formatVal(v, fmt)}</td>`).join('')}
+      ${showRT ? `<td class="num" style="${ts}${cw()}">${formatVal(piv.grand, fmt)}</td>` : ''}
     </tr>` : '';
-    const measureHint = valFields.map(f => fieldLabelOf(ch.datasetId, f)).join(', ');
-    const alignCls = st.cellAlign === 'center' ? 'cell-center' : '';
+    const measureHint = valFields.map(f => displayFieldLabel(ch, f)).join(', ');
     const gridCls = isDarkColor(st.headerBg) ? 'grid-full' : '';
-    box.innerHTML = `<table class="dt pivot ${stripe} ${alignCls} ${gridCls}">${head}<tbody>${body || `<tr><td colspan="${colSpan}">暂无数据</td></tr>`}${foot}</tbody></table>
-      <div class="table-pager muted"><span>${piv.rowKeys.length} 行 · ${piv.colKeys.length} 列${measureHint ? ` · ${ch.encode.agg || 'SUM'}(${esc(measureHint)})` : ''}</span></div>`;
+    box.innerHTML = `<table class="dt pivot ${stripe} ${alignCls} ${gridCls} ${wrapCls} ${treeCls} ${borderCls}">${head}<tbody>${body || `<tr><td colspan="${colSpan}">暂无数据</td></tr>`}${foot}</tbody></table>
+      ${pagerHtml(1, 1, `${piv.rowKeys.length} 行 · ${piv.colKeys.length} 列${measureHint ? ` · ${ch.encode.agg || 'SUM'}(${measureHint})` : ''}${st.pivotLayout === 'tree' ? ' · 树形' : ''}`, false)}`;
     return;
   }
 
   if (ch.chartType === 'grouptable') {
     const catFields = encodeFields(ch.encode, 'category');
     const valFields = encodeFields(ch.encode, 'value');
-    let data = aggregateTable(rows, catFields, valFields, ch.encode.agg || 'SUM');
+    const allFields = [...catFields, ...valFields];
+    let data;
+    if (valFields.length <= 1) {
+      data = aggregateTable(rows, catFields, valFields, valFields[0] ? fieldAggOf(ch, valFields[0]) : (ch.encode.agg || 'SUM'));
+    } else {
+      const packs = valFields.map(f => {
+        const part = aggregateTable(rows, catFields, [f], fieldAggOf(ch, f));
+        return { field: f, map: new Map(part.map(r => [r.key, r])) };
+      });
+      const keys = [...new Set(packs.flatMap(p => [...p.map.keys()]))];
+      data = keys.map(key => {
+        const base = packs.map(p => p.map.get(key)).find(Boolean);
+        const values = Object.fromEntries(valFields.map(f => {
+          const hit = packs.find(p => p.field === f)?.map.get(key);
+          return [f, hit?.values?.[f] || 0];
+        }));
+        return { key, dims: base?.dims || [key], values };
+      });
+    }
     if (sn.resultLimit > 0) data = data.slice(0, sn.resultLimit);
-    const pageSize = st.pageSize || 10;
+    const pageMode = st.pageMode || 'page';
+    const pageSize = pageMode === 'scroll' ? Math.max(1, +st.scrollRows || 5) : (st.pageSize || 10);
     const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
     if (!ch._page || ch._page > totalPages) ch._page = 1;
     const page = ch._page;
     const slice = data.slice((page - 1) * pageSize, page * pageSize);
-    const colSpan = catFields.length + valFields.length;
-    const head = st.showHeader !== false
-      ? `<thead><tr>${catFields.map(f => `<th style="${hs}">${esc(fieldLabelOf(ch.datasetId, f))}</th>`).join('')}${valFields.map(f => `<th class="num" style="${hs}">${esc(fieldLabelOf(ch.datasetId, f))}</th>`).join('')}</tr></thead>` : '';
+    const idxOff = (page - 1) * pageSize;
+    const colSpan = (showIdx ? 1 : 0) + catFields.length + valFields.length;
+    const firstDimVals = slice.map(r => (r.dims.length ? r.dims[0] : r.key));
+    const merge = st.mergeCells ? mergeFlags(firstDimVals) : null;
+    const headCells = [];
+    if (showIdx) headCells.push(`<th class="idx" style="${hs}${cw()}${headSticky}${stickyStyle(0, true, allFields)}">#</th>`);
+    catFields.forEach((f, i) => {
+      const col = (showIdx ? 1 : 0) + i;
+      headCells.push(`<th style="${hs}${cw(f)}${headSticky}${stickyStyle(col, true, allFields)}">${esc(displayFieldLabel(ch, f))}</th>`);
+    });
+    valFields.forEach(f => headCells.push(`<th class="num" style="${hs}${cw(f)}${headSticky}">${esc(displayFieldLabel(ch, f))}</th>`));
+    const head = st.showHeader !== false ? `<thead><tr>${headCells.join('')}</tr></thead>` : '';
     const totals = Object.fromEntries(valFields.map(f => [f, data.reduce((s, r) => s + (r.values[f] || 0), 0)]));
-    box.innerHTML = `<table class="dt ${stripe}">${head}
+    const bodyRows = slice.map((r, ri) => {
+      const cells = [];
+      let col = 0;
+      const rowSticky = bodySticky(ri);
+      if (showIdx) {
+        cells.push(`<td class="idx" style="${csBase}${cw()}${rowSticky}${stickyStyle(col, false, allFields)}">${idxOff + ri + 1}</td>`);
+        col++;
+      }
+      const dims = r.dims.length ? r.dims : [r.key];
+      dims.forEach((d, di) => {
+        if (di === 0 && merge && !merge[ri].show) { col++; return; }
+        const rs = di === 0 && merge ? ` rowspan="${merge[ri].rowspan}"` : '';
+        const field = catFields[di];
+        const empty = formatEmpty(d, st.emptyValue ?? '-');
+        const text = empty != null ? empty : String(d);
+        const cond = field ? matchCondStyle(st, field, d) : null;
+        const condCss = cond ? `background:${cond.background};color:${cond.color};` : '';
+        cells.push(`<td${rs} style="${csBase}${cw(field)}${rowSticky}${condCss}${stickyStyle(col, false, allFields)}">${esc(text)}</td>`);
+        col++;
+      });
+      valFields.forEach(f => {
+        const raw = r.values[f];
+        const text = displayCellValue(ch, st, f, raw);
+        const cond = matchCondStyle(st, f, raw);
+        const condCss = cond ? `background:${cond.background};color:${cond.color};` : '';
+        cells.push(`<td class="num" style="${csBase}${cw(f)}${rowSticky}${condCss}">${esc(text)}</td>`);
+      });
+      return `<tr>${cells.join('')}</tr>`;
+    }).join('');
+    const totalRow = st.showRowTotal !== false
+      ? `<tr class="total"><td colspan="${Math.max(1, (showIdx ? 1 : 0) + catFields.length)}" style="${ts}">合计</td>${valFields.map(f => `<td class="num" style="${ts}${cw(f)}">${formatVal(totals[f], fieldFormatOf(ch, f))}</td>`).join('')}</tr>`
+      : '';
+    box.innerHTML = `<table class="dt ${stripe} ${alignCls} ${wrapCls} ${borderCls} freeze-${freezeN}">${head}
       <tbody>
-        ${slice.map(r => `<tr>${(r.dims.length ? r.dims : [r.key]).map(d => `<td>${esc(d)}</td>`).join('')}${valFields.map(f => `<td class="num">${formatVal(r.values[f], fmt)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${colSpan || 1}">暂无数据</td></tr>`}
-        ${st.showRowTotal !== false ? `<tr class="total"><td colspan="${Math.max(1, catFields.length)}">合计</td>${valFields.map(f => `<td class="num">${formatVal(totals[f], fmt)}</td>`).join('')}</tr>` : ''}
+        ${bodyRows || `<tr><td colspan="${colSpan || 1}">暂无数据</td></tr>`}
+        ${totalRow}
       </tbody></table>
-      <div class="table-pager">
-        <span>${page} / ${totalPages} · 共 ${data.length} 组</span>
-        <span>
-          <button type="button" data-tp="prev" ${page<=1?'disabled':''}>上一页</button>
-          <button type="button" data-tp="next" ${page>=totalPages?'disabled':''}>下一页</button>
-        </span>
-      </div>`;
+      ${pagerHtml(page, totalPages, `共 ${data.length} 组${pageMode === 'scroll' ? ' · 滚动分页' : ''}`, pageMode !== 'scroll' || totalPages > 1)}`;
     wireTablePager(box, ch, el, comp, totalPages, page);
+    if (pageMode === 'scroll' && totalPages > 1) wireTableAutoScroll(box, ch, el, comp, totalPages, st);
     return;
   }
 
-  // 明细表：原始行
-  const dataset = ds(ch.datasetId);
-  const cols = (dataset?.fields || []).map(f => f.name);
+  // 明细表
+  const cols = tableColumnsOf(ch);
   let detailRows = rows;
   if (sn.resultLimit > 0) detailRows = detailRows.slice(0, sn.resultLimit);
-  const pageSize = st.pageSize || 5;
+  const pageMode = st.pageMode || 'page';
+  const pageSize = pageMode === 'scroll' ? Math.max(1, +st.scrollRows || 5) : (st.pageSize || 5);
   const totalPages = Math.max(1, Math.ceil(detailRows.length / pageSize));
   if (!ch._page || ch._page > totalPages) ch._page = 1;
   const page = ch._page;
   const slice = detailRows.slice((page - 1) * pageSize, page * pageSize);
-  const head = st.showHeader !== false
-    ? `<thead><tr>${cols.map(c => {
-        const lab = fieldMeta(ch.datasetId, c)?.label || c;
-        const num = fieldMeta(ch.datasetId, c)?.group === 'quota';
-        return `<th class="${num?'num':''}" style="${hs}">${esc(lab)}</th>`;
-      }).join('')}</tr></thead>` : '';
-  box.innerHTML = `<table class="dt ${stripe}">${head}
-    <tbody>${slice.map(r => `<tr>${cols.map(c => {
+  const idxOff = (page - 1) * pageSize;
+  const firstColVals = slice.map(r => r[cols[0]]);
+  const merge = st.mergeCells && cols.length ? mergeFlags(firstColVals) : null;
+  const headCells = [];
+  if (showIdx) headCells.push(`<th class="idx" style="${hs}${cw()}${headSticky}${stickyStyle(0, true, cols)}">#</th>`);
+  cols.forEach((c, i) => {
+    const lab = displayFieldLabel(ch, c);
+    const num = fieldMeta(ch.datasetId, c)?.group === 'quota';
+    const col = (showIdx ? 1 : 0) + i;
+    headCells.push(`<th class="${num?'num':''}" style="${hs}${cw(c)}${headSticky}${stickyStyle(col, true, cols)}">${esc(lab)}</th>`);
+  });
+  const head = st.showHeader !== false ? `<thead><tr>${headCells.join('')}</tr></thead>` : '';
+  const bodyRows = slice.map((r, ri) => {
+    const cells = [];
+    let col = 0;
+    const rowSticky = bodySticky(ri);
+    if (showIdx) {
+      cells.push(`<td class="idx" style="${csBase}${cw()}${rowSticky}${stickyStyle(col, false, cols)}">${idxOff + ri + 1}</td>`);
+      col++;
+    }
+    cols.forEach((c, ci) => {
+      if (ci === 0 && merge && !merge[ri].show) { col++; return; }
       const num = fieldMeta(ch.datasetId, c)?.group === 'quota';
       const v = r[c];
-      return `<td class="${num?'num':''}">${num ? formatVal(v, fmt || 'raw') : esc(v)}</td>`;
-    }).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length||1}">暂无数据</td></tr>`}</tbody></table>
-    <div class="table-pager">
-      <span>${page} / ${totalPages} · 共 ${detailRows.length} 行明细</span>
-      <span>
-        <button type="button" data-tp="prev" ${page<=1?'disabled':''}>上一页</button>
-        <button type="button" data-tp="next" ${page>=totalPages?'disabled':''}>下一页</button>
-      </span>
-    </div>`;
+      const text = displayCellValue(ch, st, c, v);
+      const cond = matchCondStyle(st, c, v);
+      const condCss = cond ? `background:${cond.background};color:${cond.color};` : '';
+      const rs = ci === 0 && merge ? ` rowspan="${merge[ri].rowspan}"` : '';
+      const alignOverride = num && st.cellAlign === 'left' ? 'text-align:right;' : '';
+      cells.push(`<td class="${num?'num':''}"${rs} style="${csBase}${cw(c)}${rowSticky}${alignOverride}${condCss}${stickyStyle(col, false, cols)}">${esc(text)}</td>`);
+      col++;
+    });
+    return `<tr>${cells.join('')}</tr>`;
+  }).join('');
+  const span = (showIdx ? 1 : 0) + cols.length;
+  box.innerHTML = `<table class="dt ${stripe} ${alignCls} ${wrapCls} ${borderCls} freeze-${freezeN}">${head}
+    <tbody>${bodyRows || `<tr><td colspan="${span || 1}">暂无数据</td></tr>`}</tbody></table>
+    ${pagerHtml(page, totalPages, `共 ${detailRows.length} 行 · ${cols.length} 列${pageMode === 'scroll' ? ' · 滚动' : ''}`, pageMode !== 'scroll' || totalPages > 1)}`;
   wireTablePager(box, ch, el, comp, totalPages, page);
+  if (pageMode === 'scroll' && totalPages > 1) wireTableAutoScroll(box, ch, el, comp, totalPages, st);
+}
+
+function wireTableAutoScroll(box, ch, el, comp, totalPages, st) {
+  const key = `_scrollTimer_${ch.id}`;
+  if (state[key]) { clearInterval(state[key]); delete state[key]; }
+  const sec = Math.max(1, +st.scrollInterval || 2) * 1000;
+  state[key] = setInterval(() => {
+    if (!document.body.contains(box)) { clearInterval(state[key]); delete state[key]; return; }
+    ch._page = (ch._page || 1) >= totalPages ? 1 : (ch._page || 1) + 1;
+    paintChart(el, comp);
+  }, sec);
 }
 
 function legendOption(st, legendNames) {
   if (st.showLegend === false) return { show: false };
   const pos = st.legendPos || 'top';
-  const base = { data: legendNames };
+  const textStyle = { fontSize: st.legendFontSize || 11, color: '#646a73' };
+  const base = { data: legendNames, textStyle };
   if (pos === 'bottom') return { ...base, bottom: 0 };
   if (pos === 'left') return { ...base, left: 0, top: 'middle', orient: 'vertical' };
   if (pos === 'right') return { ...base, right: 0, top: 'middle', orient: 'vertical' };
@@ -7467,8 +7995,15 @@ function paintChart(el, comp) {
   const rows = filteredRows(ch);
   const catFields = encodeFields(ch.encode, 'category');
   const valFields = encodeFields(ch.encode, 'value');
-  let seriesPack = aggregateSeries(rows, catFields, valFields, ch.encode.agg || 'SUM', ch.datasetId);
-  let data = aggregate(rows, catFields, valFields[0], ch.encode.agg || 'SUM');
+  const colorField = encodePrimary(ch.encode, 'color');
+  const primaryVal = valFields[0];
+  const primaryAgg = primaryVal ? fieldAggOf(ch, primaryVal) : (ch.encode.agg || 'SUM');
+  let seriesPack = colorField && primaryVal && ['bar', 'hbar', 'line', 'area'].includes(ch.chartType)
+    ? aggregateByColor(rows, catFields, colorField, primaryVal, primaryAgg)
+    : aggregateSeries(rows, catFields, valFields, ch.encode.agg || 'SUM', ch.datasetId, ch);
+  seriesPack = sortSeriesPack(ch, seriesPack);
+  let data = aggregate(rows, catFields, primaryVal, primaryAgg);
+  data = sortPieData(ch, data);
   if (sn.resultLimit > 0 && ch.chartType !== 'pie' && ch.chartType !== 'kpi') {
     seriesPack = {
       categories: seriesPack.categories.slice(0, sn.resultLimit),
@@ -7506,8 +8041,10 @@ function paintChart(el, comp) {
     const prefix = st.valuePrefix || '';
     const suffix = st.valueSuffix || '';
     const compareHtml = st.showCompare === false ? '' : `<div class="d ${delta >= 0 ? 'up' : 'down'}">${ch.encode.calc !== 'none' ? `${delta >= 0 ? '↑' : '↓'} ${(delta * 100).toFixed(1)}% ${ch.encode.calc === 'yoy' ? '同比' : '环比'}` : `基于 ${rows.length} 行`}${alertOn ? ' · 触发告警' : ''}</div>`;
+    const subHtml = st.kpiSubtitle ? `<div class="kpi-sub">${esc(st.kpiSubtitle)}</div>` : '';
     box.innerHTML = `<div class="kpi-box ${compact ? 'compact' : ''} ${alertOn ? 'alert' : ''}" style="text-align:${align}">
       ${showInnerTitle ? `<div class="kpi-label" style="color:${st.titleColor || 'var(--text-2)'}">${esc(ch.title)}</div>` : ''}
+      ${subHtml}
       <div class="n" style="color:${vColor};font-size:${vSize}px;line-height:1.2">${esc(prefix)}${formatVal(v, ch.encode.format)}${esc(suffix)}</div>
       ${compareHtml}
     </div>`;
@@ -7531,28 +8068,49 @@ function paintChart(el, comp) {
   const names = seriesPack.categories.length ? seriesPack.categories : data.map(d => d.name);
   const showLabel = !!st.showLabel;
   const labelSize = st.labelSize || 10;
+  const labelColor = st.labelColor || '#1f2329';
+  const labelAvoid = (st.labelMode || 'adaptive') !== 'all';
   const showTip = st.showTooltip !== false;
+  const tipFs = st.tooltipFontSize || 12;
   let option = {};
   const fmt = ch.encode.format || 'raw';
-  const tipVal = (v) => formatVal(v, fmt);
-  const legendNames = seriesPack.series.length > 1
-    ? seriesPack.series.map(s => s.name)
-    : [seriesPack.series[0]?.name || ch.title];
+  const tipVal = (v) => formatAxisVal(v, st.axisUnit || 'none', fmt);
+  const seriesColors = resolveSeriesColors(st, theme);
+  const legendNames = ch.chartType === 'pie'
+    ? data.map(d => d.name)
+    : (seriesPack.series.length > 1
+      ? seriesPack.series.map(s => s.name)
+      : [seriesPack.series[0]?.name || ch.title]);
   const legend = legendOption(st, legendNames);
   const pos = st.legendPos || 'top';
 
   if (ch.chartType === 'pie') {
     const inner = Math.min(+st.pieInner || 35, (+st.pieOuter || 65) - 5);
     const outer = +st.pieOuter || 65;
+    const pieFmt = primaryVal ? fieldFormatOf(ch, primaryVal) : fmt;
+    const pieTip = (v) => formatVal(v, pieFmt);
     option = {
-      color: theme.series,
-      tooltip: showTip ? { trigger: 'item', formatter: p => `${p.name}<br/>${tipVal(p.value)} (${p.percent}%)` } : { show: false },
+      color: seriesColors,
+      tooltip: showTip ? {
+        trigger: 'item',
+        textStyle: { fontSize: tipFs },
+        formatter: p => `${p.name}<br/>${pieTip(p.value)} (${p.percent}%)`
+      } : { show: false },
       legend,
       series: [{
         type: 'pie',
         radius: [`${inner}%`, `${outer}%`],
         roseType: st.pieRose ? 'radius' : undefined,
-        label: { show: showLabel, fontSize: labelSize, formatter: p => tipVal(p.value) },
+        padAngle: +st.piePadAngle || 0,
+        itemStyle: (+st.piePadAngle || 0) > 0 ? { borderRadius: 3 } : undefined,
+        label: {
+          show: showLabel,
+          fontSize: labelSize,
+          color: labelColor,
+          formatter: pieLabelFormatter(st, pieTip),
+          overflow: labelAvoid ? 'truncate' : 'none'
+        },
+        labelLayout: labelAvoid ? { hideOverlap: true } : undefined,
         data: data.map(d => ({ name: d.name, value: d.value }))
       }]
     };
@@ -7561,22 +8119,88 @@ function paintChart(el, comp) {
     const isArea = ch.chartType === 'area';
     const isLine = ch.chartType === 'line' || isArea;
     const multi = seriesPack.series.length > 1;
+    const stackMode = st.stackMode || 'group';
+    const canStack = multi && (colorField || valFields.length > 1) && !isLine;
+    const useStack = canStack && (stackMode === 'stack' || stackMode === 'percent');
     const topPad = legend.show !== false && pos === 'top' ? (multi ? 40 : 36) : 28;
     const botPad = legend.show !== false && pos === 'bottom' ? 40 : 32;
-    const leftPad = legend.show !== false && pos === 'left' ? 88 : (st.showAxisName ? 56 : 48);
+    const leftPad = legend.show !== false && pos === 'left' ? 88 : (st.showYAxisName ? 64 : 48);
     const rightPad = legend.show !== false && pos === 'right' ? 88 : 16;
-    const splitLine = st.showSplitLine === false ? { show: false } : { show: true, lineStyle: { type: 'dashed', opacity: 0.45 } };
-    const axisName = !!st.showAxisName;
-    const valueAxis = {
+    const axisLineStyle = (on, color, width, type) => (on
+      ? { show: true, lineStyle: { color: color || '#c9cdd4', width: width || 1, type: type || 'solid' } }
+      : { show: false });
+    const splitStyle = (on, color) => (on
+      ? { show: true, lineStyle: { type: 'dashed', color: color || '#eff0f1', opacity: 0.9 } }
+      : { show: false });
+    const nameStyle = (color, size) => ({ color: color || '#1f2329', fontSize: size || 12 });
+    let seriesData = seriesPack.series;
+    if (useStack && stackMode === 'percent') {
+      const totals = seriesPack.categories.map((_, i) =>
+        seriesPack.series.reduce((s, ser) => s + (+ser.data[i] || 0), 0)
+      );
+      seriesData = seriesPack.series.map(s => ({
+        ...s,
+        data: s.data.map((v, i) => {
+          const t = totals[i] || 0;
+          return t ? +((v / t) * 100).toFixed(2) : 0;
+        })
+      }));
+    }
+    // hbar：数值在横轴、类目在纵轴；普通柱/线：类目在横轴、数值在纵轴
+    const valueAxisFinal = {
       type: 'value',
-      name: axisName ? (isH ? (st.xAxisName || '') : (st.yAxisName || '')) : undefined,
-      axisLabel: { formatter: v => tipVal(v) },
-      splitLine
+      show: isH ? st.showXAxis !== false : st.showYAxis !== false,
+      position: isH ? (st.xAxisPos || 'bottom') : (st.yAxisPos || 'left'),
+      name: (isH ? st.showXAxisName : st.showYAxisName) ? (isH ? (st.xAxisName || '') : (st.yAxisName || '')) : undefined,
+      nameTextStyle: nameStyle(isH ? st.xAxisNameColor : st.yAxisNameColor, isH ? st.xAxisNameSize : st.yAxisNameSize),
+      axisLine: axisLineStyle(
+        isH ? st.showXAxisLine !== false : st.showYAxisLine !== false,
+        isH ? st.xAxisLineColor : st.yAxisLineColor,
+        isH ? st.xAxisLineWidth : st.yAxisLineWidth,
+        isH ? st.xAxisLineType : st.yAxisLineType
+      ),
+      axisTick: { show: isH ? st.showXAxisLine !== false : st.showYAxisLine !== false },
+      splitLine: splitStyle(
+        isH ? !!st.showXSplitLine : st.showYSplitLine !== false,
+        isH ? st.xSplitLineColor : st.ySplitLineColor
+      ),
+      axisLabel: (isH ? st.showXAxisLabel !== false : st.showYAxisLabel !== false)
+        ? {
+            show: true,
+            color: (isH ? st.xAxisLabelColor : st.yAxisLabelColor) || '#646a73',
+            fontSize: (isH ? st.xAxisLabelSize : st.yAxisLabelSize) || 11,
+            rotate: isH ? (+st.xAxisLabelRotate || 0) : 0,
+            formatter: v => (useStack && stackMode === 'percent' ? `${v}%` : tipVal(v))
+          }
+        : { show: false },
+      max: useStack && stackMode === 'percent' ? 100 : undefined
     };
-    const catAxis = {
+    const catAxisFinal = {
       type: 'category',
       data: names,
-      name: axisName ? (isH ? (st.yAxisName || '') : (st.xAxisName || '')) : undefined
+      show: isH ? st.showYAxis !== false : st.showXAxis !== false,
+      position: isH ? (st.yAxisPos || 'left') : (st.xAxisPos || 'bottom'),
+      name: (isH ? st.showYAxisName : st.showXAxisName) ? (isH ? (st.yAxisName || '') : (st.xAxisName || '')) : undefined,
+      nameTextStyle: nameStyle(isH ? st.yAxisNameColor : st.xAxisNameColor, isH ? st.yAxisNameSize : st.xAxisNameSize),
+      axisLine: axisLineStyle(
+        isH ? st.showYAxisLine !== false : st.showXAxisLine !== false,
+        isH ? st.yAxisLineColor : st.xAxisLineColor,
+        isH ? st.yAxisLineWidth : st.xAxisLineWidth,
+        isH ? st.yAxisLineType : st.xAxisLineType
+      ),
+      axisTick: { show: isH ? st.showYAxisLine !== false : st.showXAxisLine !== false },
+      splitLine: splitStyle(
+        isH ? st.showYSplitLine !== false : !!st.showXSplitLine,
+        isH ? st.ySplitLineColor : st.xSplitLineColor
+      ),
+      axisLabel: (isH ? st.showYAxisLabel !== false : st.showXAxisLabel !== false)
+        ? {
+            show: true,
+            color: (isH ? st.yAxisLabelColor : st.xAxisLabelColor) || '#646a73',
+            fontSize: (isH ? st.yAxisLabelSize : st.xAxisLabelSize) || 11,
+            rotate: isH ? 0 : (+st.xAxisLabelRotate || (names.length > 8 ? 30 : 0))
+          }
+        : { show: false }
     };
     const markLine = sn.auxEnabled ? {
       symbol: 'none',
@@ -7584,26 +8208,81 @@ function paintChart(el, comp) {
         ? { xAxis: sn.auxValue, name: sn.auxLabel || '辅助线', label: { formatter: sn.auxLabel || '{c}' }, lineStyle: { type: 'dashed', color: '#f54a45' } }
         : { yAxis: sn.auxValue, name: sn.auxLabel || '辅助线', label: { formatter: sn.auxLabel || '{c}' }, lineStyle: { type: 'dashed', color: '#f54a45' } }]
     } : undefined;
+    const series = seriesData.map((s, idx) => ({
+      name: s.name,
+      type: isLine ? 'line' : 'bar',
+      stack: useStack ? 'total' : undefined,
+      data: s.data,
+      barWidth: !isLine && +st.barWidth > 0 ? `${+st.barWidth}%` : undefined,
+      barGap: !isLine ? (st.barGap || '30%') : undefined,
+      areaStyle: isArea ? { opacity: st.areaOpacity != null ? +st.areaOpacity : 0.35 } : undefined,
+      smooth: isLine ? st.smooth !== false : undefined,
+      showSymbol: isLine ? st.showSymbol !== false : undefined,
+      symbolSize: isLine ? (+st.symbolSize || 6) : undefined,
+      lineStyle: isLine ? { width: +st.lineWidth || 2 } : undefined,
+      itemStyle: !isLine ? { borderRadius: st.barRadius || 0 } : undefined,
+      label: {
+        show: showLabel,
+        position: isH ? 'right' : 'top',
+        fontSize: labelSize,
+        color: labelColor,
+        formatter: p => (useStack && stackMode === 'percent' ? `${p.value}%` : tipVal(p.value))
+      },
+      labelLayout: labelAvoid ? { hideOverlap: true } : undefined,
+      markLine: idx === 0 ? markLine : undefined
+    }));
+    if (useStack && st.showStackTotal && showLabel) {
+      const totals = seriesPack.categories.map((_, i) =>
+        seriesData.reduce((s, ser) => s + (+ser.data[i] || 0), 0)
+      );
+      const last = series[seriesData.length - 1];
+      if (last) {
+        last.label = {
+          show: true,
+          position: isH ? 'right' : 'top',
+          fontSize: labelSize,
+          color: labelColor,
+          formatter: (p) => {
+            const sum = totals[p.dataIndex] || 0;
+            const self = tipVal(p.value);
+            return `${self}\nΣ ${useStack && stackMode === 'percent' ? '100%' : tipVal(sum)}`;
+          }
+        };
+      }
+    }
     option = {
-      color: theme.series,
+      color: seriesColors,
       grid: { left: leftPad, right: rightPad, top: topPad, bottom: botPad, containLabel: true },
       legend,
-      tooltip: showTip ? { trigger: 'axis', valueFormatter: v => tipVal(v) } : { show: false },
-      xAxis: isH ? valueAxis : catAxis,
-      yAxis: isH ? catAxis : valueAxis,
-      series: seriesPack.series.map((s, idx) => ({
-        name: s.name,
-        type: isLine ? 'line' : 'bar',
-        data: s.data,
-        areaStyle: isArea ? {} : undefined,
-        smooth: isLine ? st.smooth !== false : undefined,
-        itemStyle: !isLine ? { borderRadius: st.barRadius || 0 } : undefined,
-        label: { show: showLabel, position: isH ? 'right' : 'top', fontSize: labelSize, formatter: p => tipVal(p.value) },
-        markLine: idx === 0 ? markLine : undefined
-      }))
+      tooltip: showTip ? {
+        trigger: 'axis',
+        textStyle: { fontSize: tipFs },
+        valueFormatter: v => (useStack && stackMode === 'percent' ? `${v}%` : tipVal(v))
+      } : { show: false },
+      xAxis: isH ? valueAxisFinal : catAxisFinal,
+      yAxis: isH ? catAxisFinal : valueAxisFinal,
+      series
     };
   }
   inst.setOption(option, true);
+  // 提示轮播（演示）
+  const carKey = `_tipCar_${ch.id}`;
+  if (state[carKey]) { clearInterval(state[carKey]); delete state[carKey]; }
+  if (st.tooltipCarousel && showTip && ch.chartType !== 'kpi') {
+    let i = 0;
+    const stay = Math.max(1, +st.tooltipStay || 2) * 1000;
+    const gap = Math.max(1, +st.tooltipInterval || 3) * 1000;
+    state[carKey] = setInterval(() => {
+      if (!state.chartInst[ch.id]) { clearInterval(state[carKey]); delete state[carKey]; return; }
+      const n = ch.chartType === 'pie' ? data.length : names.length;
+      if (!n) return;
+      const idx = i % n;
+      try {
+        inst.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx });
+      } catch (_) {}
+      i++;
+    }, stay + gap);
+  }
   inst.off('click');
   inst.on('click', params => {
     const name = params.name || params.value;
@@ -7848,13 +8527,15 @@ function renderDataPanel(el, comp) {
       ${encodeGuideHtml(ch)}
       ${ch.chartType === 'pivot' ? slotHtml('category', '行维度', 'dim', ch) : ''}
       ${ch.chartType === 'pivot' ? slotHtml('colDim', '列维度', 'dim', ch) : ''}
+      ${ch.chartType === 'table' ? slotHtml('columns', '显示列', 'any', ch) : ''}
       ${ch.chartType !== 'pivot' && ch.chartType !== 'table' && meta.need.includes('category') ? slotHtml('category', '维度', 'dim', ch) : ''}
-      ${ch.chartType !== 'table' ? slotHtml('value', '指标', 'quota', ch) : slotHtml('value', '高亮指标（可选）', 'quota', ch)}
-      ${meta.slots?.color && (ch.chartType === 'grouptable' || (state.phase!=='a' && !isTableType(ch.chartType))) ? slotHtml('color', ch.chartType==='grouptable' ? '二级分组（可选）' : '颜色/图例（可选）', 'dim', ch) : ''}
-      ${ch.chartType !== 'table' ? `<div class="field inline-2"><div class="field" style="margin:0"><label>聚合</label>
+      ${ch.chartType !== 'table' ? slotHtml('value', '指标', 'quota', ch) : ''}
+      ${meta.slots?.color && (ch.chartType === 'grouptable' || (state.phase!=='a' && !isTableType(ch.chartType))) ? slotHtml('color', ch.chartType==='grouptable' ? '二级分组（可选）' : '堆叠/拆色维（可选）', 'dim', ch) : ''}
+      <p class="field-cfg-hint">点击字段 pill 上的 <b>▾</b> 可设置显示名、排序、聚合与数值格式。</p>
+      ${ch.chartType !== 'table' ? `<div class="field inline-2"><div class="field" style="margin:0"><label>默认聚合</label>
         <select id="agg">${['SUM','COUNT','AVG','MAX','MIN'].map(a => `<option ${ (ch.encode.agg||'SUM')===a?'selected':''}>${a}</option>`).join('')}</select>
       </div>
-      <div class="field" style="margin:0"><label>数值格式</label>
+      <div class="field" style="margin:0"><label>默认数值格式</label>
         <select id="fmt">
           <option value="raw" ${ch.encode.format==='raw'?'selected':''}>智能（默认）</option>
           <option value="integer" ${ch.encode.format==='integer'?'selected':''}>整数</option>
@@ -7863,16 +8544,8 @@ function renderDataPanel(el, comp) {
           <option value="fixed2" ${ch.encode.format==='fixed2'?'selected':''}>两位小数</option>
           <option value="percent" ${ch.encode.format==='percent'?'selected':''}>百分比</option>
         </select>
-      </div></div>` : `<div class="field"><label>数值格式</label>
-        <select id="fmt">
-          <option value="raw" ${ch.encode.format==='raw'?'selected':''}>智能（默认）</option>
-          <option value="integer" ${ch.encode.format==='integer'?'selected':''}>整数</option>
-          <option value="thousand" ${ch.encode.format==='thousand'?'selected':''}>千分位</option>
-          <option value="fixed1" ${ch.encode.format==='fixed1'?'selected':''}>一位小数</option>
-          <option value="fixed2" ${ch.encode.format==='fixed2'?'selected':''}>两位小数</option>
-          <option value="percent" ${ch.encode.format==='percent'?'selected':''}>百分比</option>
-        </select>
-      </div>`}
+      </div></div>
+      <p style="font-size:10px;color:var(--text-3);margin-top:4px;line-height:1.4">未单独配置的字段沿用上方默认值。</p>` : ''}
     </div>
     <div class="sec">
       <h4><span class="sec-index">4</span>过滤与条数</h4>
@@ -7911,6 +8584,7 @@ function renderDataPanel(el, comp) {
     pushUndo();
     ch.datasetId = e.target.value || null;
     ch.encode = emptyEncode(ch.chartType);
+    if (ch.datasetId && ch.chartType === 'table') fillTableColumnsFromDataset(ch);
     markChartPending(ch.id);
     patchChart(ch, { inspector: true, flash: false, paint: false });
   };
@@ -7924,12 +8598,12 @@ function renderDataPanel(el, comp) {
       patchChart(ch, { inspector: false, flash: false, paint: false });
       renderRight(el);
     });
-    el.querySelector('#fmt').onchange = e => {
+    el.querySelector('#fmt') && (el.querySelector('#fmt').onchange = e => {
       pushUndo(); ch.encode.format = e.target.value;
       markChartPending(ch.id);
       patchChart(ch, { inspector: false, flash: false, paint: false });
       renderRight(el);
-    };
+    });
     el.querySelector('#cfgChartFilters')?.addEventListener('click', () => openChartFilterModal(ch));
     el.querySelector('#resultLimit')?.addEventListener('change', e => {
       pushUndo();
@@ -7937,6 +8611,19 @@ function renderDataPanel(el, comp) {
       markChartPending(ch.id);
       markDirty();
       patchChart(ch, { inspector: false, flash: false, paint: false });
+    });
+    el.querySelector('#btnFillAllCols')?.addEventListener('click', () => {
+      pushUndo();
+      const names = (ds(ch.datasetId)?.fields || []).map(f => f.name);
+      setEncodeFields(ch.encode, 'columns', names.slice(0, slotMax('table', 'columns')));
+      markChartPending(ch.id);
+      patchChart(ch, { inspector: true, flash: false, paint: false });
+    });
+    el.querySelector('#btnClearCols')?.addEventListener('click', () => {
+      pushUndo();
+      setEncodeFields(ch.encode, 'columns', []);
+      markChartPending(ch.id);
+      patchChart(ch, { inspector: true, flash: false, paint: false });
     });
     wireSlots(el, ch);
   }
@@ -8004,9 +8691,21 @@ function slotHtml(slot, label, accept, ch) {
   const multi = max > 1;
   const pills = names.map((name, idx) => {
     const meta = fieldMeta(ch.datasetId, name);
-    const g = meta ? fieldRole(ch, meta) : (accept === 'quota' ? 'quota' : 'dim');
+    let g = accept === 'any'
+      ? (meta ? fieldRole(ch, meta) : 'dim')
+      : (meta ? fieldRole(ch, meta) : (accept === 'quota' ? 'quota' : 'dim'));
     const tag = meta && isFieldConverted(ch, meta) ? ' ·转' : '';
-    return `<span class="pill ${g}" title="${esc(meta?.label || name)}"><span class="pill-lab">${esc(meta?.label || name)}${tag}</span><button type="button" data-clear="${slot}" data-clear-idx="${idx}">×</button></span>`;
+    const cfg = fieldCfgOf(ch, name);
+    const badges = [];
+    if (g === 'quota' && (cfg.agg || ch.encode.agg)) badges.push(cfg.agg || ch.encode.agg || 'SUM');
+    if (cfg.sort && cfg.sort !== 'none') badges.push(cfg.sort === 'desc' ? '↓' : cfg.sort === 'asc' ? '↑' : 'A');
+    if (cfg.alias) badges.push('名');
+    const badge = badges.length ? `<span class="pill-badge">${esc(badges[0])}</span>` : '';
+    return `<span class="pill ${g}" title="${esc(displayFieldLabel(ch, name))}">
+      <span class="pill-lab">${esc(displayFieldLabel(ch, name))}${tag}</span>${badge}
+      <button type="button" class="pill-cfg" data-cfg-slot="${slot}" data-cfg-field="${esc(name)}" data-cfg-role="${g}" data-cfg-idx="${idx}" title="字段设置">▾</button>
+      <button type="button" data-clear="${slot}" data-clear-idx="${idx}" title="移除">×</button>
+    </span>`;
   }).join('');
   const countHint = multi
     ? `${names.length}/${max}`
@@ -8017,11 +8716,127 @@ function slotHtml(slot, label, accept, ch) {
   const ph = tip
     ? (multi ? `拖入字段（最多 ${max} 个）` : '拖入或点击字段')
     : (multi ? '拖入或点击字段（可多选）' : '拖入或点击字段');
+  const extra = slot === 'columns' && names.length
+    ? `<div class="slot-actions"><button type="button" class="btn ghost" id="btnFillAllCols" style="height:24px;font-size:11px">填入全部字段</button>
+       <button type="button" class="btn ghost" id="btnClearCols" style="height:24px;font-size:11px">清空列</button></div>`
+    : (slot === 'columns' ? `<div class="slot-actions"><button type="button" class="btn ghost" id="btnFillAllCols" style="height:24px;font-size:11px">填入全部字段</button></div>` : '');
   return `<div class="field"><label title="${esc(tip)}">${label}${hint ? ' ' + hint : ''}</label>
     ${tip ? `<div style="font-size:10px;color:var(--text-3);margin:-2px 0 4px;line-height:1.4">${esc(tip)}</div>` : ''}
     <div class="slot" data-slot="${slot}" data-accept="${accept}" data-max="${max}">
       ${pills || `<span class="ph">${esc(ph)}</span>`}
-    </div></div>`;
+    </div>${extra}</div>`;
+}
+
+function openFieldCfgPopover(ch, field, slot, role, idx, anchor) {
+  closeFieldCfgPopover();
+  const cfg = fieldCfgOf(ch, field);
+  const isQuota = role === 'quota' || slot === 'value';
+  const isDim = !isQuota;
+  const list = encodeFields(ch.encode, slot);
+  const canMove = list.length > 1;
+  const pop = document.createElement('div');
+  pop.id = 'fieldCfgPop';
+  pop.className = 'field-cfg-pop';
+  pop.innerHTML = `
+    <div class="fcp-hd">${esc(fieldLabelOf(ch.datasetId, field))} <span>${esc(slotLabel(ch.chartType, slot))}</span></div>
+    <label class="fcp-row"><span>显示名</span>
+      <input id="fcpAlias" value="${esc(cfg.alias || '')}" placeholder="默认字段名"/>
+    </label>
+    ${isQuota ? `<label class="fcp-row"><span>聚合</span>
+      <select id="fcpAgg">${['SUM','COUNT','AVG','MAX','MIN'].map(a =>
+        `<option value="${a}" ${(cfg.agg || ch.encode.agg || 'SUM')===a?'selected':''}>${a}</option>`).join('')}</select>
+    </label>` : ''}
+    ${isQuota || slot === 'columns' ? `<label class="fcp-row"><span>数值格式</span>
+      <select id="fcpFmt">
+        ${[['raw','智能'],['integer','整数'],['thousand','千分位'],['fixed1','一位小数'],['fixed2','两位小数'],['percent','百分比']].map(([k,lab]) =>
+          `<option value="${k}" ${(cfg.format || ch.encode.format || 'raw')===k?'selected':''}>${lab}</option>`).join('')}
+      </select>
+    </label>` : ''}
+    ${isDim || slot === 'category' || slot === 'colDim' || slot === 'columns' ? `<label class="fcp-row"><span>排序</span>
+      <select id="fcpSort">
+        ${[['none','默认'],['asc','按值升序'],['desc','按值降序'],['alpha','按名 A→Z'],['alpha_desc','按名 Z→A']].map(([k,lab]) =>
+          `<option value="${k}" ${(cfg.sort||'none')===k?'selected':''}>${lab}</option>`).join('')}
+      </select>
+    </label>` : ''}
+    ${canMove ? `<div class="fcp-move">
+      <button type="button" id="fcpUp" ${idx<=0?'disabled':''}>上移</button>
+      <button type="button" id="fcpDown" ${idx>=list.length-1?'disabled':''}>下移</button>
+    </div>` : ''}
+    <div class="fcp-actions">
+      <button type="button" class="btn ghost" id="fcpReset">重置</button>
+      <button type="button" class="btn primary" id="fcpOk">确定</button>
+    </div>`;
+  document.body.appendChild(pop);
+  const rect = anchor.getBoundingClientRect();
+  const pw = 240;
+  let left = rect.left;
+  let top = rect.bottom + 4;
+  if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+  if (top + 280 > window.innerHeight) top = Math.max(8, rect.top - 280);
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
+
+  const applyPending = () => {
+    pushUndo();
+    const next = fieldCfgOf(ch, field);
+    const alias = pop.querySelector('#fcpAlias')?.value?.trim() || '';
+    if (alias) next.alias = alias; else delete next.alias;
+    if (pop.querySelector('#fcpAgg')) next.agg = pop.querySelector('#fcpAgg').value;
+    if (pop.querySelector('#fcpFmt')) next.format = pop.querySelector('#fcpFmt').value;
+    if (pop.querySelector('#fcpSort')) {
+      const s = pop.querySelector('#fcpSort').value;
+      if (s && s !== 'none') next.sort = s; else delete next.sort;
+    }
+    markChartPending(ch.id);
+    markDirty();
+  };
+
+  pop.querySelector('#fcpOk').onclick = () => {
+    applyPending();
+    closeFieldCfgPopover();
+    patchChart(ch, { inspector: true, flash: false, paint: false });
+  };
+  pop.querySelector('#fcpReset').onclick = () => {
+    pushUndo();
+    delete ensureFieldCfg(ch)[field];
+    markChartPending(ch.id);
+    closeFieldCfgPopover();
+    patchChart(ch, { inspector: true, flash: false, paint: false });
+  };
+  pop.querySelector('#fcpUp')?.addEventListener('click', () => {
+    if (idx <= 0) return;
+    pushUndo();
+    const arr = encodeFields(ch.encode, slot);
+    [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+    setEncodeFields(ch.encode, slot, arr);
+    markChartPending(ch.id);
+    closeFieldCfgPopover();
+    patchChart(ch, { inspector: true, flash: false, paint: false });
+  });
+  pop.querySelector('#fcpDown')?.addEventListener('click', () => {
+    const arr = encodeFields(ch.encode, slot);
+    if (idx >= arr.length - 1) return;
+    pushUndo();
+    [arr[idx + 1], arr[idx]] = [arr[idx], arr[idx + 1]];
+    setEncodeFields(ch.encode, slot, arr);
+    markChartPending(ch.id);
+    closeFieldCfgPopover();
+    patchChart(ch, { inspector: true, flash: false, paint: false });
+  });
+
+  const onDoc = (ev) => {
+    if (pop.contains(ev.target) || ev.target.closest?.('.pill-cfg')) return;
+    closeFieldCfgPopover();
+  };
+  setTimeout(() => document.addEventListener('mousedown', onDoc, true), 0);
+  pop._onDoc = onDoc;
+}
+
+function closeFieldCfgPopover() {
+  const pop = document.getElementById('fieldCfgPop');
+  if (!pop) return;
+  if (pop._onDoc) document.removeEventListener('mousedown', pop._onDoc, true);
+  pop.remove();
 }
 
 function wireFieldBank(root, ch) {
@@ -8115,7 +8930,7 @@ function wireSlots(root, ch) {
   wireFieldBank(root, ch);
   root.querySelectorAll('.slot').forEach(slot => {
     slot.onclick = e => {
-      if (e.target.closest('[data-clear]')) return;
+      if (e.target.closest('[data-clear]') || e.target.closest('.pill-cfg')) return;
       root.querySelectorAll('.slot').forEach(s => s.classList.remove('over'));
       slot.classList.add('over');
       active = slot;
@@ -8126,6 +8941,12 @@ function wireSlots(root, ch) {
       e.preventDefault();
       const f = e.dataTransfer.getData('f'), g = e.dataTransfer.getData('g');
       applySlot(ch, slot, f, g);
+    };
+  });
+  root.querySelectorAll('.pill-cfg').forEach(b => {
+    b.onclick = e => {
+      e.stopPropagation();
+      openFieldCfgPopover(ch, b.dataset.cfgField, b.dataset.cfgSlot, b.dataset.cfgRole, +b.dataset.cfgIdx, b);
     };
   });
   root.querySelectorAll('[data-clear]').forEach(b => {
@@ -8151,6 +8972,7 @@ function wireSlots(root, ch) {
     chip.onclick = e => {
       if (e.target.closest('[data-conv]')) return;
       let prefer = chip.dataset.g === 'dim' ? 'category' : 'value';
+      if (ch.chartType === 'table') prefer = 'columns';
       if (chip.dataset.g === 'dim' && ch.chartType === 'pivot') {
         const rowN = encodeFields(ch.encode, 'category').length;
         const colN = encodeFields(ch.encode, 'colDim').length;
@@ -8158,7 +8980,10 @@ function wireSlots(root, ch) {
         else if (!colN) prefer = 'colDim';
         else prefer = 'category';
       }
-      const slot = active || root.querySelector(`.slot[data-slot="${prefer}"]`) || root.querySelector(`.slot[data-accept="${chip.dataset.g}"]`);
+      const slot = active
+        || root.querySelector(`.slot[data-slot="${prefer}"]`)
+        || root.querySelector(`.slot[data-accept="${chip.dataset.g}"]`)
+        || root.querySelector('.slot[data-accept="any"]');
       if (!slot) { alertDialog('无可用槽位'); return; }
       applySlot(ch, slot, chip.dataset.f, chip.dataset.g);
     };
@@ -8166,7 +8991,8 @@ function wireSlots(root, ch) {
 }
 
 function applySlot(ch, slot, field, group) {
-  if (slot.dataset.accept && slot.dataset.accept !== group && !(slot.dataset.slot==='color' && group==='dim')) {
+  const accept = slot.dataset.accept;
+  if (accept && accept !== 'any' && accept !== group && !(slot.dataset.slot === 'color' && group === 'dim') && slot.dataset.slot !== 'columns') {
     alertDialog('字段类型与槽位不匹配'); return;
   }
   const key = slot.dataset.slot;
@@ -8194,7 +9020,7 @@ function applySlot(ch, slot, field, group) {
 function styleGuideHtml(type, label) {
   const caps = styleCaps(type);
   return `<div class="style-guide">
-    <b>${esc(label || type)}</b> · 样式按 DataEase 分区展示，仅显示当前组件可用项。
+    <b>${esc(label || type)}</b> · 按分区展示可用样式项。
     <div class="caps">${caps.map(c => `<span>${esc(c)}</span>`).join('')}</div>
   </div>`;
 }
@@ -8315,12 +9141,17 @@ function renderStyle(el, comp) {
           <div><label>圆角</label>
             <select id="stRadius">${[0,6,10,16].map(n => `<option value="${n}" ${(+st.cardRadius||10)===n?'selected':''}>${n}px</option>`).join('')}</select>
           </div>
+          <div><label>内边距</label>
+            <select id="stPad">${[0,4,8,12,16].map(n => `<option value="${n}" ${(+st.cardPadding||8)===n?'selected':''}>${n}px</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field inline-2">
           <div><label>边框宽度</label>
             <select id="stBorderW">${[0,1,2].map(n => `<option value="${n}" ${(+st.borderWidth||1)===n?'selected':''}>${n}px</option>`).join('')}</select>
           </div>
-        </div>
-        <div class="field"><label>边框颜色</label>
-          <div class="color-row"><input type="color" id="stBorderC" value="${st.borderColor || '#e5e6eb'}"/></div>
+          <div><label>边框颜色</label>
+            <div class="color-row"><input type="color" id="stBorderC" value="${st.borderColor || '#e5e6eb'}"/></div>
+          </div>
         </div>
       </div>
       <div class="sec"><h4>标题</h4>
@@ -8350,6 +9181,8 @@ function renderStyle(el, comp) {
 
     // 配色（图表类）
     if (isChart || type === 'kpi') {
+      const sc = Array.isArray(st.seriesColors) ? st.seriesColors : [];
+      const themeSeries = (THEMES[state.dash.theme] || THEMES.default).series;
       blocks += `
       <div class="sec"><h4>基础样式 · 配色</h4>
         <div class="field"><label>画布色板（作用于系列色）</label>
@@ -8357,6 +9190,16 @@ function renderStyle(el, comp) {
             ${Object.entries(THEMES).map(([k,v]) => `<button class="${state.dash.theme===k?'on':''}" data-th="${k}" style="background:${v.brand}" title="${k}"></button>`).join('')}
           </div>
         </div>
+        ${isChart ? `<div class="field"><label>系列色覆盖（可选）</label>
+          <div class="series-colors" id="seriesColors">
+            ${[0,1,2,3].map(i => {
+              const c = sc[i] || themeSeries[i] || '#3370ff';
+              return `<input type="color" data-sc="${i}" value="${c}" title="系列 ${i+1}"/>`;
+            }).join('')}
+            <button type="button" class="btn ghost" id="stScReset" style="height:28px">重置</button>
+          </div>
+          <p style="font-size:10px;color:var(--text-3);margin-top:4px">可在色板之上逐系列改色。</p>
+        </div>` : ''}
       </div>`;
     }
 
@@ -8371,26 +9214,159 @@ function renderStyle(el, comp) {
               `<button type="button" data-lp="${k}" class="${(st.legendPos||'top')===k?'on':''}">${lab}</button>`).join('')}
           </div>
         </div>
+        <div class="field"><label>图例字号</label>
+          <select id="stLegSize">${[10,11,12,13,14].map(n => `<option value="${n}" ${(+st.legendFontSize||11)===n?'selected':''}>${n}px</option>`).join('')}</select>
+        </div>
       </div>
       <div class="sec"><h4>标签</h4>
-        <label class="chk"><input type="checkbox" id="stLabel" ${st.showLabel?'checked':''}/> 显示数值标签</label>
-        <div class="field"><label>标签字号</label>
-          <select id="stLabelSize">${[9,10,11,12,14].map(n => `<option value="${n}" ${(+st.labelSize||10)===n?'selected':''}>${n}px</option>`).join('')}</select>
+        <label class="chk"><input type="checkbox" id="stLabel" ${st.showLabel?'checked':''}/> 显示标签</label>
+        <div class="field inline-2">
+          <div><label>字号</label>
+            <select id="stLabelSize">${[9,10,11,12,14].map(n => `<option value="${n}" ${(+st.labelSize||10)===n?'selected':''}>${n}px</option>`).join('')}</select>
+          </div>
+          <div><label>颜色</label>
+            <div class="color-row"><input type="color" id="stLabelColor" value="${st.labelColor || '#1f2329'}"/></div>
+          </div>
         </div>
+        <div class="field"><label>显示模式</label>
+          <select id="stLabelMode">
+            <option value="adaptive" ${(st.labelMode||'adaptive')==='adaptive'?'selected':''}>自适应（避让重叠）</option>
+            <option value="all" ${st.labelMode==='all'?'selected':''}>全量显示</option>
+          </select>
+        </div>
+        ${type === 'pie' ? `<div class="field" style="margin-top:8px">
+          <label>标签内容</label>
+          <label class="chk"><input type="checkbox" id="stLabelName" ${st.labelName!==false?'checked':''}/> 维度名</label>
+          <label class="chk"><input type="checkbox" id="stLabelValue" ${st.labelValue!==false?'checked':''}/> 数值</label>
+          <label class="chk"><input type="checkbox" id="stLabelPercent" ${st.labelPercent?'checked':''}/> 占比 %</label>
+        </div>` : ''}
+        ${(type === 'bar' || type === 'hbar') ? `<label class="chk"><input type="checkbox" id="stStackTotal" ${st.showStackTotal?'checked':''}/> 堆叠时显示总计标签</label>` : ''}
       </div>
       <div class="sec"><h4>提示</h4>
         <label class="chk"><input type="checkbox" id="stTooltip" ${st.showTooltip!==false?'checked':''}/> 悬停提示 Tooltip</label>
+        <div class="field"><label>提示字号</label>
+          <select id="stTipSize">${[11,12,13,14].map(n => `<option value="${n}" ${(+st.tooltipFontSize||12)===n?'selected':''}>${n}px</option>`).join('')}</select>
+        </div>
+        ${['bar','pie','line','area'].includes(type) ? `
+        <label class="chk"><input type="checkbox" id="stTipCar" ${st.tooltipCarousel?'checked':''}/> 提示轮播（演示）</label>
+        <div class="field inline-2">
+          <div><label>停留(秒)</label>
+            <select id="stTipStay">${[1,2,3,5].map(n => `<option value="${n}" ${(+st.tooltipStay||2)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+          <div><label>间隔(秒)</label>
+            <select id="stTipInt">${[2,3,5,8].map(n => `<option value="${n}" ${(+st.tooltipInterval||3)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>` : ''}
       </div>`;
     }
 
-    // 坐标轴
+    // 坐标轴：横轴 / 纵轴（视觉方向，对应 ECharts x/y）
     if (isAxis) {
       blocks += `
-      <div class="sec"><h4>坐标轴</h4>
-        <label class="chk"><input type="checkbox" id="stAxisName" ${st.showAxisName?'checked':''}/> 显示轴名称</label>
-        <label class="chk"><input type="checkbox" id="stSplit" ${st.showSplitLine!==false?'checked':''}/> 显示网格线</label>
-        <div class="field"><label>横轴名称</label><input id="stXName" value="${esc(st.xAxisName || '')}" placeholder="可选"/></div>
-        <div class="field"><label>纵轴名称</label><input id="stYName" value="${esc(st.yAxisName || '')}" placeholder="可选"/></div>
+      <div class="sec"><h4>横轴</h4>
+        <label class="chk"><input type="checkbox" id="stXOn" ${st.showXAxis!==false?'checked':''}/> 显示横轴</label>
+        <div class="field"><label>位置</label>
+          <div class="seg2" id="stXPos">
+            ${[['bottom','下'],['top','上']].map(([k,lab]) =>
+              `<button type="button" data-xp="${k}" class="${(st.xAxisPos||'bottom')===k?'on':''}">${lab}</button>`).join('')}
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="stXNameOn" ${st.showXAxisName?'checked':''}/> 轴名称显示</label>
+        <div class="field"><label>名称</label>
+          <input id="stXName" value="${esc(st.xAxisName||'')}" placeholder="如 地区"/>
+        </div>
+        <div class="field inline-2">
+          <div><label>名称颜色</label>
+            <div class="color-row"><input type="color" id="stXNameC" value="${st.xAxisNameColor||'#1f2329'}"/></div>
+          </div>
+          <div><label>名称字号</label>
+            <select id="stXNameS">${[11,12,13,14,16].map(n => `<option value="${n}" ${(+st.xAxisNameSize||12)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="stXLine" ${st.showXAxisLine!==false?'checked':''}/> 轴线显示</label>
+        <div class="field inline-2">
+          <div><label>轴线颜色</label>
+            <div class="color-row"><input type="color" id="stXLineC" value="${st.xAxisLineColor||'#c9cdd4'}"/></div>
+          </div>
+          <div><label>线宽</label>
+            <select id="stXLineW">${[1,2,3].map(n => `<option value="${n}" ${(+st.xAxisLineWidth||1)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field"><label>线型</label>
+          <select id="stXLineT">
+            <option value="solid" ${(st.xAxisLineType||'solid')==='solid'?'selected':''}>实线</option>
+            <option value="dashed" ${st.xAxisLineType==='dashed'?'selected':''}>虚线</option>
+            <option value="dotted" ${st.xAxisLineType==='dotted'?'selected':''}>点线</option>
+          </select>
+        </div>
+        <label class="chk"><input type="checkbox" id="stXSplit" ${st.showXSplitLine?'checked':''}/> 网格线显示</label>
+        <label class="chk"><input type="checkbox" id="stXLab" ${st.showXAxisLabel!==false?'checked':''}/> 标签显示</label>
+        <div class="field inline-2">
+          <div><label>标签颜色</label>
+            <div class="color-row"><input type="color" id="stXLabC" value="${st.xAxisLabelColor||'#646a73'}"/></div>
+          </div>
+          <div><label>标签字号</label>
+            <select id="stXLabS">${[10,11,12,13,14].map(n => `<option value="${n}" ${(+st.xAxisLabelSize||11)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field"><label>标签角度</label>
+          <select id="stXRot">${[0,15,30,45,60,90].map(n => `<option value="${n}" ${(+st.xAxisLabelRotate||0)===n?'selected':''}>${n}°</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="sec"><h4>纵轴</h4>
+        <label class="chk"><input type="checkbox" id="stYOn" ${st.showYAxis!==false?'checked':''}/> 显示纵轴</label>
+        <div class="field"><label>位置</label>
+          <div class="seg2" id="stYPos">
+            ${[['left','左'],['right','右']].map(([k,lab]) =>
+              `<button type="button" data-yp="${k}" class="${(st.yAxisPos||'left')===k?'on':''}">${lab}</button>`).join('')}
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="stYNameOn" ${st.showYAxisName?'checked':''}/> 轴名称显示</label>
+        <div class="field"><label>名称</label>
+          <input id="stYName" value="${esc(st.yAxisName||'')}" placeholder="如 金额"/>
+        </div>
+        <div class="field inline-2">
+          <div><label>名称颜色</label>
+            <div class="color-row"><input type="color" id="stYNameC" value="${st.yAxisNameColor||'#1f2329'}"/></div>
+          </div>
+          <div><label>名称字号</label>
+            <select id="stYNameS">${[11,12,13,14,16].map(n => `<option value="${n}" ${(+st.yAxisNameSize||12)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="stYLine" ${st.showYAxisLine!==false?'checked':''}/> 轴线显示</label>
+        <div class="field inline-2">
+          <div><label>轴线颜色</label>
+            <div class="color-row"><input type="color" id="stYLineC" value="${st.yAxisLineColor||'#c9cdd4'}"/></div>
+          </div>
+          <div><label>线宽</label>
+            <select id="stYLineW">${[1,2,3].map(n => `<option value="${n}" ${(+st.yAxisLineWidth||1)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field"><label>线型</label>
+          <select id="stYLineT">
+            <option value="solid" ${(st.yAxisLineType||'solid')==='solid'?'selected':''}>实线</option>
+            <option value="dashed" ${st.yAxisLineType==='dashed'?'selected':''}>虚线</option>
+            <option value="dotted" ${st.yAxisLineType==='dotted'?'selected':''}>点线</option>
+          </select>
+        </div>
+        <label class="chk"><input type="checkbox" id="stYSplit" ${st.showYSplitLine!==false?'checked':''}/> 网格线显示</label>
+        <label class="chk"><input type="checkbox" id="stYLab" ${st.showYAxisLabel!==false?'checked':''}/> 标签显示</label>
+        <div class="field inline-2">
+          <div><label>标签颜色</label>
+            <div class="color-row"><input type="color" id="stYLabC" value="${st.yAxisLabelColor||'#646a73'}"/></div>
+          </div>
+          <div><label>标签字号</label>
+            <select id="stYLabS">${[10,11,12,13,14].map(n => `<option value="${n}" ${(+st.yAxisLabelSize||11)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="field"><label>数值单位</label>
+          <select id="stAxisUnit">
+            <option value="none" ${(st.axisUnit||'none')==='none'?'selected':''}>无</option>
+            <option value="k" ${st.axisUnit==='k'?'selected':''}>千</option>
+            <option value="wan" ${st.axisUnit==='wan'?'selected':''}>万</option>
+            <option value="yi" ${st.axisUnit==='yi'?'selected':''}>亿</option>
+          </select>
+        </div>
       </div>`;
     }
 
@@ -8398,15 +9374,52 @@ function renderStyle(el, comp) {
     if (type === 'bar' || type === 'hbar') {
       blocks += `
       <div class="sec"><h4>${type==='hbar'?'条形':'柱形'}</h4>
-        <div class="field"><label>柱圆角</label>
-          <select id="stBarRadius">${[0,2,4,8].map(n => `<option value="${n}" ${(+st.barRadius||2)===n?'selected':''}>${n}px</option>`).join('')}</select>
+        <div class="field inline-2">
+          <div><label>柱圆角</label>
+            <select id="stBarRadius">${[0,2,4,8].map(n => `<option value="${n}" ${(+st.barRadius||2)===n?'selected':''}>${n}px</option>`).join('')}</select>
+          </div>
+          <div><label>柱宽</label>
+            <select id="stBarWidth">
+              <option value="0" ${!(+st.barWidth)?'selected':''}>自动</option>
+              ${[40,55,70,85].map(n => `<option value="${n}" ${(+st.barWidth)===n?'selected':''}>${n}%</option>`).join('')}
+            </select>
+          </div>
         </div>
+        <div class="field"><label>系列间距</label>
+          <select id="stBarGap">
+            ${[['20%','紧'],['30%','默认'],['50%','疏'],['80%','很疏']].map(([v,lab]) =>
+              `<option value="${v}" ${(st.barGap||'30%')===v?'selected':''}>${lab}（${v}）</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>系列展示</label>
+          <select id="stStackMode">
+            <option value="group" ${(st.stackMode||'group')==='group'?'selected':''}>并排分组</option>
+            <option value="stack" ${st.stackMode==='stack'?'selected':''}>堆叠</option>
+            <option value="percent" ${st.stackMode==='percent'?'selected':''}>百分比堆叠</option>
+          </select>
+        </div>
+        <p style="font-size:10px;color:var(--text-3);line-height:1.4;margin-top:4px">绑定「堆叠/拆色维」或多指标后堆叠生效。</p>
       </div>`;
     }
     if (type === 'line' || type === 'area') {
       blocks += `
       <div class="sec"><h4>${type==='area'?'面积':'折线'}</h4>
         <label class="chk"><input type="checkbox" id="stSmooth" ${st.smooth!==false?'checked':''}/> 平滑曲线</label>
+        <label class="chk"><input type="checkbox" id="stSymbol" ${st.showSymbol!==false?'checked':''}/> 显示拐点</label>
+        <div class="field inline-2">
+          <div><label>线宽</label>
+            <select id="stLineW">${[1,2,3,4].map(n => `<option value="${n}" ${(+st.lineWidth||2)===n?'selected':''}>${n}px</option>`).join('')}</select>
+          </div>
+          <div><label>拐点大小</label>
+            <select id="stSymSize">${[4,6,8,10].map(n => `<option value="${n}" ${(+st.symbolSize||6)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>
+        ${type === 'area' ? `<div class="field"><label>面积透明度</label>
+          <select id="stAreaOp">
+            ${[['0.15','淡'],['0.35','默认'],['0.55','浓'],['0.75','很浓']].map(([v,lab]) =>
+              `<option value="${v}" ${String(st.areaOpacity ?? 0.35)===v?'selected':''}>${lab}</option>`).join('')}
+          </select>
+        </div>` : ''}
       </div>`;
     }
     if (type === 'pie') {
@@ -8420,6 +9433,9 @@ function renderStyle(el, comp) {
           <div><label>外径 %</label>
             <select id="stPieOut">${[50,60,65,75,85].map(n => `<option value="${n}" ${(+st.pieOuter||65)===n?'selected':''}>${n}</option>`).join('')}</select>
           </div>
+        </div>
+        <div class="field"><label>扇区间隙</label>
+          <select id="stPiePad">${[0,1,2,4].map(n => `<option value="${n}" ${(+st.piePadAngle||0)===n?'selected':''}>${n}°</option>`).join('')}</select>
         </div>
       </div>`;
     }
@@ -8449,87 +9465,251 @@ function renderStyle(el, comp) {
       </div>
       <div class="sec"><h4>对比区</h4>
         <label class="chk"><input type="checkbox" id="stCompare" ${st.showCompare!==false?'checked':''}/> 显示同比/环比或行数说明</label>
+        <div class="field"><label>副标题</label>
+          <input id="stKpiSub" value="${esc(st.kpiSubtitle || '')}" placeholder="如 本月累计"/>
+        </div>
       </div>`;
     }
 
-    // 表格
+    // 表格：基础样式 / 表头 / 单元格 / 冻结 / 分页 / 合计
     if (isTable) {
+      const mergeDisabledStripe = !!st.mergeCells;
+      const tblFields = type === 'table'
+        ? tableColumnsOf(ch)
+        : [...encodeFields(ch.encode, 'category'), ...encodeFields(ch.encode, 'value'), ...encodeFields(ch.encode, 'colDim')];
+      const uniqTblFields = [...new Set(tblFields.filter(Boolean))];
+      const editField = st.colWidthEditField && uniqTblFields.includes(st.colWidthEditField)
+        ? st.colWidthEditField
+        : (uniqTblFields[0] || '');
+      const editPct = editField && st.colWidths?.[editField] != null ? +st.colWidths[editField] : 8;
+      blocks += `
+      <div class="sec"><h4>基础样式</h4>
+        <div class="field inline-2">
+          <div><label>边框颜色</label>
+            <div class="color-row"><input type="color" id="stBorderC" value="${st.borderColor || '#e5e6eb'}"/></div>
+          </div>
+          <div><label>滚动条颜色</label>
+            <div class="color-row"><input type="color" id="stScrollC" value="${st.scrollbarColor || '#c9cdd4'}"/></div>
+          </div>
+        </div>
+        <div class="field"><label>不透明度</label>
+          <select id="stTableOp">${[100,90,80,70,60].map(n => `<option value="${n}" ${(+st.tableOpacity||100)===n?'selected':''}>${n}%</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>列宽调整</label>
+          <div class="seg3" id="stColModeSeg">
+            ${[['adaptive','自适应'],['fixed','固定列宽'],['custom','自定义']].map(([k,lab]) =>
+              `<button type="button" data-cm="${k}" class="${(st.colWidthMode||'adaptive')===k?'on':''}">${lab}</button>`).join('')}
+          </div>
+        </div>
+        ${st.colWidthMode === 'fixed' ? `<div class="field"><label>列宽 (px)</label>
+          <select id="stColPx">${[80,100,120,160,200].map(n => `<option value="${n}" ${(+st.colWidthPx||120)===n?'selected':''}>${n}</option>`).join('')}</select>
+        </div>` : ''}
+        ${st.colWidthMode === 'custom' && uniqTblFields.length ? `
+        <div class="field"><label>字段</label>
+          <select id="stColField">
+            ${uniqTblFields.map(f => `<option value="${esc(f)}" ${editField===f?'selected':''}>${esc(displayFieldLabel(ch, f))}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field inline-2">
+          <div><label>宽度占比</label>
+            <input id="stColPct" type="number" min="1" max="100" value="${editPct}"/>
+          </div>
+          <div><label>单位</label><input value="%" disabled/></div>
+        </div>` : ''}
+        <div class="field"><label>表格字号</label>
+          <select id="stTableFs">${[11,12,13,14].map(n => `<option value="${n}" ${(+st.tableFontSize||12)===n?'selected':''}>${n}px</option>`).join('')}</select>
+        </div>
+        ${type !== 'pivot' ? `<label class="chk"><input type="checkbox" id="stShowIdx" ${st.showIndex?'checked':''}/> 显示序号列</label>` : ''}
+      </div>`;
+
       if (type === 'pivot') {
         blocks += `
-      <div class="sec"><h4>列头 / 行头（对齐 DataEase）</h4>
-        <p style="font-size:10px;color:var(--text-3);margin-bottom:6px">默认商务蓝样式：拖入行维 / 列维 / 指标即可出表。可再调配色与年月行。</p>
-        <div class="preset-row tight">
+      <div class="sec"><h4>展示方式</h4>
+        <div class="field"><label>布局</label>
+          <select id="stPivotLayout">
+            <option value="flat" ${(st.pivotLayout||'flat')==='flat'?'selected':''}>平铺展示</option>
+            <option value="tree" ${st.pivotLayout==='tree'?'selected':''}>树形展示（行头缩进）</option>
+          </select>
+        </div>
+        <div class="field"><label>指标位置</label>
+          <select id="stPivotMeas">
+            <option value="col" ${(st.pivotMeasurePos||'col')==='col'?'selected':''}>按列头</option>
+            <option value="row" ${st.pivotMeasurePos==='row'?'selected':''}>按行头（简化）</option>
+          </select>
+        </div>
+        <label class="chk"><input type="checkbox" id="stPivotMulti" ${st.pivotMultiHead!==false?'checked':''}/> 多层列头（多指标）</label>
+        <div class="preset-row tight" style="margin-top:8px">
           <button type="button" id="stPivotBiz">商务蓝表头</button>
           <button type="button" id="stPivotReset">恢复默认</button>
         </div>
+      </div>
+      <div class="sec"><h4>列头 / 行头 / 角头</h4>
         <label class="chk"><input type="checkbox" id="stHead" ${st.showHeader!==false?'checked':''}/> 显示表头</label>
         <label class="chk"><input type="checkbox" id="stHeadBold" ${st.headerBold!==false?'checked':''}/> 列头加粗</label>
-        <label class="chk"><input type="checkbox" id="stPivotMulti" ${st.pivotMultiHead!==false?'checked':''}/> 多层列头（多指标）</label>
         <label class="chk"><input type="checkbox" id="stPivotMeta" ${st.pivotMeta!==false?'checked':''}/> 显示年月信息行</label>
         <div class="field inline-2">
           <div><label>信息行标签</label><input id="stPivotMetaLab" value="${esc(st.pivotMetaLabel || '当前年月')}"/></div>
           <div><label>信息行值</label><input id="stPivotMetaVal" value="${esc(st.pivotMetaValue || '')}" placeholder="空则用当月 YYYYMM"/></div>
         </div>
         <div class="field"><label>列头背景</label>
-          <div class="color-row"><input type="color" id="stHeadBg" value="${st.headerBg || '#1677ff'}"/></div>
+          <div class="color-row"><input type="color" id="stHeadBg" value="${st.headerBg || '#eef4ff'}"/></div>
         </div>
         <div class="field"><label>列头文字</label>
-          <div class="color-row"><input type="color" id="stHeadColor" value="${st.headerColor || '#ffffff'}"/></div>
+          <div class="color-row"><input type="color" id="stHeadColor" value="${st.headerColor || '#1f2329'}"/></div>
         </div>
         <div class="field"><label>行头背景</label>
-          <div class="color-row"><input type="color" id="stRowHeadBg" value="${st.rowHeadBg || '#1677ff'}"/></div>
+          <div class="color-row"><input type="color" id="stRowHeadBg" value="${st.rowHeadBg || '#f7f8fa'}"/></div>
         </div>
         <div class="field"><label>行头文字</label>
-          <div class="color-row"><input type="color" id="stRowHeadColor" value="${st.rowHeadColor || '#ffffff'}"/></div>
+          <div class="color-row"><input type="color" id="stRowHeadColor" value="${st.rowHeadColor || '#1f2329'}"/></div>
         </div>
         <label class="chk"><input type="checkbox" id="stRowHeadBold" ${st.rowHeadBold!==false?'checked':''}/> 行头加粗</label>
         <div class="field"><label>角头背景</label>
-          <div class="color-row"><input type="color" id="stCornerBg" value="${st.cornerBg || '#0958d9'}"/></div>
+          <div class="color-row"><input type="color" id="stCornerBg" value="${st.cornerBg || '#e8f0ff'}"/></div>
         </div>
         <div class="field"><label>角头文字</label>
-          <div class="color-row"><input type="color" id="stCornerColor" value="${st.cornerColor || '#ffffff'}"/></div>
+          <div class="color-row"><input type="color" id="stCornerColor" value="${st.cornerColor || '#1f2329'}"/></div>
         </div>
-      </div>
-      <div class="sec"><h4>单元格</h4>
-        <label class="chk"><input type="checkbox" id="stStripe" ${st.stripe?'checked':''}/> 斑马纹</label>
-        <div class="field"><label>对齐</label>
-          <select id="stCellAlign">
-            <option value="right" ${st.cellAlign!=='center'?'selected':''}>右对齐</option>
-            <option value="center" ${st.cellAlign==='center'?'selected':''}>居中</option>
-          </select>
-        </div>
-      </div>
-      <div class="sec"><h4>合计</h4>
-        <label class="chk"><input type="checkbox" id="stRowTotal" ${st.showRowTotal?'checked':''}/> 显示行合计</label>
-        <label class="chk"><input type="checkbox" id="stColTotal" ${st.showColTotal?'checked':''}/> 显示列合计</label>
       </div>`;
       } else {
         blocks += `
       <div class="sec"><h4>表头</h4>
         <label class="chk"><input type="checkbox" id="stHead" ${st.showHeader!==false?'checked':''}/> 显示表头</label>
         <label class="chk"><input type="checkbox" id="stHeadBold" ${st.headerBold!==false?'checked':''}/> 表头加粗</label>
+        <div class="field"><label>表头字号</label>
+          <select id="stHeadSize">${[11,12,13,14].map(n => `<option value="${n}" ${(+st.headerSize||12)===n?'selected':''}>${n}px</option>`).join('')}</select>
+        </div>
         <div class="field"><label>表头背景</label>
           <div class="color-row"><input type="color" id="stHeadBg" value="${st.headerBg || '#f5f6f7'}"/></div>
         </div>
         <div class="field"><label>表头文字</label>
           <div class="color-row"><input type="color" id="stHeadColor" value="${st.headerColor || '#1f2329'}"/></div>
         </div>
-      </div>
+      </div>`;
+      }
+
+      blocks += `
       <div class="sec"><h4>单元格</h4>
-        <label class="chk"><input type="checkbox" id="stStripe" ${st.stripe!==false?'checked':''}/> 斑马纹</label>
-      </div>
+        <div class="field"><label>背景</label>
+          <div class="color-row"><input type="color" id="stCellBg" value="${st.cellBg || '#ffffff'}"/></div>
+        </div>
+        <label class="chk" title="${mergeDisabledStripe ? '合并单元格后，不支持斑马纹' : ''}">
+          <input type="checkbox" id="stStripe" ${st.stripe!==false && !mergeDisabledStripe?'checked':''} ${mergeDisabledStripe?'disabled':''}/> 斑马纹
+        </label>
+        ${!mergeDisabledStripe ? `<div class="field"><label>斑马纹底色</label>
+          <div class="color-row"><input type="color" id="stStripeBg" value="${st.stripeBg || '#fafbfc'}"/></div>
+        </div>` : `<p class="hint-warn">合并单元格后，不支持斑马纹</p>`}
+        <div class="field"><label>文本</label>
+          <div class="text-style-row">
+            <input type="color" id="stCellColor" value="${st.cellColor || '#1f2329'}" title="文字颜色"/>
+            <select id="stTableFs2">${[11,12,13,14].map(n => `<option value="${n}" ${(+st.tableFontSize||12)===n?'selected':''}>${n}</option>`).join('')}</select>
+            <button type="button" class="mini-btn ${(st.cellBold?'on':'')}" id="stCellBold" title="加粗"><b>B</b></button>
+            <button type="button" class="mini-btn ${(st.cellItalic?'on':'')}" id="stCellItalic" title="斜体"><i>I</i></button>
+          </div>
+        </div>
+        <div class="field"><label>水平对齐</label>
+          <div class="seg3" id="stHAlign">
+            ${[['left','左'],['center','中'],['right','右']].map(([k,lab]) =>
+              `<button type="button" data-ha="${k}" class="${(st.cellAlign||'left')===k?'on':''}">${lab}</button>`).join('')}
+          </div>
+        </div>
+        <div class="field"><label>垂直对齐</label>
+          <div class="seg3" id="stVAlign">
+            ${[['top','上'],['middle','中'],['bottom','下']].map(([k,lab]) =>
+              `<button type="button" data-va="${k}" class="${(st.cellVAlign||'middle')===k?'on':''}">${lab}</button>`).join('')}
+          </div>
+        </div>
+        <div class="field"><label>行高</label>
+          <input id="stRowH" type="number" min="24" max="80" value="${+st.rowHeight||36}"/>
+        </div>
+        ${type !== 'pivot' ? `
+        <label class="chk"><input type="checkbox" id="stFreezeOn" ${(+st.freezeLeft||0)>0||(+st.freezeTop||0)>0?'checked':''}/> 冻结</label>
+        <div class="field inline-2">
+          <div><label>冻结前 n 列</label>
+            <select id="stFreeze" ${(+st.freezeLeft||0)===0&&(+st.freezeTop||0)===0?'disabled':''}>${[0,1,2,3].map(n => `<option value="${n}" ${(+st.freezeLeft||0)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+          <div><label>冻结前 n 行</label>
+            <select id="stFreezeTop" ${(+st.freezeLeft||0)===0&&(+st.freezeTop||0)===0?'disabled':''}>${[0,1,2,3,5].map(n => `<option value="${n}" ${(+st.freezeTop||0)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="stMerge" ${st.mergeCells?'checked':''}/> 合并单元格</label>
+        <label class="chk"><input type="checkbox" id="stHBorder" ${st.showHBorder!==false?'checked':''}/> 单元格横边框线</label>
+        <label class="chk"><input type="checkbox" id="stVBorder" ${st.showVBorder!==false?'checked':''}/> 单元格纵边框线</label>
+        <label class="chk"><input type="checkbox" id="stAutoWrap" ${st.autoWrap?'checked':''}/> 自动换行</label>
+        <p class="hint-muted">开启合并后斑马纹不可用；开启换行后表头行高随内容变化。</p>` : ''}
+      </div>`;
+
+      if (type !== 'pivot') {
+        blocks += `
       <div class="sec"><h4>分页</h4>
-        <div class="field"><label>每页行数</label>
+        <div class="field"><label>分页模式</label>
+          <select id="stPageMode">
+            <option value="page" ${(st.pageMode||'page')==='page'?'selected':''}>翻页</option>
+            <option value="scroll" ${st.pageMode==='scroll'?'selected':''}>自动滚动</option>
+          </select>
+        </div>
+        ${(st.pageMode||'page')==='page' ? `<div class="field"><label>每页行数</label>
           <select id="stPage">${[3,5,10,20,50].map(n => `<option value="${n}" ${(+st.pageSize||5)===n?'selected':''}>${n} 行 / 页</option>`).join('')}</select>
+        </div>` : `<div class="field inline-2">
+          <div><label>可视行数</label>
+            <select id="stScrollRows">${[3,5,8,10].map(n => `<option value="${n}" ${(+st.scrollRows||3)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+          <div><label>间隔(秒)</label>
+            <select id="stScrollInt">${[1,2,3,5].map(n => `<option value="${n}" ${(+st.scrollInterval||2)===n?'selected':''}>${n}</option>`).join('')}</select>
+          </div>
+        </div>`}
+      </div>`;
+      }
+
+      if (type === 'grouptable' || type === 'pivot') {
+        blocks += `
+      <div class="sec"><h4>合计 / 汇总</h4>
+        ${type === 'grouptable' ? `<label class="chk"><input type="checkbox" id="stRowTotal" ${st.showRowTotal!==false?'checked':''}/> 显示合计行</label>` : `
+        <label class="chk"><input type="checkbox" id="stRowTotal" ${st.showRowTotal?'checked':''}/> 显示行合计</label>
+        <label class="chk"><input type="checkbox" id="stColTotal" ${st.showColTotal?'checked':''}/> 显示列合计</label>`}
+        <div class="field"><label>合计背景</label>
+          <div class="color-row"><input type="color" id="stTotalBg" value="${st.totalBg || '#f0f4ff'}"/></div>
+        </div>
+        <div class="field"><label>合计文字</label>
+          <div class="color-row"><input type="color" id="stTotalColor" value="${st.totalColor || '#1f2329'}"/></div>
         </div>
       </div>`;
-        if (type === 'grouptable') {
-          blocks += `
-      <div class="sec"><h4>合计</h4>
-        <label class="chk"><input type="checkbox" id="stRowTotal" ${st.showRowTotal!==false?'checked':''}/> 显示合计行</label>
-      </div>`;
-        }
       }
+
+      const uniqFields = uniqTblFields;
+      blocks += `
+      <div class="sec"><h4>空值与条件样式</h4>
+        <div class="field"><label>空值显示为</label>
+          <select id="stEmpty">
+            ${[['-','-'],['—','—'],['(空)','(空)'],['0','0'],['','（空白）']].map(([v,lab]) =>
+              `<option value="${esc(v)}" ${(st.emptyValue ?? '-')===v?'selected':''}>${esc(lab)}</option>`).join('')}
+          </select>
+        </div>
+        <label class="chk"><input type="checkbox" id="stCondOn" ${st.condEnabled?'checked':''}/> 启用条件样式</label>
+        ${st.condEnabled ? `
+        <div class="field"><label>作用字段</label>
+          <select id="stCondField">
+            <option value="">请选择</option>
+            ${uniqFields.map(f => `<option value="${esc(f)}" ${st.condField===f?'selected':''}>${esc(displayFieldLabel(ch, f))}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field inline-2">
+          <div><label>条件</label>
+            <select id="stCondOp">
+              ${[['gt','>'],['gte','≥'],['lt','<'],['lte','≤'],['eq','='],['ne','≠'],['contains','包含'],['empty','为空'],['not_empty','非空']].map(([k,lab]) =>
+                `<option value="${k}" ${(st.condOp||'gt')===k?'selected':''}>${lab}</option>`).join('')}
+            </select>
+          </div>
+          <div><label>值</label><input id="stCondVal" value="${esc(st.condValue || '')}" placeholder="阈值"/></div>
+        </div>
+        <div class="field"><label>高亮背景</label>
+          <div class="color-row"><input type="color" id="stCondBg" value="${st.condBg || '#fff1f0'}"/></div>
+        </div>
+        <div class="field"><label>高亮文字</label>
+          <div class="color-row"><input type="color" id="stCondColor" value="${st.condColor || '#cf1322'}"/></div>
+        </div>` : ''}
+        <p class="hint-muted">当前支持单条规则；多规则与动态值可后续扩展。</p>
+      </div>`;
     }
   }
 
@@ -8615,31 +9795,155 @@ function renderStyle(el, comp) {
     bindStyle('#stTitleSize', n => { bag().titleSize = +n.value; });
     bindStyle('#stTitleAlign', n => { bag().titleAlign = n.value; });
     bindStyle('#stRadius', n => { bag().cardRadius = +n.value; });
+    bindStyle('#stPad', n => { bag().cardPadding = +n.value; });
     bindStyle('#stBorderW', n => { bag().borderWidth = +n.value; });
     bindStyle('#stBorderC', n => { bag().borderColor = n.value; }, { live: true });
     bindStyle('#stLegend', n => { bag().showLegend = n.checked; });
+    bindStyle('#stLegSize', n => { bag().legendFontSize = +n.value; });
     bindStyle('#stLabel', n => { bag().showLabel = n.checked; });
     bindStyle('#stLabelSize', n => { bag().labelSize = +n.value; });
+    bindStyle('#stLabelColor', n => { bag().labelColor = n.value; }, { live: true });
+    bindStyle('#stLabelMode', n => { bag().labelMode = n.value; });
+    bindStyle('#stLabelName', n => { bag().labelName = n.checked; });
+    bindStyle('#stLabelValue', n => { bag().labelValue = n.checked; });
+    bindStyle('#stLabelPercent', n => { bag().labelPercent = n.checked; });
+    bindStyle('#stStackTotal', n => { bag().showStackTotal = n.checked; });
     bindStyle('#stTooltip', n => { bag().showTooltip = n.checked; });
-    bindStyle('#stAxisName', n => { bag().showAxisName = n.checked; });
-    bindStyle('#stSplit', n => { bag().showSplitLine = n.checked; });
+    bindStyle('#stTipSize', n => { bag().tooltipFontSize = +n.value; });
+    bindStyle('#stTipCar', n => { bag().tooltipCarousel = n.checked; });
+    bindStyle('#stTipStay', n => { bag().tooltipStay = +n.value; });
+    bindStyle('#stTipInt', n => { bag().tooltipInterval = +n.value; });
+    bindStyle('#stAxisUnit', n => { bag().axisUnit = n.value; });
+    bindStyle('#stXOn', n => { bag().showXAxis = n.checked; });
+    bindStyle('#stXNameOn', n => { bag().showXAxisName = n.checked; });
     bindStyle('#stXName', n => { bag().xAxisName = n.value; });
+    bindStyle('#stXNameC', n => { bag().xAxisNameColor = n.value; }, { live: true });
+    bindStyle('#stXNameS', n => { bag().xAxisNameSize = +n.value; });
+    bindStyle('#stXLine', n => { bag().showXAxisLine = n.checked; });
+    bindStyle('#stXLineC', n => { bag().xAxisLineColor = n.value; }, { live: true });
+    bindStyle('#stXLineW', n => { bag().xAxisLineWidth = +n.value; });
+    bindStyle('#stXLineT', n => { bag().xAxisLineType = n.value; });
+    bindStyle('#stXSplit', n => { bag().showXSplitLine = n.checked; });
+    bindStyle('#stXLab', n => { bag().showXAxisLabel = n.checked; });
+    bindStyle('#stXLabC', n => { bag().xAxisLabelColor = n.value; }, { live: true });
+    bindStyle('#stXLabS', n => { bag().xAxisLabelSize = +n.value; });
+    bindStyle('#stXRot', n => { bag().xAxisLabelRotate = +n.value; });
+    bindStyle('#stYOn', n => { bag().showYAxis = n.checked; });
+    bindStyle('#stYNameOn', n => { bag().showYAxisName = n.checked; });
     bindStyle('#stYName', n => { bag().yAxisName = n.value; });
+    bindStyle('#stYNameC', n => { bag().yAxisNameColor = n.value; }, { live: true });
+    bindStyle('#stYNameS', n => { bag().yAxisNameSize = +n.value; });
+    bindStyle('#stYLine', n => { bag().showYAxisLine = n.checked; });
+    bindStyle('#stYLineC', n => { bag().yAxisLineColor = n.value; }, { live: true });
+    bindStyle('#stYLineW', n => { bag().yAxisLineWidth = +n.value; });
+    bindStyle('#stYLineT', n => { bag().yAxisLineType = n.value; });
+    bindStyle('#stYSplit', n => { bag().showYSplitLine = n.checked; });
+    bindStyle('#stYLab', n => { bag().showYAxisLabel = n.checked; });
+    bindStyle('#stYLabC', n => { bag().yAxisLabelColor = n.value; }, { live: true });
+    bindStyle('#stYLabS', n => { bag().yAxisLabelSize = +n.value; });
+    el.querySelectorAll('#stXPos [data-xp]').forEach(b => {
+      b.onclick = () => {
+        pushUndo(); bag().xAxisPos = b.dataset.xp;
+        el.querySelectorAll('#stXPos [data-xp]').forEach(x => x.classList.toggle('on', x.dataset.xp === bag().xAxisPos));
+        softStyle();
+      };
+    });
+    el.querySelectorAll('#stYPos [data-yp]').forEach(b => {
+      b.onclick = () => {
+        pushUndo(); bag().yAxisPos = b.dataset.yp;
+        el.querySelectorAll('#stYPos [data-yp]').forEach(x => x.classList.toggle('on', x.dataset.yp === bag().yAxisPos));
+        softStyle();
+      };
+    });
     bindStyle('#stBarRadius', n => { bag().barRadius = +n.value; });
+    bindStyle('#stBarWidth', n => { bag().barWidth = +n.value; });
+    bindStyle('#stBarGap', n => { bag().barGap = n.value; });
+    bindStyle('#stStackMode', n => { bag().stackMode = n.value; });
     bindStyle('#stSmooth', n => { bag().smooth = n.checked; });
+    bindStyle('#stSymbol', n => { bag().showSymbol = n.checked; });
+    bindStyle('#stLineW', n => { bag().lineWidth = +n.value; });
+    bindStyle('#stSymSize', n => { bag().symbolSize = +n.value; });
+    bindStyle('#stAreaOp', n => { bag().areaOpacity = +n.value; });
     bindStyle('#stPieRose', n => { bag().pieRose = n.checked; });
     bindStyle('#stPieIn', n => { bag().pieInner = +n.value; });
     bindStyle('#stPieOut', n => { bag().pieOuter = +n.value; });
+    bindStyle('#stPiePad', n => { bag().piePadAngle = +n.value; });
     bindStyle('#stValColor', n => { bag().valueColor = n.value; }, { live: true });
     bindStyle('#stValSize', n => { bag().valueSize = +n.value; });
     bindStyle('#stValAlign', n => { bag().valueAlign = n.value; });
     bindStyle('#stPrefix', n => { bag().valuePrefix = n.value; });
     bindStyle('#stSuffix', n => { bag().valueSuffix = n.value; });
     bindStyle('#stCompare', n => { bag().showCompare = n.checked; });
+    bindStyle('#stKpiSub', n => { bag().kpiSubtitle = n.value; });
+    bindStyle('#stEmpty', n => { bag().emptyValue = n.value; });
+    bindStyle('#stCondOn', n => { bag().condEnabled = n.checked; });
+    bindStyle('#stCondField', n => { bag().condField = n.value; });
+    bindStyle('#stCondOp', n => { bag().condOp = n.value; });
+    bindStyle('#stCondVal', n => { bag().condValue = n.value; });
+    bindStyle('#stCondBg', n => { bag().condBg = n.value; }, { live: true });
+    bindStyle('#stCondColor', n => { bag().condColor = n.value; }, { live: true });
+    el.querySelectorAll('[data-sc]').forEach(inp => {
+      inp.oninput = () => {
+        const bagStyle = bag();
+        const arr = Array.isArray(bagStyle.seriesColors) ? bagStyle.seriesColors.slice() : [];
+        arr[+inp.dataset.sc] = inp.value;
+        bagStyle.seriesColors = arr;
+        softStyle();
+      };
+      inp.onchange = () => { pushUndo(); };
+    });
+    el.querySelector('#stScReset')?.addEventListener('click', () => {
+      pushUndo();
+      bag().seriesColors = [];
+      softStyle();
+      if (ch) patchChart(ch, { inspector: true, flash: false });
+    });
+    bindStyle('#stTableFs', n => { bag().tableFontSize = +n.value; });
+    bindStyle('#stTableFs2', n => { bag().tableFontSize = +n.value; });
+    bindStyle('#stColPx', n => { bag().colWidthPx = +n.value; });
+    bindStyle('#stScrollC', n => { bag().scrollbarColor = n.value; }, { live: true });
+    bindStyle('#stTableOp', n => { bag().tableOpacity = +n.value; });
+    bindStyle('#stColField', n => {
+      bag().colWidthEditField = n.value;
+      if (ch) patchChart(ch, { inspector: true, flash: false });
+    });
+    bindStyle('#stColPct', n => {
+      const f = bag().colWidthEditField || el.querySelector('#stColField')?.value;
+      if (!f) return;
+      bag().colWidths = { ...(bag().colWidths || {}), [f]: Math.max(1, Math.min(100, +n.value || 8)) };
+      bag().colWidthEditField = f;
+    });
+    bindStyle('#stShowIdx', n => { bag().showIndex = n.checked; });
+    bindStyle('#stHeadSize', n => { bag().headerSize = +n.value; });
     bindStyle('#stPage', n => { bag().pageSize = +n.value; });
+    bindStyle('#stPageMode', n => { bag().pageMode = n.value; });
+    bindStyle('#stScrollRows', n => { bag().scrollRows = +n.value; });
+    bindStyle('#stScrollInt', n => { bag().scrollInterval = +n.value; });
+    bindStyle('#stFreeze', n => { bag().freezeLeft = +n.value; });
+    bindStyle('#stFreezeTop', n => { bag().freezeTop = +n.value; });
+    bindStyle('#stFreezeOn', n => {
+      if (n.checked) {
+        if (!(+bag().freezeLeft || 0) && !(+bag().freezeTop || 0)) bag().freezeLeft = 1;
+      } else {
+        bag().freezeLeft = 0;
+        bag().freezeTop = 0;
+      }
+      if (ch) patchChart(ch, { inspector: true, flash: false });
+    });
     bindStyle('#stHead', n => { bag().showHeader = n.checked; });
     bindStyle('#stHeadBold', n => { bag().headerBold = n.checked; });
     bindStyle('#stStripe', n => { bag().stripe = n.checked; });
+    bindStyle('#stStripeBg', n => { bag().stripeBg = n.value; }, { live: true });
+    bindStyle('#stCellBg', n => { bag().cellBg = n.value; }, { live: true });
+    bindStyle('#stCellColor', n => { bag().cellColor = n.value; }, { live: true });
+    bindStyle('#stRowH', n => { bag().rowHeight = +n.value; });
+    bindStyle('#stHBorder', n => { bag().showHBorder = n.checked; });
+    bindStyle('#stVBorder', n => { bag().showVBorder = n.checked; });
+    bindStyle('#stAutoWrap', n => { bag().autoWrap = n.checked; });
+    bindStyle('#stMerge', n => {
+      bag().mergeCells = n.checked;
+      if (n.checked) bag().stripe = false;
+    });
     bindStyle('#stHeadBg', n => { bag().headerBg = n.value; }, { live: true });
     bindStyle('#stHeadColor', n => { bag().headerColor = n.value; }, { live: true });
     bindStyle('#stRowHeadBg', n => { bag().rowHeadBg = n.value; }, { live: true });
@@ -8648,9 +9952,49 @@ function renderStyle(el, comp) {
     bindStyle('#stCornerBg', n => { bag().cornerBg = n.value; }, { live: true });
     bindStyle('#stCornerColor', n => { bag().cornerColor = n.value; }, { live: true });
     bindStyle('#stPivotMulti', n => { bag().pivotMultiHead = n.checked; });
-    bindStyle('#stCellAlign', n => { bag().cellAlign = n.value; });
+    bindStyle('#stPivotLayout', n => { bag().pivotLayout = n.value; });
+    bindStyle('#stPivotMeas', n => { bag().pivotMeasurePos = n.value; });
     bindStyle('#stRowTotal', n => { bag().showRowTotal = n.checked; });
     bindStyle('#stColTotal', n => { bag().showColTotal = n.checked; });
+    bindStyle('#stTotalBg', n => { bag().totalBg = n.value; }, { live: true });
+    bindStyle('#stTotalColor', n => { bag().totalColor = n.value; }, { live: true });
+    el.querySelectorAll('#stColModeSeg [data-cm]').forEach(b => {
+      b.onclick = () => {
+        pushUndo(); bag().colWidthMode = b.dataset.cm;
+        if (ch) patchChart(ch, { inspector: true, flash: false });
+        else softStyle();
+      };
+    });
+    el.querySelectorAll('#stHAlign [data-ha]').forEach(b => {
+      b.onclick = () => {
+        pushUndo(); bag().cellAlign = b.dataset.ha;
+        el.querySelectorAll('#stHAlign [data-ha]').forEach(x => x.classList.toggle('on', x.dataset.ha === bag().cellAlign));
+        softStyle();
+      };
+    });
+    el.querySelectorAll('#stVAlign [data-va]').forEach(b => {
+      b.onclick = () => {
+        pushUndo(); bag().cellVAlign = b.dataset.va;
+        el.querySelectorAll('#stVAlign [data-va]').forEach(x => x.classList.toggle('on', x.dataset.va === bag().cellVAlign));
+        softStyle();
+      };
+    });
+    el.querySelector('#stCellBold')?.addEventListener('click', () => {
+      pushUndo(); bag().cellBold = !bag().cellBold;
+      softStyle();
+      if (ch) patchChart(ch, { inspector: true, flash: false });
+    });
+    el.querySelector('#stCellItalic')?.addEventListener('click', () => {
+      pushUndo(); bag().cellItalic = !bag().cellItalic;
+      softStyle();
+      if (ch) patchChart(ch, { inspector: true, flash: false });
+    });
+    // 切换模式后需重绘面板
+    ['#stPageMode', '#stMerge', '#stCondOn', '#stColField'].forEach((sel) => {
+      el.querySelector(sel)?.addEventListener('change', () => {
+        if (ch) patchChart(ch, { inspector: true, flash: false });
+      });
+    });
     el.querySelector('#stPivotBiz')?.addEventListener('click', () => {
       pushUndo();
       Object.assign(bag(), defaultPivotStyle());
@@ -8740,7 +10084,7 @@ function renderSenior(el, comp) {
       const linkN = state.dash.linkages.filter(l => l.sourceChartId === ch.id && l.enabled).length;
       html += `
       <div class="sec"><h4>联动</h4>
-        <p style="font-size:11px;color:var(--text-3);margin-bottom:8px">点击维值过滤目标图（DataEase 同款）。已启用 ${linkN} 条。</p>
+        <p style="font-size:11px;color:var(--text-3);margin-bottom:8px">点击维值过滤目标图。已启用 ${linkN} 条。</p>
         <button class="btn" style="width:100%;justify-content:center" id="cfgLink">配置图间联动…</button>
       </div>`;
     }
@@ -8787,7 +10131,7 @@ function renderSenior(el, comp) {
     if (canAlert) {
       html += `
       <div class="sec"><h4>阈值告警</h4>
-        <p style="font-size:11px;color:var(--text-3);margin-bottom:8px">指标超出阈值时高亮卡片（对应 DataEase 条件/告警）。</p>
+        <p style="font-size:11px;color:var(--text-3);margin-bottom:8px">指标超出阈值时高亮卡片。</p>
         <button class="btn" style="width:100%;justify-content:center" id="cfgAlert">配置阈值告警…</button>
       </div>`;
     }

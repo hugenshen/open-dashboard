@@ -117,6 +117,7 @@ paths:
               required: [message]
               properties:
                 message: { type: string }
+                intent: { type: string, enum: [ask, insight, gen], description: "默认 ask；可省略由服务端从 message 推断" }
                 mode: { type: string, enum: [auto, plan] }
                 styleId: { type: string }
                 datasetIds:
@@ -126,7 +127,34 @@ paths:
                 selectedEncode: { type: object }
       responses:
         '200':
-          description: SSE stream
+          description: |
+            SSE stream. Named events: run, step, plan, patch, chart_ready,
+            answer_table, answer_chart, answer_insight, message_delta, error, finish.
+            ask/insight 结束于 finish.reason=answered；gen 结束于 done / awaiting_confirm.
+  /conversations/{id}/runs/{runId}/adopt:
+    post:
+      tags: [conversation]
+      summary: Adopt ask/insight answer into DashboardPatch (save chart or generate board)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action: { type: string, enum: [save, generate], default: save }
+                styleId: { type: string }
+      responses:
+        '200':
+          description: SSE stream continuation (patch / chart_ready / finish)
   /conversations/{id}/runs/{runId}/cancel:
     post:
       tags: [conversation]
@@ -542,6 +570,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChartViewVO'
+    delete:
+      tags: [dashboard]
+      summary: Delete a chart from draft
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: chartId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
 
   /dashboard/{id}/linkages:
     get:

@@ -6,3 +6,5 @@ spring:
 
 opendashboard:
   stub-query: true
+  conversation:
+    enabled: true

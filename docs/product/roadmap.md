@@ -30,7 +30,7 @@
 
 | 项 | 说明 |
 |----|------|
-| **对话分析（内测一期）** | 见提案 [P004](../proposals/P004-conversation.md) · 设计 [../design/conversation.md](../design/conversation.md) · 原型 `conversation-workspace.html` |
+| **对话分析（内测一期）** | 见 [P004](../proposals/P004-conversation.md)；**问数优先**见 [P006](../proposals/P006-ask-data.md) · 架构 [../design/ai-architecture.md](../design/ai-architecture.md) · 原型 `#/conversation` |
 | 查询控件深化 | 日期范围 / 枚举下拉作用于整页 `filterState` |
 | 维度下钻 | category 点击进下一层（encode / senior） |
 | Tab / 切片器组件 | 容器类组件产品化 |
@@ -45,7 +45,8 @@
 
 | 项 | 说明 |
 |----|------|
-| **对话分析二期** | 监控告警、定时推送、多模型、Skills/MCP、指标口径知识沉淀、报告「数据解读/文本总结」深度、模拟数据一键构造 |
+| **洞察报告（P005）** | 看板/数据集 → 统计洞察 + LLM 叙事 → Umo 报告块（引用 live 图）；见 [P005](../proposals/P005-insight-report.md) |
+| **对话分析二期** | 监控告警、定时推送、多模型、Skills/MCP、指标口径知识沉淀、模拟数据一键构造 |
 | 跳转 | 图 → URL / 另一仪表盘（带参数） |
 | 同环比 | `encode.senior.calc` |
 | KPI 告警 | 阈值配置 + 通知通道（后置） |

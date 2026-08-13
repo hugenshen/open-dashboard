@@ -299,12 +299,23 @@
       width: 32px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer;
     }
     .seg2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--bg); padding: 3px; border-radius: 6px; }
+    .seg3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; background: var(--bg); padding: 3px; border-radius: 6px; }
     .seg4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--bg); padding: 3px; border-radius: 6px; }
-    .seg2 button, .seg4 button {
+    .seg2 button, .seg3 button, .seg4 button {
       height: 28px; border: 0; border-radius: 4px; background: transparent;
       font-size: 11px; color: var(--text-2); font-weight: 500;
     }
-    .seg2 button.on, .seg4 button.on { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    .seg2 button.on, .seg3 button.on, .seg4 button.on { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    .text-style-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .text-style-row input[type="color"] { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+    .text-style-row select { width: 56px; }
+    .mini-btn {
+      width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 4px; background: #fff;
+      color: var(--text-2); cursor: pointer; font-size: 12px; line-height: 1;
+    }
+    .mini-btn.on { background: #e8f3ff; border-color: #94bfff; color: #1664ff; }
+    .hint-muted { font-size: 10px; color: var(--text-3); line-height: 1.4; margin-top: 4px; }
+    .hint-warn { font-size: 10px; color: #c98900; line-height: 1.4; margin: 2px 0 6px; }
     .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin: 6px 0; }
     .style-guide, .senior-guide {
       font-size: 11px; color: var(--text-2); line-height: 1.55; margin: 0 0 10px;
@@ -567,10 +578,43 @@
       font-size: 11px;
     }
     .pill { height: 22px; padding: 0 5px 0 7px; border-radius: 4px; color: #fff; font-size: 11px; display: inline-flex; align-items: center; gap: 3px; max-width: 100%; }
-    .pill .pill-lab { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+    .pill .pill-lab { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+    .pill .pill-badge {
+      flex: 0 0 auto; font-size: 9px; line-height: 1; padding: 2px 4px; border-radius: 3px;
+      background: rgba(255,255,255,.22); opacity: .95;
+    }
     .pill.dim { background: var(--brand); }
     .pill.quota { background: var(--success); }
-    .pill button { border: 0; background: transparent; color: #fff; cursor: pointer; flex: 0 0 auto; }
+    .pill button { border: 0; background: transparent; color: #fff; cursor: pointer; flex: 0 0 auto; padding: 0 1px; font-size: 11px; line-height: 1; opacity: .9; }
+    .pill button:hover { opacity: 1; }
+    .pill .pill-cfg { font-size: 10px; padding: 0 2px; border-radius: 2px; }
+    .pill .pill-cfg:hover { background: rgba(255,255,255,.2); }
+    .field-cfg-hint { font-size: 10px; color: var(--text-3); line-height: 1.45; margin: 0 0 8px; }
+    .field-cfg-hint b { color: var(--brand); font-weight: 600; }
+    .slot-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .field-cfg-pop {
+      position: fixed; z-index: 130; width: 240px; background: #fff; border: 1px solid var(--line);
+      border-radius: 10px; box-shadow: 0 12px 32px rgba(15,17,21,.16); padding: 10px 12px 12px;
+    }
+    .field-cfg-pop .fcp-hd {
+      font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 8px;
+      display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+    }
+    .field-cfg-pop .fcp-hd span { font-weight: 400; font-size: 11px; color: var(--text-3); }
+    .field-cfg-pop .fcp-row {
+      display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; font-size: 12px; color: var(--text-2);
+    }
+    .field-cfg-pop .fcp-row input,
+    .field-cfg-pop .fcp-row select {
+      height: 28px; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; font: inherit; color: var(--text);
+    }
+    .field-cfg-pop .fcp-move { display: flex; gap: 6px; margin-bottom: 8px; }
+    .field-cfg-pop .fcp-move button {
+      flex: 1; height: 28px; border: 1px solid var(--line); border-radius: 6px; background: #f7f8fa;
+      font-size: 12px; cursor: pointer;
+    }
+    .field-cfg-pop .fcp-move button:disabled { opacity: .4; cursor: not-allowed; }
+    .field-cfg-pop .fcp-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
     .miss { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px; font-size: 12px; color: #c2410c; }
     .miss button { display: block; width: 100%; margin-top: 6px; text-align: left; border: 0; background: transparent; color: var(--brand); font-size: 12px; }
     .ctx {
@@ -630,7 +674,9 @@
       padding: 10px 16px 12px; gap: 4px; min-height: 0;
     }
     .kpi-box.compact { padding: 6px 12px 8px; gap: 2px; }
-    .kpi-box .kpi-label { font-size: 12px; color: var(--text-2); line-height: 1.2; }
+    .kpi-box .kpi-sub { font-size: 11px; color: var(--text-3); line-height: 1.2; margin-top: -2px; }
+    .series-colors { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .series-colors input[type="color"] { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
     .kpi-box .n {
       font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15;
       font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -642,10 +688,26 @@
     .kpi-box.alert { outline: 2px solid var(--danger); outline-offset: -2px; }
     .widget.kind-kpi .hd { background: transparent; border-bottom-color: transparent; }
     .table-wrap { height: 100%; overflow: auto; font-size: 12px; background: #fff; }
-    table.dt { width: 100%; border-collapse: collapse; font-size: 12px; }
-    table.dt th, table.dt td { padding: 8px 10px; border-bottom: 1px solid var(--line-soft); text-align: left; line-height: 1.4; }
+    .table-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+    .table-wrap::-webkit-scrollbar-thumb { background: var(--tbl-scroll, #c9cdd4); border-radius: 999px; }
+    .table-wrap::-webkit-scrollbar-track { background: transparent; }
+    table.dt { width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--tbl-border, #e5e6eb); }
+    table.dt th, table.dt td {
+      padding: 0 10px; border-bottom: 1px solid var(--tbl-border, var(--line-soft));
+      border-right: 1px solid transparent; text-align: left; line-height: 1.4;
+      height: var(--row-h, 36px); box-sizing: border-box;
+    }
+    table.dt.no-h-border th, table.dt.no-h-border td { border-bottom-color: transparent; }
+    table.dt:not(.no-v-border) th, table.dt:not(.no-v-border) td { border-right-color: var(--tbl-border, #eff0f1); }
+    table.dt.no-outer-border { border-color: transparent; }
     table.dt th { color: var(--text-2); font-weight: 600; background: #f7f8fa; }
-    table.dt.stripe tbody tr:nth-child(even) { background: #fafbfc; }
+    table.dt.stripe tbody tr:nth-child(even) { background: var(--stripe-bg, #fafbfc); }
+    table.dt.wrap th, table.dt.wrap td { white-space: normal; word-break: break-word; height: auto; min-height: var(--row-h, 36px); }
+    table.dt.cell-left td, table.dt.cell-left th { text-align: left; }
+    table.dt.cell-left td.num, table.dt.cell-left th.num { text-align: right; }
+    table.dt.cell-right td, table.dt.cell-right th { text-align: right; }
+    table.dt td.idx, table.dt th.idx { width: 36px; text-align: center; color: var(--text-3); }
+    table.dt.pivot-tree td.row-head { font-weight: 500; }
     table.dt tbody tr { transition: background-color .12s; }
     table.dt tbody tr:hover { background: #f5f8ff; }
     table.dt td.num, table.dt th.num { text-align: right; font-variant-numeric: tabular-nums; }

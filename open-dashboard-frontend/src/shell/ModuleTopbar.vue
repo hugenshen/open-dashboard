@@ -12,6 +12,7 @@ const route = useRoute()
 
 const FALLBACK: MenuItem[] = [
   { key: 'workbench', label: '工作台', path: '/workbench' },
+  { key: 'conversations', label: '对话', path: '/conversations' },
   { key: 'datasources', label: '数据源', path: '/datasources' },
   { key: 'datasets', label: '数据集', path: '/datasets' },
   { key: 'dashboards', label: '仪表盘', path: '/dashboards' },

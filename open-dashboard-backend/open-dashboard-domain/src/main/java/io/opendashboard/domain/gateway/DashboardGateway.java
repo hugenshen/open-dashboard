@@ -56,6 +56,8 @@ public interface DashboardGateway {
 
     Optional<ChartViewVO> saveChart(long dashboardId, long chartId, ChartViewSaveRequest req);
 
+    boolean deleteChart(long dashboardId, long chartId);
+
     Optional<DashboardStatusVO> publish(long id);
 
     Optional<DashboardStatusVO> status(long id);

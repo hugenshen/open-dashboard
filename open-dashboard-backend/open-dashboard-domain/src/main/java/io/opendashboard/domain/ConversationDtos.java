@@ -66,11 +66,18 @@ public final class ConversationDtos {
 
     public record ConversationRunRequest(
             String message,
+            String intent,
             String mode,
             String styleId,
             List<String> datasetIds,
             String selectedChartId,
             Map<String, Object> selectedEncode
+    ) {}
+
+    /** Adopt ask/insight answer into a dashboard patch. */
+    public record ConversationAdoptRequest(
+            String action,
+            String styleId
     ) {}
 
     public record StylePresetVO(

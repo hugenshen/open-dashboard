@@ -69,6 +69,18 @@ export const router = createRouter({
       meta: { title: '分享仪表盘', fullBleed: true, hideShell: true }
     },
     {
+      path: '/conversations',
+      name: 'conversations',
+      component: () => import('../conversation/views/ConversationWorkspace.vue'),
+      meta: { title: '对话分析', fullBleed: true }
+    },
+    {
+      path: '/conversations/:id',
+      name: 'conversation-detail',
+      component: () => import('../conversation/views/ConversationWorkspace.vue'),
+      meta: { title: '对话分析', fullBleed: true }
+    },
+    {
       path: '/reports',
       name: 'reports',
       component: () => import('../views/reports/list.vue'),

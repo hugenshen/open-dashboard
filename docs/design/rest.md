@@ -29,6 +29,7 @@
 | PUT | `/dashboard/{id}/layout` | `dashboard:manage` | 布局（含 mobile） |
 | PUT | `/dashboard/{id}/components` | manage | 组件 upsert/delete |
 | PUT | `/dashboard/{id}/charts/{chartId}` | manage | 单图配置 |
+| DELETE | `/dashboard/{id}/charts/{chartId}` | manage | 删除草稿图 |
 | POST | `/dashboard/{id}/publish` | manage | 发布 |
 | POST | `/dashboard/{id}/discardDraft` | manage | 丢弃草稿 |
 | GET | `/dashboard/{id}/status` | auth | 发布状态 |
@@ -110,6 +111,27 @@
 | PATCH | `/report/{id}` | manage | 元数据 |
 | PUT | `/report/{id}/doc` | manage | 文档；contentId 冲突 409 |
 | POST | `/report/{id}/publish` | manage | 发布 |
+
+---
+
+## Conversation · `/api/conversations` · `@RequireAuth`（feature flag）
+
+开关：`opendashboard.conversation.enabled`。关闭时除 `/feature` 外返回 404。权限：`conversation:use`。
+
+| Method | Path | 说明 |
+|--------|------|------|
+| GET | `/conversations/feature` | `{ enabled }` |
+| GET | `/conversations/styles` | 风格目录 |
+| GET/POST | `/conversations` | 列表 / 创建 |
+| GET/PATCH/DELETE | `/conversations/{id}` | 详情 / 更新 / 删除 |
+| GET | `/conversations/{id}/messages` | 消息 |
+| POST | `/conversations/{id}/runs` | SSE 启动 run |
+| POST | `/conversations/{id}/runs/{runId}/confirm-plan` | SSE 确认 Plan |
+| POST | `/conversations/{id}/runs/{runId}/cancel` | 取消 |
+| GET | `/conversations/{id}/revisions` | 版本列表 |
+| POST | `/conversations/{id}/revisions/{rev}/restore` | 恢复 snapshot |
+
+设计：[conversation.md](./conversation.md) · [ai-harness.md](./ai-harness.md)
 
 ---
 

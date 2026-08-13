@@ -3,10 +3,22 @@ server:
 
 spring:
   datasource:
-    # Docker PG via scripts/setup-pg-docker.sh / compose (host 5434 → container 5432)
-    url: jdbc:postgresql://localhost:5434/opendashboard
+    # Homebrew postgresql@16 via scripts/setup-pg-local.sh (port 5433)
+    url: jdbc:postgresql://localhost:5433/opendashboard
     username: opendashboard
     password: opendashboard
 
 opendashboard:
   stub-query: false
+  conversation:
+    enabled: true
+    harness:
+      mode: deerflow
+      # Java often runs on 8082 via --server.port; harness BI base is separate (OD_BI_BASE)
+      base-url: http://127.0.0.1:8091
+      internal-token: od-dev-internal
+      timeout-ms: 180000
+  bootstrap:
+    meta-datasource: false
+    host: 127.0.0.1
+    port: 5433

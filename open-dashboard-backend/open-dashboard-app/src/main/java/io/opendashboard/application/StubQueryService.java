@@ -48,25 +48,17 @@ public class StubQueryService {
         if (!stubQuery) {
             DatasetQueryResult live = tryLive(request);
             if (live != null) return live;
-            if (isTemplateDemoDataset(datasetId)) {
-                return stubExecute(request);
-            }
+            // Never invent demo rows when stub-query is off — return empty with honest SQL note.
             long start = System.currentTimeMillis();
             return new DatasetQueryResult(
                     List.of(),
                     List.of(),
                     false,
-                    "-- live query unavailable: dataset=" + datasetId,
+                    "-- live query unavailable: dataset=" + datasetId + " (stub fallback disabled)",
                     System.currentTimeMillis() - start
             );
         }
         return stubExecute(request);
-    }
-
-    private static boolean isTemplateDemoDataset(String datasetId) {
-        return "ds_sales".equals(datasetId)
-                || "ds_ops".equals(datasetId)
-                || "ds_fin".equals(datasetId);
     }
 
     private DatasetQueryResult tryLive(DatasetQueryRequest request) {
@@ -123,7 +115,9 @@ public class StubQueryService {
                     .map(r -> toNumber(r.get(measure)))
                     .toList();
             columns = List.of(new ColumnMeta(measure, "DECIMAL", measure, agg));
-            rows = List.of(List.of(aggregate(values, agg)));
+            rows = values.isEmpty()
+                    ? List.of()
+                    : List.of(List.of(aggregate(values, agg)));
         } else {
             columns = List.of(
                     new ColumnMeta(dim, "STRING", dim, null),
@@ -135,7 +129,9 @@ public class StubQueryService {
                 columns,
                 rows,
                 false,
-                "-- stub: dataset=" + datasetId,
+                rows.isEmpty()
+                        ? "-- stub: empty dataset=" + datasetId + " (no demo rows; not falling back to ds_sales)"
+                        : "-- stub: dataset=" + datasetId,
                 System.currentTimeMillis() - start
         );
     }
@@ -246,21 +242,24 @@ public class StubQueryService {
                             "income", 0, "expense", 185000, "profit", -185000)
             );
         }
-        // ds_sales (default)
-        return List.of(
-                row("region", "华东", "channel", "线上", "product", "A", "salesman", "张三",
-                        "amount", 1200, "qty", 30, "profit", 420, "order_cnt", 12),
-                row("region", "华东", "channel", "线下", "product", "B", "salesman", "李四",
-                        "amount", 860, "qty", 18, "profit", 210, "order_cnt", 8),
-                row("region", "华北", "channel", "线上", "product", "A", "salesman", "王五",
-                        "amount", 980, "qty", 22, "profit", 300, "order_cnt", 10),
-                row("region", "华北", "channel", "投放", "product", "C", "salesman", "张三",
-                        "amount", 640, "qty", 14, "profit", 160, "order_cnt", 6),
-                row("region", "华南", "channel", "线上", "product", "B", "salesman", "赵六",
-                        "amount", 760, "qty", 16, "profit", 190, "order_cnt", 7),
-                row("region", "华南", "channel", "线下", "product", "C", "salesman", "李四",
-                        "amount", 520, "qty", 11, "profit", 120, "order_cnt", 5)
-        );
+        if ("ds_sales".equals(datasetId)) {
+            return List.of(
+                    row("region", "华东", "channel", "线上", "product", "A", "salesman", "张三",
+                            "amount", 1200, "qty", 30, "profit", 420, "order_cnt", 12),
+                    row("region", "华东", "channel", "线下", "product", "B", "salesman", "李四",
+                            "amount", 860, "qty", 18, "profit", 210, "order_cnt", 8),
+                    row("region", "华北", "channel", "线上", "product", "A", "salesman", "王五",
+                            "amount", 980, "qty", 22, "profit", 300, "order_cnt", 10),
+                    row("region", "华北", "channel", "投放", "product", "C", "salesman", "张三",
+                            "amount", 640, "qty", 14, "profit", 160, "order_cnt", 6),
+                    row("region", "华南", "channel", "线上", "product", "B", "salesman", "赵六",
+                            "amount", 760, "qty", 16, "profit", 190, "order_cnt", 7),
+                    row("region", "华南", "channel", "线下", "product", "C", "salesman", "李四",
+                            "amount", 520, "qty", 11, "profit", 120, "order_cnt", 5)
+            );
+        }
+        // Unknown / user datasets: do NOT silently reuse sales demo rows.
+        return List.of();
     }
 
     private static Map<String, Object> row(Object... kv) {

@@ -12,3 +12,6 @@
 | [data-query.md](./data-query.md) | 取数链路 |
 | [auth.md](./auth.md) | Auth SPI |
 | [conversation.md](./conversation.md) | 对话分析（对齐 [P004](../proposals/P004-conversation.md)） |
+| [ai-architecture.md](./ai-architecture.md) | AI 能力总架构（三开源对照 · **问数优先** · 采纳/生成看板） |
+| [dashboard-generation.md](./dashboard-generation.md) | 仪表盘生成流程（Patch → draft → chartQuery） |
+| [ai-harness.md](./ai-harness.md) | DeerFlow / `opendashboard-harness` 唯一 Agent；Java 零 AI + 内部 BI API |
