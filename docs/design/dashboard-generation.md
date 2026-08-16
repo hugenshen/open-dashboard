@@ -60,7 +60,8 @@ sequenceDiagram
   "dashboardId": "…",
   "ops": [
     { "op": "upsert_chart", "chartId": "…", "type": "bar", "datasetId": "…", "title": "…", "encode": {}, "style": {} },
-    { "op": "upsert_component", "id": "…", "chartId": "…", "x": 0, "y": 0, "w": 24, "h": 12 },
+    { "op": "upsert_component", "id": "…", "type": "chart", "chartId": "…", "x": 0, "y": 9, "w": 36, "h": 20 },
+    { "op": "upsert_component", "id": "…", "type": "query", "x": 0, "y": 0, "w": 72, "h": 8, "props": { "label": "查询条件", "items": [] } },
     { "op": "set_layout", "gridCols": 72, "themeRef": "default" },
     { "op": "set_theme", "styleId": "feishu-blue" }
   ]
@@ -70,18 +71,33 @@ sequenceDiagram
 - Apply 前必须过 Schema Guard / Validate。
 - 禁止把查询结果行写入 layout / component / HTML。
 
+## 生成默认信息架构
+
+默认稿面（对齐销售模板，由 `od_plan_charts` + `od_layout_board` 落地）：
+
+1. 顶栏 `type=query`（日期 + 状态/渠道等，最多 3 项）
+2. 有数 KPI（探测 `rowCount>0` 且聚合非 null）
+3. 两列满铺图（4～6 张量级；时间分组失败则不出趋势）
+4. 底表 `grouptable` 吃掉留白（禁止明细全列表）
+
+`upsert_component` 可 `type=query`，`props.items: [{kind, field, label, scope}]`。
+
+**质检闸（plan_charts 与 layout_board 各跑一次）**：关假 KPI 环比、去掉与柱图同维的饼图、丢掉粒/原始时间戳折线、明细表改汇总。不阻断 emit，只自动修复。
+
+**本轮查询条不进入 `chartQuery` 的 `context.filters`**（编辑器仍传 `[]`）。**意图卡的 `encode.filters`（近一年等）会进入 SQL WHERE。** 控件可点、配置落 draft；改数留给 P1「查询控件深化」。禁止为了密度保留空 KPI / 空趋势。
+
 ## 规划来源
 
 | 来源 | 条件 | 行为 |
 |------|------|------|
-| 确定性规划器 | 默认；或 LLM 关闭 / 失败 / Guard 不通过 | 经营分析模板：KPI + 对比 + 趋势 |
+| 确定性规划器 | 默认；或 LLM 关闭 / 失败 / Guard 不通过 | profile → plan_charts → 质检 → layout（compose-board 仅双失败兜底） |
 | OpenAI 兼容 LLM | `opendashboard.conversation.llm.enabled=true` 且有 key | 结构化 Patch JSON；非法字段整次回退确定性 |
 
 配置见 [ai-harness.md](./ai-harness.md#llm-配置)。
 
 ## SSE 事件（生成期）
 
-`run`（含 runId）· `step` · `plan` · `patch` · `chart_ready` · `message_delta` · `error` · `finish{reason,detail}`
+`run`（含 runId）· `step` · `plan` · `intent_map` · `patch` · `chart_ready` · `message_delta` · `error` · `finish{reason,detail}`
 
 Plan 模式：`finish.reason=awaiting_confirm` → 客户端再调 `confirm-plan` 续流 apply。
 
@@ -90,7 +106,7 @@ Plan 模式：`finish.reason=awaiting_confirm` → 客户端再调 `confirm-plan
 | 入口 | 路径 | 说明 |
 |------|------|------|
 | 一级对话 | `/conversations` | 两段式：落地 → 工作台（对齐高保） |
-| 编辑器侧栏 | `/dashboards/:id/edit?conversationId=` | AI 拾取当前图 + Prompt；共享 conversationId |
+| 编辑器 SQLBot | `/dashboards/:id/edit` | DataEase 式浮层问数；选当前看板数据集；默认不写画布；「保存到仪表盘」才 Patch |
 | 高保原型 | `prototypes/hi-fi/conversation-workspace.html` | 交互真相源 |
 
 ## 双轨边界（勿混）

@@ -34,16 +34,44 @@ depends: P004
 - OpenAPI：`intent` + `/runs/{runId}/adopt`
 - BE：`AskAnswerPlanner` + Harness ask/insight 路径；采纳 → Patch
 - FE：`/conversations` 问数优先、结果预览、保存/生成
+- **编辑器 SQLBot**：对齐 DataEase 仪表盘编辑页浮层（`assistant.vue` + 当前数据集选择）。实现迁到 `ConversationAiPanel`：默认 `intent=ask`，不自动写画布；「保存到仪表盘」走 adopt。
+- **意图对齐**：`IntentResolver` 把「近一年 / 商户 / 收入」映射到 schema 字段；缺字段澄清。
 
-### Ask-3（后）
+### Ask-3（进行中 · SQLBot NL2SQL）
 
-- NL2SQL / 受控 SQL；解释 SQL；澄清打断
+对照 `refs/sqlbot`（[dataease/SQLBot](https://github.com/dataease/SQLBot)）问数主路径，**不**整仓搬用户/工作空间/RAG/xpack：
+
+```text
+schema（M-Schema）→ LLM 生成 JSON{sql, chart-type}
+  → sqlglot 只读校验 + 表白名单
+  → Java POST /api/internal/bi/query/sql 执行
+  → LLM/启发式图表配置
+  → SSE answer_sql / answer_table / answer_chart
+```
+
+- 仅 `SELECT`/`WITH`；表名必须是当前数据集物理表；前端不暴露任意 SQL 入口。
+- LLM 未配置或生成失败时回退 Ask-2 意图卡 encode。
+- 画布真相仍是 encode + `chartQuery`；SQL 只在会话预览。
+- **步骤二次折叠**：`step.preview` 把 Schema / SQL / 行样本藏进工具条，点「N 个字段 >」展开（对照 Kimi 搜索条）。
+
+### Ask-4（进行中 · 文件数据源）
+
+对照 DataEase `LOCALFILE`（Excel / ExcelRemote）与 API：
+
+```text
+上传/拉取 → 解析字段+样例行 → 落入可查询表 → 与 JDBC 同一套 schema / chartQuery / SQLBot
+```
+
+- **本期**：问数页 `POST /api/dataset/import`（CSV / xlsx 首表）→ 数据集 + 进程内表；重启后从 `opendashboard.file-import.dir` 回放。
+- **不做（本期）**：API 数据源每次 chartQuery 打 HTTP。DE 也是先把 JSON 同步成引擎表再查；OD 后续同一模式。
+- `.xls` 请另存为 xlsx/csv（不引入完整 POI）。
 
 ## 非目标
 
 - 把查询结果行持久化进布局或 HTML  
 - DeerFlow 式沙箱任意 SQL  
-- 替代 chartQuery 运行时取数  
+- 用 SQLBot SQL 替代 chartQuery 作为看板运行时取数  
+- 前端任意 SQL 入口  
 
 ## 验收要点（草案）
 

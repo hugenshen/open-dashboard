@@ -12,7 +12,7 @@
 - **对话是新入口**；仪表盘仍是唯一运行时真相。
 - **默认意图是问数**；结果可「保存到仪表盘」或「直接生成仪表盘」；亦可快捷直出整页看板。
 - 不生成「数据写死在 HTML」的静态页；持久化只写结构化 `DashboardPatch`。
-- 双入口：一级 `/conversations`（高保 `#/conversation`）；仪表盘/报告编辑器内 AI 拾取 + Prompt。
+- 双入口：一级 `/conversations`（高保 `#/conversation`）；顶栏 **SQLBot**（帮助按钮前，对齐 DataEase Header）；仪表盘编辑器内点开问数面板。
 
 ## 三产品对照（取舍）
 
@@ -39,6 +39,7 @@
 
 - **融合入口**：[`dashboard-commercial.html#/conversation`](../../prototypes/hi-fi/dashboard-commercial.html)（推荐）
 - 对话交互页：[`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html)（`?embed=1` 时嵌入壳内）
+- **编辑器 SQLBot**：顶栏「帮助」前入口；编辑页下拉问数面板（对齐 DataEase Header + `assistant.vue`）；默认问数、不写画布
 - 启动：`prototypes/hi-fi/start.sh`（默认打开 `#/conversation`）
 
 ### 壳层
@@ -63,7 +64,9 @@
 
 ## SSE 事件
 
-`step` · `plan` · `patch` · `chart_ready` · `answer_table` · `answer_chart` · `answer_insight` · `message_delta` · `error` · `finish{reason,detail}`
+`run` · `step` · `plan` · `intent_map` · `answer_sql` · `answer_table` · `answer_chart` · `answer_insight` · `answer_clarify` · `patch` · `chart_ready` · `message_delta` · `error` · `finish{reason,detail}`
+
+`step` 可带 `preview` 与 `parent`（问数时 `parent=sqlbot`，子步骤嵌在「SQLBot 生成 SQL」下：读 Schema、抽样、模型生成、只读校验、执行、选图）。思考过程在回答气泡外，Kimi 式一级折叠（思考中 / 已思考）。
 
 - 问数 / 洞察：`finish.reason=answered`（会话预览，不落结果行）
 - 采纳：`POST .../runs/{runId}/adopt`（`save` | `generate`）→ Patch → `chart_ready`

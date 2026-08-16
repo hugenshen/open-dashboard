@@ -88,6 +88,7 @@
 | Method | Path | 权限 | 说明 |
 |--------|------|------|------|
 | GET/POST | `/dataset` | 写需 `dataset:manage` | 列表 / 创建 |
+| POST | `/dataset/import` | manage | 问数上传 CSV/xlsx → 数据集（落表后查询，对齐 DataEase LOCALFILE） |
 | GET/PATCH/DELETE | `/dataset/{id}` | 写需 manage | CRUD |
 | PUT | `/dataset/{id}/fields` | manage | 字段银行 |
 | POST | `/dataset/{id}/preview` | auth | 预览 |
@@ -125,13 +126,20 @@
 | GET/POST | `/conversations` | 列表 / 创建 |
 | GET/PATCH/DELETE | `/conversations/{id}` | 详情 / 更新 / 删除 |
 | GET | `/conversations/{id}/messages` | 消息 |
-| POST | `/conversations/{id}/runs` | SSE 启动 run |
-| POST | `/conversations/{id}/runs/{runId}/confirm-plan` | SSE 确认 Plan |
-| POST | `/conversations/{id}/runs/{runId}/cancel` | 取消 |
+| POST | `/conversations/{id}/runs` | **废弃**（410）；请用 harness `POST /harness/v1/conversations/{id}/runs` |
+| POST | `/conversations/{id}/runs/{runId}/confirm-plan` | 废弃；走 harness |
+| POST | `/conversations/{id}/runs/{runId}/cancel` | 废弃；走 harness |
 | GET | `/conversations/{id}/revisions` | 版本列表 |
 | POST | `/conversations/{id}/revisions/{rev}/restore` | 恢复 snapshot |
 
 设计：[conversation.md](./conversation.md) · [ai-harness.md](./ai-harness.md)
+
+仪表盘编辑器 SQLBot 浮层走同一套 harness 问数（`intent=ask`），不新增 REST。采纳 `POST /harness/v1/conversations/{id}/runs/{runId}/adopt`。
+
+Harness 内部（不对外）：
+
+- `POST /api/internal/bi/resolve-intent`（短语→字段）
+- `POST /api/internal/bi/query/sql`（SQLBot Ask-3：datasetId + 只读 SQL；表必须属于该数据集）
 
 ---
 

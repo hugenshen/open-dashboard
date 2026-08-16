@@ -103,7 +103,11 @@ paths:
   /conversations/{id}/runs:
     post:
       tags: [conversation]
-      summary: Start a run; response is text/event-stream (SSE)
+      deprecated: true
+      summary: "[DEPRECATED] Use harness POST /harness/v1/conversations/{id}/runs"
+      description: |
+        Java entry retired (HTTP 410). Frontend must call opendashboard-harness via Vite
+        proxy `/harness` → `:8091`. See docs/design/ai-harness.md.
       parameters:
         - name: id
           in: path
@@ -126,11 +130,17 @@ paths:
                 selectedChartId: { type: string }
                 selectedEncode: { type: object }
       responses:
+        '410':
+          description: Gone — use harness direct SSE
         '200':
           description: |
-            SSE stream. Named events: run, step, plan, patch, chart_ready,
-            answer_table, answer_chart, answer_insight, message_delta, error, finish.
+            (legacy) SSE stream. Named events: run, step, plan, patch, chart_ready,
+            intent_map, answer_sql, answer_table, answer_chart, answer_insight, answer_clarify,
+            message_delta, error, finish.
             ask/insight 结束于 finish.reason=answered；gen 结束于 done / awaiting_confirm.
+            intent_map 给出短语→字段对齐；unresolved 非空时问数应澄清而非盲查。
+            Ask-3（SQLBot）：answer_sql 为校验后的只读 SQL（会话预览，不写画布）。
+            step 可带 preview（kind=schema|sql|query|profile）与 parent（如 sqlbot）供思考过程嵌套展示字段/SQL/抽样。
   /conversations/{id}/runs/{runId}/adopt:
     post:
       tags: [conversation]
@@ -306,6 +316,29 @@ paths:
       responses:
         '200':
           description: OK
+  /dataset/import:
+    post:
+      tags: [dataset]
+      summary: Import CSV/xlsx as a queryable dataset (Ask-data file source)
+      description: |
+        DataEase-aligned: parse file → field bank → land rows into an in-process table
+        (not live HTTP). Then 问数 uses the same schema/query path as JDBC datasets.
+        API datasources are the same pattern (JSON → table) and are not live-polled.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: .csv / .tsv / .xlsx（首表）；.xls 请另存
+      responses:
+        '200':
+          description: DatasetDetailVO
   /dataset/{id}:
     get:
       tags: [dataset]
@@ -1275,7 +1308,10 @@ components:
           description: Raw column projection (table chart); mutually exclusive with agg path when used alone
         filters:
           type: object
-          description: FilterAST root node
+          description: |
+            Filter AST. Intent-derived relative time is `{items:[{field,op:last,n,unit}]}`.
+            Field names must be schema identifiers. Compiled into SQL WHERE by datasetQuery.
+            Dashboard query-bar widgets still do not inject here (P1).
         limit: { type: integer }
         options:
           type: object
@@ -1311,7 +1347,9 @@ components:
       properties:
         datasetId: { type: string }
         chartType: { type: string }
-        encode: { type: object }
+        encode:
+          type: object
+          description: category / value / agg; optional filters from intent (relative time)
         style: { type: object }
         senior: { type: object }
 

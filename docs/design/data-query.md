@@ -73,6 +73,8 @@ flowchart LR
 
 类名 `StubQueryService` 为历史命名：在真实模式下仍是查询编排入口。
 
+JDBC 语句超时默认 **60s**（`opendashboard.query.timeout-sec`）；连接/ping 仍 8s。超时或 SQL 失败时返回空行，并在 `sql` 备注里写 `-- live query failed: …`，不再伪装成「没数据」。问「收入」时若 `MchIncome` 等入账字段实时聚合失败，chartQuery 回退到 `Amount`（支付金额）。商户号（`MchId`）按维度处理，不因字段名以 `id` 结尾判为 junk。
+
 模板演示数据集若连库失败，可回落 stub 行，保证模板看板可渲染。
 
 ---
