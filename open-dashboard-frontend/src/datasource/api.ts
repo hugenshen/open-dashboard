@@ -1,4 +1,4 @@
-import { apiFetch } from '../api/http'
+import { apiFetch, apiFetchForm } from '../api/http'
 
 export interface DatasourceVO {
   id: string
@@ -153,5 +153,10 @@ export const datasetApi = {
       columns: Array<{ name: string; type?: string; dataType?: string }>
       rows: unknown[][]
       sql?: string
-    }>('POST', `/dataset/${id}/preview`)
+    }>('POST', `/dataset/${id}/preview`),
+  importFile: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return apiFetchForm<DatasetDetailVO>('/dataset/import', form)
+  }
 }

@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: open-dashboard
+  servlet:
+    multipart:
+      max-file-size: 8MB
+      max-request-size: 8MB
   datasource:
     url: jdbc:postgresql://localhost:5432/opendashboard
     username: opendashboard
@@ -25,6 +29,10 @@ management:
 opendashboard:
   # When true, query endpoints return stub ResultTable without a live warehouse
   stub-query: true
+  query:
+    timeout-sec: 60
+  file-import:
+    dir: ${user.home}/.opendashboard/file-datasets
   conversation:
     enabled: false
     harness:

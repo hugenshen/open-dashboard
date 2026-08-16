@@ -81,6 +81,31 @@ export async function apiFetch<T>(
   return JSON.parse(text) as T
 }
 
+/** Multipart upload (do not set Content-Type; browser sets boundary). */
+export async function apiFetchForm<T>(url: string, form: FormData): Promise<T> {
+  const res = await fetch(`/api${url}`, {
+    method: 'POST',
+    headers: {
+      ...getAuthHeaders()
+    },
+    body: form
+  })
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const body = await res.json()
+      detail = body?.message ? `: ${body.message}` : ''
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`POST ${url} → ${res.status}${detail}`)
+  }
+  if (res.status === 204) return undefined as T
+  const text = await res.text()
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
+}
+
 /** 下载二进制（CSV 等） */
 export async function apiFetchBinary(
   url: string,

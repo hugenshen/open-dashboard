@@ -9,6 +9,8 @@ import io.opendashboard.domain.DatasetDtos.DatasetUpdateRequest;
 import io.opendashboard.domain.QueryDtos.DatasetQueryResult;
 import io.opendashboard.adapter.security.RequireAuth;
 import io.opendashboard.adapter.security.RequirePermission;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,7 +20,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -42,6 +47,21 @@ public class DatasetController {
     @RequirePermission("dataset:manage")
     public DatasetDetailVO create(@RequestBody DatasetCreateRequest request) {
         return service.create(request);
+    }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequirePermission("dataset:manage")
+    public DatasetDetailVO importFile(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择 CSV 或 Excel 文件");
+        }
+        try {
+            return service.importFile(file.getOriginalFilename(), file.getBytes());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "无法读取文件: " + e.getMessage());
+        }
     }
 
     @GetMapping("/{id}")

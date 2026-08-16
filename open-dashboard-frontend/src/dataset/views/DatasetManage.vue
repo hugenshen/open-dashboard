@@ -559,9 +559,14 @@ onMounted(async () => {
   const bootStudio = route.query.studio === '1'
   const bootSrc = typeof route.query.src === 'string' ? route.query.src : ''
   const bootTable = typeof route.query.table === 'string' ? route.query.table : ''
+  const bootId = typeof route.params.id === 'string' ? route.params.id : ''
   await load()
   if (bootStudio) {
-    await openStudio('create', { src: bootSrc, table: bootTable })
+    if (bootId && detail.value?.meta?.id === bootId) {
+      await openStudio('edit')
+    } else {
+      await openStudio('create', { src: bootSrc, table: bootTable })
+    }
     router.replace({ path: route.path, query: {} })
   }
 })

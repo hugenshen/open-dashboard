@@ -25,16 +25,19 @@ public class DatasetService {
     private final ObjectProvider<DatasetGateway> repository;
     private final ObjectProvider<DatasourceService> datasourceService;
     private final StubQueryService stubQueryService;
+    private final FileTableStore fileTables;
     private final ConcurrentHashMap<String, DatasetDetailVO> mem = new ConcurrentHashMap<>();
 
     public DatasetService(
             ObjectProvider<DatasetGateway> repository,
             ObjectProvider<DatasourceService> datasourceService,
-            StubQueryService stubQueryService
+            StubQueryService stubQueryService,
+            FileTableStore fileTables
     ) {
         this.repository = repository;
         this.datasourceService = datasourceService;
         this.stubQueryService = stubQueryService;
+        this.fileTables = fileTables;
         seedTemplateDemoDatasets();
     }
 
@@ -114,6 +117,22 @@ public class DatasetService {
         return detail;
     }
 
+    public DatasetDetailVO importFile(String filename, byte[] bytes) {
+        TabularFileParser.ParsedTable parsed = TabularFileParser.parse(filename, bytes);
+        String base = filename == null ? "上传数据" : filename.replaceAll("\\.[^.]+$", "");
+        if (base.isBlank()) base = "上传数据";
+        String table = "od_file_" + Long.toHexString(System.nanoTime());
+        DatasetDetailVO detail = create(new DatasetCreateRequest(
+                base,
+                "问数上传",
+                null,
+                table,
+                parsed.fields()
+        ));
+        fileTables.put(detail.meta().id(), table, parsed);
+        return detail;
+    }
+
     public Optional<DatasetDetailVO> update(String id, DatasetUpdateRequest req) {
         DatasetGateway repo = repository.getIfAvailable();
         if (repo != null) return repo.update(id, req);
@@ -146,6 +165,7 @@ public class DatasetService {
     }
 
     public boolean delete(String id) {
+        fileTables.remove(id);
         DatasetGateway repo = repository.getIfAvailable();
         if (repo != null) return repo.delete(id);
         return mem.remove(id) != null;
@@ -154,6 +174,9 @@ public class DatasetService {
     public Optional<DatasetQueryResult> preview(String id) {
         DatasetDetailVO detail = get(id).orElse(null);
         if (detail == null) return Optional.empty();
+        if (fileTables.has(id)) {
+            return Optional.ofNullable(fileTables.scan(id, 10));
+        }
         try {
             String srcId = detail.meta().datasourceId();
             String table = detail.meta().tableName();
