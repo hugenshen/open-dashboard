@@ -154,10 +154,26 @@
     .tag.dirty { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
     .spacer { flex: 1; }
     .editor { flex: 1; min-height: 0; display: grid; grid-template-columns: 228px minmax(0,1fr) 300px; }
+    .editor.data-ops-open { grid-template-columns: 228px minmax(0,1fr) 540px; }
     .editor.no-insp { grid-template-columns: 228px minmax(0,1fr) 0; }
     .editor.no-insp .insp { display: none; }
     .pane { background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
     .insp { border-right: 0; border-left: 1px solid var(--line); }
+    .insp .pbody { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+    .insp-mode { flex-shrink: 0; padding: 6px 10px; background: #fff; border-bottom: 1px solid var(--line); }
+    .insp-mode .seg3 { background: #eef0f3; }
+    .insp-mode .seg3 button { font-size: 12px; }
+    .insp-mode .seg3 button.on { color: var(--brand); font-weight: 600; }
+    .insp-scroll { flex: 1; overflow: auto; padding: 10px; min-height: 0; }
+    .data-work { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(240px, 1fr) 220px; overflow: hidden; }
+    .data-work.solo { grid-template-columns: 1fr; }
+    .data-bind { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
+    .data-bind-body { flex: 1; overflow: auto; padding: 10px; min-height: 0; }
+    .data-bind-foot { flex-shrink: 0; padding: 8px 10px 10px; border-top: 1px solid var(--line); background: #fff; }
+    .data-bind-foot .btn-apply-data { width: 100%; height: 32px; justify-content: center; font-weight: 600; }
+    .data-ops { min-width: 0; min-height: 0; overflow: auto; background: #fafbfc; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+    .data-ops-hd { flex-shrink: 0; height: 40px; padding: 0 12px; display: flex; align-items: center; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--line); background: #fff; }
+    .data-ops-body { flex: 1; overflow: auto; padding: 10px; }
     .ptabs { display: grid; grid-template-columns: 1fr 1fr; height: 38px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
     .ptabs.t3 { grid-template-columns: 1fr 1fr 1fr; }
     .ptabs button { border: 0; background: transparent; color: var(--text-2); font-size: 12px; position: relative; }
@@ -188,12 +204,13 @@
       width: 32px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer;
     }
     .seg2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--bg); padding: 3px; border-radius: 6px; }
+    .seg3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; background: var(--bg); padding: 3px; border-radius: 6px; }
     .seg4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--bg); padding: 3px; border-radius: 6px; }
-    .seg2 button, .seg4 button {
+    .seg2 button, .seg3 button, .seg4 button {
       height: 28px; border: 0; border-radius: 4px; background: transparent;
       font-size: 11px; color: var(--text-2); font-weight: 500;
     }
-    .seg2 button.on, .seg4 button.on { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    .seg2 button.on, .seg3 button.on, .seg4 button.on { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
     .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin: 6px 0; }
     .style-guide, .senior-guide {
       font-size: 11px; color: var(--text-2); line-height: 1.55; margin: 0 0 10px;
@@ -535,6 +552,190 @@
     @media (max-width: 960px) {
       .stat-row { grid-template-columns: 1fr 1fr; }
       .grid-2 { grid-template-columns: 1fr; }
+    }
+    /* ---- workbench · 飞书式启动页 ---- */
+    .wb-stage {
+      flex: 1; min-height: 0; overflow: auto; background: #f5f6f7;
+    }
+    .wb-home {
+      width: min(1280px, 100%);
+      margin: 0 auto;
+      padding: 28px 28px 40px;
+      box-sizing: border-box;
+    }
+    .wb-greet {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .wb-greet .hello {
+      font-size: 24px; font-weight: 650; letter-spacing: -.03em; color: #1f2329; line-height: 1.25;
+    }
+    .wb-greet .sub {
+      margin-top: 6px; font-size: 13px; color: #8f959e; line-height: 1.45;
+    }
+    .wb-greet .actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .wb-search {
+      display: flex; align-items: center;
+      height: 48px; padding: 5px 5px 5px 16px;
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(31,35,41,.04), 0 8px 24px rgba(31,35,41,.06);
+      border: 1px solid rgba(222,224,227,.8);
+      transition: box-shadow .2s, border-color .2s;
+    }
+    .wb-search:focus-within {
+      border-color: #a8c1ff;
+      box-shadow: 0 0 0 4px rgba(51,112,255,.12), 0 8px 24px rgba(31,35,41,.06);
+    }
+    .wb-search .ico {
+      width: 20px; height: 20px; color: #3370ff; flex-shrink: 0; display: grid; place-items: center;
+    }
+    .wb-search .ico svg { width: 18px; height: 18px; }
+    .wb-search input {
+      flex: 1; border: 0; outline: 0; background: transparent;
+      font-size: 15px; color: #1f2329; min-width: 0; margin: 0 12px;
+    }
+    .wb-search input::placeholder { color: #bbbfc4; }
+    .wb-search .go {
+      height: 38px; padding: 0 18px; border: 0; border-radius: 9px;
+      background: #3370ff; color: #fff; font-size: 14px; font-weight: 600;
+      flex-shrink: 0;
+    }
+    .wb-search .go:hover { background: #2860e1; }
+    .wb-examples {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; margin-bottom: 22px;
+    }
+    .wb-examples span { font-size: 12px; color: #8f959e; align-self: center; }
+    .wb-examples button {
+      border: 0; background: transparent; color: #646a73; font-size: 12px;
+      padding: 4px 2px; cursor: pointer; border-bottom: 1px dashed transparent;
+    }
+    .wb-examples button:hover { color: #3370ff; border-bottom-color: #a8c1ff; }
+    .wb-apps {
+      display: flex; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 28px;
+    }
+    .wb-app {
+      width: 88px; appearance: none;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      padding: 12px 6px; border: 0; background: transparent;
+      border-radius: 12px; cursor: pointer; color: #1f2329; font: inherit;
+    }
+    .wb-app:hover { background: rgba(255,255,255,.9); }
+    .wb-app .icon {
+      width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+      box-shadow: 0 2px 8px rgba(31,35,41,.06);
+    }
+    .wb-app .icon svg { width: 22px; height: 22px; }
+    .wb-app .icon.c1 { background: linear-gradient(145deg, #5b8cff, #3370ff); color: #fff; }
+    .wb-app .icon.c2 { background: linear-gradient(145deg, #34d399, #10b981); color: #fff; }
+    .wb-app .icon.c3 { background: linear-gradient(145deg, #60a5fa, #3b82f6); color: #fff; }
+    .wb-app .icon.c4 { background: linear-gradient(145deg, #a78bfa, #7c3aed); color: #fff; }
+    .wb-app .icon.c5 { background: linear-gradient(145deg, #fbbf24, #f59e0b); color: #fff; }
+    .wb-app .icon.c6 { background: linear-gradient(145deg, #fb7185, #f43f5e); color: #fff; }
+    .wb-app .label { font-size: 12px; color: #646a73; font-weight: 500; }
+    .wb-app:hover .label { color: #1f2329; }
+    .wb-sec { margin-bottom: 24px; }
+    .wb-sec-hd {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+    }
+    .wb-sec-hd h3 { font-size: 15px; font-weight: 650; color: #1f2329; }
+    .wb-sec-hd .link, .wb-panel .phd .link {
+      border: 0; background: transparent; color: #8f959e; font-size: 13px; cursor: pointer;
+    }
+    .wb-sec-hd .link:hover, .wb-panel .phd .link:hover { color: #3370ff; }
+    .wb-dash-grid {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
+    }
+    .wb-dash {
+      appearance: none; white-space: normal;
+      display: flex; flex-direction: column;
+      background: #fff; border-radius: 12px; overflow: hidden; border: 0;
+      padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer;
+      box-shadow: 0 1px 2px rgba(31,35,41,.04);
+    }
+    .wb-dash:hover { box-shadow: 0 8px 24px rgba(31,35,41,.08); transform: translateY(-1px); }
+    .wb-dash .cover {
+      height: 96px; padding: 12px 12px 8px; display: flex; flex-direction: column;
+    }
+    .wb-dash .cover.t0 { background: linear-gradient(160deg, #eef3ff, #e4ecff); }
+    .wb-dash .cover.t1 { background: linear-gradient(160deg, #eefbf4, #e3f6eb); }
+    .wb-dash .cover.t2 { background: linear-gradient(160deg, #f3f4f6, #e8eaed); }
+    .wb-dash .cover.t3 { background: linear-gradient(160deg, #fff1f2, #ffe4e6); }
+    .wb-dash .sparkline {
+      flex: 1; display: flex; align-items: flex-end; gap: 4px; min-height: 36px;
+    }
+    .wb-dash .sparkline i {
+      display: block; flex: 1; min-height: 8px;
+      border-radius: 3px 3px 1px 1px; background: #3370ff; opacity: .85;
+    }
+    .wb-dash .cover.t1 .sparkline i { background: #10b981; }
+    .wb-dash .cover.t2 .sparkline i { background: #64748b; }
+    .wb-dash .cover.t3 .sparkline i { background: #f43f5e; }
+    .wb-dash .meta { padding: 10px 12px 12px; }
+    .wb-dash .name {
+      font-size: 13px; font-weight: 600; color: #1f2329;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .wb-dash .desc { margin-top: 3px; font-size: 12px; color: #8f959e; display: flex; align-items: center; gap: 6px; }
+    .wb-dash .dot-st { width: 6px; height: 6px; border-radius: 50%; background: #bbbfc4; flex-shrink: 0; }
+    .wb-dash .dot-st.pub { background: #00b578; }
+    .wb-dash .dot-st.dirty { background: #ff8800; }
+    .wb-split {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    .wb-panel {
+      background: #fff; border-radius: 12px; padding: 14px 16px 8px;
+      box-shadow: 0 1px 2px rgba(31,35,41,.04);
+    }
+    .wb-panel .phd {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;
+    }
+    .wb-panel .phd h4 { font-size: 13px; font-weight: 650; color: #1f2329; }
+    .wb-row {
+      appearance: none; white-space: normal;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 4px; border: 0; border-bottom: 1px solid #f0f1f2;
+      width: 100%; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    }
+    .wb-panel .wb-row:last-child { border-bottom: 0; }
+    .wb-row:hover { background: #f7f8fa; border-radius: 8px; border-color: transparent; }
+    .wb-row .av {
+      width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center;
+      flex-shrink: 0; font-size: 11px; font-weight: 700;
+    }
+    .wb-row .av.ask { background: #eef3ff; color: #3370ff; }
+    .wb-row .av.ok { background: #e8f8f0; color: #0d7a4f; }
+    .wb-row .av.warn { background: #fff7ed; color: #c2410c; }
+    .wb-row .body { flex: 1; min-width: 0; }
+    .wb-row .t { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wb-row .m { font-size: 11px; color: #8f959e; margin-top: 2px; }
+    .wb-row .side { flex-shrink: 0; text-align: right; }
+    .wb-row .side .num { font-size: 13px; font-weight: 650; }
+    .wb-row .side .delta { font-size: 11px; color: #00b578; margin-top: 2px; }
+    .wb-row .badge {
+      font-size: 11px; color: #8f959e; background: #f5f6f7; padding: 2px 8px; border-radius: 999px;
+    }
+    .wb-row .badge.ok { color: #0d7a4f; background: #e8f8f0; }
+    .wb-row .badge.warn { color: #c2410c; background: #fff7ed; }
+    .wb-todo {
+      appearance: none;
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 12px; margin-bottom: 8px; border-radius: 10px;
+      background: #fafbfc; border: 0; width: 100%; text-align: left;
+      font: inherit; color: inherit; cursor: pointer;
+    }
+    .wb-todo:hover { background: #f0f4ff; }
+    .wb-todo .mark { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+    .wb-todo .mark.warn { background: #ff8800; }
+    .wb-todo .mark.info { background: #3370ff; }
+    .wb-todo .txt { font-size: 13px; color: #646a73; line-height: 1.45; }
+    .wb-todo .txt b { color: #1f2329; font-weight: 600; }
+    @media (max-width: 1100px) {
+      .wb-dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 960px) {
+      .wb-home { padding: 20px 16px 36px; }
+      .wb-dash-grid, .wb-split { grid-template-columns: 1fr; }
+      .wb-greet .hello { font-size: 20px; }
     }
     .mtable { width: 100%; border-collapse: collapse; font-size: 12px; }
     .mtable th, .mtable td { padding: 10px 12px; border-bottom: 1px solid #eff0f1; text-align: left; vertical-align: middle; }
@@ -3453,88 +3654,239 @@ function sparkHtml(rows, dim, quota) {
   return `<div class="spark">${bars.map(([, v]) => `<i style="height:${Math.max(8, Math.round(v / max * 100))}%"></i>`).join('')}</div>`;
 }
 
+function wbSpark(seed) {
+  const vals = [36, 58, 44, 72, 50, 80, 62, 88].map((v, i) => Math.max(16, (v + seed * 9 + i * 5) % 90));
+  return vals.map(h => `<i style="height:${h}%"></i>`).join('');
+}
+
+function wbKpis(i) {
+  const packs = [
+    [['GMV', '¥128万'], ['环比', '+12%'], ['转化', '3.8%']],
+    [['DAU', '48.2k'], ['留存', '36%'], ['漏斗', '18%']],
+    [['周转', '22天'], ['缺货', '14'], ['库龄', '8%']],
+    [['毛利', '31.2%'], ['应收', '¥86万'], ['费用', '9.4%']]
+  ];
+  return packs[i % packs.length].map(([k, v]) => `<div class="kpi"><div class="kk">${k}</div><div class="vv">${v}</div></div>`).join('');
+}
+
+function wbStatusDot(st) {
+  if (st === 'published') return 'pub';
+  if (st === 'publishedWithDraft') return 'dirty';
+  return '';
+}
+
+function wbStatusText(st) {
+  if (st === 'published') return '已发布';
+  if (st === 'publishedWithDraft') return '有未发布改动';
+  return '草稿';
+}
+
+function wbGreet() {
+  const h = new Date().getHours();
+  if (h < 12) return '上午好';
+  if (h < 18) return '下午好';
+  return '晚上好';
+}
+
 function renderWorkbench(app) {
-  const pubs = state.dashboards.filter(d => d.status !== 'draft').length;
-  const dirty = state.dashboards.filter(d => d.status === 'publishedWithDraft').length;
+  const dirtyList = state.dashboards.filter(d => d.status === 'publishedWithDraft');
+  const dirty = dirtyList.length;
   const srcOk = DATASOURCES.filter(s => s.status === 'ok').length;
-  const recent = [...state.dashboards].sort((a, b) => (b.updateTime || '').localeCompare(a.updateTime || '')).slice(0, 5);
+  const srcPending = DATASOURCES.length - srcOk;
+  const recent = [...state.dashboards].sort((a, b) => (b.updateTime || '').localeCompare(a.updateTime || '')).slice(0, 4);
+  const askExamples = [
+    '本月各区域 GMV 环比？',
+    '库存周转超过 30 天的 SKU',
+    '大促转化漏斗掉在哪一步？'
+  ];
+  const askRecent = [
+    { q: '华东本月 GMV 同比？', num: '¥2,186万', delta: '+18.4%' },
+    { q: '缺货 SKU 集中在哪些仓？', num: '14 SKU', delta: '华南仓 6' },
+    { q: '本周销售员 TOP5？', num: '张伟', delta: 'GMV ¥86万' }
+  ];
+  const ico = {
+    ask: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>',
+    dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+    src: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
+    set: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18" cy="18" r="2"/></svg>',
+    rpt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg>',
+    add: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>'
+  };
+
   app.innerHTML = `
     <div class="manage">
-      <div class="bar">
-        <strong style="font-size:14px">工作台</strong>
-        <span class="crumb">概览数据链路与最近资产</span>
-        <div class="spacer"></div>
-        <button class="btn" id="wbRefresh">刷新状态</button>
-        <button class="btn primary" id="wbNewDash">+ 新建仪表盘</button>
-      </div>
-      <div class="detail" style="flex:1;overflow:auto">
-        <div class="stat-row">
-          <div class="stat-card"><div class="k">数据源</div><div class="v">${DATASOURCES.length}</div><div class="s">${srcOk} 连通 · ${DATASOURCES.length - srcOk} 待处理</div></div>
-          <div class="stat-card"><div class="k">数据集</div><div class="v">${Object.keys(DATASETS).length}</div><div class="s">覆盖销售 / 运营 / 库存 / 财务 / CRM</div></div>
-          <div class="stat-card"><div class="k">仪表盘</div><div class="v">${state.dashboards.length}</div><div class="s">${pubs} 已发布 · ${dirty} 有未发布改动</div></div>
-          <div class="stat-card"><div class="k">在线报告</div><div class="v">${state.reports.length}</div><div class="s">引用看板图 / 报告内新建图</div></div>
-        </div>
-        <div class="panel-card">
-          <h3>推荐链路（点一步跳转）</h3>
-          <div class="pipe">
-            <div class="pipe-step" data-go="datasource"><div class="n">01</div><div class="t">接入数据源</div><div class="d">MySQL / PG / API / Excel · 测连通</div></div>
-            <div class="pipe-arrow">→</div>
-            <div class="pipe-step" data-go="dataset"><div class="n">02</div><div class="t">维护数据集</div><div class="d">选表 · 字段语义 · 预览取数</div></div>
-            <div class="pipe-arrow">→</div>
-            <div class="pipe-step" data-go="conversation"><div class="n">02b</div><div class="t">对话分析 <span class="beta" style="color:#c43d6e;background:#fde8f0">内测</span></div><div class="d">自然语言生成 Dashboard draft</div></div>
-            <div class="pipe-arrow">→</div>
-            <div class="pipe-step" data-go="dashboard"><div class="n">03</div><div class="t">配置仪表盘</div><div class="d">绑定数据集 · 编码槽 · 发布分享</div></div>
-            <div class="pipe-arrow">→</div>
-            <div class="pipe-step" data-go="report"><div class="n">04</div><div class="t">撰写报告</div><div class="d">Umo 排版 · 引用看板图 / 新建图</div></div>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="panel-card">
-            <h3>最近仪表盘</h3>
-            <div class="recent-list">
-              ${recent.map(d => `
-                <div class="recent-item" data-open="${d.id}">
-                  <div class="ico">▣</div>
-                  <div class="spacer" style="flex:1;min-width:0">
-                    <div class="t">${esc(d.name)}</div>
-                    <div class="m">${esc(d.folder)} · ${esc(d.updateBy)} · ${esc(d.updateTime)}</div>
-                  </div>
-                  ${statusTag(d.status)}
-                </div>`).join('')}
+      <div class="wb-stage">
+        <div class="wb-home">
+          <div class="wb-greet">
+            <div>
+              <div class="hello">${wbGreet()}，继续分析</div>
+              <div class="sub">问一句拿结果，或打开最近看板 · ${state.dashboards.length} 个仪表盘 · ${DATASOURCES.length} 个数据源</div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn" id="wbRefresh">刷新</button>
+              <button type="button" class="btn primary" id="wbNewDash">新建仪表盘</button>
             </div>
           </div>
-          <div class="panel-card">
-            <h3>数据源健康</h3>
-            <div class="recent-list">
-              ${DATASOURCES.map(s => `
-                <div class="recent-item" data-src="${s.id}">
-                  <div class="ico" style="background:${s.status==='ok'?'#e3f7ef':s.status==='warn'?'#fff7ed':'#fef2f2'}">${s.type.slice(0,2).toUpperCase()}</div>
-                  <div class="spacer" style="flex:1;min-width:0">
-                    <div class="t">${esc(s.name)}</div>
-                    <div class="m">${esc(s.type)} · 上次检测 ${esc(s.lastCheck)}</div>
+
+          <div class="wb-search">
+            <span class="ico" aria-hidden="true">${ico.search}</span>
+            <input id="wbAskInput" type="text" placeholder="用自然语言问数，例如：本月华东 GMV 环比多少？" autocomplete="off" />
+            <button type="button" class="go" id="wbAskGo">问数</button>
+          </div>
+          <div class="wb-examples">
+            <span>试试</span>
+            ${askExamples.map((q, i) => `<button type="button" data-ask-ex="${i}">${esc(q)}</button>`).join('')}
+          </div>
+
+          <div class="wb-apps">
+            <button type="button" class="wb-app" data-go="conversation">
+              <div class="icon c1">${ico.ask}</div>
+              <div class="label">对话问数</div>
+            </button>
+            <button type="button" class="wb-app" id="wbAppNew">
+              <div class="icon c2">${ico.add}</div>
+              <div class="label">新建看板</div>
+            </button>
+            <button type="button" class="wb-app" data-go="datasource">
+              <div class="icon c3">${ico.src}</div>
+              <div class="label">数据源</div>
+            </button>
+            <button type="button" class="wb-app" data-go="dataset">
+              <div class="icon c4">${ico.set}</div>
+              <div class="label">数据集</div>
+            </button>
+            <button type="button" class="wb-app" data-go="dashboard">
+              <div class="icon c5">${ico.dash}</div>
+              <div class="label">仪表盘</div>
+            </button>
+            <button type="button" class="wb-app" data-go="report">
+              <div class="icon c6">${ico.rpt}</div>
+              <div class="label">在线报告</div>
+            </button>
+          </div>
+
+          <section class="wb-sec">
+            <div class="wb-sec-hd">
+              <h3>最近打开</h3>
+              <button type="button" class="link" data-go="dashboard">全部</button>
+            </div>
+            <div class="wb-dash-grid">
+              ${recent.map((d, i) => `
+                <button type="button" class="wb-dash" data-open="${d.id}">
+                  <div class="cover t${i % 4}">
+                    <div class="sparkline">${wbSpark(i + (d.name || '').length)}</div>
                   </div>
-                  ${statusSrc(s.status)}
-                </div>`).join('')}
+                  <div class="meta">
+                    <div class="name">${esc(d.name)}</div>
+                    <div class="desc">
+                      <span class="dot-st ${wbStatusDot(d.status)}"></span>
+                      <span>${esc(d.folder || '未分组')} · ${wbStatusText(d.status)}</span>
+                    </div>
+                  </div>
+                </button>`).join('')}
+            </div>
+          </section>
+
+          <div class="wb-split">
+            <div class="wb-panel">
+              <div class="phd"><h4>待处理</h4></div>
+              ${dirty ? `
+                <button type="button" class="wb-todo" id="wbInsightDirty">
+                  <span class="mark warn"></span>
+                  <span class="txt"><b>${dirty} 个看板</b> 有未发布改动</span>
+                </button>` : ''}
+              <button type="button" class="wb-todo" data-go="datasource">
+                <span class="mark ${srcPending ? 'warn' : 'info'}"></span>
+                <span class="txt">${srcPending
+                  ? `<b>${srcPending} 个数据源</b> 待处理`
+                  : `<b>数据源全部连通</b> · ${srcOk} 个`}</span>
+              </button>
+              <button type="button" class="wb-todo" data-go="conversation">
+                <span class="mark info"></span>
+                <span class="txt">试问：<b>本月毛利环比？</b></span>
+              </button>
+            </div>
+            <div class="wb-panel">
+              <div class="phd">
+                <h4>最近问数</h4>
+                <button type="button" class="link" data-go="conversation">继续</button>
+              </div>
+              ${askRecent.map((a) => `
+                <button type="button" class="wb-row" data-go="conversation">
+                  <div class="av ask">问</div>
+                  <div class="body">
+                    <div class="t">${esc(a.q)}</div>
+                    <div class="m">会话结果 · 未写入看板</div>
+                  </div>
+                  <div class="side">
+                    <div class="num">${esc(a.num)}</div>
+                    <div class="delta">${esc(a.delta)}</div>
+                  </div>
+                </button>`).join('')}
             </div>
           </div>
         </div>
       </div>
     </div>`;
-  app.querySelector('#wbRefresh').onclick = () => toast('已同步连通性（演示）', 'ok');
-  app.querySelector('#wbNewDash').onclick = () => {
+
+  const askInput = app.querySelector('#wbAskInput');
+  const goAsk = (preset) => {
+    if (preset && askInput) askInput.value = preset;
+    const q = (askInput && askInput.value || '').trim();
+    if (q) toast(`已带入问题：${q.slice(0, 28)}${q.length > 28 ? '…' : ''}`, 'ok');
+    gotoModule('conversation');
+  };
+
+  app.querySelector('#wbRefresh').onclick = () => toast('已同步（演示）', 'ok');
+  const newDash = () => {
     state.module = 'dashboard';
     createBlankDash();
   };
-  app.querySelectorAll('[data-go]').forEach(el => el.onclick = () => gotoModule(el.dataset.go));
-  app.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
-    selectDash(el.dataset.open);
-    state.module = 'dashboard';
-    state.screen = 'editor';
-    render();
+  app.querySelector('#wbNewDash').onclick = newDash;
+  const appNew = app.querySelector('#wbAppNew');
+  if (appNew) appNew.onclick = newDash;
+  app.querySelector('#wbAskGo').onclick = () => goAsk();
+  if (askInput) {
+    askInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') goAsk();
+    });
+  }
+  app.querySelectorAll('[data-ask-ex]').forEach(el => {
+    el.onclick = () => goAsk(askExamples[Number(el.dataset.askEx)] || '');
   });
-  app.querySelectorAll('[data-src]').forEach(el => el.onclick = () => {
-    state.srcId = el.dataset.src;
-    gotoModule('datasource');
+  const dirtyBtn = app.querySelector('#wbInsightDirty');
+  if (dirtyBtn) {
+    dirtyBtn.onclick = () => {
+      const target = dirtyList[0];
+      if (target) {
+        selectDash(target.id);
+        state.module = 'dashboard';
+        state.screen = 'editor';
+        render();
+        toast('已打开有未发布改动的看板', 'ok');
+      } else gotoModule('dashboard');
+    };
+  }
+  app.querySelectorAll('[data-go]').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      gotoModule(el.dataset.go);
+    };
+  });
+  app.querySelectorAll('[data-open]').forEach(el => {
+    el.onclick = () => {
+      selectDash(el.dataset.open);
+      state.module = 'dashboard';
+      state.screen = 'editor';
+      render();
+    };
+  });
+  app.querySelectorAll('[data-src]').forEach(el => {
+    el.onclick = () => {
+      state.srcId = el.dataset.src;
+      gotoModule('datasource');
+    };
   });
 }
 
@@ -6910,7 +7262,7 @@ function renderEditor(app) {
       <button class="btn" id="btnExport">导出 CSV</button>
       <button class="btn primary" id="btnPub">发布</button>
     </div>
-    <div class="editor ${state.inspCollapsed ? 'no-insp' : ''}">
+    <div class="editor ${state.inspCollapsed ? 'no-insp' : ''} ${shouldDataOpsOpen() ? 'data-ops-open' : ''}">
       <aside class="pane">
         <div class="ptabs">
           <button class="${state.leftTab==='comp'?'on':''}" data-lt="comp">${leftCompLabel}</button>
@@ -6927,11 +7279,6 @@ function renderEditor(app) {
         </div>
       </section>
       <aside class="pane insp">
-        <div class="ptabs t3">
-          <button class="${state.rightTab==='data'?'on':''}" data-rt="data">数据</button>
-          <button class="${state.rightTab==='style'?'on':''}" data-rt="style">样式</button>
-          <button class="${state.rightTab==='senior'?'on':''}" data-rt="senior">高级</button>
-        </div>
         <div class="pbody" id="right"></div>
       </aside>
     </div>`;
@@ -6961,12 +7308,6 @@ function renderEditor(app) {
     app.querySelectorAll('[data-lt]').forEach(x => x.classList.toggle('on', x.dataset.lt === state.leftTab));
     renderLeft(document.getElementById('left'));
   });
-  app.querySelectorAll('[data-rt]').forEach(b => b.onclick = () => {
-    state.rightTab = b.dataset.rt;
-    app.querySelectorAll('[data-rt]').forEach(x => x.classList.toggle('on', x.dataset.rt === state.rightTab));
-    renderRight(document.getElementById('right'));
-  });
-
   if (app.querySelector('#qbar')) renderQueryBar(app.querySelector('#qbar'));
   renderLayoutBar(app.querySelector('#layoutBar'));
   renderLeft(app.querySelector('#left'));
@@ -8070,6 +8411,38 @@ function renderMobileDashSettings(el) {
   };
 }
 
+function shouldDataOpsOpen() {
+  if (state.inspCollapsed || isMobileEdit()) return false;
+  if (state.rightTab !== 'data') return false;
+  return findComp(state.selectedId)?.type === 'chart';
+}
+
+function inspModeSegHtml() {
+  return `<div class="insp-mode">
+    <div class="seg3" role="tablist" aria-label="配置分组">
+      <button type="button" class="${state.rightTab==='data'?'on':''}" data-rt="data">数据</button>
+      <button type="button" class="${state.rightTab==='style'?'on':''}" data-rt="style">样式</button>
+      <button type="button" class="${state.rightTab==='senior'?'on':''}" data-rt="senior">高级</button>
+    </div>
+  </div>`;
+}
+
+function wireInspMode(el) {
+  el.querySelectorAll('[data-rt]').forEach(b => {
+    b.onclick = () => {
+      if (state.rightTab === b.dataset.rt) return;
+      state.rightTab = b.dataset.rt;
+      const editor = document.querySelector('.editor');
+      editor?.classList.toggle('data-ops-open', shouldDataOpsOpen());
+      renderRight(document.getElementById('right'));
+    };
+  });
+}
+
+function wrapInspBody(inner) {
+  return `${inspModeSegHtml()}<div class="insp-scroll">${inner}</div>`;
+}
+
 function renderRight(el) {
   if (!el) return;
   const comp = findComp(state.selectedId);
@@ -8084,20 +8457,22 @@ function renderRight(el) {
   if (state.rightTab === 'senior') return renderSenior(el, comp);
   if (comp.type === 'chart') return renderDataPanel(el, comp);
   if (comp.type === 'slicer') {
-    el.innerHTML = `<div class="sec"><h4>切片器</h4>
+    el.innerHTML = wrapInspBody(`<div class="sec"><h4>切片器</h4>
       <div class="field"><label>字段</label>
         <select id="sf"><option value="region">region</option><option value="product">product</option></select>
       </div>
       <div class="field"><label>显示名</label><input id="sl" value="${esc(comp.props.label||'')}" /></div>
-    </div>`;
+    </div>`);
     el.querySelector('#sf').value = comp.props.field;
     el.querySelector('#sf').onchange = e => { pushUndo(); comp.props.field = e.target.value; markDirty(); replaceWidget(comp); };
     el.querySelector('#sl').onchange = e => { pushUndo(); comp.props.label = e.target.value; markDirty(); replaceWidget(comp); };
+    wireInspMode(el);
     return;
   }
   if (comp.type === 'text') {
-    el.innerHTML = `<div class="field"><label>内容</label><textarea id="tx">${esc(comp.props.content||'')}</textarea></div>`;
+    el.innerHTML = wrapInspBody(`<div class="field"><label>内容</label><textarea id="tx">${esc(comp.props.content||'')}</textarea></div>`);
     el.querySelector('#tx').onchange = e => { pushUndo(); comp.props.content = e.target.value; markDirty(); replaceWidget(comp); };
+    wireInspMode(el);
   }
 }
 
@@ -8107,65 +8482,74 @@ function renderDataPanel(el, comp) {
   const meta = CHART_META[ch.chartType];
   const miss = missingBind(ch);
   el.innerHTML = `
-    <div class="sec">
-      <h4>图表</h4>
-      <div class="field"><label>标题</label><input id="ct" value="${esc(ch.title)}" /></div>
-      <div class="field"><label>类型</label>
-        <select id="ctype">${Object.entries(CHART_META).map(([k,v]) => `<option value="${k}" ${ch.chartType===k?'selected':''}>${v.label}</option>`).join('')}</select>
+    <div class="data-work">
+      <div class="data-bind">
+        ${inspModeSegHtml()}
+        <div class="data-bind-body">
+          <div class="sec">
+            <h4>图表</h4>
+            <div class="field"><label>标题</label><input id="ct" value="${esc(ch.title)}" /></div>
+            <div class="field"><label>类型</label>
+              <select id="ctype">${Object.entries(CHART_META).map(([k,v]) => `<option value="${k}" ${ch.chartType===k?'selected':''}>${v.label}</option>`).join('')}</select>
+            </div>
+          </div>
+          ${dataset ? `
+          <div class="sec">
+            <h4>编码槽 ${ch.chartType==='pivot' ? '· 行 × 列 × 指标' : ch.chartType==='table' ? '· 明细行' : meta?.need?.length ? '· 需 ' + meta.need.map(s => slotLabel(ch.chartType, s)).join(' + ') : ''}</h4>
+            ${encodeGuideHtml(ch)}
+            ${ch.chartType === 'pivot' ? slotHtml('category', '行维度', 'dim', ch) : ''}
+            ${ch.chartType === 'pivot' ? slotHtml('colDim', '列维度', 'dim', ch) : ''}
+            ${ch.chartType !== 'pivot' && ch.chartType !== 'table' && meta.need.includes('category') ? slotHtml('category', '维度', 'dim', ch) : ''}
+            ${ch.chartType !== 'table' ? slotHtml('value', '指标', 'quota', ch) : slotHtml('value', '高亮指标（可选）', 'quota', ch)}
+            ${meta.slots?.color && (ch.chartType === 'grouptable' || (state.phase!=='a' && !isTableType(ch.chartType))) ? slotHtml('color', ch.chartType==='grouptable' ? '二级分组（可选）' : '颜色/图例（可选）', 'dim', ch) : ''}
+            ${ch.chartType !== 'table' ? `<div class="field"><label>聚合</label>
+              <select id="agg">${['SUM','COUNT','AVG','MAX','MIN'].map(a => `<option ${ (ch.encode.agg||'SUM')===a?'selected':''}>${a}</option>`).join('')}</select>
+            </div>` : ''}
+            <div class="field"><label>数值格式</label>
+              <select id="fmt">
+                <option value="raw" ${ch.encode.format==='raw'?'selected':''}>智能（默认）</option>
+                <option value="integer" ${ch.encode.format==='integer'?'selected':''}>整数</option>
+                <option value="thousand" ${ch.encode.format==='thousand'?'selected':''}>千分位</option>
+                <option value="fixed1" ${ch.encode.format==='fixed1'?'selected':''}>一位小数</option>
+                <option value="fixed2" ${ch.encode.format==='fixed2'?'selected':''}>两位小数</option>
+                <option value="percent" ${ch.encode.format==='percent'?'selected':''}>百分比</option>
+              </select>
+            </div>
+          </div>` : '<p class="data-ops-empty" style="font-size:12px;color:var(--text-3);padding:8px 0">请先在右侧选择数据集，再把维度、指标拖入槽位</p>'}
+          ${miss.length ? `<div class="miss"><b>缺失要素</b>${miss.map(m=>`<button data-focus="${m.key}">→ ${esc(m.label)}</button>`).join('')}</div>` : ''}
+          <div class="sec">
+            <h4>布局${useMobileLayout() ? ' · 移动 6 列' : ''}</h4>
+            <div class="lay-grid">
+              <div class="field"><label>X</label><input type="number" id="layX" min="0" max="${gridCols()-1}" value="${comp.x}" /></div>
+              <div class="field"><label>Y</label><input type="number" id="layY" min="0" value="${comp.y}" /></div>
+              <div class="field"><label>宽</label><input type="number" id="layW" min="1" max="${gridCols()}" value="${comp.w}" /></div>
+              <div class="field"><label>高</label><input type="number" id="layH" min="1" value="${comp.h}" /></div>
+            </div>
+            <div class="preset-row" style="margin-top:8px">
+              <button type="button" data-pw="${gridCols()}">整行</button>
+              <button type="button" data-pw="${Math.max(1, Math.floor(gridCols()/2))}">半宽</button>
+              <button type="button" data-pw="${Math.max(1, Math.floor(gridCols()/3))}">1/3</button>
+            </div>
+          </div>
+        </div>
+        <div class="data-bind-foot">
+          <button type="button" class="btn primary btn-apply-data" id="btnApplyData" ${miss.length ? 'disabled' : ''}>更新数据</button>
+        </div>
       </div>
-    </div>
-    <div class="sec">
-      <h4>1. 数据集</h4>
-      ${!ch.datasetId ? `<button class="btn primary" style="width:100%;justify-content:center;margin-bottom:8px" id="pickDs">从工作区选择数据集</button>` : ''}
-      <div class="field">
-        <select id="cds">
-          <option value="">请选择</option>
-          ${Object.values(DATASETS).map(d => `<option value="${d.id}" ${ch.datasetId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
-        </select>
-      </div>
-      ${ch.datasetId ? `<div style="font-size:11px;color:var(--text-3)">最近：${esc(dataset.name)}</div>` : ''}
-    </div>
-    ${dataset ? `
-    <div class="sec">
-      <h4>2. 字段银行（常驻）</h4>
-      ${fieldBankHtml(ch)}
-    </div>
-    <div class="sec">
-      <h4>3. 编码槽 ${ch.chartType==='pivot' ? '· 行 × 列 × 指标' : ch.chartType==='table' ? '· 明细行' : meta?.need?.length ? '· 需 ' + meta.need.map(s => slotLabel(ch.chartType, s)).join(' + ') : ''}</h4>
-      ${encodeGuideHtml(ch)}
-      ${ch.chartType === 'pivot' ? slotHtml('category', '行维度', 'dim', ch) : ''}
-      ${ch.chartType === 'pivot' ? slotHtml('colDim', '列维度', 'dim', ch) : ''}
-      ${ch.chartType !== 'pivot' && ch.chartType !== 'table' && meta.need.includes('category') ? slotHtml('category', '维度', 'dim', ch) : ''}
-      ${ch.chartType !== 'table' ? slotHtml('value', '指标', 'quota', ch) : slotHtml('value', '高亮指标（可选）', 'quota', ch)}
-      ${meta.slots?.color && (ch.chartType === 'grouptable' || (state.phase!=='a' && !isTableType(ch.chartType))) ? slotHtml('color', ch.chartType==='grouptable' ? '二级分组（可选）' : '颜色/图例（可选）', 'dim', ch) : ''}
-      ${ch.chartType !== 'table' ? `<div class="field"><label>聚合</label>
-        <select id="agg">${['SUM','COUNT','AVG','MAX','MIN'].map(a => `<option ${ (ch.encode.agg||'SUM')===a?'selected':''}>${a}</option>`).join('')}</select>
-      </div>` : ''}
-      <div class="field"><label>数值格式</label>
-        <select id="fmt">
-          <option value="raw" ${ch.encode.format==='raw'?'selected':''}>智能（默认）</option>
-          <option value="integer" ${ch.encode.format==='integer'?'selected':''}>整数</option>
-          <option value="thousand" ${ch.encode.format==='thousand'?'selected':''}>千分位</option>
-          <option value="fixed1" ${ch.encode.format==='fixed1'?'selected':''}>一位小数</option>
-          <option value="fixed2" ${ch.encode.format==='fixed2'?'selected':''}>两位小数</option>
-          <option value="percent" ${ch.encode.format==='percent'?'selected':''}>百分比</option>
-        </select>
-      </div>
-    </div>` : ''}
-    ${miss.length ? `<div class="miss"><b>缺失要素</b>${miss.map(m=>`<button data-focus="${m.key}">→ ${esc(m.label)}</button>`).join('')}</div>` : ''}
-    <div class="sec">
-      <h4>布局${useMobileLayout() ? ' · 移动 6 列' : ''}</h4>
-      <div class="lay-grid">
-        <div class="field"><label>X</label><input type="number" id="layX" min="0" max="${gridCols()-1}" value="${comp.x}" /></div>
-        <div class="field"><label>Y</label><input type="number" id="layY" min="0" value="${comp.y}" /></div>
-        <div class="field"><label>宽</label><input type="number" id="layW" min="1" max="${gridCols()}" value="${comp.w}" /></div>
-        <div class="field"><label>高</label><input type="number" id="layH" min="1" value="${comp.h}" /></div>
-      </div>
-      <div class="preset-row" style="margin-top:8px">
-        <button type="button" data-pw="${gridCols()}">整行</button>
-        <button type="button" data-pw="${Math.max(1, Math.floor(gridCols()/2))}">半宽</button>
-        <button type="button" data-pw="${Math.max(1, Math.floor(gridCols()/3))}">1/3</button>
-      </div>
+      <aside class="data-ops">
+        <div class="data-ops-hd">数据集</div>
+        <div class="data-ops-body">
+          ${!ch.datasetId ? `<button class="btn primary" style="width:100%;justify-content:center;margin-bottom:8px" id="pickDs">从工作区选择数据集</button>` : ''}
+          <div class="field">
+            <select id="cds">
+              <option value="">请选择</option>
+              ${Object.values(DATASETS).map(d => `<option value="${d.id}" ${ch.datasetId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
+            </select>
+          </div>
+          ${ch.datasetId ? `<div style="font-size:11px;color:var(--text-3);margin:4px 0 10px">最近：${esc(dataset.name)}</div>` : ''}
+          ${dataset ? fieldBankHtml(ch) : '<p style="font-size:12px;color:var(--text-3);padding:8px 0">选择数据集后，在此浏览维度和指标</p>'}
+        </div>
+      </aside>
     </div>`;
 
   el.querySelector('#ct').onchange = e => {
@@ -8228,6 +8612,12 @@ function renderDataPanel(el, comp) {
       applyLay();
     };
   });
+  el.querySelector('#btnApplyData')?.addEventListener('click', () => {
+    if (missingBind(ch).length) return;
+    patchChart(ch, { inspector: false, flash: true });
+    toast('已更新数据', 'ok');
+  });
+  wireInspMode(el);
 }
 
 function slotHtml(slot, label, accept, ch) {
@@ -8735,7 +9125,8 @@ function renderStyle(el, comp) {
     }
   }
 
-  el.innerHTML = blocks || `<p style="font-size:12px;color:var(--text-3)">请选择组件</p>`;
+  el.innerHTML = wrapInspBody(blocks || `<p style="font-size:12px;color:var(--text-3)">请选择组件</p>`);
+  wireInspMode(el);
 
   const softStyle = () => {
     markDirty();
@@ -9024,7 +9415,8 @@ function renderSenior(el, comp) {
       <p style="font-size:11px;color:var(--text-3)">contentId=${state.dash.contentId} · version=${state.dash.version}${ch ? ` · chart=${ch.id}` : ''}</p>
     </div>`;
 
-  el.innerHTML = html;
+  el.innerHTML = wrapInspBody(html);
+  wireInspMode(el);
 
   const soft = () => { markDirty(); if (ch) patchChart(ch, { inspector: false, flash: false }); };
 

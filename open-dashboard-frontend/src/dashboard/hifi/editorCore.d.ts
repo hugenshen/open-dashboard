@@ -14,6 +14,12 @@ declare module '*.js' {
     onPublish?: (dash: unknown) => void | Promise<void>
     onShare?: (opts: { visibility: string; perm: string }) => Promise<unknown> | unknown
     onExportChart?: (chartId: string, chart?: unknown) => Promise<void> | void
+    queryChart?: (
+      chartId: string,
+      meta?: { datasetId?: string | null; chartType?: string; encode?: Record<string, unknown>; title?: string }
+    ) => Promise<{ data?: unknown[][]; series?: Record<string, unknown> }>
+    /** 重新拉取数据集目录，供选择器「刷新」使用 */
+    refreshDatasets?: () => Promise<Record<string, unknown>>
   }): {
     getDash: () => unknown
     setDash: (d: unknown) => void

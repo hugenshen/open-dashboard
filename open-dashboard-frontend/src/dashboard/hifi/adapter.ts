@@ -103,7 +103,8 @@ export function datasetsToHiFi(details: DatasetDetailVO[]): Record<string, unkno
       fields: d.fields.map((f) => ({
         name: f.name,
         label: f.label,
-        group: f.group === 'quota' ? 'quota' : 'dim'
+        group: f.group === 'quota' ? 'quota' : 'dim',
+        dataType: f.dataType || ''
       })),
       // Prefer real preview rows later; never invent demo numbers for product datasets.
       rows: STUB_ROWS[id] ? STUB_ROWS[id] : []

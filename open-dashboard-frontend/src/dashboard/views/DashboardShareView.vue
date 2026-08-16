@@ -59,7 +59,19 @@ async function boot() {
         ctx: 'od-share-ctx',
         mask: 'od-share-mask',
         toasts: 'od-share-toasts'
-      }
+      },
+      queryChart: (chartId: string, meta?: { datasetId?: string | null; chartType?: string; encode?: Record<string, unknown> }) =>
+        shareApi.chartQuery(token(), {
+          chartId,
+          inline: meta?.datasetId
+            ? {
+                datasetId: String(meta.datasetId),
+                chartType: String(meta.chartType || 'bar'),
+                encode: { ...(meta.encode || {}), datasetId: meta.datasetId }
+              }
+            : undefined,
+          context: { filters: [], linkages: [] }
+        })
     } as never)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

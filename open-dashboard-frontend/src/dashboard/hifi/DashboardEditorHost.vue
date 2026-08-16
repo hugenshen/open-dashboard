@@ -29,12 +29,25 @@ const forceGuide = computed(() => route.query.guide === '1')
 const selectedChartId = ref<string | undefined>()
 const selectedEncode = ref<Record<string, unknown> | undefined>()
 
-let runtime: { getDash: () => HiFiDash; destroy: () => void; rerender: () => void } | null = null
+let runtime: {
+  getDash: () => HiFiDash
+  setDash: (d: HiFiDash) => void
+  destroy: () => void
+  rerender: () => void
+} | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let knownCompIds = new Set<string>()
 let knownChartIds = new Set<string>()
 
 const dashId = () => String(route.params.id || '')
+
+async function loadHiFiDatasets() {
+  const list = await datasetApi.list()
+  const details = await Promise.all(list.map((m) => datasetApi.get(m.id)))
+  const datasets = datasetsToHiFi(details)
+  await hydrateHiFiDatasetRows(details, datasets, (id) => datasetApi.preview(id))
+  return datasets
+}
 
 function pickCurrentChart() {
   const dash = runtime?.getDash()
@@ -146,11 +159,8 @@ async function boot() {
       detail = await dashboardApi.get(id, 'draft')
     }
 
-    const list = await datasetApi.list()
-    const details = await Promise.all(list.map((m) => datasetApi.get(m.id)))
     const dash = detailToHiFi(detail)
-    const datasets = datasetsToHiFi(details)
-    await hydrateHiFiDatasetRows(details, datasets, (id) => datasetApi.preview(id))
+    const datasets = await loadHiFiDatasets()
     try {
       const share = await dashboardApi.getShare(id)
       if (share?.token) {
@@ -220,7 +230,22 @@ async function boot() {
         })
         const { triggerBlobDownload } = await import('../../api/http')
         triggerBlobDownload(blob, filename)
-      }
+      },
+      refreshDatasets: () => loadHiFiDatasets(),
+      queryChart: (chartId: string, meta?: { datasetId?: string | null; chartType?: string; encode?: Record<string, unknown>; title?: string }) =>
+        chartQueryApi.query({
+          chartId,
+          dashboardId: id,
+          view: props.mode === 'preview' ? 'published' : 'draft',
+          inline: meta?.datasetId
+            ? {
+                datasetId: String(meta.datasetId),
+                chartType: String(meta.chartType || 'bar'),
+                encode: { ...(meta.encode || {}), datasetId: meta.datasetId }
+              }
+            : undefined,
+          context: { filters: [], linkages: [] }
+        })
     })
     guideReady.value = props.mode !== 'preview'
   } catch (e) {
@@ -228,6 +253,19 @@ async function boot() {
     loading.value = false
     guideReady.value = false
   }
+}
+
+/** Reload draft without unmounting SQLBot (full boot would flash the panel). */
+async function reloadDraftQuiet() {
+  if (props.mode === 'preview' || !runtime) return
+  const id = dashId()
+  const detail = await dashboardApi.get(id, 'draft')
+  const dash = detailToHiFi(detail)
+  const current = runtime.getDash()
+  if (current?.share) dash.share = current.share
+  knownCompIds = new Set(dash.components.map((c) => c.id))
+  knownChartIds = new Set(Object.keys(dash.charts))
+  runtime.setDash(dash)
 }
 
 function onGuideDone() {
@@ -267,6 +305,7 @@ onBeforeUnmount(() => {
       :selected-chart-id="selectedChartId"
       :selected-encode="selectedEncode"
       @pick="pickCurrentChart"
+      @applied="reloadDraftQuiet"
     />
     <EditorOnboarding
       v-if="guideReady && !loading && !error"

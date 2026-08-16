@@ -76,6 +76,7 @@ export function mountHiFiDashboard(options) {
       disposeCharts();
       const app = elById('app');
       if (app) app.innerHTML = '';
+      if (state._chartQueryCache) state._chartQueryCache = {};
       __productOpts = null;
     }
   };
@@ -947,9 +948,10 @@ const CHART_META = {
   },
   table: {
     label:'明细表', need:[], group:'表格', icon:'table',
-    guide: '展示过滤后的原始行。拖入「显示列」控制列与顺序（未绑定时展示全部字段）；点 ▾ 可设别名与数值格式。',
+    guide: '展示过滤后的原始行。维度与指标分槽绑定（对齐 DataEase）；明细表不聚合。',
     slots: {
-      columns: { max: 20, tip: '显示列，可多选排序；留空则展示全部字段' }
+      category: { max: 0, tip: '维度列，可多选拖拽排序' },
+      value: { max: 0, tip: '指标列，展示原值、不聚合' }
     }
   },
   grouptable: {
@@ -1298,6 +1300,8 @@ const state = {
   leftTab: 'comp',
   rightTab: 'data',
   inspCollapsed: false,
+  bindCollapsed: false,
+  opsCollapsed: false,
   selectedId: null,
   clipboard: null,
   filter: { region: '', channel: '', dateFrom: '', dateTo: '' },
@@ -1380,8 +1384,15 @@ function defaultEncode(kind) {
   const base = { agg: 'SUM', format: 'thousand', calc: 'none', fieldCfg: {} };
   if (kind === 'kpi') return { ...base, value: 'amount', calc: 'yoy' };
   if (kind === 'table') {
-    const fields = (DATASETS.ds_sales?.fields || []).map(f => f.name);
-    return { ...base, columns: fields.length ? fields : ['region', 'product', 'channel', 'salesman', 'amount', 'qty'], format: 'raw' };
+    const fields = DATASETS.ds_sales?.fields || [];
+    const dims = fields.filter(f => f.group !== 'quota').map(f => f.name);
+    const quotas = fields.filter(f => f.group === 'quota').map(f => f.name);
+    return {
+      ...base,
+      category: dims.length ? dims : ['region', 'product', 'channel', 'salesman'],
+      value: quotas.length ? quotas : ['amount', 'qty'],
+      format: 'raw'
+    };
   }
   if (kind === 'pivot') return { ...base, category: 'region', colDim: 'product', value: 'amount' };
   if (kind === 'grouptable') return { ...base, category: 'channel', value: 'amount' };
@@ -1421,16 +1432,8 @@ function adaptEncodeForChartType(prev, nextType) {
     }
     setEncodeFields(next, slot, fields.slice(0, slotMax(nextType, slot)));
   }
-  // 切到明细表且无列：从原维度/指标或数据集补全
-  if (nextType === 'table' && !encodeFields(next, 'columns').length) {
-    const fromSlots = [
-      ...encodeFields(src, 'columns'),
-      ...encodeFields(src, 'category'),
-      ...encodeFields(src, 'colDim'),
-      ...encodeFields(src, 'value')
-    ];
-    const uniq = [...new Set(fromSlots)];
-    if (uniq.length) setEncodeFields(next, 'columns', uniq.slice(0, slotMax('table', 'columns')));
+  if (nextType === 'table') {
+    migrateTableEncode({ chartType: 'table', datasetId: src.datasetId, encode: next, fieldRoles: src.fieldRoles });
   }
   return next;
 }
@@ -2224,6 +2227,7 @@ function fieldsByRole(ch, role) {
 function toggleFieldRole(ch, fieldName) {
   const f = fieldMeta(ch.datasetId, fieldName);
   if (!f) return;
+  const wasBound = isFieldBound(ch, fieldName);
   ch.fieldRoles = ch.fieldRoles || {};
   const cur = fieldRole(ch, f);
   const next = cur === 'dim' ? 'quota' : 'dim';
@@ -2234,25 +2238,58 @@ function toggleFieldRole(ch, fieldName) {
   ['category', 'colDim', 'color', 'value', 'columns'].forEach(slot => {
     const list = encodeFields(enc, slot);
     if (!list.includes(fieldName)) return;
-    if (slot === 'columns') return; // 明细列允许任意角色
+    if (slot === 'columns') return;
     const need = slot === 'value' ? 'quota' : 'dim';
     if (fieldRole(ch, f) !== need) {
       setEncodeFields(enc, slot, list.filter(n => n !== fieldName));
     }
   });
+  if (ch.chartType === 'table' && wasBound) {
+    const dims = encodeFields(enc, 'category').filter(n => n !== fieldName);
+    const quotas = encodeFields(enc, 'value').filter(n => n !== fieldName);
+    if (next === 'quota') quotas.push(fieldName);
+    else dims.push(fieldName);
+    setEncodeFields(enc, 'category', dims);
+    setEncodeFields(enc, 'value', quotas);
+    syncTableColumnsEncode(ch);
+  }
   // 维度转指标时默认 COUNT 更合理
   if (next === 'quota' && f.group === 'dim') ch.encode.agg = 'COUNT';
   if (next === 'dim' && f.group === 'quota' && ch.encode.agg === 'COUNT') ch.encode.agg = 'SUM';
+}
+
+function fieldKind(f, role) {
+  const t = String(f?.dataType || '').toUpperCase();
+  if (/DATE|TIME|TIMESTAMP/.test(t)) return 'time';
+  if (role === 'quota' || /INT|DEC|NUM|FLOAT|DOUBLE|MONEY|REAL|BIGINT/.test(t)) return 'num';
+  return 'text';
+}
+
+function fieldKindGlyph(kind) {
+  if (kind === 'time') return '日';
+  if (kind === 'num') return '#';
+  return 'Abc';
+}
+
+function isFieldBound(ch, fieldName) {
+  const enc = ch.encode || {};
+  return ['category', 'colDim', 'color', 'value', 'columns'].some(slot =>
+    encodeFields(enc, slot).includes(fieldName)
+  );
 }
 
 function fieldChipHtml(ch, f) {
   const role = fieldRole(ch, f);
   const conv = isFieldConverted(ch, f);
   const to = role === 'dim' ? '指标' : '维度';
-  return `<span class="fchip ${role}${conv ? ' converted' : ''}" draggable="true" data-f="${esc(f.name)}" data-g="${role}" data-label="${esc(f.label)}" title="${conv ? '已转换 · ' : ''}点击绑定 / 拖到槽位；⇄ 转为${to}">
-    <i class="ftype">${role === 'dim' ? 'Abc' : '#'}</i>
+  const bound = isFieldBound(ch, f.name);
+  const kind = fieldKind(f, role);
+  const title = `${f.label}（${f.name}）${conv ? ' · 已转换' : ''} · 单击选中，拖入槽位；⇄ 转为${to}`;
+  return `<span class="fchip ${role}${conv ? ' converted' : ''}${bound ? ' bound' : ''}" draggable="true" data-f="${esc(f.name)}" data-g="${role}" data-label="${esc(f.label)}" title="${esc(title)}">
+    <i class="ftype kind-${kind}">${fieldKindGlyph(kind)}</i>
     <span class="flab">${esc(f.label)}</span>
     ${conv ? '<i class="ftag">转</i>' : ''}
+    ${bound ? '<i class="fbound">已绑</i>' : ''}
     <button type="button" class="fconv" data-conv="${esc(f.name)}" title="转换为${to}">⇄</button>
   </span>`;
 }
@@ -2260,12 +2297,12 @@ function fieldChipHtml(ch, f) {
 function fieldBankHtml(ch) {
   const dims = fieldsByRole(ch, 'dim');
   const quos = fieldsByRole(ch, 'quota');
-  const convN = (ds(ch.datasetId)?.fields || []).filter(f => isFieldConverted(ch, f)).length;
-  const tip = `拖入下方槽位绑定；点 ⇄ 或右键可切换维度/指标${convN ? `（已转换 ${convN} 个）` : ''}`;
+  const tip = '单击选中，拖到数据绑定槽位；Ctrl 多选，双击添加';
   return `<div class="field-bank" id="fieldBank">
     <div class="fb-search">
       <input id="fsearch" type="search" placeholder="搜索字段…" title="${esc(tip)}" autocomplete="off" />
     </div>
+    <p class="fb-hint">${esc(tip)}</p>
     <div class="fb-groups">
       <div class="fb-group fb-group-dim" data-bank="dim">
         <button type="button" class="fb-group-hd" data-toggle-bank="dim">
@@ -2529,18 +2566,48 @@ function displayFieldLabel(ch, name) {
   return fieldLabelOf(ch.datasetId, name);
 }
 
-/** 明细表列：已绑 columns，否则回退数据集全部字段 */
+/** 明细表列：维度槽 + 指标槽；兼容旧 encode.columns */
 function tableColumnsOf(ch) {
-  const cols = encodeFields(ch.encode, 'columns');
-  if (cols.length) return cols;
-  return (ds(ch.datasetId)?.fields || []).map(f => f.name);
+  const dims = encodeFields(ch.encode, 'category');
+  const quotas = encodeFields(ch.encode, 'value');
+  if (dims.length || quotas.length) return [...dims, ...quotas];
+  return encodeFields(ch.encode, 'columns');
 }
 
-function fillTableColumnsFromDataset(ch) {
+function syncTableColumnsEncode(ch) {
+  if (ch.chartType !== 'table' || !ch.encode) return;
+  const cols = [...encodeFields(ch.encode, 'category'), ...encodeFields(ch.encode, 'value')];
+  setEncodeFields(ch.encode, 'columns', cols);
+}
+
+/** 旧明细表把所有列塞进 columns；按字段角色拆到维度/指标槽（DataEase 汇总表分栏） */
+function migrateTableEncode(ch) {
+  if (!ch || ch.chartType !== 'table' || !ch.encode) return;
+  const dims = encodeFields(ch.encode, 'category');
+  const quotas = encodeFields(ch.encode, 'value');
+  const cols = encodeFields(ch.encode, 'columns');
+  if (cols.length && !dims.length && !quotas.length) {
+    const nextDims = [];
+    const nextQuotas = [];
+    for (const name of cols) {
+      if (fieldRole(ch, name) === 'quota') nextQuotas.push(name);
+      else nextDims.push(name);
+    }
+    setEncodeFields(ch.encode, 'category', nextDims);
+    setEncodeFields(ch.encode, 'value', nextQuotas);
+  }
+  syncTableColumnsEncode(ch);
+}
+
+function fillTableColumnsFromDataset(ch, force = false) {
   if (ch.chartType !== 'table') return;
-  if (encodeFields(ch.encode, 'columns').length) return;
-  const names = (ds(ch.datasetId)?.fields || []).map(f => f.name);
-  if (names.length) setEncodeFields(ch.encode, 'columns', names.slice(0, slotMax('table', 'columns')));
+  if (!force && tableColumnsOf(ch).length) return;
+  const fields = ds(ch.datasetId)?.fields || [];
+  const dims = fields.filter(f => fieldRole(ch, f) !== 'quota').map(f => f.name);
+  const quotas = fields.filter(f => fieldRole(ch, f) === 'quota').map(f => f.name);
+  setEncodeFields(ch.encode, 'category', dims);
+  setEncodeFields(ch.encode, 'value', quotas);
+  syncTableColumnsEncode(ch);
 }
 
 function sortSeriesPack(ch, pack) {
@@ -2630,9 +2697,10 @@ function dimLabels(datasetId, fields) {
   return (fields || []).map(f => fieldLabelOf(datasetId, f)).join(' · ');
 }
 
-/** Max fields per encode slot by chart type (from CHART_META.slots) */
+/** Max fields per encode slot. `max: 0` = unlimited (DataEase 明细表). */
 function slotMax(chartType, slot) {
   const n = CHART_META[chartType]?.slots?.[slot]?.max;
+  if (n === 0) return Number.POSITIVE_INFINITY;
   if (typeof n === 'number') return n;
   return 1;
 }
@@ -2646,8 +2714,8 @@ function encodeGuideHtml(ch) {
   if (!meta) return '';
   const caps = Object.entries(meta.slots || {}).map(([slot, cfg]) => {
     const lab = slotLabel(ch.chartType, slot);
-    const multi = cfg.max > 1;
-    return `<span>${esc(lab)} ${multi ? `≤${cfg.max}` : '×1'}</span>`;
+    const cap = cfg.max === 0 ? '不限' : (cfg.max > 1 ? `≤${cfg.max}` : '×1');
+    return `<span>${esc(lab)} ${cap}</span>`;
   }).join('');
   if (!caps) return '';
   return `<div class="encode-guide encode-guide--caps" title="${esc(meta.guide || '')}">
@@ -2848,10 +2916,10 @@ function resolveSeriesColors(st, theme) {
 
 function slotLabel(chartType, slot) {
   if (slot === 'colDim') return '列维度';
-  if (slot === 'category') return chartType === 'pivot' ? '行维度' : '维度';
-  if (slot === 'value') return '指标';
+  if (slot === 'category') return chartType === 'pivot' ? '行维度' : (chartType === 'table' ? '维度' : '维度');
+  if (slot === 'value') return chartType === 'table' ? '指标' : '指标';
   if (slot === 'color') return chartType === 'grouptable' ? '二级分组' : '堆叠/拆色';
-  if (slot === 'columns') return '显示列';
+  if (slot === 'columns') return '表格列';
   return slot;
 }
 
@@ -2859,6 +2927,10 @@ function missingBind(chart) {
   const meta = CHART_META[chart.chartType] || CHART_META.bar;
   const miss = [];
   if (!chart.datasetId) miss.push({ key:'dataset', label:'选择数据集' });
+  if (chart.chartType === 'table') {
+    if (!tableColumnsOf(chart).length) miss.push({ key: 'category', label: '绑定维度或指标' });
+    return miss;
+  }
   for (const slot of meta.need) {
     if (!encodeFields(chart.encode, slot).length) {
       miss.push({ key: slot, label: '绑定' + slotLabel(chart.chartType, slot) });
@@ -6151,6 +6223,7 @@ function renderReportInspector(el) {
 
   // inline：完整数据面板（对齐仪表盘）
   const ch = reportBlockAsChart(block);
+  migrateTableEncode(ch);
   const dataset = ds(ch.datasetId);
   const meta = CHART_META[ch.chartType] || CHART_META.bar;
   const miss = missingBind(ch);
@@ -6187,12 +6260,14 @@ function renderReportInspector(el) {
       ${fieldBankHtml(ch)}
     </div>
     <div class="sec">
-      <h4>3. 编码槽 ${meta?.need?.length ? '· 需 ' + meta.need.map(s => slotLabel(ch.chartType, s)).join(' + ') : ''}</h4>
+      <h4>3. 编码槽 ${ch.chartType === 'table' ? '· 维度 + 指标' : (meta?.need?.length ? '· 需 ' + meta.need.map(s => slotLabel(ch.chartType, s)).join(' + ') : '')}</h4>
       ${encodeGuideHtml(ch)}
       ${ch.chartType === 'pivot' ? slotHtml('category', '行维度', 'dim', ch) : ''}
       ${ch.chartType === 'pivot' ? slotHtml('colDim', '列维度', 'dim', ch) : ''}
+      ${ch.chartType === 'table' ? slotHtml('category', '表格列 / 维度', 'dim', ch) : ''}
+      ${ch.chartType === 'table' ? slotHtml('value', '表格列 / 指标', 'quota', ch) : ''}
       ${ch.chartType !== 'pivot' && ch.chartType !== 'table' && meta.need.includes('category') ? slotHtml('category', '维度', 'dim', ch) : ''}
-      ${ch.chartType !== 'table' ? slotHtml('value', '指标', 'quota', ch) : slotHtml('value', '高亮指标（可选）', 'quota', ch)}
+      ${ch.chartType !== 'pivot' && ch.chartType !== 'table' ? slotHtml('value', '指标', 'quota', ch) : ''}
       ${ch.chartType !== 'table' ? `<div class="field"><label>聚合</label>
         <select id="agg">${['SUM','COUNT','AVG','MAX','MIN'].map(a => `<option ${ (ch.encode.agg||'SUM')===a?'selected':''}>${a}</option>`).join('')}</select>
       </div>` : ''}
@@ -6423,28 +6498,26 @@ function renderEditor(app) {
   const isMob = state.phase !== 'a' && state.editSurface === 'mobile';
   const leftCompLabel = isMob ? '组件池' : '组件';
   app.innerHTML = `
-    <div class="bar">
+    <div class="bar bar-editor ${editorShellClass()}">
       <div class="bar-leading">
         <button class="btn ghost" id="toList" title="返回仪表盘">←</button>
         <b contenteditable="true" id="title">${esc(d.name)}</b>
         ${statusTag(d.status)}
         ${mob.enabled ? '<span class="tag mob">移动端</span>' : ''}
       </div>
-      <div class="spacer"></div>
-      ${state.phase !== 'a' ? `<div class="bar-surface"><div class="seg2" id="surfaceSeg">
+      <div class="bar-mid"></div>
+      <div class="bar-actions">
+        ${state.phase !== 'a' ? `<div class="seg2" id="surfaceSeg">
           <button type="button" data-sf="pc" class="${!isMob?'on':''}">PC布局</button>
           <button type="button" data-sf="mobile" class="${isMob?'on':''}">移动布局</button>
-        </div></div>` : ''}
-      <div class="bar-actions">
-        <button class="btn ghost" id="toggleInsp">${state.inspCollapsed ? '显示配置' : '收起配置'}</button>
+        </div>` : ''}
         <button class="btn ghost" id="btnUndo">撤销</button>
         <button class="btn" id="btnPreview">预览</button>
         <button class="btn ghost" id="btnShare">分享</button>
-        <button class="btn ghost" id="btnExport">导出 CSV</button>
         <button class="btn primary" id="btnPub">发布</button>
       </div>
     </div>
-    <div class="editor ${state.inspCollapsed ? 'no-insp' : ''}">
+    <div class="editor ${editorShellClass()}">
       <aside class="pane">
         <div class="ptabs">
           <button class="${state.leftTab==='comp'?'on':''}" data-lt="comp">${leftCompLabel}</button>
@@ -6463,22 +6536,15 @@ function renderEditor(app) {
         </div>
       </section>
       <aside class="pane insp">
-        <div class="ptabs t3">
-          <button class="${state.rightTab==='data'?'on':''}" data-rt="data">数据</button>
-          <button class="${state.rightTab==='style'?'on':''}" data-rt="style">样式</button>
-          <button class="${state.rightTab==='senior'?'on':''}" data-rt="senior">高级</button>
-        </div>
         <div class="pbody" id="right"></div>
       </aside>
     </div>`;
 
   app.querySelector('#toList').onclick = () => { state.module = 'dashboard'; state.screen = 'list'; state.editSurface = 'pc'; render(); };
   app.querySelector('#btnGuide').onclick = () => window.dispatchEvent(new CustomEvent('od:open-dashboard-guide'));
-  app.querySelector('#toggleInsp').onclick = () => { state.inspCollapsed = !state.inspCollapsed; render(); };
   app.querySelector('#btnUndo').onclick = undo;
   app.querySelector('#btnPreview').onclick = () => openPublishedPreview('editor');
   app.querySelector('#btnShare').onclick = () => openShareModal();
-  app.querySelector('#btnExport').onclick = () => exportCsv();
   app.querySelector('#btnPub').onclick = () => openPublishModal();
   app.querySelector('#title').onblur = e => {
     const n = e.target.textContent.trim();
@@ -6496,12 +6562,6 @@ function renderEditor(app) {
     app.querySelectorAll('[data-lt]').forEach(x => x.classList.toggle('on', x.dataset.lt === state.leftTab));
     renderLeft(document.getElementById('left'));
   });
-  app.querySelectorAll('[data-rt]').forEach(b => b.onclick = () => {
-    state.rightTab = b.dataset.rt;
-    app.querySelectorAll('[data-rt]').forEach(x => x.classList.toggle('on', x.dataset.rt === state.rightTab));
-    renderRight(document.getElementById('right'));
-  });
-
   renderLayoutBar(app.querySelector('#layoutBar'));
   renderLeft(app.querySelector('#left'));
   if (app.querySelector('#tabStrip')) renderTabStrip(app.querySelector('#tabStrip'));
@@ -6966,6 +7026,7 @@ function renderQueryPanel(el, comp) {
   const charts = pageChartOptions();
 
   el.innerHTML = `
+    ${inspModeSegHtml()}
     <div class="insp-scroll">
     <div class="sec">
       <h4>查询控件</h4>
@@ -7009,6 +7070,7 @@ function renderQueryPanel(el, comp) {
 
   const refresh = () => { markDirty(); replaceWidget(comp, { paint: false }); renderRight(el); };
 
+  wireInspMode(el);
   el.querySelector('#qlabel').onchange = e => {
     pushUndo();
     comp.props.label = e.target.value;
@@ -7903,6 +7965,7 @@ function paintTableChart(el, comp, ch, st, rows) {
   }
 
   // 明细表
+  migrateTableEncode(ch);
   const cols = tableColumnsOf(ch);
   let detailRows = rows;
   if (sn.resultLimit > 0) detailRows = detailRows.slice(0, sn.resultLimit);
@@ -7985,6 +8048,78 @@ function applyPieTopN(data, topN) {
   return other > 0 ? [...head, { name: '其他', value: other }] : head;
 }
 
+function packQueryResult(ch, result) {
+  const dataRows = Array.isArray(result?.data) ? result.data : [];
+  const cat = encodePrimary(ch.encode, 'category');
+  const val = encodePrimary(ch.encode, 'value') || 'value';
+  const rows = dataRows.map((r) => {
+    const row = Array.isArray(r) ? r : [];
+    const o = {};
+    if (ch.chartType === 'kpi' || !cat) {
+      o[val] = row.length > 1 ? row[1] : row[0];
+    } else {
+      o[cat] = row[0];
+      o[val] = row.length > 1 ? row[1] : 0;
+    }
+    return o;
+  });
+  const toNum = (v) => {
+    const n = typeof v === 'number' ? v : Number(String(v ?? '').replace(/,/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  };
+  if (ch.chartType === 'kpi' || !cat) {
+    const v = toNum(rows[0]?.[val]);
+    return {
+      rows,
+      data: [{ name: '合计', value: v }],
+      seriesPack: { categories: ['合计'], series: [{ name: val, data: [v] }] }
+    };
+  }
+  return {
+    rows,
+    data: rows.map((r) => ({ name: String(r[cat] ?? ''), value: toNum(r[val]) })),
+    seriesPack: {
+      categories: rows.map((r) => String(r[cat] ?? '')),
+      series: [{ name: val, data: rows.map((r) => toNum(r[val])) }]
+    }
+  };
+}
+
+function beginLiveChartQuery(el, comp, ch) {
+  if (!__productOpts || typeof __productOpts.queryChart !== 'function') return null;
+  if (!state._chartQueryCache) state._chartQueryCache = {};
+  const cache = state._chartQueryCache;
+  const key = `${ch.id}|${ch.chartType}|${ch.datasetId || ''}|${JSON.stringify(ch.encode || {})}`;
+  const hit = cache[ch.id];
+  if (hit && hit.key === key) {
+    if (hit.status === 'ok') return { ready: true, ...hit.payload };
+    if (hit.status === 'pending') return { pending: true };
+    if (hit.status === 'fail') return { failed: true };
+  }
+  cache[ch.id] = { key, status: 'pending' };
+  ch._qgen = (ch._qgen || 0) + 1;
+  const gen = ch._qgen;
+  Promise.resolve(__productOpts.queryChart(ch.id, {
+    datasetId: ch.datasetId,
+    chartType: ch.chartType,
+    encode: ch.encode,
+    title: ch.title
+  })).then((result) => {
+    if (ch._qgen !== gen) return;
+    cache[ch.id] = { key, status: 'ok', payload: packQueryResult(ch, result) };
+    const board = document.getElementById('board');
+    const node = board && board.querySelector(`[data-wid="${comp.id}"]`);
+    if (node) paintChart(node, comp);
+  }).catch(() => {
+    if (ch._qgen !== gen) return;
+    cache[ch.id] = { key, status: 'fail' };
+    const board = document.getElementById('board');
+    const node = board && board.querySelector(`[data-wid="${comp.id}"]`);
+    if (node) paintChart(node, comp);
+  });
+  return { pending: true };
+}
+
 function paintChart(el, comp) {
   const ch = state.dash.charts[comp.chartId];
   if (!ch || missingBind(ch).length) return;
@@ -7992,17 +8127,26 @@ function paintChart(el, comp) {
   // keep PC style bag hydrated for editors that mutate ensureStyle(ch)
   ensureStyle(ch);
   const sn = ensureSenior(ch);
-  const rows = filteredRows(ch);
+  const live = beginLiveChartQuery(el, comp, ch);
+  const useLive = !!(live && live.ready);
+  const rows = useLive ? live.rows : ((live && live.pending) ? [] : filteredRows(ch));
   const catFields = encodeFields(ch.encode, 'category');
   const valFields = encodeFields(ch.encode, 'value');
   const colorField = encodePrimary(ch.encode, 'color');
   const primaryVal = valFields[0];
   const primaryAgg = primaryVal ? fieldAggOf(ch, primaryVal) : (ch.encode.agg || 'SUM');
-  let seriesPack = colorField && primaryVal && ['bar', 'hbar', 'line', 'area'].includes(ch.chartType)
-    ? aggregateByColor(rows, catFields, colorField, primaryVal, primaryAgg)
-    : aggregateSeries(rows, catFields, valFields, ch.encode.agg || 'SUM', ch.datasetId, ch);
+  let seriesPack;
+  let data;
+  if (useLive) {
+    seriesPack = live.seriesPack;
+    data = live.data;
+  } else {
+    seriesPack = colorField && primaryVal && ['bar', 'hbar', 'line', 'area'].includes(ch.chartType)
+      ? aggregateByColor(rows, catFields, colorField, primaryVal, primaryAgg)
+      : aggregateSeries(rows, catFields, valFields, ch.encode.agg || 'SUM', ch.datasetId, ch);
+    data = aggregate(rows, catFields, primaryVal, primaryAgg);
+  }
   seriesPack = sortSeriesPack(ch, seriesPack);
-  let data = aggregate(rows, catFields, primaryVal, primaryAgg);
   data = sortPieData(ch, data);
   if (sn.resultLimit > 0 && ch.chartType !== 'pie' && ch.chartType !== 'kpi') {
     seriesPack = {
@@ -8040,7 +8184,11 @@ function paintChart(el, comp) {
     const align = st.valueAlign === 'center' ? 'center' : 'left';
     const prefix = st.valuePrefix || '';
     const suffix = st.valueSuffix || '';
-    const compareHtml = st.showCompare === false ? '' : `<div class="d ${delta >= 0 ? 'up' : 'down'}">${ch.encode.calc !== 'none' ? `${delta >= 0 ? '↑' : '↓'} ${(delta * 100).toFixed(1)}% ${ch.encode.calc === 'yoy' ? '同比' : '环比'}` : `基于 ${rows.length} 行`}${alertOn ? ' · 触发告警' : ''}</div>`;
+    const calc = String(ch.encode?.calc || 'none');
+    const showDelta = st.showCompare !== false && (calc === 'yoy' || calc === 'mom');
+    const compareHtml = showDelta
+      ? `<div class="d ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '↑' : '↓'} ${(delta * 100).toFixed(1)}% ${calc === 'yoy' ? '同比' : '环比'}${alertOn ? ' · 触发告警' : ''}</div>`
+      : (alertOn ? '<div class="d down">触发告警</div>' : '');
     const subHtml = st.kpiSubtitle ? `<div class="kpi-sub">${esc(st.kpiSubtitle)}</div>` : '';
     box.innerHTML = `<div class="kpi-box ${compact ? 'compact' : ''} ${alertOn ? 'alert' : ''}" style="text-align:${align}">
       ${showInnerTitle ? `<div class="kpi-label" style="color:${st.titleColor || 'var(--text-2)'}">${esc(ch.title)}</div>` : ''}
@@ -8447,8 +8595,256 @@ function renderMobileDashSettings(el) {
   };
 }
 
+function editorShellClass() {
+  return [
+    shouldDataOpsOpen() ? 'data-ops-open' : '',
+    state.bindCollapsed ? 'bind-collapsed' : '',
+    state.opsCollapsed ? 'ops-collapsed' : ''
+  ].filter(Boolean).join(' ');
+}
+
+function shouldDataOpsOpen() {
+  if (state.inspCollapsed || isMobileEdit()) return false;
+  return findComp(state.selectedId)?.type === 'chart';
+}
+
+function paneFoldBtn(which, title) {
+  return `<button type="button" class="pane-fold" data-fold="${which}" title="${title}" aria-label="${title}">
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+      <path d="M3.2 2.6 7 7l-3.8 4.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M7.2 2.6 11 7l-3.8 4.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>`;
+}
+
+function dockIcon(kind) {
+  if (kind === 'bind') {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <path d="M2.5 6.2h11M6.2 6.2v7.3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    </svg>`;
+  }
+  return `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M3 4.2h10v8.2H3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M3 7h10M6.2 4.2v8.2M9.8 4.2v8.2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+  </svg>`;
+}
+
+function inspDockHtml() {
+  const items = [];
+  if (state.bindCollapsed) {
+    items.push(`<button type="button" class="insp-dock-item" data-unfold="bind" title="展开图表配置">
+      ${dockIcon('bind')}<span>配置</span>
+    </button>`);
+  }
+  if (state.opsCollapsed) {
+    items.push(`<button type="button" class="insp-dock-item" data-unfold="ops" title="展开数据集">
+      ${dockIcon('ops')}<span>数据</span>
+    </button>`);
+  }
+  if (!items.length) return '';
+  return `<nav class="insp-dock" aria-label="已收起的面板">${items.join('')}</nav>`;
+}
+
+function wirePaneFolds(el) {
+  el.querySelectorAll('[data-fold]').forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.fold === 'bind') state.bindCollapsed = true;
+      else state.opsCollapsed = true;
+      syncDataOpsLayout();
+      renderRight(document.getElementById('right'));
+    };
+  });
+  el.querySelectorAll('[data-unfold]').forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.unfold === 'bind') state.bindCollapsed = false;
+      else state.opsCollapsed = false;
+      syncDataOpsLayout();
+      renderRight(document.getElementById('right'));
+    };
+  });
+}
+
+function inspModeSegHtml() {
+  return `<div class="insp-mode">
+    <div class="seg3" role="tablist" aria-label="配置分组">
+      <button type="button" class="${state.rightTab === 'data' ? 'on' : ''}" data-rt="data">数据</button>
+      <button type="button" class="${state.rightTab === 'style' ? 'on' : ''}" data-rt="style">样式</button>
+      <button type="button" class="${state.rightTab === 'senior' ? 'on' : ''}" data-rt="senior">高级</button>
+    </div>
+  </div>`;
+}
+
+function wireInspMode(el) {
+  el.querySelectorAll('[data-rt]').forEach((b) => {
+    b.onclick = () => {
+      if (state.rightTab === b.dataset.rt) return;
+      state.rightTab = b.dataset.rt;
+      syncDataOpsLayout();
+      renderRight(document.getElementById('right'));
+    };
+  });
+}
+
+function syncDataOpsLayout() {
+  const editor = document.querySelector('.hifi-dash-root .editor') || document.querySelector('.editor');
+  const bar = document.querySelector('.hifi-dash-root .bar-editor') || document.querySelector('.bar-editor');
+  if (!editor) return;
+  const open = shouldDataOpsOpen();
+  const was = editor.classList.contains('data-ops-open');
+  [editor, bar].filter(Boolean).forEach((node) => {
+    node.classList.toggle('data-ops-open', open);
+    node.classList.toggle('bind-collapsed', !!state.bindCollapsed);
+    node.classList.toggle('ops-collapsed', !!state.opsCollapsed);
+  });
+  if (was === open) return;
+  const board = document.getElementById('board');
+  if (!board || isMobileEdit()) return;
+  requestAnimationFrame(() => {
+    paintPositions(board, tabComps(), colW(board));
+    Object.values(state.chartInst || {}).forEach(c => { try { c.resize(); } catch (_) {} });
+  });
+}
+
+function closeChartTypePop() {
+  document.querySelectorAll('.chart-type-pop').forEach(pop => {
+    if (pop._onDoc) document.removeEventListener('mousedown', pop._onDoc, true);
+    pop._onDoc = null;
+    pop.remove();
+  });
+  document.querySelectorAll('#ctypeBtn').forEach(btn => btn.setAttribute('aria-expanded', 'false'));
+}
+
+function closeDatasetPop() {
+  document.querySelectorAll('.ds-picker-pop').forEach(pop => {
+    if (pop._onDoc) document.removeEventListener('mousedown', pop._onDoc, true);
+    if (pop._onKey) document.removeEventListener('keydown', pop._onKey, true);
+    pop._onDoc = null;
+    pop._onKey = null;
+    pop.remove();
+  });
+  document.querySelectorAll('#dsPickerTrig').forEach(btn => btn.setAttribute('aria-expanded', 'false'));
+}
+
+function chartTypeGroups() {
+  const groups = {};
+  Object.entries(CHART_META).forEach(([k, v]) => {
+    (groups[v.group] = groups[v.group] || []).push([k, v]);
+  });
+  return ['指标', '比较', '表格', '分布', '趋势']
+    .filter(g => groups[g]?.length)
+    .map(g => ({ title: g, items: groups[g] }));
+}
+
+function chartTypeSwitchHtml(ch) {
+  const meta = CHART_META[ch.chartType] || CHART_META.bar;
+  const groups = chartTypeGroups();
+  const nav = groups.map((g, i) =>
+    `<button type="button" class="ctp-nav-item${i === 0 ? ' on' : ''}" data-ctp-cat="${esc(g.title)}">${esc(g.title)}</button>`
+  ).join('');
+  const panels = groups.map(g => {
+    const tiles = g.items.map(([k, v]) =>
+      `<button type="button" class="ctp-item${ch.chartType === k ? ' on' : ''}" data-ctype="${k}" title="${esc(v.guide || v.label)}">
+        <span class="ctp-thumb">${chartIcon(v.icon)}</span>
+        <span class="ctp-name">${esc(v.label)}</span>
+      </button>`
+    ).join('');
+    return `<section class="ctp-sec" data-ctp-sec="${esc(g.title)}">
+      <div class="ctp-sec-title">${esc(g.title)}</div>
+      <div class="ctp-grid">${tiles}</div>
+    </section>`;
+  }).join('');
+  return `<div class="chart-switch">
+    <span class="data-area-label">切换图表</span>
+    <button type="button" class="chart-type-select" id="ctypeBtn" aria-haspopup="dialog" aria-expanded="false">
+      <span class="chart-type-select-icon">${chartIcon(meta.icon)}</span>
+      <span class="chart-type-select-lab">${esc(meta.label)}</span>
+      <span class="chart-type-select-caret" aria-hidden="true"></span>
+    </button>
+    <div class="chart-type-pop" id="ctypePop" hidden role="dialog" aria-label="选择图表类型">
+      <div class="ctp-nav">${nav}</div>
+      <div class="ctp-body">${panels}</div>
+    </div>
+  </div>`;
+}
+
+function placeChartTypePop(btn, pop) {
+  const r = btn.getBoundingClientRect();
+  const w = 420;
+  const maxH = Math.min(400, window.innerHeight - 16);
+  pop.style.width = w + 'px';
+  pop.style.maxHeight = maxH + 'px';
+  let left = Math.min(window.innerWidth - w - 8, Math.max(8, r.right - w));
+  let top = r.bottom + 6;
+  if (top + 280 > window.innerHeight) top = Math.max(8, r.top - Math.min(maxH, 360) - 6);
+  pop.style.left = left + 'px';
+  pop.style.top = top + 'px';
+}
+
+function wireChartTypePicker(el, ch) {
+  const btn = el.querySelector('#ctypeBtn');
+  const pop = el.querySelector('#ctypePop');
+  if (!btn || !pop) return;
+  const host = document.querySelector('.hifi-dash-root') || document.body;
+  const close = () => {
+    if (pop._onDoc) document.removeEventListener('mousedown', pop._onDoc, true);
+    pop._onDoc = null;
+    btn.setAttribute('aria-expanded', 'false');
+    pop.hidden = true;
+    if (pop.parentElement === host) {
+      el.querySelector('.chart-switch')?.appendChild(pop);
+    }
+  };
+  const open = () => {
+    closeDatasetPop();
+    host.appendChild(pop);
+    pop.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    placeChartTypePop(btn, pop);
+    const current = pop.querySelector(`.ctp-item[data-ctype="${ch.chartType}"]`);
+    const sec = current?.closest('.ctp-sec');
+    pop.querySelectorAll('[data-ctp-cat]').forEach(x => x.classList.toggle('on', x.dataset.ctpCat === sec?.dataset.ctpSec));
+    const body = pop.querySelector('.ctp-body');
+    if (sec && body) body.scrollTop = sec.offsetTop;
+    pop._onDoc = e => {
+      if (pop.contains(e.target) || btn.contains(e.target)) return;
+      close();
+    };
+    setTimeout(() => document.addEventListener('mousedown', pop._onDoc, true), 0);
+  };
+  btn.onclick = e => {
+    e.stopPropagation();
+    if (pop.hidden) open();
+    else close();
+  };
+  pop.querySelectorAll('[data-ctp-cat]').forEach(n => {
+    n.onclick = () => {
+      pop.querySelectorAll('[data-ctp-cat]').forEach(x => x.classList.toggle('on', x === n));
+      const sec = pop.querySelector(`[data-ctp-sec="${n.dataset.ctpCat}"]`);
+      const body = pop.querySelector('.ctp-body');
+      if (sec && body) body.scrollTop = sec.offsetTop;
+    };
+  });
+  pop.querySelectorAll('[data-ctype]').forEach(n => {
+    n.onclick = () => {
+      const next = n.dataset.ctype;
+      close();
+      if (!next || next === ch.chartType) return;
+      pushUndo();
+      const prev = ch.encode;
+      ch.chartType = next;
+      ch.encode = adaptEncodeForChartType(prev, ch.chartType);
+      markChartPending(ch.id);
+      patchChart(ch, { inspector: true, flash: false, paint: false });
+    };
+  });
+}
+
 function renderRight(el) {
   if (!el) return;
+  closeChartTypePop();
+  closeDatasetPop();
+  syncDataOpsLayout();
   const comp = findComp(state.selectedId);
   if (!comp) {
     if (isMobileEdit()) return renderMobileDashSettings(el);
@@ -8472,7 +8868,7 @@ function renderRight(el) {
       seen.add(f.name);
       uniq.push(f);
     });
-    el.innerHTML = `<div class="insp-scroll"><div class="sec"><h4>切片器</h4>
+    el.innerHTML = `${inspModeSegHtml()}<div class="insp-scroll"><div class="sec"><h4>切片器</h4>
       <div class="field"><label>字段</label>
         <select id="sf">
           <option value="">请选择字段</option>
@@ -8484,55 +8880,308 @@ function renderRight(el) {
     el.querySelector('#sf').value = comp.props.field || '';
     el.querySelector('#sf').onchange = e => { pushUndo(); comp.props.field = e.target.value; markDirty(); replaceWidget(comp); };
     el.querySelector('#sl').onchange = e => { pushUndo(); comp.props.label = e.target.value; markDirty(); replaceWidget(comp); };
+    wireInspMode(el);
     return;
   }
   if (comp.type === 'text') {
-    el.innerHTML = `<div class="insp-scroll"><div class="field"><label>内容</label><textarea id="tx">${esc(comp.props.content||'')}</textarea></div></div>`;
+    el.innerHTML = `${inspModeSegHtml()}<div class="insp-scroll"><div class="field"><label>内容</label><textarea id="tx">${esc(comp.props.content||'')}</textarea></div></div>`;
     el.querySelector('#tx').onchange = e => { pushUndo(); comp.props.content = e.target.value; markDirty(); replaceWidget(comp); };
+    wireInspMode(el);
   }
 }
 
-function renderDataPanel(el, comp) {
-  const ch = state.dash.charts[comp.chartId];
+function chartTitleFieldHtml(ch) {
+  return `<div class="chart-title-field">
+    <label for="ct">标题</label>
+    <input id="ct" value="${esc(ch.title)}" />
+  </div>`;
+}
+
+function chartOpsAsideHtml(ch) {
   const dataset = ds(ch.datasetId);
-  const meta = CHART_META[ch.chartType];
-  const miss = missingBind(ch);
-  const pending = state.pendingPaint?.has(ch.id);
+  return `<aside class="data-ops">
+    <div class="data-pane-hd">
+      <span>数据集</span>
+      ${paneFoldBtn('ops', '收起数据集')}
+    </div>
+    <div class="data-ops-ds">${datasetPickerHtml(ch)}</div>
+    ${dataset ? fieldBankHtml(ch) : `<p class="data-ops-empty">选择数据集后，在此浏览维度和指标</p>`}
+  </aside>`;
+}
+
+function datasetPickerLabel(ch) {
+  if (!ch.datasetId) return '请选择';
+  return ds(ch.datasetId)?.name || '数据集不存在';
+}
+
+function datasetGroupOf(d) {
+  const f = String(d?.folder || '').trim();
+  return f || '未分组';
+}
+
+function datasetPickerGroups() {
+  const map = new Map();
+  Object.values(DATASETS).forEach(d => {
+    const g = datasetGroupOf(d);
+    map.set(g, (map.get(g) || 0) + 1);
+  });
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh'));
+}
+
+function datasetPickerChipsHtml(group = '全部') {
+  const groups = datasetPickerGroups();
+  if (groups.length <= 1) return '';
+  const chips = [`<button type="button" class="dsp-chip${group === '全部' ? ' on' : ''}" data-ds-group="全部">全部</button>`];
+  groups.forEach(([name, n]) => {
+    chips.push(`<button type="button" class="dsp-chip${group === name ? ' on' : ''}" data-ds-group="${esc(name)}">${esc(name)} ${n}</button>`);
+  });
+  return chips.join('');
+}
+
+function datasetPickerListHtml(ch, query = '', group = '全部') {
+  const q = String(query || '').trim().toLowerCase();
+  const all = Object.values(DATASETS);
+  const items = all.filter(d => {
+    if (group !== '全部' && datasetGroupOf(d) !== group) return false;
+    if (!q) return true;
+    return (d.name || '').toLowerCase().includes(q) || String(d.id || '').toLowerCase().includes(q);
+  }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh'));
+  if (!items.length) {
+    return `<div class="dsp-empty">${all.length ? '暂无匹配数据集' : '暂无数据集'}</div>`;
+  }
+  return items.map(d => {
+    const g = datasetGroupOf(d);
+    const on = ch.datasetId === d.id;
+    return `<button type="button" class="dsp-item${on ? ' on' : ''}" data-ds-id="${esc(d.id)}" title="${esc(d.name)}">
+      <span class="dsp-name">${esc(d.name)}</span>
+      <span class="dsp-meta">${esc(g)}</span>
+    </button>`;
+  }).join('');
+}
+
+function datasetPickerHtml(ch) {
+  const current = ds(ch.datasetId);
+  const label = datasetPickerLabel(ch);
+  return `<div class="ds-picker-row">
+    <div class="ds-picker" id="dsPicker">
+      <button type="button" class="ds-picker-trig" id="dsPickerTrig" aria-haspopup="dialog" aria-expanded="false" title="${esc(label)}">
+        <span class="ds-picker-lab">${esc(label)}</span>
+        <span class="ds-picker-caret" aria-hidden="true"></span>
+      </button>
+      <div class="ds-picker-pop" id="dsPickerPop" hidden role="dialog" aria-label="选择数据集">
+        <div class="dsp-hd">
+          <b>数据集</b>
+          <button type="button" class="dsp-link" id="dsRefresh">刷新</button>
+        </div>
+        <div class="dsp-search">
+          <span class="dsp-search-ico" aria-hidden="true"></span>
+          <input id="dsSearch" type="search" placeholder="搜索名称" autocomplete="off" />
+        </div>
+        <div class="dsp-groups" id="dsGroups">${datasetPickerChipsHtml('全部')}</div>
+        <div class="dsp-list" id="dsList">${datasetPickerListHtml(ch)}</div>
+        <div class="dsp-ft">
+          <button type="button" class="dsp-link dsp-add" id="dsCreate"><span class="dsp-plus" aria-hidden="true"></span>新建数据集</button>
+        </div>
+      </div>
+    </div>
+    ${current ? `<button type="button" class="ds-picker-edit" id="dsEdit" title="编辑数据集" aria-label="编辑数据集">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M9.1 3.3 12.7 6.9 6.2 13.4H2.6v-3.6z"/><path fill="none" stroke="currentColor" stroke-width="1.4" d="m8 4.4 3.6 3.6"/></svg>
+    </button>` : ''}
+  </div>`;
+}
+
+function openDatasetManagePage(id) {
+  const path = id ? `/datasets/${encodeURIComponent(id)}?studio=1` : '/datasets?studio=1';
+  window.open(path, '_blank', 'noopener');
+}
+
+async function refreshProductDatasets() {
+  const fn = __productOpts && __productOpts.refreshDatasets;
+  if (typeof fn !== 'function') return;
+  const next = await fn();
+  if (!next || typeof next !== 'object') return;
+  Object.keys(DATASETS).forEach((k) => { delete DATASETS[k]; });
+  Object.keys(next).forEach((k) => { DATASETS[k] = next[k]; });
+}
+
+function applyDatasetChoice(ch, nextId) {
+  const id = nextId || null;
+  if (id === (ch.datasetId || null)) return;
+  pushUndo();
+  ch.datasetId = id;
+  ch.encode = emptyEncode(ch.chartType);
+  markChartPending(ch.id);
+  patchChart(ch, { inspector: true, flash: false, paint: false });
+}
+
+function placeDatasetPop(btn, pop) {
+  const r = btn.getBoundingClientRect();
+  const w = 320;
+  const maxH = Math.min(356, window.innerHeight - 16);
+  pop.style.width = w + 'px';
+  pop.style.maxHeight = maxH + 'px';
+  let left = Math.min(window.innerWidth - w - 8, Math.max(8, r.left));
+  let top = r.bottom + 4;
+  if (top + 280 > window.innerHeight) top = Math.max(8, r.top - Math.min(maxH, 320) - 4);
+  pop.style.left = left + 'px';
+  pop.style.top = top + 'px';
+}
+
+function wireDatasetPicker(el, ch) {
+  const trig = el.querySelector('#dsPickerTrig');
+  const pop = el.querySelector('#dsPickerPop');
+  if (!trig || !pop) return;
+  const host = document.querySelector('.hifi-dash-root') || document.body;
+  const listEl = () => pop.querySelector('#dsList');
+  const searchEl = () => pop.querySelector('#dsSearch');
+  const chipsEl = () => pop.querySelector('#dsGroups');
+  const currentGroup = () => pop.dataset.dsGroup || '全部';
+  const paint = () => {
+    const chips = chipsEl();
+    const list = listEl();
+    if (chips) chips.innerHTML = datasetPickerChipsHtml(currentGroup());
+    if (list) list.innerHTML = datasetPickerListHtml(ch, searchEl()?.value || '', currentGroup());
+    bindPicker();
+  };
+  const bindPicker = () => {
+    listEl()?.querySelectorAll('[data-ds-id]').forEach(n => {
+      n.onclick = () => {
+        const next = n.dataset.dsId || null;
+        close();
+        applyDatasetChoice(ch, next);
+      };
+    });
+    chipsEl()?.querySelectorAll('[data-ds-group]').forEach(n => {
+      n.onclick = e => {
+        e.stopPropagation();
+        pop.dataset.dsGroup = n.dataset.dsGroup || '全部';
+        paint();
+      };
+    });
+  };
+  const close = () => {
+    if (pop._onDoc) document.removeEventListener('mousedown', pop._onDoc, true);
+    if (pop._onKey) document.removeEventListener('keydown', pop._onKey, true);
+    pop._onDoc = null;
+    pop._onKey = null;
+    trig.setAttribute('aria-expanded', 'false');
+    pop.hidden = true;
+    if (pop.parentElement === host) {
+      el.querySelector('#dsPicker')?.appendChild(pop);
+    }
+  };
+  const open = () => {
+    closeChartTypePop();
+    host.appendChild(pop);
+    pop.hidden = false;
+    trig.setAttribute('aria-expanded', 'true');
+    pop.dataset.dsGroup = '全部';
+    const q = searchEl();
+    if (q) q.value = '';
+    placeDatasetPop(trig, pop);
+    paint();
+    setTimeout(() => q?.focus(), 0);
+    pop._onDoc = e => {
+      if (pop.contains(e.target) || trig.contains(e.target)) return;
+      close();
+    };
+    pop._onKey = e => {
+      if (e.key === 'Escape') close();
+    };
+    setTimeout(() => {
+      document.addEventListener('mousedown', pop._onDoc, true);
+      document.addEventListener('keydown', pop._onKey, true);
+    }, 0);
+  };
+  trig.onclick = e => {
+    e.stopPropagation();
+    if (pop.hidden) open();
+    else close();
+  };
+  searchEl()?.addEventListener('input', () => paint());
+  pop.querySelector('#dsRefresh')?.addEventListener('click', async e => {
+    e.stopPropagation();
+    const list = listEl();
+    if (list) list.innerHTML = '<div class="dsp-empty">刷新中…</div>';
+    try {
+      await refreshProductDatasets();
+      paint();
+      const lab = trig.querySelector('.ds-picker-lab');
+      if (lab) lab.textContent = datasetPickerLabel(ch);
+      trig.title = datasetPickerLabel(ch);
+      const ops = el.querySelector('.data-ops');
+      const bank = ops?.querySelector('.field-bank');
+      const empty = ops?.querySelector(':scope > .data-ops-empty');
+      if (ds(ch.datasetId)) {
+        if (bank) {
+          bank.outerHTML = fieldBankHtml(ch);
+          wireFieldBank(el, ch);
+        } else if (empty) {
+          empty.outerHTML = fieldBankHtml(ch);
+          wireFieldBank(el, ch);
+        }
+      }
+      toast('数据集已刷新', 'ok');
+    } catch (err) {
+      paint();
+      toast(err instanceof Error ? err.message : '刷新失败', 'warn');
+    }
+  });
+  pop.querySelector('#dsCreate')?.addEventListener('click', e => {
+    e.stopPropagation();
+    close();
+    openDatasetManagePage();
+    toast('请在新页保存数据集后，回来点「刷新」');
+  });
+  el.querySelector('#dsEdit')?.addEventListener('click', e => {
+    e.stopPropagation();
+    if (ch.datasetId) openDatasetManagePage(ch.datasetId);
+  });
+}
+
+function wireChartShell(el, ch) {
+  el.querySelector('#ct')?.addEventListener('change', e => {
+    pushUndo(); ch.title = e.target.value;
+    patchChart(ch, { inspector: false, flash: false });
+  });
+  wireDatasetPicker(el, ch);
+}
+
+function mountChartWork(el, ch, { leftInner, foot = '' }) {
+  const bindRail = !!state.bindCollapsed;
+  const opsRail = !!state.opsCollapsed;
+  const workClass = [
+    bindRail && opsRail ? 'dock-only' : '',
+    bindRail && !opsRail ? 'bind-rail' : '',
+    !bindRail && opsRail ? 'ops-rail' : ''
+  ].filter(Boolean).join(' ');
   el.innerHTML = `
-    <div class="chart-config-toolbar">
-      <div class="chart-config-caption"><b>图表配置</b><span>${esc(meta?.label || ch.chartType)}</span></div>
-      <div class="chart-config-controls">
-        <label><span>标题</span><input id="ct" value="${esc(ch.title)}" /></label>
-        <label><span>类型</span><select id="ctype">${Object.entries(CHART_META).map(([k,v]) => `<option value="${k}" ${ch.chartType===k?'selected':''}>${v.label}</option>`).join('')}</select></label>
-      </div>
-    </div>
-    <div class="insp-scroll">
-    <div class="sec sec-top">
-      <h4><span class="sec-index">1</span>数据集</h4>
-      ${!ch.datasetId ? `<button class="btn primary" style="width:100%;justify-content:center;margin-bottom:8px" id="pickDs">从工作区选择数据集</button>` : ''}
-      <div class="field" style="margin:0">
-        <select id="cds">
-          <option value="">请选择</option>
-          ${Object.values(DATASETS).map(d => `<option value="${d.id}" ${ch.datasetId===d.id?'selected':''}>${esc(d.name)}</option>`).join('')}
-        </select>
-      </div>
-    </div>
-    ${dataset ? `
-    <div class="sec">
-      <h4><span class="sec-index">2</span>字段</h4>
-      ${fieldBankHtml(ch)}
-    </div>
-    <div class="sec">
-      <h4><span class="sec-index">3</span>数据绑定</h4>
-      ${encodeGuideHtml(ch)}
-      ${ch.chartType === 'pivot' ? slotHtml('category', '行维度', 'dim', ch) : ''}
-      ${ch.chartType === 'pivot' ? slotHtml('colDim', '列维度', 'dim', ch) : ''}
-      ${ch.chartType === 'table' ? slotHtml('columns', '显示列', 'any', ch) : ''}
-      ${ch.chartType !== 'pivot' && ch.chartType !== 'table' && meta.need.includes('category') ? slotHtml('category', '维度', 'dim', ch) : ''}
-      ${ch.chartType !== 'table' ? slotHtml('value', '指标', 'quota', ch) : ''}
-      ${meta.slots?.color && (ch.chartType === 'grouptable' || (state.phase!=='a' && !isTableType(ch.chartType))) ? slotHtml('color', ch.chartType==='grouptable' ? '二级分组（可选）' : '堆叠/拆色维（可选）', 'dim', ch) : ''}
-      <p class="field-cfg-hint">点击字段 pill 上的 <b>▾</b> 可设置显示名、排序、聚合与数值格式。</p>
-      ${ch.chartType !== 'table' ? `<div class="field inline-2"><div class="field" style="margin:0"><label>默认聚合</label>
+    <div class="data-work${workClass ? ` ${workClass}` : ''}">
+      ${bindRail ? '' : `<div class="data-bind">
+          <div class="data-bind-hd">
+            <input id="ct" class="insp-title" value="${esc(ch.title)}" placeholder="图表标题" />
+            ${paneFoldBtn('bind', '收起图表配置')}
+          </div>
+          ${inspModeSegHtml()}
+          <div class="data-bind-body">${leftInner}</div>
+          ${foot}
+        </div>`}
+      ${opsRail ? '' : chartOpsAsideHtml(ch)}
+      ${inspDockHtml()}
+    </div>`;
+  wireInspMode(el);
+  wirePaneFolds(el);
+  wireChartShell(el, ch);
+  if (!opsRail && ds(ch.datasetId)) wireFieldBank(el, ch);
+}
+
+function dataBindSlotsHtml(ch, meta) {
+  const switcher = chartTypeSwitchHtml(ch);
+  if (!ds(ch.datasetId)) {
+    return `${switcher}<p class="data-ops-empty">请先选择数据集，再把维度、指标拖入槽位</p>`;
+  }
+  migrateTableEncode(ch);
+  const aggFmt = ch.chartType !== 'table' ? `<div class="field inline-2"><div class="field" style="margin:0"><label>默认聚合</label>
         <select id="agg">${['SUM','COUNT','AVG','MAX','MIN'].map(a => `<option ${ (ch.encode.agg||'SUM')===a?'selected':''}>${a}</option>`).join('')}</select>
       </div>
       <div class="field" style="margin:0"><label>默认数值格式</label>
@@ -8545,52 +9194,51 @@ function renderDataPanel(el, comp) {
           <option value="percent" ${ch.encode.format==='percent'?'selected':''}>百分比</option>
         </select>
       </div></div>
-      <p style="font-size:10px;color:var(--text-3);margin-top:4px;line-height:1.4">未单独配置的字段沿用上方默认值。</p>` : ''}
-    </div>
-    <div class="sec">
-      <h4><span class="sec-index">4</span>过滤与条数</h4>
-      <div class="q-bind-summary">
-        <div class="q-bind-summary-text" title="${esc(chartFiltersSummary(ch))}">${esc(chartFiltersSummary(ch))}</div>
-        <button type="button" class="btn ghost" id="cfgChartFilters" style="height:28px;flex-shrink:0">配置过滤条件…</button>
-      </div>
-      <div class="field" style="margin-top:10px">
-        <label>展示条数</label>
-        <select id="resultLimit">
-          <option value="0" ${!ensureSenior(ch).resultLimit?'selected':''}>全部</option>
-          ${[5,10,20,50,100,200].map(n => `<option value="${n}" ${+ensureSenior(ch).resultLimit===n?'selected':''}>前 ${n} 条</option>`).join('')}
-        </select>
-      </div>
-    </div>` : ''}
-    ${miss.length ? `<div class="miss"><b>缺失要素</b>${miss.map(m=>`<button data-focus="${m.key}">→ ${esc(m.label)}</button>`).join('')}</div>` : ''}
-    </div>
-    <div class="insp-foot">
+      <p class="field-cfg-hint">未单独配置的字段沿用上方默认值。</p>` : '';
+  return `
+      ${switcher}
+      ${ch.chartType === 'table' ? '' : encodeGuideHtml(ch)}
+      ${ch.chartType === 'pivot' ? slotHtml('category', '行维度', 'dim', ch) : ''}
+      ${ch.chartType === 'pivot' ? slotHtml('colDim', '列维度', 'dim', ch) : ''}
+      ${ch.chartType === 'table' ? slotHtml('category', '表格列 / 维度', 'dim', ch) : ''}
+      ${ch.chartType === 'table' ? slotHtml('value', '表格列 / 指标', 'quota', ch) : ''}
+      ${ch.chartType === 'table' ? `<div class="slot-actions"><button type="button" class="btn ghost" id="btnFillAllCols">填入全部字段</button></div>` : ''}
+      ${ch.chartType !== 'pivot' && ch.chartType !== 'table' && meta.need.includes('category') ? slotHtml('category', '维度', 'dim', ch) : ''}
+      ${ch.chartType !== 'pivot' && ch.chartType !== 'table' ? slotHtml('value', '指标', 'quota', ch) : ''}
+      ${meta.slots?.color && (ch.chartType === 'grouptable' || (state.phase!=='a' && !isTableType(ch.chartType))) ? slotHtml('color', ch.chartType==='grouptable' ? '二级分组（可选）' : '堆叠/拆色维（可选）', 'dim', ch) : ''}
+      <p class="field-cfg-hint">从操作区拖入字段；点 pill 上的 <b>▾</b> 可设显示名、排序与格式。</p>
+      ${aggFmt}
+      <div class="data-sub">
+        <h4>过滤与条数</h4>
+        <div class="q-bind-summary">
+          <div class="q-bind-summary-text" title="${esc(chartFiltersSummary(ch))}">${esc(chartFiltersSummary(ch))}</div>
+          <button type="button" class="btn ghost" id="cfgChartFilters" style="height:28px;flex-shrink:0">配置过滤条件…</button>
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label>展示条数</label>
+          <select id="resultLimit">
+            <option value="0" ${!ensureSenior(ch).resultLimit?'selected':''}>全部</option>
+            ${[5,10,20,50,100,200].map(n => `<option value="${n}" ${+ensureSenior(ch).resultLimit===n?'selected':''}>前 ${n} 条</option>`).join('')}
+          </select>
+        </div>
+      </div>`;
+}
+
+function renderDataPanel(el, comp) {
+  const ch = state.dash.charts[comp.chartId];
+  const dataset = ds(ch.datasetId);
+  const meta = CHART_META[ch.chartType];
+  const miss = missingBind(ch);
+  const pending = state.pendingPaint?.has(ch.id);
+  mountChartWork(el, ch, {
+    paneTitle: '数据绑定',
+    leftInner: `${dataBindSlotsHtml(ch, meta)}${miss.length ? `<div class="miss"><b>缺失要素</b>${miss.map(m=>`<button data-focus="${m.key}">→ ${esc(m.label)}</button>`).join('')}</div>` : ''}`,
+    foot: `<div class="data-bind-foot">
       ${pending ? '<span class="pending-hint">字段已变更，点击下方按钮刷新图表</span>' : ''}
       <button type="button" class="btn primary btn-apply-data" id="btnApplyData" ${miss.length ? 'disabled' : ''}>更新数据</button>
-    </div>`;
-
-  el.querySelector('#ct').onchange = e => {
-    pushUndo(); ch.title = e.target.value;
-    patchChart(ch, { inspector: false, flash: false });
-  };
-  el.querySelector('#ctype').onchange = e => {
-    pushUndo();
-    const prev = ch.encode;
-    ch.chartType = e.target.value;
-    ch.encode = adaptEncodeForChartType(prev, ch.chartType);
-    markChartPending(ch.id);
-    patchChart(ch, { inspector: true, flash: false, paint: false });
-  };
-  el.querySelector('#cds').onchange = e => {
-    pushUndo();
-    ch.datasetId = e.target.value || null;
-    ch.encode = emptyEncode(ch.chartType);
-    if (ch.datasetId && ch.chartType === 'table') fillTableColumnsFromDataset(ch);
-    markChartPending(ch.id);
-    patchChart(ch, { inspector: true, flash: false, paint: false });
-  };
-  el.querySelector('#pickDs')?.addEventListener('click', () => {
-    el.querySelector('#cds')?.focus();
+    </div>`
   });
+  wireChartTypePicker(el, ch);
   if (dataset) {
     el.querySelector('#agg') && (el.querySelector('#agg').onchange = e => {
       pushUndo(); ch.encode.agg = e.target.value;
@@ -8614,14 +9262,7 @@ function renderDataPanel(el, comp) {
     });
     el.querySelector('#btnFillAllCols')?.addEventListener('click', () => {
       pushUndo();
-      const names = (ds(ch.datasetId)?.fields || []).map(f => f.name);
-      setEncodeFields(ch.encode, 'columns', names.slice(0, slotMax('table', 'columns')));
-      markChartPending(ch.id);
-      patchChart(ch, { inspector: true, flash: false, paint: false });
-    });
-    el.querySelector('#btnClearCols')?.addEventListener('click', () => {
-      pushUndo();
-      setEncodeFields(ch.encode, 'columns', []);
+      fillTableColumnsFromDataset(ch, true);
       markChartPending(ch.id);
       patchChart(ch, { inspector: true, flash: false, paint: false });
     });
@@ -8687,8 +9328,9 @@ function wireLayoutControls(el, comp) {
 function slotHtml(slot, label, accept, ch) {
   const names = encodeFields(ch.encode, slot);
   const max = slotMax(ch.chartType, slot);
+  const unlimited = !Number.isFinite(max);
   const tip = slotTip(ch.chartType, slot);
-  const multi = max > 1;
+  const multi = unlimited || max > 1;
   const pills = names.map((name, idx) => {
     const meta = fieldMeta(ch.datasetId, name);
     let g = accept === 'any'
@@ -8697,40 +9339,45 @@ function slotHtml(slot, label, accept, ch) {
     const tag = meta && isFieldConverted(ch, meta) ? ' ·转' : '';
     const cfg = fieldCfgOf(ch, name);
     const badges = [];
-    if (g === 'quota' && (cfg.agg || ch.encode.agg)) badges.push(cfg.agg || ch.encode.agg || 'SUM');
+    if (g === 'quota' && ch.chartType !== 'table' && slot !== 'columns' && (cfg.agg || ch.encode.agg)) badges.push(cfg.agg || ch.encode.agg || 'SUM');
     if (cfg.sort && cfg.sort !== 'none') badges.push(cfg.sort === 'desc' ? '↓' : cfg.sort === 'asc' ? '↑' : 'A');
     if (cfg.alias) badges.push('名');
     const badge = badges.length ? `<span class="pill-badge">${esc(badges[0])}</span>` : '';
-    return `<span class="pill ${g}" title="${esc(displayFieldLabel(ch, name))}">
+    const kind = fieldKind(meta, g);
+    return `<span class="pill ${g} axis-item" draggable="true" data-pill-idx="${idx}" data-pill-slot="${slot}" title="${esc(displayFieldLabel(ch, name))}">
+      <i class="ftype kind-${kind}">${fieldKindGlyph(kind)}</i>
       <span class="pill-lab">${esc(displayFieldLabel(ch, name))}${tag}</span>${badge}
       <button type="button" class="pill-cfg" data-cfg-slot="${slot}" data-cfg-field="${esc(name)}" data-cfg-role="${g}" data-cfg-idx="${idx}" title="字段设置">▾</button>
       <button type="button" data-clear="${slot}" data-clear-idx="${idx}" title="移除">×</button>
     </span>`;
   }).join('');
-  const countHint = multi
-    ? `${names.length}/${max}`
-    : (max === 1 ? '单选' : '');
+  const countHint = unlimited
+    ? (names.length ? `${names.length} 列` : '')
+    : (multi ? `${names.length}/${max}` : (max === 1 ? '单选' : ''));
   const hint = countHint
-    ? `<span class="slot-hint" title="${esc(tip)}">${esc(countHint)}${multi ? ' · 可多选' : ''}</span>`
+    ? `<span class="slot-hint" title="${esc(tip)}">${esc(countHint)}</span>`
     : '';
-  const ph = tip
-    ? (multi ? `拖入字段（最多 ${max} 个）` : '拖入或点击字段')
-    : (multi ? '拖入或点击字段（可多选）' : '拖入或点击字段');
-  const extra = slot === 'columns' && names.length
-    ? `<div class="slot-actions"><button type="button" class="btn ghost" id="btnFillAllCols" style="height:24px;font-size:11px">填入全部字段</button>
-       <button type="button" class="btn ghost" id="btnClearCols" style="height:24px;font-size:11px">清空列</button></div>`
-    : (slot === 'columns' ? `<div class="slot-actions"><button type="button" class="btn ghost" id="btnFillAllCols" style="height:24px;font-size:11px">填入全部字段</button></div>` : '');
-  return `<div class="field"><label title="${esc(tip)}">${label}${hint ? ' ' + hint : ''}</label>
-    ${tip ? `<div style="font-size:10px;color:var(--text-3);margin:-2px 0 4px;line-height:1.4">${esc(tip)}</div>` : ''}
-    <div class="slot" data-slot="${slot}" data-accept="${accept}" data-max="${max}">
+  const ph = '拖拽字段至此处';
+  const clearBtn = multi
+    ? `<button type="button" class="slot-clear" data-clear="${slot}" title="清空"${names.length ? '' : ' disabled'}>清空</button>`
+    : '';
+  return `<div class="field slot-field">
+    <div class="form-draggable-title">
+      <label title="${esc(tip)}">${label}${hint ? ' ' + hint : ''}</label>
+      ${clearBtn}
+    </div>
+    ${tip ? `<div class="slot-tip">${esc(tip)}</div>` : ''}
+    <div class="slot ${multi ? 'slot-axis' : ''}" data-slot="${slot}" data-accept="${accept}" data-max="${unlimited ? 0 : max}">
       ${pills || `<span class="ph">${esc(ph)}</span>`}
-    </div>${extra}</div>`;
+    </div>
+  </div>`;
 }
 
 function openFieldCfgPopover(ch, field, slot, role, idx, anchor) {
   closeFieldCfgPopover();
   const cfg = fieldCfgOf(ch, field);
   const isQuota = role === 'quota' || slot === 'value';
+  const showAgg = isQuota && ch.chartType !== 'table';
   const isDim = !isQuota;
   const list = encodeFields(ch.encode, slot);
   const canMove = list.length > 1;
@@ -8742,7 +9389,7 @@ function openFieldCfgPopover(ch, field, slot, role, idx, anchor) {
     <label class="fcp-row"><span>显示名</span>
       <input id="fcpAlias" value="${esc(cfg.alias || '')}" placeholder="默认字段名"/>
     </label>
-    ${isQuota ? `<label class="fcp-row"><span>聚合</span>
+    ${showAgg ? `<label class="fcp-row"><span>聚合</span>
       <select id="fcpAgg">${['SUM','COUNT','AVG','MAX','MIN'].map(a =>
         `<option value="${a}" ${(cfg.agg || ch.encode.agg || 'SUM')===a?'selected':''}>${a}</option>`).join('')}</select>
     </label>` : ''}
@@ -8916,7 +9563,9 @@ function wireFieldBank(root, ch) {
             toast('已恢复物理类型', 'ok');
             patchChart(ch, { inspector: true, flash: false });
           } else if (b.dataset.a === 'bind') {
-            chip.click();
+            const slot = resolveSlotEl(root, ch, chip.dataset.g, null);
+            if (!slot) alertDialog('无可用槽位');
+            else applySlotFields(ch, slot, [{ field: chip.dataset.f, group: chip.dataset.g }]);
           }
           ctx.style.display = 'none';
         };
@@ -8925,12 +9574,72 @@ function wireFieldBank(root, ch) {
   });
 }
 
+function preferSlotKey(ch, group) {
+  let prefer = group === 'dim' ? 'category' : 'value';
+  if (group === 'dim' && ch.chartType === 'pivot') {
+    const rowN = encodeFields(ch.encode, 'category').length;
+    const colN = encodeFields(ch.encode, 'colDim').length;
+    if (!rowN) prefer = 'category';
+    else if (!colN) prefer = 'colDim';
+    else prefer = 'category';
+  }
+  return prefer;
+}
+
+function resolveSlotEl(root, ch, group, active) {
+  const prefer = preferSlotKey(ch, group);
+  return active
+    || root.querySelector(`.slot[data-slot="${prefer}"]`)
+    || root.querySelector(`.slot[data-accept="${group}"]`)
+    || root.querySelector('.slot[data-accept="any"]');
+}
+
+function applyFieldSelect(root, chip, e) {
+  const all = [...root.querySelectorAll('.fchip')];
+  const bank = chip.closest('.chip-bank');
+  const vis = bank
+    ? [...bank.querySelectorAll('.fchip')].filter(c => c.style.display !== 'none')
+    : all.filter(c => c.style.display !== 'none');
+  if (e.shiftKey) {
+    const anchor = all.find(c => c.classList.contains('anchor')) || chip;
+    const a = vis.indexOf(anchor);
+    const b = vis.indexOf(chip);
+    if (a < 0 || b < 0) {
+      all.forEach(c => c.classList.remove('active', 'anchor'));
+      chip.classList.add('active', 'anchor');
+      return;
+    }
+    const [lo, hi] = a < b ? [a, b] : [b, a];
+    all.forEach(c => c.classList.remove('active'));
+    vis.slice(lo, hi + 1).forEach(c => c.classList.add('active'));
+    return;
+  }
+  if (e.metaKey || e.ctrlKey) {
+    chip.classList.toggle('active');
+    all.forEach(c => c.classList.remove('anchor'));
+    chip.classList.add('anchor');
+    return;
+  }
+  const onlyThis = chip.classList.contains('active') && all.filter(c => c.classList.contains('active')).length === 1;
+  all.forEach(c => c.classList.remove('active', 'anchor'));
+  if (!onlyThis) chip.classList.add('active', 'anchor');
+}
+
+function selectedFieldItems(root, fallbackChip) {
+  const selected = [...root.querySelectorAll('.fchip.active')];
+  const chips = selected.length && (!fallbackChip || selected.some(c => c === fallbackChip))
+    ? selected
+    : (fallbackChip ? [fallbackChip] : []);
+  return chips.map(c => ({ field: c.dataset.f, group: c.dataset.g }));
+}
+
 function wireSlots(root, ch) {
   let active = null;
+  let skipClick = false;
   wireFieldBank(root, ch);
   root.querySelectorAll('.slot').forEach(slot => {
     slot.onclick = e => {
-      if (e.target.closest('[data-clear]') || e.target.closest('.pill-cfg')) return;
+      if (e.target.closest('[data-clear]') || e.target.closest('.pill-cfg') || e.target.closest('.axis-item')) return;
       root.querySelectorAll('.slot').forEach(s => s.classList.remove('over'));
       slot.classList.add('over');
       active = slot;
@@ -8939,8 +9648,55 @@ function wireSlots(root, ch) {
     slot.ondragleave = () => slot.classList.remove('over');
     slot.ondrop = e => {
       e.preventDefault();
-      const f = e.dataTransfer.getData('f'), g = e.dataTransfer.getData('g');
-      applySlot(ch, slot, f, g);
+      slot.classList.remove('over');
+      let payload = null;
+      try { payload = JSON.parse(e.dataTransfer.getData('text/plain') || '{}'); } catch { payload = null; }
+      if (payload?.kind === 'reorder') {
+        if (payload.slot !== slot.dataset.slot) {
+          if (ch.chartType === 'table') {
+            const fromList = encodeFields(ch.encode, payload.slot);
+            const moved = fromList[+payload.idx];
+            if (!moved) return;
+            const group = fieldRole(ch, moved) === 'quota' ? 'quota' : 'dim';
+            applySlotFields(ch, slot, [{ field: moved, group }]);
+          }
+          return;
+        }
+        const list = encodeFields(ch.encode, payload.slot);
+        const from = +payload.idx;
+        if (from < 0 || from >= list.length) return;
+        const over = e.target.closest('.axis-item');
+        let to = over ? +over.dataset.pillIdx : list.length - 1;
+        if (Number.isNaN(to)) to = list.length - 1;
+        if (to === from) return;
+        pushUndo();
+        const [moved] = list.splice(from, 1);
+        list.splice(to, 0, moved);
+        setEncodeFields(ch.encode, payload.slot, list);
+        syncTableColumnsEncode(ch);
+        markChartPending(ch.id);
+        patchChart(ch, { inspector: true, flash: false, paint: false });
+        return;
+      }
+      let items = Array.isArray(payload?.items) ? payload.items : [];
+      if (!items.length) {
+        const f = e.dataTransfer.getData('f');
+        const g = e.dataTransfer.getData('g');
+        if (f) items = [{ field: f, group: g }];
+      }
+      if (items.length) applySlotFields(ch, slot, items);
+    };
+  });
+  root.querySelectorAll('.axis-item').forEach(pill => {
+    pill.ondragstart = e => {
+      if (e.target.closest('button')) { e.preventDefault(); return; }
+      skipClick = true;
+      e.dataTransfer.setData('text/plain', JSON.stringify({
+        kind: 'reorder',
+        slot: pill.dataset.pillSlot,
+        idx: +pill.dataset.pillIdx
+      }));
+      e.dataTransfer.effectAllowed = 'move';
     };
   });
   root.querySelectorAll('.pill-cfg').forEach(b => {
@@ -8952,6 +9708,7 @@ function wireSlots(root, ch) {
   root.querySelectorAll('[data-clear]').forEach(b => {
     b.onclick = e => {
       e.stopPropagation();
+      if (b.disabled) return;
       pushUndo();
       const slot = b.dataset.clear;
       const idx = b.dataset.clearIdx != null ? +b.dataset.clearIdx : -1;
@@ -8959,6 +9716,7 @@ function wireSlots(root, ch) {
       if (idx >= 0 && idx < list.length) list.splice(idx, 1);
       else list.length = 0;
       setEncodeFields(ch.encode, slot, list);
+      syncTableColumnsEncode(ch);
       markChartPending(ch.id);
       patchChart(ch, { inspector: true, flash: false, paint: false });
     };
@@ -8966,53 +9724,82 @@ function wireSlots(root, ch) {
   root.querySelectorAll('.fchip').forEach(chip => {
     chip.ondragstart = e => {
       if (e.target.closest('[data-conv]')) { e.preventDefault(); return; }
+      skipClick = true;
+      if (!chip.classList.contains('active')) {
+        root.querySelectorAll('.fchip').forEach(c => c.classList.remove('active', 'anchor'));
+        chip.classList.add('active', 'anchor');
+      }
+      const items = selectedFieldItems(root, chip);
+      e.dataTransfer.setData('text/plain', JSON.stringify({ kind: 'fields', items }));
       e.dataTransfer.setData('f', chip.dataset.f);
       e.dataTransfer.setData('g', chip.dataset.g);
     };
+    chip.ondragend = () => { setTimeout(() => { skipClick = false; }, 0); };
     chip.onclick = e => {
       if (e.target.closest('[data-conv]')) return;
-      let prefer = chip.dataset.g === 'dim' ? 'category' : 'value';
-      if (ch.chartType === 'table') prefer = 'columns';
-      if (chip.dataset.g === 'dim' && ch.chartType === 'pivot') {
-        const rowN = encodeFields(ch.encode, 'category').length;
-        const colN = encodeFields(ch.encode, 'colDim').length;
-        if (!rowN) prefer = 'category';
-        else if (!colN) prefer = 'colDim';
-        else prefer = 'category';
-      }
-      const slot = active
-        || root.querySelector(`.slot[data-slot="${prefer}"]`)
-        || root.querySelector(`.slot[data-accept="${chip.dataset.g}"]`)
-        || root.querySelector('.slot[data-accept="any"]');
+      if (skipClick) { skipClick = false; return; }
+      applyFieldSelect(root, chip, e);
+    };
+    chip.ondblclick = e => {
+      if (e.target.closest('[data-conv]')) return;
+      const slot = resolveSlotEl(root, ch, chip.dataset.g, active);
       if (!slot) { alertDialog('无可用槽位'); return; }
-      applySlot(ch, slot, chip.dataset.f, chip.dataset.g);
+      applySlotFields(ch, slot, selectedFieldItems(root, chip), { toggle: true });
     };
   });
 }
 
-function applySlot(ch, slot, field, group) {
+function applySlot(ch, slot, field, group, opts = {}) {
+  applySlotFields(ch, slot, [{ field, group }], opts);
+}
+
+function applySlotFields(ch, slot, items, opts = {}) {
+  if (!items?.length) return;
   const accept = slot.dataset.accept;
-  if (accept && accept !== 'any' && accept !== group && !(slot.dataset.slot === 'color' && group === 'dim') && slot.dataset.slot !== 'columns') {
-    alertDialog('字段类型与槽位不匹配'); return;
-  }
   const key = slot.dataset.slot;
   const max = slotMax(ch.chartType, key);
-  const list = encodeFields(ch.encode, key);
-  if (list.includes(field)) {
-    alertDialog('字段已在槽位中');
+  const next = [...encodeFields(ch.encode, key)];
+  let overflow = false;
+  let changed = false;
+  for (const it of items) {
+    const field = it.field;
+    const group = it.group;
+    if (!field) continue;
+    if (accept && accept !== 'any' && accept !== group && !(key === 'color' && group === 'dim') && key !== 'columns') {
+      alertDialog('字段类型与槽位不匹配');
+      return;
+    }
+    if (next.includes(field)) {
+      if (opts.toggle && (max > 1 || !Number.isFinite(max))) {
+        const i = next.indexOf(field);
+        if (i >= 0) next.splice(i, 1);
+        changed = true;
+      }
+      continue;
+    }
+    if (max <= 1) {
+      next.splice(0, next.length, field);
+      changed = true;
+    } else if (next.length >= max) {
+      overflow = true;
+      break;
+    } else {
+      next.push(field);
+      changed = true;
+    }
+  }
+  if (!changed) {
+    if (overflow) alertDialog(`最多绑定 ${max} 个字段`);
     return;
   }
   pushUndo();
-  if (max <= 1) {
-    setEncodeFields(ch.encode, key, [field]);
-  } else if (list.length >= max) {
-    alertDialog(`最多绑定 ${max} 个字段`);
-    return;
-  } else {
-    list.push(field);
-    setEncodeFields(ch.encode, key, list);
+  setEncodeFields(ch.encode, key, next);
+  if (ch.chartType === 'table' && (key === 'category' || key === 'value')) {
+    const other = key === 'category' ? 'value' : 'category';
+    const otherList = encodeFields(ch.encode, other).filter(n => !next.includes(n));
+    setEncodeFields(ch.encode, other, otherList);
+    syncTableColumnsEncode(ch);
   }
-  // 不弹成功 toast：拖字段只改配置，点底部「更新数据」再刷新图表
   markChartPending(ch.id);
   patchChart(ch, { inspector: true, flash: false, paint: false });
 }
@@ -9714,7 +10501,12 @@ function renderStyle(el, comp) {
   }
 
   blocks += layoutSecHtml(comp);
-  el.innerHTML = `<div class="insp-scroll">${blocks || `<p style="font-size:12px;color:var(--text-3)">请选择组件</p>`}</div>`;
+  if (comp.type === 'chart' && ch) {
+    mountChartWork(el, ch, { paneTitle: '样式', leftInner: blocks || `<p style="font-size:12px;color:var(--text-3)">请选择组件</p>` });
+  } else {
+    el.innerHTML = `${inspModeSegHtml()}<div class="insp-scroll">${blocks || `<p style="font-size:12px;color:var(--text-3)">请选择组件</p>`}</div>`;
+    wireInspMode(el);
+  }
   wireLayoutControls(el, comp);
 
   const softStyle = () => {
@@ -10176,7 +10968,12 @@ function renderSenior(el, comp) {
       <p style="font-size:11px;color:var(--text-3)">contentId=${state.dash.contentId} · version=${state.dash.version}${ch ? ` · chart=${ch.id}` : ''}</p>
     </div>`;
 
-  el.innerHTML = `<div class="insp-scroll">${html}</div>`;
+  if (comp.type === 'chart' && ch) {
+    mountChartWork(el, ch, { paneTitle: '高级', leftInner: html });
+  } else {
+    el.innerHTML = `${inspModeSegHtml()}<div class="insp-scroll">${html}</div>`;
+    wireInspMode(el);
+  }
 
   const soft = () => { markDirty(); if (ch) patchChart(ch, { inspector: false, flash: false }); };
 

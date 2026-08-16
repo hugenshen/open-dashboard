@@ -44,8 +44,8 @@ const steps: Step[] = [
   },
   {
     title: '顶部 · 编辑操作',
-    body: '这里可切换 PC / 移动布局，收起配置面板，撤销改动，并进行预览、分享、导出和发布。',
-    selectors: ['.hifi-dash-root .bar', '.bar'],
+    body: '这里可切换 PC / 移动布局，撤销改动，并进行预览、分享和发布。',
+    selectors: ['.hifi-dash-root .bar-editor .bar-actions', '.bar-editor .bar-actions', '.hifi-dash-root .bar', '.bar'],
     placement: 'below',
     pad: 4
   },
@@ -65,7 +65,7 @@ const steps: Step[] = [
   },
   {
     title: '右侧 · 配置面板',
-    body: '选中图表后选择数据集，拖入维度/指标；改完后点底部「更新数据」刷新出图，不再弹窗打断。',
+    body: '选中图表后，标题在页签上方。用胶囊切换数据 / 样式 / 高级（数据集列保持不动）。可分别收起图表配置或数据集；改完字段后点「更新数据」出图。',
     selectors: ['.editor > .pane.insp', '.pane.insp', '.insp'],
     placement: 'left',
     pad: 6
