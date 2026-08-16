@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { authApi, type MenuItem } from '../api/auth'
+import { conversationApi } from '../conversation/api'
 
 const props = defineProps<{
   module?: 'datasources' | 'datasets' | 'dashboards' | 'reports' | string
@@ -9,6 +10,7 @@ const props = defineProps<{
 }>()
 
 const route = useRoute()
+const router = useRouter()
 
 const FALLBACK: MenuItem[] = [
   { key: 'workbench', label: '工作台', path: '/workbench' },
@@ -21,6 +23,28 @@ const FALLBACK: MenuItem[] = [
 
 const items = ref<MenuItem[]>(FALLBACK)
 const displayName = ref('')
+const sqlbotEnabled = ref(false)
+const sqlbotOpen = ref(false)
+
+const SQLBOT_OPEN_KEY = 'od.sqlbot.open'
+
+const isDashEditor = computed(() => /\/dashboards\/[^/]+\/edit\/?$/.test(route.path))
+
+function onSqlbotSet(ev: Event) {
+  const open = Boolean((ev as CustomEvent<{ open?: boolean }>).detail?.open)
+  sqlbotOpen.value = open
+}
+
+function toggleSqlbot() {
+  if (isDashEditor.value) {
+    const next = sessionStorage.getItem(SQLBOT_OPEN_KEY) !== '1'
+    sessionStorage.setItem(SQLBOT_OPEN_KEY, next ? '1' : '0')
+    sqlbotOpen.value = next
+    window.dispatchEvent(new CustomEvent('od:sqlbot-set', { detail: { open: next } }))
+    return
+  }
+  router.push('/conversations')
+}
 
 const active = computed(() => {
   if (props.module) return props.module
@@ -48,6 +72,19 @@ onMounted(async () => {
   } catch {
     displayName.value = ''
   }
+  try {
+    const feat = await conversationApi.feature()
+    sqlbotEnabled.value = !!feat.enabled
+  } catch {
+    sqlbotEnabled.value = false
+  }
+  sqlbotOpen.value = false
+  sessionStorage.setItem(SQLBOT_OPEN_KEY, '0')
+  window.addEventListener('od:sqlbot-set', onSqlbotSet)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('od:sqlbot-set', onSqlbotSet)
 })
 
 /** Backend may echo percent-encoded X-User-Name until header decode is deployed. */
@@ -89,6 +126,27 @@ function decodeDisplayName(raw: string) {
       </nav>
     </div>
     <div class="nav-right">
+      <button
+        v-if="sqlbotEnabled"
+        type="button"
+        class="sqlbot-link"
+        :class="{ on: sqlbotOpen || route.path.startsWith('/conversations') }"
+        title="SQLBot 问数"
+        aria-label="打开 SQLBot"
+        @click="toggleSqlbot"
+      >
+        <svg width="18" height="18" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+          <path
+            d="M15 3.8C8.11 3.8 2.53 9.08 2.53 15.97C2.53 22.86 8.11 26.2 15 26.2C21.89 26.2 27.47 22.86 27.47 15.97C27.47 9.08 21.89 3.8 15 3.8ZM18.03 21.13H11.97C10.38 21.13 8.85 20.49 7.72 19.36C6.59 18.24 5.96 16.71 5.96 15.11C5.96 13.52 6.59 11.99 7.72 10.86C8.85 9.73 10.38 9.1 11.97 9.1H18.03C19.62 9.1 21.15 9.73 22.28 10.86C23.41 11.99 24.04 13.52 24.04 15.11C24.04 16.71 23.41 18.24 22.28 19.36C21.15 20.49 19.62 21.13 18.03 21.13Z"
+            fill="#1cba90"
+          />
+          <path d="M10.55 14.92H8.77V18.79H10.55V14.92Z" fill="#fff" />
+          <path d="M14.12 13.19H12.34V18.79H14.12V13.19Z" fill="#fff" />
+          <path d="M17.69 15.44H15.91V18.79H17.69V15.44Z" fill="#fff" />
+          <path d="M21.23 12.45H19.45V18.79H21.23V12.45Z" fill="#fff" />
+        </svg>
+        <span>SQLBot</span>
+      </button>
       <a
         class="help-link"
         href="/help/"
@@ -161,6 +219,32 @@ function decodeDisplayName(raw: string) {
   color: var(--nav-muted);
   text-decoration: none;
   transition: color 0.15s ease, background 0.15s ease;
+}
+
+.sqlbot-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1cba90;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.sqlbot-link:hover,
+.sqlbot-link.on {
+  background: rgba(28, 186, 144, 0.14);
+}
+
+.sqlbot-link svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .help-link:hover {
@@ -275,6 +359,15 @@ function decodeDisplayName(raw: string) {
 
 .app-nav.dark .help-link:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.app-nav.dark .sqlbot-link {
+  color: #3dd6a8;
+}
+
+.app-nav.dark .sqlbot-link:hover,
+.app-nav.dark .sqlbot-link.on {
+  background: rgba(28, 186, 144, 0.2);
 }
 
 .app-nav.dark .user-chip {

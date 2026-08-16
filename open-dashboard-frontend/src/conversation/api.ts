@@ -1,4 +1,4 @@
-import { apiFetch, getAuthHeaders } from '../api/http'
+import { getAuthHeaders } from '../api/http'
 
 export type ConversationVO = {
   id: string
@@ -55,9 +55,66 @@ export type ConversationAdoptRequest = {
 
 export type SseHandler = (event: string, data: Record<string, unknown>) => void
 
+const HARNESS_BASE = '/harness/v1'
+
+async function harnessFetch<T>(
+  path: string,
+  opts: {
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+    data?: unknown
+  } = {}
+): Promise<T> {
+  const method = opts.method || 'GET'
+  const res = await fetch(`${HARNESS_BASE}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
+    body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(opts.data ?? {})
+  })
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const body = await res.json()
+      detail = body?.detail
+        ? `: ${typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)}`
+        : body?.message
+          ? `: ${body.message}`
+          : ''
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`${method} ${path} → ${res.status}${detail}`)
+  }
+  if (res.status === 204) return undefined as T
+  const text = await res.text()
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
+}
+
 async function readSse(res: Response, onEvent: SseHandler): Promise<void> {
-  if (!res.ok || !res.body) {
-    throw new Error(`SSE → ${res.status}`)
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const body = await res.json()
+      detail = body?.detail
+        ? `: ${typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)}`
+        : body?.message
+          ? `: ${body.message}`
+          : ''
+    } catch {
+      try {
+        const text = await res.text()
+        if (text) detail = `: ${text.slice(0, 240)}`
+      } catch {
+        /* ignore */
+      }
+    }
+    throw new Error(`问数失败 (${res.status})${detail}`)
+  }
+  if (!res.body) {
+    throw new Error('问数失败：未收到流式响应，请确认 harness 已启动')
   }
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
@@ -99,12 +156,12 @@ async function readSse(res: Response, onEvent: SseHandler): Promise<void> {
 }
 
 export const conversationApi = {
-  feature: () => apiFetch<{ enabled: boolean }>('/conversations/feature'),
-  styles: () => apiFetch<StylePresetVO[]>('/conversations/styles'),
-  list: () => apiFetch<ConversationVO[]>('/conversations'),
+  feature: () => harnessFetch<{ enabled: boolean }>('/conversations/feature'),
+  styles: () => harnessFetch<StylePresetVO[]>('/conversations/styles'),
+  list: () => harnessFetch<ConversationVO[]>('/conversations'),
   create: (data: { title?: string; datasetIds?: string[]; linkedDashboardId?: string }) =>
-    apiFetch<ConversationVO>('/conversations', { method: 'POST', data }),
-  get: (id: string) => apiFetch<ConversationVO>(`/conversations/${id}`),
+    harnessFetch<ConversationVO>('/conversations', { method: 'POST', data }),
+  get: (id: string) => harnessFetch<ConversationVO>(`/conversations/${id}`),
   update: (
     id: string,
     data: {
@@ -113,17 +170,18 @@ export const conversationApi = {
       datasetIds?: string[]
       linkedDashboardId?: string
     }
-  ) => apiFetch<ConversationVO>(`/conversations/${id}`, { method: 'PATCH', data }),
-  remove: (id: string) => apiFetch<void>(`/conversations/${id}`, { method: 'DELETE' }),
-  messages: (id: string) => apiFetch<ConversationMessageVO[]>(`/conversations/${id}/messages`),
-  revisions: (id: string) => apiFetch<ConversationRevisionVO[]>(`/conversations/${id}/revisions`),
-  restore: (id: string, rev: string) =>
-    apiFetch<ConversationRevisionVO>(`/conversations/${id}/revisions/${rev}/restore`, { method: 'POST' }),
+  ) => harnessFetch<ConversationVO>(`/conversations/${id}`, { method: 'PATCH', data }),
+  remove: (id: string) => harnessFetch<void>(`/conversations/${id}`, { method: 'DELETE' }),
+  messages: (id: string) => harnessFetch<ConversationMessageVO[]>(`/conversations/${id}/messages`),
+  revisions: (id: string) => harnessFetch<ConversationRevisionVO[]>(`/conversations/${id}/revisions`),
+  restore: async (_id: string, _rev: string) => {
+    throw new Error('revisions restore is not available on harness yet')
+  },
   cancel: (id: string, runId: string) =>
-    apiFetch(`/conversations/${id}/runs/${runId}/cancel`, { method: 'POST' }),
+    harnessFetch(`/conversations/${id}/runs/${runId}/cancel`, { method: 'POST' }),
 
   async startRun(id: string, body: ConversationRunRequest, onEvent: SseHandler) {
-    const res = await fetch(`/api/conversations/${id}/runs`, {
+    const res = await fetch(`${HARNESS_BASE}/conversations/${id}/runs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -136,7 +194,7 @@ export const conversationApi = {
   },
 
   async confirmPlan(id: string, runId: string, onEvent: SseHandler) {
-    const res = await fetch(`/api/conversations/${id}/runs/${runId}/confirm-plan`, {
+    const res = await fetch(`${HARNESS_BASE}/conversations/${id}/runs/${runId}/confirm-plan`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -149,7 +207,7 @@ export const conversationApi = {
   },
 
   async adopt(id: string, runId: string, body: ConversationAdoptRequest, onEvent: SseHandler) {
-    const res = await fetch(`/api/conversations/${id}/runs/${runId}/adopt`, {
+    const res = await fetch(`${HARNESS_BASE}/conversations/${id}/runs/${runId}/adopt`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

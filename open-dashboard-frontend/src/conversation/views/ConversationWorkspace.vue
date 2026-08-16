@@ -9,9 +9,12 @@ import {
   type ConversationVO,
   type StylePresetVO
 } from '../api'
+import ToolStepList, { type ToolPreview, type ToolStep } from '../components/ToolStepList.vue'
 
-type ChatLine = { role: 'user' | 'assistant' | 'system'; text: string }
+type ChatLine = { role: 'user' | 'assistant' | 'system'; text: string; tools?: ToolStep[] }
 type StepLine = { id: string; label: string }
+type QueryBarItem = { kind?: string; field?: string; label?: string }
+type QueryBar = { label?: string; items: QueryBarItem[] }
 type ChartReady = {
   chartId: string
   dashboardId: string
@@ -30,6 +33,7 @@ type AnswerTable = {
   rows: unknown[][]
   rowCount: number
   truncated?: boolean
+  sql?: string
 }
 type AnswerChart = {
   title: string
@@ -60,6 +64,13 @@ type AnswerClarify = {
   follows: string[]
   question?: string
 }
+type IntentMap = {
+  rewrite?: string
+  datasetName?: string
+  time?: { field?: string; label?: string; phrase?: string }
+  mapping: Array<{ phrase: string; kind: string; field?: string; label?: string; note?: string }>
+  unresolved: Array<{ phrase: string; reason: string }>
+}
 
 const router = useRouter()
 const enabled = ref(false)
@@ -77,6 +88,7 @@ const steps = ref<StepLine[]>([])
 const charts = ref<ChartReady[]>([])
 const boardTitle = ref('数据分析看板')
 const emptyPreview = ref(false)
+const queryBar = ref<QueryBar | null>(null)
 const styles = ref<StylePresetVO[]>([])
 const datasets = ref<DatasetMetaVO[]>([])
 
@@ -98,6 +110,7 @@ const answerInsight = ref<AnswerInsight | null>(null)
 const answerClarify = ref<AnswerClarify | null>(null)
 const lastIntent = ref('')
 const lastQuestion = ref('')
+const intentMap = ref<IntentMap | null>(null)
 const dsMenuOpen = ref(false)
 
 const EXAMPLES = [
@@ -107,6 +120,30 @@ const EXAMPLES = [
   { label: '华南为什么下滑？', text: '华南为什么下滑？', intent: 'ask' as const },
   { label: '直接生成仪表盘', text: '根据当前数据集生成分析看板', intent: 'gen' as const }
 ]
+
+const TOOL_LABELS: Record<string, string> = {
+  write_todos: '规划任务',
+  od_list_datasets: '列出数据集',
+  od_profile_dataset: '分析数据特征',
+  od_plan_charts: '按特征规划图表',
+  od_get_schema: '读取字段 Schema',
+  od_run_query: '试查询',
+  od_run_sql: '执行 SQL',
+  od_get_board_summary: '读取当前看板',
+  od_layout_board: '编排看板布局',
+  od_compose_board: '平台构图兜底',
+  od_emit_patch: '写入看板草稿',
+  od_finish: '完成',
+  schema: '读取字段 Schema',
+  sqlbot: 'SQLBot 生成 SQL',
+  sqlbot_sql: 'SQL 已生成',
+  sqlbot_exec: '执行查询'
+}
+
+const liveTools = ref<ToolStep[]>([])
+const fileInput = ref<HTMLInputElement | null>(null)
+const importing = ref(false)
+const importHint = ref('')
 
 const canSend = computed(() => prompt.value.trim().length > 0 && !streaming.value)
 const hasAnswer = computed(
@@ -124,8 +161,19 @@ const previewDatasetName = computed(() => {
   if (!id) return ctxName.value
   return datasets.value.find((d) => d.id === id)?.name || id
 })
-const kpiCharts = computed(() => charts.value.filter((x) => x.chartType === 'kpi'))
-const plotCharts = computed(() => charts.value.filter((x) => x.chartType !== 'kpi'))
+function isLiveChart(c: ChartReady): boolean {
+  if ((c.rowCount || 0) <= 0) return false
+  if (c.chartType === 'kpi' && (c.kpiValue == null || c.kpiValue === '')) return false
+  return true
+}
+function isTableType(t?: string): boolean {
+  return t === 'table' || t === 'grouptable'
+}
+const kpiCharts = computed(() => charts.value.filter((x) => x.chartType === 'kpi' && isLiveChart(x)))
+const plotCharts = computed(() =>
+  charts.value.filter((x) => x.chartType !== 'kpi' && !isTableType(x.chartType) && isLiveChart(x))
+)
+const tableCharts = computed(() => charts.value.filter((x) => isTableType(x.chartType) && isLiveChart(x)))
 
 function formatKpi(v: unknown): string {
   if (v == null || v === '') return '—'
@@ -140,12 +188,153 @@ function pickDefaultDatasets(list: DatasetMetaVO[]): string[] {
   const score = (d: DatasetMetaVO) => {
     const n = `${d.name || ''} ${d.tableName || ''} ${d.folder || ''}`
     let s = 0
-    if (/验证|测试|工作室|拖拽|de_/.test(n)) s -= 80
-    if (/订单|代理|销售|财务|order|sales|agent/.test(n)) s += 50
+    if (/验证|测试|工作室|拖拽|de_|dashboard|dashborad|数据源清单|低能/i.test(n)) s -= 120
+    if (/订单|代理|销售|财务|运营|order|sales|agent/.test(n)) s += 50
     return s
   }
   const ranked = [...list].sort((a, b) => score(b) - score(a))
   return ranked[0] ? [ranked[0].id] : list[0] ? [list[0].id] : []
+}
+
+function barHeightsFromRows(rows: unknown[][]): number[] {
+  const nums = rows.slice(0, 8).map((r) => {
+    const v = r?.[1]
+    const n = typeof v === 'number' ? v : Number(String(v ?? '').replace(/,/g, ''))
+    return Number.isFinite(n) ? Math.abs(n) : 0
+  })
+  const max = Math.max(1, ...nums)
+  return nums.map((n) => Math.round(Math.max(8, (n / max) * 100)))
+}
+
+function ingestLiveTool(
+  id: string,
+  rawLabel: string,
+  kind: string,
+  tool: string,
+  preview?: ToolPreview,
+  hint?: string,
+  parent?: string
+) {
+  if (/^(turn_|message_end|agent_end|agent_start|context|think)/.test(id)) return
+  if (/推理轮次|轮次\s*\d+\s*结束|transformContext|model=|skills \+ memory|assistant turn|^Pi Agent|^Lead /i.test(rawLabel)) return
+  const toolName = tool || (rawLabel.match(/od_[a-z_]+/) || [])[0] || ''
+  const label =
+    (toolName && TOOL_LABELS[toolName]) ||
+    TOOL_LABELS[id] ||
+    rawLabel.replace(/^调用\s+/, '').replace(/\s+完成$/, '') ||
+    id
+  const ended = kind === 'tool_end' || id === 'tool_execution_end'
+  const child: ToolStep = {
+    id: toolName || id,
+    label,
+    status: ended ? 'done' : 'run',
+    tool: toolName || undefined,
+    preview,
+    hint,
+    open: !!preview
+  }
+  if (parent) {
+    const host = [...liveTools.value]
+      .reverse()
+      .find((t) => t.tool === parent || t.id === parent)
+    if (host) {
+      if (!host.children) host.children = []
+      host.open = true
+      if (ended) {
+        const hit = [...host.children]
+          .reverse()
+          .find((t) => t.status === 'run' && (!toolName || t.tool === toolName || t.id === id))
+        if (hit) {
+          hit.status = 'done'
+          hit.label = label
+          if (preview) hit.preview = preview
+          if (hint) hit.hint = hint
+        } else {
+          host.children.push(child)
+        }
+      } else {
+        const running = host.children.find((t) => t.status === 'run' && (t.tool === toolName || t.id === id))
+        if (running) {
+          running.label = label
+          if (preview) running.preview = preview
+          if (hint) running.hint = hint
+        } else {
+          host.children.push({ ...child, status: 'run' })
+        }
+      }
+      return
+    }
+  }
+  if (ended) {
+    const hit = [...liveTools.value].reverse().find((t) => t.status === 'run' && (!toolName || t.tool === toolName))
+    if (hit) {
+      hit.status = 'done'
+      if (preview) hit.preview = preview
+      if (hint) hit.hint = hint
+      if (hit.preview || hit.children?.length) hit.open = true
+    } else {
+      liveTools.value.push({
+        id: `${toolName || id}-${liveTools.value.length}`,
+        label,
+        status: 'done',
+        tool: toolName || undefined,
+        preview,
+        hint,
+        open: !!preview
+      })
+    }
+    return
+  }
+  liveTools.value.forEach((t) => {
+    if (t.status === 'run' && t.tool && toolName && t.tool !== toolName) t.status = 'done'
+  })
+  const runningSame = [...liveTools.value]
+    .reverse()
+    .find((t) => t.status === 'run' && toolName && t.tool === toolName)
+  if (runningSame) {
+    if (preview) runningSame.preview = preview
+    if (hint) runningSame.hint = hint
+    return
+  }
+  liveTools.value.push({
+    id: `${toolName || id}-${liveTools.value.length}`,
+    label: TOOL_LABELS[toolName] || TOOL_LABELS[id] || label,
+    status: 'run',
+    tool: toolName || undefined,
+    preview,
+    hint,
+    open: !!preview
+  })
+}
+
+function asPreview(raw: unknown): ToolPreview | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  return raw as ToolPreview
+}
+
+async function onPickFile(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  importing.value = true
+  importHint.value = ''
+  try {
+    const detail = await datasetApi.importFile(file)
+    const list = await datasetApi.list()
+    datasets.value = list
+    const id = detail.meta?.id
+    if (id) selectedDatasets.value = [id]
+    importHint.value = `已导入「${detail.meta?.name || file.name}」，可直接问数`
+    chat.value.push({
+      role: 'system',
+      text: `已把 ${file.name} 作为问数数据集（${(detail.fields || []).length} 个字段）。对齐 DataEase：先落表再查，不是每次上传都打 HTTP。`
+    })
+  } catch (e) {
+    importHint.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    importing.value = false
+  }
 }
 
 const styleName = computed(() => styles.value.find((s) => s.id === styleId.value)?.name || '智能风格')
@@ -234,12 +423,15 @@ async function send() {
   phase.value = 'workspace'
   sidePanel.value = 'none'
   steps.value = []
+  liveTools.value = []
   charts.value = []
   boardTitle.value = '数据分析看板'
   emptyPreview.value = false
+  queryBar.value = null
   awaitingConfirm.value = false
   planPayload.value = null
   assistantBuf.value = ''
+  intentMap.value = null
   resetAnswer()
 
   chat.value.push({ role: 'user', text })
@@ -269,11 +461,22 @@ async function send() {
     })
   } finally {
     streaming.value = false
-    if (assistantBuf.value) {
-      chat.value.push({ role: 'assistant', text: assistantBuf.value })
-      assistantBuf.value = ''
-    }
+    flushAssistant()
   }
+}
+
+function flushAssistant() {
+  const tools = liveTools.value.map((t) => ({ ...t, status: 'done' as const }))
+  const text = assistantBuf.value.trim()
+  if (text || tools.length) {
+    chat.value.push({
+      role: 'assistant',
+      text: text || (charts.value.length ? '仪表盘已生成。' : ''),
+      tools
+    })
+  }
+  assistantBuf.value = ''
+  liveTools.value = []
 }
 
 function handleEvent(event: string, data: Record<string, unknown>) {
@@ -281,22 +484,67 @@ function handleEvent(event: string, data: Record<string, unknown>) {
     runId.value = String(data.runId || '')
     if (data.intent) lastIntent.value = String(data.intent)
   } else if (event === 'step') {
-    steps.value.push({ id: String(data.id || steps.value.length), label: String(data.label || '') })
+    const id = String(data.id || data.name || steps.value.length)
+    const rawLabel = String(data.label || data.detail || '')
+    const kind = String(data.kind || '')
+    const tool = String(data.tool || '')
+    steps.value.push({ id, label: rawLabel })
+    ingestLiveTool(
+      id,
+      rawLabel,
+      kind,
+      tool,
+      asPreview(data.preview),
+      data.hint ? String(data.hint) : undefined,
+      data.parent ? String(data.parent) : undefined
+    )
+  } else if (event === 'intent_map') {
+    const mapping = Array.isArray(data.mapping) ? (data.mapping as IntentMap['mapping']) : []
+    const unresolved = Array.isArray(data.unresolved) ? (data.unresolved as IntentMap['unresolved']) : []
+    intentMap.value = {
+      rewrite: data.rewrite ? String(data.rewrite) : '',
+      datasetName: data.datasetName ? String(data.datasetName) : undefined,
+      time: data.time && typeof data.time === 'object' ? (data.time as IntentMap['time']) : undefined,
+      mapping,
+      unresolved
+    }
+    const bits = mapping.map((x) => `${x.phrase} → ${x.label || x.field}`)
+    if (bits.length) {
+      steps.value.push({ id: 'intent_map', label: bits.join('；') })
+    }
   } else if (event === 'plan') {
     planPayload.value = data
-    awaitingConfirm.value = true
-    chat.value.push({ role: 'assistant', text: '已生成计划，请确认后继续写入看板。' })
+    awaitingConfirm.value = data.awaitingConfirm === true
+    if (awaitingConfirm.value) {
+      chat.value.push({ role: 'assistant', text: '已生成计划，请确认后继续写入看板。' })
+    }
   } else if (event === 'patch') {
     steps.value.push({ id: 'patch', label: '收到 DashboardPatch' })
+  } else if (event === 'answer_sql') {
+    const sql = String(data.sql || '')
+    if (sql) {
+      steps.value.push({ id: 'answer_sql', label: '已生成 SQL' })
+      if (answerTable.value) answerTable.value.sql = sql
+      else answerTable.value = { title: String(data.title || 'SQL'), columns: [], rows: [], rowCount: 0, sql }
+    }
   } else if (event === 'answer_table') {
+    if (intent.value === 'gen' || charts.value.length) return
     answerTable.value = {
       title: String(data.title || '明细表'),
       columns: Array.isArray(data.columns) ? (data.columns as string[]) : [],
       rows: Array.isArray(data.rows) ? (data.rows as unknown[][]) : [],
       rowCount: typeof data.rowCount === 'number' ? data.rowCount : 0,
-      truncated: !!data.truncated
+      truncated: !!data.truncated,
+      sql: data.sql ? String(data.sql) : answerTable.value?.sql
     }
   } else if (event === 'answer_chart') {
+    if (intent.value === 'gen' || charts.value.length) return
+    const rows = answerTable.value?.rows || []
+    const labels = Array.isArray(data.labels)
+      ? (data.labels as string[])
+      : rows.map((r) => String(r?.[0] ?? '')).filter(Boolean).slice(0, 8)
+    const rawHeights = Array.isArray(data.heights) ? (data.heights as number[]) : []
+    const heights = rawHeights.length ? rawHeights : barHeightsFromRows(rows)
     answerChart.value = {
       title: String(data.title || '图表'),
       chartType: String(data.chartType || 'bar'),
@@ -304,13 +552,14 @@ function handleEvent(event: string, data: Record<string, unknown>) {
       datasetName: data.datasetName ? String(data.datasetName) : undefined,
       encode: (data.encode as Record<string, unknown>) || {},
       rowCount: typeof data.rowCount === 'number' ? data.rowCount : 0,
-      labels: Array.isArray(data.labels) ? (data.labels as string[]) : [],
-      heights: Array.isArray(data.heights) ? (data.heights as number[]) : [],
+      labels,
+      heights,
       insightHtml: data.insightHtml ? String(data.insightHtml) : undefined,
       question: data.question ? String(data.question) : lastQuestion.value,
       follows: Array.isArray(data.follows) ? (data.follows as string[]) : []
     }
   } else if (event === 'answer_insight') {
+    if (intent.value === 'gen' || charts.value.length) return
     answerInsight.value = {
       title: String(data.title || '洞察'),
       headlineHtml: String(data.headlineHtml || ''),
@@ -348,6 +597,27 @@ function handleEvent(event: string, data: Record<string, unknown>) {
     if (data.title) boardTitle.value = String(data.title)
     emptyPreview.value = !!data.emptyPreview
     if (data.dashboardId) linkedDashboardId.value = String(data.dashboardId)
+    if (data.query && typeof data.query === 'object') {
+      const q = data.query as { label?: string; items?: QueryBarItem[] }
+      const items = Array.isArray(q.items) ? q.items : []
+      queryBar.value = items.length ? { label: q.label ? String(q.label) : '查询条件', items } : null
+    }
+    if (!charts.value.length && Array.isArray(data.charts)) {
+      for (const raw of data.charts as Record<string, unknown>[]) {
+        charts.value.push({
+          chartId: String(raw.chartId || ''),
+          dashboardId: String(raw.dashboardId || data.dashboardId || ''),
+          rowCount: typeof raw.rowCount === 'number' ? raw.rowCount : undefined,
+          title: raw.title ? String(raw.title) : undefined,
+          chartType: raw.chartType ? String(raw.chartType) : undefined,
+          datasetId: raw.datasetId ? String(raw.datasetId) : undefined,
+          encode: (raw.encode as Record<string, unknown>) || undefined,
+          labels: Array.isArray(raw.labels) ? (raw.labels as string[]) : undefined,
+          heights: Array.isArray(raw.heights) ? (raw.heights as number[]) : undefined,
+          kpiValue: raw.kpiValue
+        })
+      }
+    }
   } else if (event === 'message_delta') {
     assistantBuf.value += String(data.text || '')
   } else if (event === 'error') {
@@ -374,10 +644,7 @@ async function confirmPlan() {
     chat.value.push({ role: 'system', text: e instanceof Error ? e.message : String(e) })
   } finally {
     streaming.value = false
-    if (assistantBuf.value) {
-      chat.value.push({ role: 'assistant', text: assistantBuf.value })
-      assistantBuf.value = ''
-    }
+    flushAssistant()
   }
 }
 
@@ -386,6 +653,7 @@ async function adopt(action: 'save' | 'generate') {
   streaming.value = true
   assistantBuf.value = ''
   charts.value = []
+  queryBar.value = null
   if (action === 'generate') {
     answerTable.value = null
     answerChart.value = null
@@ -406,10 +674,7 @@ async function adopt(action: 'save' | 'generate') {
     chat.value.push({ role: 'system', text: e instanceof Error ? e.message : String(e) })
   } finally {
     streaming.value = false
-    if (assistantBuf.value) {
-      chat.value.push({ role: 'assistant', text: assistantBuf.value })
-      assistantBuf.value = ''
-    }
+    flushAssistant()
   }
 }
 
@@ -424,9 +689,11 @@ function newChat() {
   chat.value = []
   steps.value = []
   charts.value = []
+  queryBar.value = null
   messages.value = []
   linkedDashboardId.value = null
   awaitingConfirm.value = false
+  intentMap.value = null
   resetAnswer()
   sidePanel.value = 'none'
   phase.value = 'landing'
@@ -453,7 +720,14 @@ function toggleSide(panel: 'history' | 'explore') {
 
 <template>
   <div class="conv-root">
-    <ModuleTopbar module="conversations" theme="light" />
+    <ModuleTopbar module="conversations" />
+    <input
+      ref="fileInput"
+      type="file"
+      class="file-hidden"
+      accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      @change="onPickFile"
+    />
     <div v-if="loading" class="boot">加载对话…</div>
     <div v-else-if="!enabled || error" class="boot err">{{ error || '对话未启用' }}</div>
     <div v-else class="body">
@@ -556,7 +830,11 @@ function toggleSide(panel: 'history' | 'explore') {
                 <button class="gbtn" type="button" @click="dsMenuOpen = !dsMenuOpen">
                   ＋ 数据集 ▾
                 </button>
+                <button class="gbtn" type="button" :disabled="importing" @click="fileInput?.click()">
+                  {{ importing ? '导入中…' : '上传 CSV / Excel' }}
+                </button>
                 <span class="ctx-pill">上下文 <b>{{ ctxName }}</b></span>
+                <span v-if="importHint" class="import-hint">{{ importHint }}</span>
                 <span class="sp" />
               </div>
               <div v-if="dsMenuOpen" class="ds-menu">
@@ -675,16 +953,39 @@ function toggleSide(panel: 'history' | 'explore') {
               <div class="av" :class="m.role === 'user' ? 'me' : 'ai'">
                 {{ m.role === 'user' ? '我' : 'AI' }}
               </div>
-              <div class="bub">{{ m.text }}</div>
+              <div class="asst-col">
+                <ToolStepList v-if="m.role === 'assistant' && m.tools?.length" :steps="m.tools" />
+                <div v-if="m.text" class="bub">
+                  <div class="bub-text">{{ m.text }}</div>
+                </div>
+              </div>
             </div>
-            <div v-if="streaming" class="msg system">
-              <div class="bub soft">处理中…</div>
+            <div v-if="streaming || liveTools.length" class="msg assistant">
+              <div class="av ai">AI</div>
+              <div class="asst-col">
+                <ToolStepList :steps="liveTools" live />
+                <div v-if="intentMap?.mapping?.length" class="intent-map in-bub">
+                  <div v-for="(x, i) in intentMap.mapping" :key="'lm' + i" class="imap ok">
+                    {{ x.phrase }} → {{ x.label || x.field }}
+                  </div>
+                  <div v-for="(u, i) in intentMap.unresolved" :key="'lu' + i" class="imap miss">
+                    {{ u.phrase }}
+                  </div>
+                </div>
+                <div v-if="assistantBuf" class="bub">
+                  <div class="bub-text">{{ assistantBuf }}</div>
+                </div>
+              </div>
             </div>
           </div>
 
           <div v-if="awaitingConfirm" class="plan-box">
             <div class="plan-title">待确认计划</div>
-            <pre>{{ JSON.stringify(planPayload?.steps || planPayload, null, 2) }}</pre>
+            <ol class="plan-ol">
+              <li>数据：{{ ctxName }}</li>
+              <li>{{ String(planPayload?.title || '分析看板') }} · {{ planPayload?.opsCount || '多' }} 个组件</li>
+              <li>写入方式：{{ planPayload?.mode === 'append' ? '追加到当前看板' : '整页替换' }}</li>
+            </ol>
             <button class="btn primary" type="button" :disabled="streaming" @click="confirmPlan">
               确认并写入
             </button>
@@ -702,6 +1003,9 @@ function toggleSide(panel: 'history' | 'explore') {
             <div class="ctx-row-ws">
               <span class="ctx-pill">上下文 <b>{{ ctxName }}</b></span>
               <button class="gbtn" type="button" @click="dsMenuOpen = !dsMenuOpen">更换数据集 ▾</button>
+              <button class="gbtn" type="button" :disabled="importing" @click="fileInput?.click()">
+                {{ importing ? '导入中…' : '上传 CSV / Excel' }}
+              </button>
             </div>
             <div v-if="dsMenuOpen" class="ds-menu">
               <label v-for="d in datasets" :key="d.id" class="ds">
@@ -746,19 +1050,6 @@ function toggleSide(panel: 'history' | 'explore') {
         </div>
 
         <aside class="files-col">
-          <div class="col-h">步骤</div>
-          <div class="steps-list">
-            <div
-              v-for="(s, i) in steps"
-              :key="i"
-              class="step"
-              :class="{ done: i < steps.length - 1 || !streaming, run: streaming && i === steps.length - 1 }"
-            >
-              <i />
-              <span>{{ s.label }}</span>
-            </div>
-            <div v-if="!steps.length" class="muted pad">运行后显示流水</div>
-          </div>
           <div class="col-h">本会话产物</div>
           <button
             v-if="linkedDashboardId"
@@ -779,7 +1070,7 @@ function toggleSide(panel: 'history' | 'explore') {
             <button class="btn primary" type="button" @click="openEditor">在编辑器打开</button>
           </div>
           <div class="ask-pane">
-            <template v-if="answerClarify">
+            <template v-if="!charts.length && answerClarify">
               <div class="ask-toolbar">
                 <span class="ttl">需要澄清</span>
                 <span class="muted">未取数 · 请补充指标与维度</span>
@@ -794,6 +1085,14 @@ function toggleSide(panel: 'history' | 'explore') {
                 </div>
                 <div v-if="answerClarify.headlineHtml" class="insight" v-html="answerClarify.headlineHtml" />
                 <div class="insight" v-html="answerClarify.insightHtml" />
+                <div v-if="intentMap" class="intent-map">
+                  <div v-for="(x, i) in intentMap.mapping" :key="'m' + i" class="imap ok">
+                    {{ x.phrase }} → {{ x.label || x.field }}
+                  </div>
+                  <div v-for="(u, i) in intentMap.unresolved" :key="'u' + i" class="imap miss">
+                    {{ u.phrase }}：{{ u.reason }}
+                  </div>
+                </div>
                 <div class="ask-follow">
                   <button
                     v-for="f in answerClarify.follows"
@@ -808,7 +1107,7 @@ function toggleSide(panel: 'history' | 'explore') {
               </div>
             </template>
 
-            <template v-else-if="answerInsight">
+            <template v-else-if="!charts.length && answerInsight">
               <div class="ask-toolbar">
                 <span class="ttl">洞察诊断</span>
                 <span class="muted">归因结论 · 证据表 · 不是普通问数图</span>
@@ -887,7 +1186,7 @@ function toggleSide(panel: 'history' | 'explore') {
               </div>
             </template>
 
-            <template v-else-if="answerChart || answerTable">
+            <template v-else-if="!charts.length && (answerChart || answerTable)">
               <div class="ask-toolbar">
                 <span class="ttl">问数结果</span>
                 <span class="muted">会话预览 · 不落结果行</span>
@@ -908,6 +1207,12 @@ function toggleSide(panel: 'history' | 'explore') {
                       数据集 · {{ answerChart?.datasetName || answerChart?.datasetId || ctxName }}
                       · 「{{ answerChart?.question || lastQuestion }}」
                     </div>
+                    <div v-if="intentMap?.rewrite" class="meta">{{ intentMap.rewrite }}</div>
+                  </div>
+                </div>
+                <div v-if="intentMap" class="intent-map">
+                  <div v-for="(x, i) in intentMap.mapping" :key="'am' + i" class="imap ok">
+                    {{ x.phrase }} → {{ x.label || x.field }}
                   </div>
                 </div>
                 <div
@@ -932,6 +1237,7 @@ function toggleSide(panel: 'history' | 'explore') {
                   </div>
                   <div v-if="answerTable" class="viz">
                     <div class="vl">明细表 · {{ answerTable.rowCount }} 行</div>
+                    <pre v-if="answerTable.sql" class="sql-block">{{ answerTable.sql }}</pre>
                     <table>
                       <thead>
                         <tr>
@@ -981,7 +1287,7 @@ function toggleSide(panel: 'history' | 'explore') {
               </div>
             </template>
 
-            <template v-else-if="charts.length">
+            <template v-else-if="charts.length || emptyPreview || queryBar">
               <div class="ask-toolbar">
                 <span class="ttl">看板草稿</span>
                 <span class="muted">已写入 draft · 配置不含结果行</span>
@@ -1005,19 +1311,33 @@ function toggleSide(panel: 'history' | 'explore') {
                     {{ emptyPreview ? '无数据预览' : 'Live 预览 · chartQuery' }}
                   </div>
                 </div>
+                <div v-if="queryBar?.items?.length" class="query-bar" title="本轮筛选仅展示，不进入 chartQuery">
+                  <b>{{ queryBar.label || '查询条件' }}</b>
+                  <div class="query-items">
+                    <label v-for="(it, i) in queryBar.items" :key="it.field || i" class="q-item">
+                      <span>{{ it.label || it.field }}</span>
+                      <template v-if="it.kind === 'date' || it.kind === 'dateRange'">
+                        <input type="date" disabled />
+                        <span>~</span>
+                        <input type="date" disabled />
+                      </template>
+                      <select v-else disabled>
+                        <option>全部</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
                 <div v-if="kpiCharts.length" class="kpi-row" :style="{ gridTemplateColumns: `repeat(${Math.min(kpiCharts.length, 4)}, 1fr)` }">
                   <div v-for="c in kpiCharts" :key="c.chartId" class="kpi-card">
                     <div class="l">{{ c.title || 'KPI' }}</div>
                     <div class="v">{{ formatKpi(c.kpiValue) }}</div>
-                    <div class="d" :class="{ muted: !c.rowCount }">
-                      {{ c.rowCount ? `${c.rowCount} 行聚合` : '暂无聚合结果' }}
-                    </div>
+                    <div class="d">{{ c.rowCount }} 行聚合</div>
                   </div>
                 </div>
                 <div v-if="plotCharts.length" class="chart-grid" :class="{ single: plotCharts.length === 1 }">
                   <div v-for="c in plotCharts" :key="c.chartId" class="ccard">
                     <h3>{{ c.title || c.chartType || c.chartId }}</h3>
-                    <div v-if="c.heights?.length && (c.rowCount || 0) > 0" class="ask-bars mini">
+                    <div v-if="c.heights?.length" class="ask-bars mini">
                       <span
                         v-for="(h, i) in c.heights"
                         :key="i"
@@ -1025,15 +1345,22 @@ function toggleSide(panel: 'history' | 'explore') {
                         :title="c.labels?.[i] || ''"
                       />
                     </div>
-                    <div v-else class="chart-empty">
-                      <div class="ghost-bars" aria-hidden="true">
-                        <i /><i /><i /><i /><i />
-                      </div>
-                      <span>{{ c.rowCount ? `${c.rowCount} 行` : '暂无数据' }} · {{ c.chartType }}</span>
-                    </div>
-                    <div v-if="c.labels?.length && (c.rowCount || 0) > 0" class="lab">
+                    <div v-if="c.labels?.length" class="lab">
                       <span v-for="(l, i) in c.labels" :key="i">{{ l }}</span>
                     </div>
+                  </div>
+                </div>
+                <div v-if="tableCharts.length" class="table-grid">
+                  <div v-for="c in tableCharts" :key="c.chartId" class="ccard table-card">
+                    <h3>{{ c.title || '汇总表' }}</h3>
+                    <table class="mini-table">
+                      <tbody>
+                        <tr v-for="(l, i) in (c.labels || []).slice(0, 8)" :key="i">
+                          <td>{{ l }}</td>
+                          <td class="num">{{ c.rowCount ? '·' : '' }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
@@ -1066,7 +1393,7 @@ function toggleSide(panel: 'history' | 'explore') {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: #f5f6f8;
   color: var(--ink);
   font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
@@ -1084,7 +1411,7 @@ function toggleSide(panel: 'history' | 'explore') {
   min-height: 0;
   display: flex;
   width: 100%;
-  background: #fff;
+  background: #f5f6f8;
 }
 .side {
   width: 220px;
@@ -1201,7 +1528,7 @@ function toggleSide(panel: 'history' | 'explore') {
   align-items: flex-start;
   overflow: auto;
   padding: min(14vh, 110px) 24px 48px;
-  background: #fff;
+  background: #f5f6f8;
 }
 .landing-stack {
   width: min(960px, 94%);
@@ -1282,6 +1609,17 @@ function toggleSide(panel: 'history' | 'explore') {
 .ctx-pill {
   font-size: 12px;
   color: var(--muted);
+}
+.import-hint {
+  font-size: 12px;
+  color: var(--ok, #34c759);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-hidden {
+  display: none;
 }
 .ctx-pill b {
   color: var(--ink);
@@ -1451,7 +1789,7 @@ textarea {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: 440px 240px 1fr;
+  grid-template-columns: 440px 180px 1fr;
   /* Reset leaked dashboard `.stage` flex/overflow */
   flex-direction: initial;
   overflow: hidden;
@@ -1536,19 +1874,39 @@ textarea {
 .av.me {
   background: #646a73;
 }
-.bub {
+.asst-col {
+  flex: 1;
+  min-width: 0;
   max-width: calc(100% - 36px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  overflow: hidden;
+}
+.bub {
+  max-width: 100%;
   padding: 10px 12px;
   border-radius: 12px;
   font-size: 13.5px;
   line-height: 1.55;
   background: var(--soft);
+}
+.bub-text {
   white-space: pre-wrap;
+}
+.msg.user .asst-col {
+  align-items: flex-end;
 }
 .msg.user .bub {
   background: var(--brand);
   color: #fff;
   border-radius: 12px 12px 4px 12px;
+}
+.msg.assistant .bub {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px 12px 12px 12px;
 }
 .bub.soft {
   background: #fff8eb;
@@ -1572,11 +1930,12 @@ textarea {
   font-weight: 600;
   margin-bottom: 6px;
 }
-.plan-box pre {
-  font-size: 11px;
-  max-height: 120px;
-  overflow: auto;
-  margin: 0 0 8px;
+.plan-ol {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink);
 }
 .btn {
   height: 32px;
@@ -1753,6 +2112,30 @@ textarea {
   color: var(--muted);
   line-height: 1.45;
 }
+.intent-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 12px;
+}
+.imap {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f5f6f7;
+  color: var(--muted);
+}
+.imap.ok {
+  background: #eef3ff;
+  color: #3370ff;
+}
+.imap.miss {
+  background: #fff1f0;
+  color: #c2410c;
+}
+.intent-map.in-bub {
+  padding: 8px 0 0;
+}
 .badge {
   flex-shrink: 0;
   height: 22px;
@@ -1839,6 +2222,18 @@ textarea {
   color: var(--muted);
   margin-bottom: 8px;
   font-weight: 600;
+}
+.sql-block {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: #0f1728;
+  color: #d7e2ff;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: auto;
+  max-height: 180px;
+  white-space: pre-wrap;
 }
 .ask-bars {
   display: flex;
@@ -1991,6 +2386,49 @@ textarea {
   background: #fff2f0;
   color: #cf1322;
 }
+.query-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 16px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+}
+.query-bar b {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink);
+}
+.query-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  min-width: 0;
+}
+.q-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.q-item input,
+.q-item select {
+  height: 28px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+}
+.q-item input[type='date'] {
+  width: 124px;
+}
 .kpi-row {
   display: grid;
   gap: 10px;
@@ -2023,17 +2461,44 @@ textarea {
 }
 .chart-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   padding: 10px 16px 16px;
 }
 .chart-grid.single {
   grid-template-columns: 1fr;
 }
+.chart-grid:not(.single) .ccard:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
 @media (max-width: 900px) {
   .chart-grid {
     grid-template-columns: 1fr;
   }
+  .chart-grid:not(.single) .ccard:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+}
+.table-grid {
+  padding: 0 16px 16px;
+}
+.table-card {
+  min-height: 0;
+}
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.mini-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+.mini-table td.num {
+  width: 28px;
+  color: var(--faint);
+  text-align: right;
 }
 .ccard {
   border: 1px solid var(--line);

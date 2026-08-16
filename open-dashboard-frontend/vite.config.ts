@@ -62,6 +62,23 @@ export default defineConfig({
       '/api': {
         target: process.env.OD_API_PROXY || 'http://127.0.0.1:8082',
         changeOrigin: true
+      },
+      // Pi harness: FE talks to Agent runtime directly (not via Java conversation runs)
+      '/harness': {
+        target: process.env.OD_HARNESS_PROXY || 'http://127.0.0.1:8091',
+        changeOrigin: true,
+        timeout: 0,
+        proxyTimeout: 0,
+        rewrite: (path) => path.replace(/^\/harness/, ''),
+        configure(proxy) {
+          proxy.on('proxyRes', (proxyRes, req) => {
+            const type = String(proxyRes.headers['content-type'] || '')
+            if ((req.url || '').includes('/runs') && type.includes('text/event-stream')) {
+              proxyRes.headers['cache-control'] = 'no-cache, no-transform'
+              proxyRes.headers['x-accel-buffering'] = 'no'
+            }
+          })
+        }
       }
     }
   }
