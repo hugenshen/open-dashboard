@@ -118,7 +118,6 @@ def run_lead(
     board_emitted = False
 
     for round_i in range(max_rounds):
-        yield _step("think", f"Lead 推理轮次 {round_i + 1}/{max_rounds}")
         resp = chat_completions(messages, tools=TOOL_SPECS)
         choice = (resp.get("choices") or [{}])[0]
         msg = choice.get("message") or {}
