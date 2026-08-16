@@ -2,6 +2,8 @@ package io.opendashboard.application.conversation;
 
 import io.opendashboard.application.DashboardAppService;
 import io.opendashboard.application.DatasetService;
+import io.opendashboard.application.DatasourceService;
+import io.opendashboard.application.FileTableStore;
 import io.opendashboard.application.StubQueryService;
 import io.opendashboard.domain.DashboardDtos.ChartViewVO;
 import io.opendashboard.domain.DashboardDtos.DashboardComponentVO;
@@ -25,20 +27,29 @@ import java.util.Optional;
 public class BiPlatformService {
 
     private final DatasetService datasets;
+    private final DatasourceService datasources;
     private final StubQueryService queryService;
     private final DashboardAppService dashboards;
     private final DashboardPatchApplier applier;
+    private final DatasetProfiler profiler;
+    private final FileTableStore fileTables;
 
     public BiPlatformService(
             DatasetService datasets,
+            DatasourceService datasources,
             StubQueryService queryService,
             DashboardAppService dashboards,
-            DashboardPatchApplier applier
+            DashboardPatchApplier applier,
+            DatasetProfiler profiler,
+            FileTableStore fileTables
     ) {
         this.datasets = datasets;
+        this.datasources = datasources;
         this.queryService = queryService;
         this.dashboards = dashboards;
         this.applier = applier;
+        this.profiler = profiler;
+        this.fileTables = fileTables;
     }
 
     public List<Map<String, Object>> listDatasets() {
@@ -72,10 +83,22 @@ public class BiPlatformService {
                     ff.put("group", f.group());
                     ff.put("dataType", f.dataType());
                     ff.put("origin", f.origin());
+                    ff.put("role", DatasetProfiler.roleOf(f));
                     fields.add(ff);
                 });
             }
             m.put("fields", fields);
+            if (fileTables.has(d.meta().id()) || (d.meta().tableName() != null && d.meta().tableName().startsWith("od_file_"))) {
+                m.put("engine", "file");
+            }
+            if (d.meta().datasourceId() != null) {
+                datasources.get(d.meta().datasourceId()).ifPresent(src -> {
+                    m.put("engine", src.type());
+                    m.put("datasourceName", src.name());
+                    m.put("dbName", src.dbName());
+                    m.put("schemaName", src.schema());
+                });
+            }
             return m;
         });
     }
@@ -86,6 +109,60 @@ public class BiPlatformService {
 
     public ChartQueryResult chartQuery(ChartQueryRequest request) {
         return queryService.query(request);
+    }
+
+    public Map<String, Object> executeReadSql(Map<String, Object> body) {
+        String datasetId = body == null || body.get("datasetId") == null ? "" : String.valueOf(body.get("datasetId"));
+        String sql = body == null || body.get("sql") == null ? "" : String.valueOf(body.get("sql"));
+        Integer limit = null;
+        if (body != null && body.get("limit") instanceof Number n) limit = n.intValue();
+        DatasetQueryResult r = queryService.executeReadSql(datasetId, sql, limit);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sql", r.sql());
+        out.put("elapsedMs", r.elapsedMs());
+        out.put("truncated", r.truncated());
+        List<Map<String, Object>> fields = new ArrayList<>();
+        if (r.columns() != null) {
+            for (var c : r.columns()) {
+                Map<String, Object> f = new LinkedHashMap<>();
+                f.put("name", c.name());
+                f.put("type", c.dataType());
+                fields.add(f);
+            }
+        }
+        out.put("fields", fields);
+        out.put("data", r.rows() == null ? List.of() : r.rows());
+        out.put("rowCount", r.rows() == null ? 0 : r.rows().size());
+        return out;
+    }
+
+    public Map<String, Object> profileDataset(String datasetId) {
+        return profiler.profile(datasetId);
+    }
+
+    public Map<String, Object> resolveIntent(Map<String, Object> body) {
+        String message = body == null || body.get("message") == null ? "" : String.valueOf(body.get("message"));
+        List<String> datasetIds = new ArrayList<>();
+        if (body != null && body.get("datasetIds") instanceof List<?> raw) {
+            for (Object o : raw) {
+                if (o != null && !String.valueOf(o).isBlank()) datasetIds.add(String.valueOf(o));
+            }
+        }
+        Map<String, DatasetDetailVO> loaded = new LinkedHashMap<>();
+        if (datasetIds.isEmpty()) {
+            for (DatasetMetaVO meta : datasets.list()) {
+                if (meta == null || meta.id() == null) continue;
+                datasets.get(meta.id()).ifPresent(d -> loaded.put(meta.id(), d));
+                if (loaded.size() >= 8) break;
+            }
+            datasetIds.addAll(loaded.keySet());
+        } else {
+            for (String id : datasetIds) {
+                datasets.get(id).ifPresent(d -> loaded.put(id, d));
+            }
+        }
+        SchemaGuard.SchemaBundle schema = SchemaGuard.load(datasetIds, loaded);
+        return IntentResolver.resolve(message, schema).toMap();
     }
 
     public Map<String, Object> boardSummary(String dashboardId) {
@@ -140,7 +217,7 @@ public class BiPlatformService {
     public Map<String, Object> applyPatch(Map<String, Object> body) {
         String dashboardId = body.get("dashboardId") == null ? null : String.valueOf(body.get("dashboardId"));
         String title = body.get("title") == null ? "AI 生成看板" : String.valueOf(body.get("title"));
-        String mode = body.get("mode") == null ? "append" : String.valueOf(body.get("mode"));
+        String mode = body.get("mode") == null ? "replace" : String.valueOf(body.get("mode"));
         Object patchObj = body.get("patch");
         Map<String, Object> patchMap;
         if (patchObj instanceof Map<?, ?> m) {
@@ -152,11 +229,10 @@ public class BiPlatformService {
             patchMap.put("ops", body.get("ops") == null ? List.of() : body.get("ops"));
         }
         if ("replace".equalsIgnoreCase(mode) && dashboardId != null && !dashboardId.isBlank()) {
-            // replace: still apply ops onto preferred id; composer should clear via remove ops if needed
             patchMap.put("dashboardId", dashboardId);
         }
         DashboardPatch.Patch patch = DashboardPatch.Patch.fromMap(patchMap);
-        DashboardPatchApplier.ApplyResult applied = applier.apply(dashboardId, title, patch);
+        DashboardPatchApplier.ApplyResult applied = applier.apply(dashboardId, title, patch, mode);
 
         List<Map<String, Object>> preview = new ArrayList<>();
         for (String chartId : applied.chartIds()) {
@@ -175,9 +251,17 @@ public class BiPlatformService {
             card.put("rowCount", data.size());
             card.put("labels", previewLabels(data));
             card.put("heights", previewHeights(data));
-            if ("kpi".equals(String.valueOf(inline.get("chartType"))) && !data.isEmpty() && !data.getFirst().isEmpty()) {
+            boolean kpi = "kpi".equals(String.valueOf(inline.get("chartType")));
+            Object kpiVal = null;
+            if (kpi && !data.isEmpty() && !data.getFirst().isEmpty()) {
                 Object raw = data.getFirst().size() > 1 ? data.getFirst().get(1) : data.getFirst().getFirst();
-                card.put("kpiValue", raw == null ? 0 : raw);
+                if (raw != null && !"".equals(raw) && !"null".equalsIgnoreCase(String.valueOf(raw))) {
+                    kpiVal = raw;
+                    card.put("kpiValue", raw);
+                }
+            }
+            if (data.isEmpty() || (kpi && kpiVal == null)) {
+                continue;
             }
             preview.add(card);
         }
@@ -186,6 +270,7 @@ public class BiPlatformService {
         out.put("dashboardId", applied.dashboardId());
         out.put("chartIds", applied.chartIds());
         out.put("charts", preview);
+        out.put("query", extractQuery(patch));
         out.put("mode", mode);
         return out;
     }
@@ -207,7 +292,14 @@ public class BiPlatformService {
             return Map.of("ok", false, "error", "datasets not found");
         }
         if (loaded.isEmpty()) {
-            datasets.list().stream().limit(3).forEach(m -> datasets.get(m.id()).ifPresent(d -> loaded.put(d.meta().id(), d)));
+            datasets.list().stream()
+                    .filter(m -> !DeterministicPlanner.isWeakDataset(new DatasetDetailVO(m, List.of())))
+                    .limit(3)
+                    .forEach(m -> datasets.get(m.id()).ifPresent(d -> loaded.put(d.meta().id(), d)));
+            if (loaded.isEmpty()) {
+                datasets.list().stream().limit(3)
+                        .forEach(m -> datasets.get(m.id()).ifPresent(d -> loaded.put(d.meta().id(), d)));
+            }
         }
         SchemaGuard.SchemaBundle schema = SchemaGuard.load(new ArrayList<>(loaded.keySet()), loaded);
         if (!schema.okForPagePatch()) {
@@ -218,10 +310,17 @@ public class BiPlatformService {
             patch = toAppendPatch(dashboardId, patch);
         }
         String title = DeterministicPlanner.resolveTitle(message, schema);
+        String usedId = DeterministicPlanner.resolveDatasetId(message, schema);
+        DatasetDetailVO used = loaded.get(usedId);
+        long chartCount = patch.ops().stream().filter(op -> "upsert_chart".equals(String.valueOf(op.get("op")))).count();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("title", title);
         out.put("mode", mode);
+        out.put("datasetId", usedId);
+        out.put("datasetName", used != null && used.meta() != null ? used.meta().name() : usedId);
+        out.put("weakDataset", DeterministicPlanner.isWeakDataset(used));
+        out.put("chartCount", chartCount);
         out.put("patch", patch.toMap());
         return out;
     }
@@ -321,5 +420,26 @@ public class BiPlatformService {
             return inline;
         }
         return Map.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> extractQuery(DashboardPatch.Patch patch) {
+        if (patch == null || patch.ops() == null) return null;
+        for (Map<String, Object> op : patch.ops()) {
+            if (!"upsert_component".equals(String.valueOf(op.get("op")))) continue;
+            if (!"query".equals(String.valueOf(op.get("type")))) continue;
+            Map<String, Object> query = new LinkedHashMap<>();
+            Object propsObj = op.get("props");
+            if (propsObj instanceof Map<?, ?> props) {
+                Object label = props.get("label");
+                query.put("label", label == null || String.valueOf(label).isBlank() ? "查询条件" : label);
+                query.put("items", props.get("items") instanceof List<?> items ? items : List.of());
+            } else {
+                query.put("label", "查询条件");
+                query.put("items", List.of());
+            }
+            return query;
+        }
+        return null;
     }
 }

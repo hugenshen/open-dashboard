@@ -445,6 +445,9 @@ public class DashboardRepository implements DashboardGateway {
     public Optional<ChartViewVO> saveChart(long dashboardId, long chartId, ChartViewSaveRequest req) {
         if (findNode(dashboardId).isEmpty()) return Optional.empty();
         ensureDraftBuckets(dashboardId);
+        if (chartId <= 0) {
+            chartId = nextId("de_chart_view");
+        }
         Map<String, Object> encode = req.encode() == null ? Map.of() : new HashMap<>(req.encode());
         if (req.datasetId() != null) encode.put("datasetId", req.datasetId());
         Integer exists = jdbc.queryForObject(

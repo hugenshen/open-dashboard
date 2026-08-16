@@ -66,90 +66,82 @@ public final class AskAnswerPlanner {
 
     public static Answer planAsk(String message, SchemaGuard.SchemaBundle schema) {
         String q = message == null ? "" : message.trim();
-        if (isVague(q)) {
+        IntentResolver.Plan intent = IntentResolver.resolve(q, schema);
+        if (intent.needsClarify()) {
+            return clarifyFromIntent(intent, q);
+        }
+        if (intent.cards().isEmpty() && isVague(q)) {
             return clarify(
                     "需要更具体的业务问题",
-                    "「" + truncate(q, 40) + "」还不够明确。请指定<strong>指标</strong>（如销售额、利润、UV）和<strong>维度</strong>（如区域、渠道、月份）。",
-                    List.of("各区域销售额对比", "按渠道拆利润", "近几个月营收趋势", "华南为什么下滑？")
+                    "「" + truncate(q, 40) + "」还不够明确。请指定<strong>指标</strong>（如销售额、利润）和<strong>维度</strong>（如区域、渠道、商户）。",
+                    List.of("各区域销售额对比", "按渠道拆利润", "近一年各商户收入")
             );
         }
 
-        String datasetId = pickDataset(q, schema);
-        DatasetDetailVO detail = schema.byId().get(datasetId);
-        String dsName = detail != null && detail.meta() != null ? detail.meta().name() : datasetId;
-
-        if (q.matches("(?s).*(渠道|线上|线下).*") && !q.matches("(?s).*(为什么|下滑).*")) {
-            String dim = pickField(detail, "dim", q, "channel", "渠道", "region", "区域");
-            String measure = pickField(detail, "quota", q, "profit", "利润", "amount", "销售额", "销售", "营收");
-            Map<String, Object> encode = encodeOf(datasetId, dim, measure, "SUM");
-            return new Answer(
-                    "channel",
-                    "渠道对比",
-                    "基于数据集 <strong>" + esc(dsName) + "</strong>，按 <strong>" + esc(dim) + "</strong> 聚合 <strong>"
-                            + esc(measure) + "</strong>。结果为会话预览，不落结果行。",
-                    "",
-                    datasetId,
-                    "bar",
-                    encode,
-                    List.of(),
-                    List.of("拆到区域看", "华南为什么下滑？", "生成经营分析看板"),
-                    Map.of("scope", "single")
-            );
+        IntentResolver.Card primary = intent.primaryChart();
+        if (primary == null) {
+            return clarifyFromIntent(intent, q);
         }
-        if (q.matches("(?s).*(趋势|近.*月|营收趋势|走势).*") && !q.matches("(?s).*(为什么|下滑).*")) {
-            String dim = pickField(detail, "dim", q, "month", "月", "day", "日期", "region");
-            String measure = pickField(detail, "quota", q, "amount", "销售额", "销售", "营收", "uv", "profit");
-            Map<String, Object> encode = encodeOf(datasetId, dim, measure, "SUM");
-            return new Answer(
-                    "trend",
-                    "趋势分析",
-                    "基于 <strong>" + esc(dsName) + "</strong>，按 <strong>" + esc(dim) + "</strong> 看 <strong>"
-                            + esc(measure) + "</strong> 走势。",
-                    "",
-                    datasetId,
-                    "line",
-                    encode,
-                    List.of(),
-                    List.of("哪个月最高？", "按渠道拆趋势", "生成趋势看板"),
-                    Map.of("scope", "single")
-            );
+        String datasetId = intent.datasetId();
+        Map<String, Object> encode = IntentResolver.encodeOf(primary, datasetId, intent.time());
+        String insight = (intent.rewrite() == null ? "" : intent.rewrite() + "。")
+                + "结果为会话预览，不落结果行。";
+        if (intent.time() != null) {
+            insight += "时间过滤已写入查询：" + intent.time().phrase()
+                    + " → " + intent.time().label() + "。";
         }
-        if (q.matches("(?s).*(区域|华东|华南|华北|西部|销售额|销售|营收|对比).*")
-                || q.matches("(?s).*(多少|分别|排).*")) {
-            String wantDim = preferExisting(detail, "region", "区域");
-            String wantMeasure = preferExisting(detail, "amount", "销售额", "销售", "营收", "profit", "利润", "TotalIncome", "Balance");
-            if (wantDim == null || wantMeasure == null) {
-                return clarify(
-                        "当前数据集无法回答该问题",
-                        "问题需要「区域 / 销售额」一类字段，但数据集 <strong>" + esc(dsName)
-                                + "</strong> 中没有匹配字段。请更换为含区域与金额字段的数据集，或改问该表真实指标。",
-                        List.of("换到销售明细后再问「各区域销售额」", "按该表已有字段重新提问")
-                );
-            }
-            Map<String, Object> encode = encodeOf(datasetId, wantDim, wantMeasure, "SUM");
-            return new Answer(
-                    "region",
-                    titleFor(wantDim, wantMeasure),
-                    "基于 <strong>" + esc(dsName) + "</strong>，按 <strong>" + esc(wantDim) + "</strong> 聚合 <strong>"
-                            + esc(wantMeasure) + "</strong>。"
-                            + (q.contains("区域") || "region".equalsIgnoreCase(wantDim)
-                            ? "若某区域环比为负，可追问「为什么下滑」。" : ""),
-                    "",
-                    datasetId,
-                    "bar",
-                    encode,
-                    List.of(),
-                    List.of("华南为什么下滑？", "只看线上", "生成经营分析看板"),
-                    Map.of("scope", "single")
-            );
-        }
-
-        return clarify(
-                "未能从问题定位分析意图",
-                "请换成更明确的问法，例如「各区域销售额对比」「渠道利润」「近月营收趋势」。当前上下文数据集：<strong>"
-                        + esc(dsName) + "</strong>。",
-                List.of("各区域销售额对比", "按渠道拆利润", "近几个月营收趋势")
+        return new Answer(
+                "intent",
+                primary.title(),
+                insight,
+                mappingHeadline(intent),
+                datasetId,
+                primary.chartType(),
+                encode,
+                List.of(),
+                List.of("保存到仪表盘", "直接生成仪表盘"),
+                Map.of("scope", "single", "intent", intent.toMap())
         );
+    }
+
+    private static Answer clarifyFromIntent(IntentResolver.Plan intent, String q) {
+        StringBuilder html = new StringBuilder();
+        html.append("问题「").append(esc(truncate(q, 48))).append("」无法按原意取数。");
+        if (intent.unresolved() != null && !intent.unresolved().isEmpty()) {
+            html.append("<br/>缺字段：");
+            for (int i = 0; i < intent.unresolved().size(); i++) {
+                if (i > 0) html.append("；");
+                var u = intent.unresolved().get(i);
+                html.append("<strong>").append(esc(u.phrase())).append("</strong> — ").append(esc(u.reason()));
+            }
+        }
+        if (intent.mapping() != null && !intent.mapping().isEmpty()) {
+            html.append("<br/>已对齐：");
+            for (int i = 0; i < intent.mapping().size(); i++) {
+                if (i > 0) html.append("、");
+                var x = intent.mapping().get(i);
+                html.append(esc(x.phrase())).append("→").append(esc(x.label() == null ? x.field() : x.label()));
+            }
+        }
+        html.append("<br/>请换有对应字段的数据集，或改问该表真实指标。");
+        List<String> follows = new ArrayList<>();
+        if (intent.datasetName() != null && !intent.datasetName().isBlank()) {
+            follows.add("按「" + intent.datasetName() + "」已有字段重新提问");
+        }
+        follows.add("各区域销售额对比");
+        follows.add("近几个月营收趋势");
+        return clarify("当前数据集无法完整回答该问题", html.toString(), follows);
+    }
+
+    private static String mappingHeadline(IntentResolver.Plan intent) {
+        if (intent.mapping() == null || intent.mapping().isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("字段对齐：");
+        for (int i = 0; i < intent.mapping().size(); i++) {
+            if (i > 0) sb.append("；");
+            var x = intent.mapping().get(i);
+            sb.append(esc(x.phrase())).append(" → ").append(esc(x.label() == null ? x.field() : x.label()));
+        }
+        return sb.toString();
     }
 
     public static Answer planInsight(String message, SchemaGuard.SchemaBundle schema) {
@@ -225,7 +217,7 @@ public final class AskAnswerPlanner {
         if (s.matches("^(有多少|多少个|几个|怎么样|如何|看看|查一下)$")) return true;
         if (s.matches("^(数据库有多少|数据有多少|库有多少).*")) return true;
         // no business anchor at all
-        return !s.matches("(?s).*(区域|渠道|趋势|销售|营收|利润|UV|uv|额|月|华东|华南|华北|西部|线上|线下|对比|排行|为什么|下滑).*");
+        return !s.matches("(?s).*(区域|渠道|趋势|销售|营收|利润|收入|订单|商户|商家|UV|uv|额|月|年|华东|华南|华北|西部|线上|线下|对比|排行|为什么|下滑).*");
     }
 
     private static String pickDataset(String q, SchemaGuard.SchemaBundle schema) {
@@ -290,33 +282,6 @@ public final class AskAnswerPlanner {
             if (!detail.fields().isEmpty()) return detail.fields().getFirst().name();
         }
         return preferred.length > 0 ? preferred[0] : "amount";
-    }
-
-    private static boolean fieldExists(DatasetDetailVO detail, String name) {
-        if (detail == null || detail.fields() == null || name == null) return false;
-        for (DatasetFieldVO f : detail.fields()) {
-            if (name.equalsIgnoreCase(f.name())) return true;
-        }
-        return false;
-    }
-
-    /** Return the first preferred field that actually exists; null if none. */
-    private static String preferExisting(DatasetDetailVO detail, String... preferred) {
-        if (detail == null || detail.fields() == null) return null;
-        for (String p : preferred) {
-            for (DatasetFieldVO f : detail.fields()) {
-                if (p.equalsIgnoreCase(f.name())) return f.name();
-                if (f.label() != null && f.label().contains(p)) return f.name();
-            }
-        }
-        return null;
-    }
-
-    private static String titleFor(String dim, String measure) {
-        if ("region".equalsIgnoreCase(dim) || (dim != null && dim.contains("区域"))) {
-            return "区域 · " + measure;
-        }
-        return dim + " · " + measure;
     }
 
     private static Map<String, Object> encodeOf(String datasetId, String category, String value, String agg) {

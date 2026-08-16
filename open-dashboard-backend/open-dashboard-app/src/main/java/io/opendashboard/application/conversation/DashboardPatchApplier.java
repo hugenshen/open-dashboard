@@ -14,10 +14,12 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 public class DashboardPatchApplier {
@@ -35,8 +37,26 @@ public class DashboardPatchApplier {
     ) {}
 
     public ApplyResult apply(String preferredDashboardId, String title, DashboardPatch.Patch patch) {
+        return apply(preferredDashboardId, title, patch, "replace");
+    }
+
+    public ApplyResult apply(String preferredDashboardId, String title, DashboardPatch.Patch patch, String mode) {
         String dashboardId = resolveDashboardId(preferredDashboardId, patch.dashboardId(), title);
+        boolean replace = mode == null || mode.isBlank() || "replace".equalsIgnoreCase(mode);
+        List<String> staleCompIds = new ArrayList<>();
+        List<String> staleChartIds = new ArrayList<>();
+        if (replace) {
+            dashboards.get(dashboardId, "draft").ifPresent(d -> {
+                if (d.components() != null) {
+                    for (DashboardComponentVO c : d.components()) {
+                        if (c.id() != null && !c.id().isBlank()) staleCompIds.add(c.id());
+                    }
+                }
+                if (d.charts() != null) staleChartIds.addAll(d.charts().keySet());
+            });
+        }
         List<String> chartIds = new ArrayList<>();
+        Map<String, String> chartIdAlias = new HashMap<>();
         List<DashboardComponentVO> components = new ArrayList<>();
         Integer gridCols = null;
         String themeRef = null;
@@ -75,24 +95,35 @@ public class DashboardPatchApplier {
                             datasetId, type, chartTitle, encode, style, Map.of(), null
                     );
                     Optional<ChartViewVO> saved = dashboards.saveChart(dashboardId, chartId, req);
-                    if (saved.isPresent()) chartIds.add(chartId);
+                    if (saved.isPresent()) {
+                        String actualId = saved.get().id() == null || saved.get().id().isBlank()
+                                ? chartId : saved.get().id();
+                        chartIdAlias.put(chartId, actualId);
+                        chartIds.add(chartId);
+                    }
                 }
                 case "upsert_component" -> {
-                    String id = str(op.get("id"));
-                    String chartId = str(op.get("chartId"));
+                    String rawId = str(op.get("id"));
+                    String id = !rawId.isBlank() && rawId.chars().allMatch(Character::isDigit) ? rawId : "";
+                    String type = str(op.get("type"));
+                    if (type.isBlank()) type = "chart";
                     int x = intVal(op.get("x"), 0);
                     int y = intVal(op.get("y"), 0);
                     int w = intVal(op.get("w"), 24);
                     int h = intVal(op.get("h"), 12);
-                    components.add(new DashboardComponentVO(
-                            id.isBlank() ? "c_" + chartId : id,
-                            "chart",
-                            null,
-                            chartId,
-                            x, y, w, h,
-                            1,
-                            Map.of()
-                    ));
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> props = op.get("props") instanceof Map<?, ?> m
+                            ? castMap(m) : Map.of();
+                    if ("query".equals(type) || "text".equals(type) || "slicer".equals(type)) {
+                        components.add(new DashboardComponentVO(
+                                id, type, null, null, x, y, w, h, 1, props
+                        ));
+                    } else {
+                        String chartId = chartIdAlias.getOrDefault(str(op.get("chartId")), str(op.get("chartId")));
+                        components.add(new DashboardComponentVO(
+                                id, "chart", null, chartId, x, y, w, h, 1, props
+                        ));
+                    }
                 }
                 default -> { /* ignore unknown */ }
             }
@@ -107,10 +138,16 @@ public class DashboardPatchApplier {
                 null,
                 null
         ));
-        if (!components.isEmpty()) {
+        if (!components.isEmpty() || !staleCompIds.isEmpty()) {
             dashboards.updateComponents(dashboardId, new DashboardComponentsUpdateRequest(
-                    components, List.of(), null
+                    components, staleCompIds, null
             ));
+        }
+        Set<String> keepCharts = new HashSet<>(chartIdAlias.values());
+        for (String oldId : staleChartIds) {
+            if (!keepCharts.contains(oldId)) {
+                dashboards.deleteChart(dashboardId, oldId);
+            }
         }
 
         Map<String, Object> snapshot = snapshotOf(dashboardId);

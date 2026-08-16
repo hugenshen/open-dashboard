@@ -1,5 +1,7 @@
 package io.opendashboard.application;
 
+import io.opendashboard.application.conversation.FieldSemantics;
+import io.opendashboard.application.conversation.ReadSqlGuard;
 import io.opendashboard.domain.DatasetDtos.DatasetDetailVO;
 import io.opendashboard.domain.QueryDtos.ChartQueryRequest;
 import io.opendashboard.domain.QueryDtos.ChartQueryResult;
@@ -28,23 +30,28 @@ public class StubQueryService {
     private final ObjectProvider<DatasourceService> datasourceService;
     private final DataSourcePort jdbc;
     private final boolean stubQuery;
+    private final FileTableStore fileTables;
 
     public StubQueryService(
             ObjectProvider<CatalogService> catalogService,
             ObjectProvider<DatasetService> datasetService,
             ObjectProvider<DatasourceService> datasourceService,
             DataSourcePort jdbc,
+            FileTableStore fileTables,
             @Value("${opendashboard.stub-query:true}") boolean stubQuery
     ) {
         this.catalogService = catalogService;
         this.datasetService = datasetService;
         this.datasourceService = datasourceService;
         this.jdbc = jdbc;
+        this.fileTables = fileTables;
         this.stubQuery = stubQuery;
     }
 
     public DatasetQueryResult execute(DatasetQueryRequest request) {
         String datasetId = request.datasetId() == null ? "" : request.datasetId();
+        DatasetQueryResult imported = fileTables.query(request);
+        if (imported != null) return imported;
         if (!stubQuery) {
             DatasetQueryResult live = tryLive(request);
             if (live != null) return live;
@@ -66,7 +73,8 @@ public class StubQueryService {
             DatasetService dsSvc = datasetService.getIfAvailable();
             DatasourceService srcSvc = datasourceService.getIfAvailable();
             if (dsSvc == null || srcSvc == null) return null;
-            String datasetId = request.datasetId() == null ? "ds_sales" : request.datasetId();
+            String datasetId = request.datasetId() == null ? "" : request.datasetId();
+            if (datasetId.isBlank()) return null;
             DatasetDetailVO detail = dsSvc.get(datasetId).orElse(null);
             if (detail == null) return null;
             String table = detail.meta().tableName();
@@ -93,11 +101,58 @@ public class StubQueryService {
                 }
             }
             int limit = request.limit() == null ? 500 : request.limit();
-            return jdbc.queryTable(spec, table, dims, measures, request.columns(), limit);
+            return jdbc.queryTable(spec, table, dims, measures, request.columns(), request.filters(), limit);
         } catch (Exception e) {
-            // Fall through to stub for demo datasets that still point at unreachable seed sources.
-            return null;
+            String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            return new DatasetQueryResult(
+                    List.of(),
+                    List.of(),
+                    false,
+                    "-- live query failed: " + msg,
+                    0
+            );
         }
+    }
+
+    /** SQLBot Ask-3: execute a harness-validated SELECT against the dataset's physical table. */
+    public DatasetQueryResult executeReadSql(String datasetId, String sql, Integer limit) {
+        String safe = ReadSqlGuard.requireSelect(sql);
+        if (fileTables.has(datasetId)) {
+            DatasetQueryResult landed = fileTables.scan(datasetId, limit);
+            if (landed != null) {
+                return new DatasetQueryResult(
+                        landed.columns(),
+                        landed.rows(),
+                        landed.truncated(),
+                        safe,
+                        landed.elapsedMs()
+                );
+            }
+        }
+        DatasetService dsSvc = datasetService.getIfAvailable();
+        DatasourceService srcSvc = datasourceService.getIfAvailable();
+        if (dsSvc == null || srcSvc == null) {
+            throw new IllegalStateException("数据集服务不可用");
+        }
+        if (datasetId == null || datasetId.isBlank()) {
+            throw new IllegalArgumentException("datasetId 不能为空");
+        }
+        DatasetDetailVO detail = dsSvc.get(datasetId).orElseThrow(() -> new IllegalArgumentException("数据集不存在"));
+        String table = detail.meta().tableName();
+        String srcId = detail.meta().datasourceId();
+        if (table == null || table.isBlank() || srcId == null) {
+            throw new IllegalArgumentException("数据集未绑定物理表");
+        }
+        ConnectionSpec spec = srcSvc.resolveSpec(srcId).orElseThrow(() -> new IllegalArgumentException("数据源不存在"));
+        if (!spec.isJdbc()) {
+            throw new IllegalArgumentException("该数据源不支持 SQL 查询");
+        }
+        String ident = table.toLowerCase();
+        if (!safe.toLowerCase().contains(ident)) {
+            throw new IllegalArgumentException("SQL 必须查询当前数据集表: " + table);
+        }
+        int lim = limit == null ? 500 : limit;
+        return jdbc.executeSql(spec, safe, lim);
     }
 
     private DatasetQueryResult stubExecute(DatasetQueryRequest request) {
@@ -272,13 +327,13 @@ public class StubQueryService {
 
     public ChartQueryResult query(ChartQueryRequest request) {
         Map<String, Object> inline = request.inline();
-        String datasetId = "ds_sales";
+        String datasetId = null;
         String chartType = "bar";
-        String category = "region";
-        String value = "amount";
+        String category = null;
+        String value = null;
         String agg = "SUM";
 
-        if (request.dashboardId() != null && request.chartId() != null && inline == null) {
+        if (request.dashboardId() != null && request.chartId() != null) {
             CatalogService catalog = catalogService.getObject();
             Map<String, Object> resolved = catalog.resolveChartEncode(
                     request.dashboardId(),
@@ -286,79 +341,88 @@ public class StubQueryService {
                     request.view()
             );
             if (!resolved.isEmpty()) {
-                if (resolved.get("datasetId") != null && !String.valueOf(resolved.get("datasetId")).isBlank()) {
-                    datasetId = String.valueOf(resolved.get("datasetId"));
-                }
                 chartType = String.valueOf(resolved.getOrDefault("chartType", chartType));
-                if (resolved.get("category") != null) {
-                    category = String.valueOf(resolved.get("category"));
-                }
-                if (resolved.get("value") != null) {
-                    value = String.valueOf(resolved.get("value"));
-                }
-                if (resolved.get("agg") != null) {
-                    agg = String.valueOf(resolved.get("agg"));
-                }
-                Object enc = resolved.get("encode");
-                if (enc instanceof Map<?, ?> encMap) {
-                    if (encMap.get("datasetId") != null && !String.valueOf(encMap.get("datasetId")).isBlank()) {
-                        datasetId = String.valueOf(encMap.get("datasetId"));
-                    }
-                    if (encMap.get("category") != null) {
-                        category = String.valueOf(encMap.get("category"));
-                    }
-                    if (encMap.get("value") != null) {
-                        value = String.valueOf(encMap.get("value"));
-                    }
-                    if (encMap.get("agg") != null) {
-                        agg = String.valueOf(encMap.get("agg"));
-                    }
-                }
+                String[] bound = bindEncode(resolved, resolved.get("encode") instanceof Map<?, ?> encMap ? encMap : Map.of());
+                if (bound[0] != null) datasetId = bound[0];
+                if (bound[1] != null) category = bound[1];
+                if (bound[2] != null) value = bound[2];
+                if (bound[3] != null) agg = bound[3];
             }
-        } else if (inline != null) {
-            Object ds = inline.get("datasetId");
+        }
+        if (inline != null) {
             Object ct = inline.get("chartType");
-            if (ds != null) {
-                datasetId = String.valueOf(ds);
-            }
-            if (ct != null) {
+            if (ct != null && !String.valueOf(ct).isBlank()) {
                 chartType = String.valueOf(ct);
             }
-            Object enc = inline.get("encode");
-            if (enc instanceof Map<?, ?> encMap) {
-                if (encMap.get("category") != null) {
-                    category = String.valueOf(encMap.get("category"));
-                }
-                if (encMap.get("value") != null) {
-                    value = String.valueOf(encMap.get("value"));
-                }
-                if (encMap.get("agg") != null) {
-                    agg = String.valueOf(encMap.get("agg"));
-                }
-            }
+            String[] bound = bindEncode(inline, inline.get("encode") instanceof Map<?, ?> encMap ? encMap : Map.of());
+            if (bound[0] != null) datasetId = bound[0];
+            if (bound[1] != null) category = bound[1];
+            if (bound[2] != null) value = bound[2];
+            if (bound[3] != null) agg = bound[3];
+        }
+
+        if (datasetId == null || datasetId.isBlank() || value == null || value.isBlank()) {
+            Map<String, Object> extra = new HashMap<>();
+            extra.put("error", "chart encode missing datasetId/value");
+            extra.put("chartId", request.chartId() == null ? "" : request.chartId());
+            extra.put("dashboardId", request.dashboardId() == null ? "" : request.dashboardId());
+            return new ChartQueryResult(List.of(), List.of(), Map.of(), extra);
+        }
+        if (!"kpi".equals(chartType) && (category == null || category.isBlank())) {
+            Map<String, Object> extra = new HashMap<>();
+            extra.put("error", "chart encode missing category");
+            extra.put("chartId", request.chartId() == null ? "" : request.chartId());
+            extra.put("dashboardId", request.dashboardId() == null ? "" : request.dashboardId());
+            return new ChartQueryResult(List.of(), List.of(), Map.of(), extra);
         }
 
         List<Map<String, Object>> dims = "kpi".equals(chartType)
                 ? List.of()
                 : List.of(Map.of("field", category));
+        Map<String, Object> filters = extractFilters(inline, encMap(inline), request.context());
         DatasetQueryRequest dsReq = new DatasetQueryRequest(
                 datasetId,
                 dims,
                 List.of(Map.of("field", value, "agg", agg)),
                 null,
-                null,
+                filters,
                 100,
                 Map.of("includeSql", true)
         );
         DatasetQueryResult table = execute(dsReq);
-        List<FieldMeta> fields = table.columns().stream()
+        String fallbackFrom = null;
+        String fallbackTo = null;
+        String fallbackReason = null;
+        if (shouldFallbackIncome(table, value)) {
+            String fallback = amountFallbackField(datasetId, value);
+            if (fallback != null) {
+                DatasetQueryResult retried = execute(new DatasetQueryRequest(
+                        datasetId,
+                        dims,
+                        List.of(Map.of("field", fallback, "agg", agg)),
+                        null,
+                        filters,
+                        100,
+                        Map.of("includeSql", true)
+                ));
+                if (retried != null && retried.rows() != null && !retried.rows().isEmpty()) {
+                    fallbackFrom = value;
+                    fallbackTo = fallback;
+                    fallbackReason = table.sql();
+                    value = fallback;
+                    table = retried;
+                }
+            }
+        }
+        List<FieldMeta> fields = (table.columns() == null ? List.<ColumnMeta>of() : table.columns()).stream()
                 .map(c -> new FieldMeta(c.name(), c.dataType()))
                 .toList();
 
-        List<String> categories = table.rows().stream()
+        List<List<Object>> tableRows = table.rows() == null ? List.of() : table.rows();
+        List<String> categories = tableRows.stream()
                 .map(r -> String.valueOf(r.getFirst()))
                 .toList();
-        List<Number> data = table.rows().stream()
+        List<Number> data = tableRows.stream()
                 .map(r -> {
                     Object v = r.size() > 1 ? r.get(1) : r.getFirst();
                     if (v instanceof Number n) return n;
@@ -377,12 +441,18 @@ public class StubQueryService {
         extra.put("chartId", request.chartId() == null ? "" : request.chartId());
         extra.put("dashboardId", request.dashboardId() == null ? "" : request.dashboardId());
         extra.put("inline", inline != null);
+        if (filters != null && !filters.isEmpty()) extra.put("filters", filters);
+        if (fallbackTo != null) {
+            extra.put("fallbackFrom", fallbackFrom);
+            extra.put("fallbackTo", fallbackTo);
+            extra.put("fallbackReason", fallbackReason);
+        }
 
         if ("kpi".equals(chartType)) {
             double kpi = aggregate(data, agg);
             return new ChartQueryResult(
                     fields,
-                    table.rows(),
+                    tableRows,
                     Map.of("kpi", kpi, "label", value),
                     extra
             );
@@ -396,12 +466,81 @@ public class StubQueryService {
 
         return new ChartQueryResult(
                 fields,
-                table.rows(),
+                tableRows,
                 Map.of(
                         "categories", categories,
                         "series", List.of(Map.of("name", value, "type", seriesType, "data", data))
                 ),
                 extra
         );
+    }
+
+    /** [datasetId, category, value, agg]; null slot means absent. Nested encode first, top-level wins. */
+    private static String[] bindEncode(Map<String, Object> top, Map<?, ?> enc) {
+        String[] out = new String[4];
+        applyEncodeSlot(out, enc);
+        applyEncodeSlot(out, top);
+        return out;
+    }
+
+    private static void applyEncodeSlot(String[] out, Map<?, ?> m) {
+        if (m == null) return;
+        Object ds = m.get("datasetId");
+        Object cat = m.get("category");
+        Object val = m.get("value");
+        Object agg = m.get("agg");
+        if (ds != null && !String.valueOf(ds).isBlank()) out[0] = String.valueOf(ds);
+        if (cat != null && !String.valueOf(cat).isBlank() && !(cat instanceof List<?>)) out[1] = String.valueOf(cat);
+        if (cat instanceof List<?> list && !list.isEmpty() && list.getFirst() != null) {
+            out[1] = String.valueOf(list.getFirst());
+        }
+        if (val != null && !String.valueOf(val).isBlank() && !(val instanceof List<?>)) out[2] = String.valueOf(val);
+        if (val instanceof List<?> list && !list.isEmpty() && list.getFirst() != null) {
+            out[2] = String.valueOf(list.getFirst());
+        }
+        if (agg != null && !String.valueOf(agg).isBlank()) out[3] = String.valueOf(agg);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> extractFilters(
+            Map<String, Object> inline,
+            Map<?, ?> enc,
+            Map<String, Object> context
+    ) {
+        if (enc != null && enc.get("filters") instanceof Map<?, ?> fm) {
+            return castFilterMap(fm);
+        }
+        if (inline != null && inline.get("filters") instanceof Map<?, ?> fm) {
+            return castFilterMap(fm);
+        }
+        if (context != null && context.get("filters") instanceof Map<?, ?> fm) {
+            return castFilterMap(fm);
+        }
+        return null;
+    }
+
+    private static Map<?, ?> encMap(Map<String, Object> inline) {
+        if (inline == null) return Map.of();
+        return inline.get("encode") instanceof Map<?, ?> m ? m : Map.of();
+    }
+
+    private static boolean shouldFallbackIncome(DatasetQueryResult table, String value) {
+        if (table == null || !FieldSemantics.looksIncomeMeasure(value)) return false;
+        boolean empty = table.rows() == null || table.rows().isEmpty();
+        return empty && FieldSemantics.queryFailed(table.sql());
+    }
+
+    private String amountFallbackField(String datasetId, String currentValue) {
+        DatasetService dsSvc = datasetService.getIfAvailable();
+        if (dsSvc == null || datasetId == null) return null;
+        DatasetDetailVO detail = dsSvc.get(datasetId).orElse(null);
+        if (detail == null) return null;
+        return FieldSemantics.findAmountFallback(detail.fields(), currentValue);
+    }
+
+    private static Map<String, Object> castFilterMap(Map<?, ?> raw) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        raw.forEach((k, v) -> out.put(String.valueOf(k), v));
+        return out;
     }
 }

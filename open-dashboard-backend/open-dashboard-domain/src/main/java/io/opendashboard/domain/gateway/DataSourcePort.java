@@ -6,6 +6,7 @@ import io.opendashboard.domain.QueryDtos.DatasetQueryResult;
 import io.opendashboard.domain.datasource.ConnectionSpec;
 
 import java.util.List;
+import java.util.Map;
 
 /** JDBC capability port for business datasources. */
 public interface DataSourcePort {
@@ -32,6 +33,9 @@ public interface DataSourcePort {
             List<String> dimensions,
             List<Agg> measures,
             List<String> columns,
+            Map<String, Object> filters,
             int limit
     );
+
+    DatasetQueryResult executeSql(ConnectionSpec spec, String sql, int maxRows);
 }

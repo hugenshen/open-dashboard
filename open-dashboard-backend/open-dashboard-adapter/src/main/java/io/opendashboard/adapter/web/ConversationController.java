@@ -100,20 +100,15 @@ public class ConversationController {
 
     @PostMapping(value = "/{id}/runs", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @RequirePermission("conversation:use")
-    public ResponseEntity<SseEmitter> startRun(
+    public ResponseEntity<?> startRun(
             @PathVariable String id,
             @RequestBody ConversationRunRequest request
     ) {
-        if (!service.enabled()) return ResponseEntity.notFound().build();
-        if (service.get(id).isEmpty()) return ResponseEntity.notFound().build();
-        SseEmitter emitter = new SseEmitter(300_000L);
-        try {
-            service.startRunAsync(id, request, (event, data) -> send(emitter, event, data));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        }
-        emitter.onTimeout(emitter::complete);
-        return ResponseEntity.ok(emitter);
+        // Deprecated: FE must call opendashboard-harness directly (/harness/v1/conversations/*/runs).
+        return ResponseEntity.status(HttpStatus.GONE).body(Map.of(
+                "code", "HARNESS_DIRECT",
+                "message", "请直连 opendashboard-harness：POST /harness/v1/conversations/" + id + "/runs"
+        ));
     }
 
     @PostMapping("/{id}/runs/{runId}/cancel")

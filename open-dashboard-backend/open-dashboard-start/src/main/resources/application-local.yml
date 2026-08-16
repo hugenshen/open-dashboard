@@ -10,6 +10,8 @@ spring:
 
 opendashboard:
   stub-query: false
+  query:
+    timeout-sec: 60
   conversation:
     enabled: true
     harness:

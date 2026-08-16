@@ -77,6 +77,21 @@ public class BiInternalController {
         return ResponseEntity.ok(bi.chartQuery(request));
     }
 
+    @PostMapping("/query/sql")
+    public ResponseEntity<?> executeSql(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        try {
+            return ResponseEntity.ok(bi.executeReadSql(body == null ? Map.of() : body));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() == null ? "bad sql" : e.getMessage()));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage() == null ? "sql failed" : e.getMessage()));
+        }
+    }
+
     @GetMapping("/board-summary")
     public ResponseEntity<?> boardSummary(
             @RequestParam(required = false) String dashboardId,
@@ -84,6 +99,25 @@ public class BiInternalController {
     ) {
         if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(bi.boardSummary(dashboardId));
+    }
+
+    @PostMapping("/profile-dataset")
+    public ResponseEntity<?> profileDataset(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String datasetId = body == null || body.get("datasetId") == null ? "" : String.valueOf(body.get("datasetId"));
+        return ResponseEntity.ok(bi.profileDataset(datasetId));
+    }
+
+    @PostMapping("/resolve-intent")
+    public ResponseEntity<?> resolveIntent(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(bi.resolveIntent(body == null ? Map.of() : body));
     }
 
     @PostMapping("/compose-board")

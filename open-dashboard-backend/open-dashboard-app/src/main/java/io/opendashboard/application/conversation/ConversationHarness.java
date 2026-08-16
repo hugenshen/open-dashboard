@@ -21,8 +21,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Conversation run entry: prefer DeerFlow / opendashboard-harness proxy;
- * {@code harness.mode=local} keeps deterministic platform fallback (no LLM).
+ * Deprecated conversation-run entry. Agent runs belong on opendashboard-harness
+ * (FE direct /harness/v1/conversations/{id}/runs). Java retains internal BI APIs only.
  */
 @Component
 public class ConversationHarness {
@@ -63,11 +63,15 @@ public class ConversationHarness {
             ConversationRunRequest request,
             Emitter emitter
     ) {
-        if (props.getHarness().isDeerflow()) {
-            proxyToHarness(conversation, run, request, emitter);
-            return;
-        }
-        startLocalRun(conversation, run, request, emitter);
+        // Pi architecture: FE must call opendashboard-harness /v1/conversations/*/runs directly.
+        // Java no longer proxies Agent runs; keep /api/internal/bi/* for tool execution only.
+        emitter.emit("error", Map.of(
+                "code", "HARNESS_DIRECT",
+                "message", "Conversation runs 已迁到 opendashboard-harness。"
+                        + " 请让前端直连 /harness/v1/conversations/{id}/runs（Vite 代理 :8091），"
+                        + "不要再调用 /api/conversations/*/runs。"
+        ));
+        finish(run.id(), "error", "use_harness_direct", emitter);
     }
 
     private void proxyToHarness(
@@ -166,6 +170,11 @@ public class ConversationHarness {
             step(emitter, "intent", "意图: " + intent);
 
             if ("ask".equals(intent) || "insight".equals(intent)) {
+                IntentResolver.Plan intentPlan = IntentResolver.resolve(request.message(), schema);
+                emitter.emit("intent_map", intentPlan.toMap());
+                step(emitter, "intent_map", intentPlan.needsClarify()
+                        ? "意图未完全对齐，需要澄清"
+                        : "已对齐 " + intentPlan.mapping().size() + " 个短语");
                 answerAskOrInsight(conversation, run, request, schema, intent, emitter);
                 return;
             }

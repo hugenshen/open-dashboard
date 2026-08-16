@@ -319,7 +319,7 @@ public class DashboardAppService {
         DashboardGateway repo = repository.getIfAvailable();
         if (repo != null) {
             try {
-                return repo.saveChart(Long.parseLong(dashboardId), Long.parseLong(chartId), req);
+                return repo.saveChart(Long.parseLong(dashboardId), parseFlexibleId(chartId), req);
             } catch (NumberFormatException e) {
                 return Optional.empty();
             }
@@ -538,6 +538,16 @@ public class DashboardAppService {
         MemDash d = mem.get(id);
         if (d == null) return Optional.empty();
         return Optional.of(new DashboardStatusVO(d.meta.id(), d.meta.status(), d.meta.contentId(), d.meta.version()));
+    }
+
+    /** Non-numeric Agent ids (g1) → 0 so the repository allocates a unique chart view id. */
+    static long parseFlexibleId(String raw) {
+        if (raw == null || raw.isBlank()) return 0L;
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
     }
 
     private void bump(MemDash d) {

@@ -24,6 +24,12 @@ public final class DashboardPatch {
         @SuppressWarnings("unchecked")
         public static Patch fromMap(Map<String, Object> raw) {
             if (raw == null) return new Patch(null, List.of());
+            Object nested = raw.get("patch");
+            if (!(raw.get("ops") instanceof List<?>) && nested instanceof Map<?, ?> nestedMap) {
+                Map<String, Object> inner = new LinkedHashMap<>();
+                nestedMap.forEach((k, v) -> inner.put(String.valueOf(k), v));
+                return fromMap(inner);
+            }
             Object opsObj = raw.get("ops");
             List<Map<String, Object>> ops = new ArrayList<>();
             if (opsObj instanceof List<?> list) {

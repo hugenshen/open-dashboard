@@ -8,6 +8,7 @@ import io.opendashboard.domain.datasource.ConnectionSpec;
 import io.opendashboard.domain.gateway.DataSourcePort;
 import io.opendashboard.domain.gateway.DataSourcePort.Agg;
 import io.opendashboard.domain.gateway.DataSourcePort.PingResult;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.sql.Connection;
@@ -21,6 +22,7 @@ import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Pattern;
 
@@ -32,14 +34,21 @@ public class JdbcDataSourcePort implements DataSourcePort {
 
 
     private static final Pattern IDENT = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
-    private static final int DEFAULT_TIMEOUT_SEC = 8;
     private static final int HARD_MAX_ROWS = 5000;
+
+    private final int queryTimeoutSec;
+
+    public JdbcDataSourcePort(
+            @Value("${opendashboard.query.timeout-sec:60}") int queryTimeoutSec
+    ) {
+        this.queryTimeoutSec = Math.max(8, queryTimeoutSec);
+    }
 
     public PingResult ping(ConnectionSpec spec) {
         long start = System.currentTimeMillis();
         try (Connection c = open(spec)) {
             try (Statement st = c.createStatement()) {
-                st.setQueryTimeout(DEFAULT_TIMEOUT_SEC);
+                st.setQueryTimeout(Math.min(8, queryTimeoutSec));
                 st.execute("SELECT 1");
             }
             return new PingResult(true, "连接成功", System.currentTimeMillis() - start, null);
@@ -181,12 +190,14 @@ public class JdbcDataSourcePort implements DataSourcePort {
             List<String> dimensions,
             List<Agg> measures,
             List<String> columns,
+            Map<String, Object> filters,
             int limit
     ) {
         requireDb(spec);
         requireIdent(table, "表名");
         int lim = clampLimit(limit, 500);
         String qTable = qualify(spec, table);
+        String where = compileWhere(spec, filters);
         String sql;
         if (measures != null && !measures.isEmpty()) {
             List<String> select = new ArrayList<>();
@@ -209,6 +220,7 @@ public class JdbcDataSourcePort implements DataSourcePort {
                 else select.add(agg + "(" + q + ") AS " + quote(spec, alias));
             }
             sql = "SELECT " + String.join(", ", select) + " FROM " + qTable;
+            if (!where.isBlank()) sql += " WHERE " + where;
             if (!group.isEmpty()) sql += " GROUP BY " + String.join(", ", group);
             sql += " LIMIT " + lim;
         } else if (columns != null && !columns.isEmpty()) {
@@ -217,11 +229,54 @@ public class JdbcDataSourcePort implements DataSourcePort {
                 requireIdent(col, "字段");
                 cols.add(quote(spec, col));
             }
-            sql = "SELECT " + String.join(", ", cols) + " FROM " + qTable + " LIMIT " + lim;
+            sql = "SELECT " + String.join(", ", cols) + " FROM " + qTable;
+            if (!where.isBlank()) sql += " WHERE " + where;
+            sql += " LIMIT " + lim;
         } else {
-            sql = "SELECT * FROM " + qTable + " LIMIT " + lim;
+            sql = "SELECT * FROM " + qTable;
+            if (!where.isBlank()) sql += " WHERE " + where;
+            sql += " LIMIT " + lim;
         }
         return executeSql(spec, sql, lim);
+    }
+
+    /** Intent-derived filters only. Field names must be identifiers; values are numeric/unit enums. */
+    @SuppressWarnings("unchecked")
+    private String compileWhere(ConnectionSpec spec, Map<String, Object> filters) {
+        if (filters == null || filters.isEmpty()) return "";
+        Object rawItems = filters.get("items");
+        if (!(rawItems instanceof List<?> items) || items.isEmpty()) return "";
+        List<String> parts = new ArrayList<>();
+        boolean pg = "postgresql".equals(spec.normalizedType());
+        for (Object it : items) {
+            if (!(it instanceof Map<?, ?> m)) continue;
+            String field = m.get("field") == null ? "" : String.valueOf(m.get("field"));
+            String op = m.get("op") == null ? "" : String.valueOf(m.get("op")).toLowerCase(Locale.ROOT);
+            if (field.isBlank()) continue;
+            requireIdent(field, "过滤字段");
+            String qf = quote(spec, field);
+            if ("last".equals(op)) {
+                int n = 1;
+                Object nObj = m.get("n");
+                if (nObj instanceof Number num) n = Math.max(1, num.intValue());
+                else if (nObj != null) {
+                    try { n = Math.max(1, Integer.parseInt(String.valueOf(nObj))); } catch (NumberFormatException ignored) {}
+                }
+                String unit = m.get("unit") == null ? "year" : String.valueOf(m.get("unit")).toLowerCase(Locale.ROOT);
+                if (!unit.matches("year|month|day")) unit = "year";
+                if (pg) {
+                    parts.add(qf + " >= NOW() - INTERVAL '" + n + " " + unit + "'");
+                } else {
+                    String mysqlUnit = switch (unit) {
+                        case "month" -> "MONTH";
+                        case "day" -> "DAY";
+                        default -> "YEAR";
+                    };
+                    parts.add(qf + " >= DATE_SUB(NOW(), INTERVAL " + n + " " + mysqlUnit + ")");
+                }
+            }
+        }
+        return String.join(" AND ", parts);
     }
 
     public DatasetQueryResult executeSql(ConnectionSpec spec, String sql, int maxRows) {
@@ -229,7 +284,7 @@ public class JdbcDataSourcePort implements DataSourcePort {
         int lim = clampLimit(maxRows, 500);
         try (Connection c = open(spec);
              Statement st = c.createStatement()) {
-            st.setQueryTimeout(DEFAULT_TIMEOUT_SEC);
+            st.setQueryTimeout(queryTimeoutSec);
             st.setMaxRows(lim + 1);
             try (ResultSet rs = st.executeQuery(sql)) {
                 ResultSetMetaData md = rs.getMetaData();
@@ -287,8 +342,9 @@ public class JdbcDataSourcePort implements DataSourcePort {
         Properties props = new Properties();
         if (spec.username() != null) props.setProperty("user", spec.username());
         if (spec.password() != null) props.setProperty("password", spec.password());
-        props.setProperty("loginTimeout", String.valueOf(DEFAULT_TIMEOUT_SEC));
-        DriverManager.setLoginTimeout(DEFAULT_TIMEOUT_SEC);
+        int loginSec = Math.min(8, queryTimeoutSec);
+        props.setProperty("loginTimeout", String.valueOf(loginSec));
+        DriverManager.setLoginTimeout(loginSec);
         Connection c = DriverManager.getConnection(url, props);
         if ("mysql".equals(type)) {
             // MySQL 5.7 + Connector/J: force session charset so UTF-8 payload is not latin1-mojibake.
