@@ -5,6 +5,7 @@ import io.opendashboard.adapter.security.RequirePermission;
 import io.opendashboard.application.conversation.ConversationAppService;
 import io.opendashboard.domain.ConversationDtos.ConversationAdoptRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationCreateRequest;
+import io.opendashboard.domain.ConversationDtos.ConversationMessageCreateRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationMessageVO;
 import io.opendashboard.domain.ConversationDtos.ConversationRevisionVO;
 import io.opendashboard.domain.ConversationDtos.ConversationRunRequest;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -54,9 +56,11 @@ public class ConversationController {
 
     @GetMapping
     @RequirePermission("conversation:use")
-    public ResponseEntity<List<ConversationVO>> list() {
+    public ResponseEntity<List<ConversationVO>> list(
+            @RequestParam(required = false) Integer limit
+    ) {
         if (!service.enabled()) return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(service.list());
+        return ResponseEntity.ok(service.list(limit));
     }
 
     @PostMapping
@@ -96,6 +100,17 @@ public class ConversationController {
         if (!service.enabled()) return ResponseEntity.notFound().build();
         if (service.get(id).isEmpty()) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(service.messages(id));
+    }
+
+    @PostMapping("/{id}/messages")
+    @RequirePermission("conversation:use")
+    public ResponseEntity<ConversationMessageVO> appendMessage(
+            @PathVariable String id,
+            @RequestBody(required = false) ConversationMessageCreateRequest request
+    ) {
+        if (!service.enabled()) return ResponseEntity.notFound().build();
+        if (service.get(id).isEmpty()) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(service.appendMessage(id, request));
     }
 
     @PostMapping(value = "/{id}/runs", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

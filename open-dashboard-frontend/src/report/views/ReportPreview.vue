@@ -124,7 +124,7 @@ function onTocClick(index: number) {
 .rpt-preview {
   --umo-primary-color: #3480f9;
   --umo-container-background: #f4f5f7;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--umo-container-background);

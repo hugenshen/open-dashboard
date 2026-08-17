@@ -1,8 +1,18 @@
 # 产品需求（现状基线）
 
-> **状态**：as-built（与代码对齐）· 日期：2026-08-06  
-> 本文描述「当前已交付」的产品需求，作为后续演进的基线。  
-> 概览：[overview.md](./overview.md) · 路线图：[roadmap.md](./roadmap.md)
+> **状态**：as-built（与已验收能力对齐）· 日期：2026-08-06  
+> 本文只登记「当前已交付」的产品需求。产品是什么见 [README.md](./README.md)，下一步见 [roadmap/README.md](./roadmap/README.md)。
+
+## 追溯映射
+
+这里只登记已交付能力。完整 `Pxxx ↔ architecture ↔ implementation ↔ PR-*` 映射见
+[`../proposals/README.md`](../proposals/README.md)。
+
+| 已交付需求 | 来源提案 | 现行架构 |
+|------------|----------|----------|
+| PR-DASH-11 | [P001](../proposals/P001-mobile-layout-c/) | [AA](../design/architecture.html#application) · [DA](../design/architecture.html#data) |
+| NFR-05 | [P002](../proposals/P002-vue-java-scaffold/) | [4A](../design/architecture.html) |
+| PR-RPT-01…07 | [P003](../proposals/P003-report-umo-charts/) | [BA](../design/architecture.html#business) · [AA](../design/architecture.html#application) |
 
 ---
 
@@ -74,7 +84,7 @@
 
 图表类型基线：柱 / 条 / 线 / 面 / 饼 / KPI / 表（ECharts）。
 
-交互参照：`prototypes/hi-fi/dashboard-commercial.html`；产品编辑器经 `frontend/src/dashboard/hifi/` host 挂载高保内核。
+交互参照：`docs/prototypes/hi-fi/dashboard-commercial.html`；产品编辑器经 `frontend/src/dashboard/hifi/` host 挂载高保内核。
 
 ### 2.6 分享
 

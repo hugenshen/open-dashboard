@@ -12,7 +12,6 @@ import InsertDashboardChartDialog from '../components/InsertDashboardChartDialog
 import CreateInlineChartWizard from '../components/CreateInlineChartWizard.vue'
 import ReportChartInspector from '../components/ReportChartInspector.vue'
 import { useReportEditorStore } from '../stores/reportEditor'
-import ModuleTopbar from '../../shell/ModuleTopbar.vue'
 import {
   buildReportToc,
   deleteReportChartEditor,
@@ -438,7 +437,6 @@ watch(
 
 <template>
   <div class="rpt-editor">
-    <ModuleTopbar module="reports" />
     <header class="rpt-hostbar">
       <button type="button" class="btn" @click="router.push('/reports')">← 列表</button>
       <input v-model="docTitle" class="doc-title" @blur="onTitleBlur" />
@@ -698,7 +696,7 @@ watch(
 .rpt-editor {
   --umo-primary-color: #3480f9;
   --umo-container-background: #f4f5f7;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--umo-container-background);

@@ -31,20 +31,27 @@ public class ReportRepository implements ReportGateway {
     }
 
     @Override
-    public List<ReportMetaVO> list() {
-        return jdbc.query(
-                """
+    public List<ReportMetaVO> list(Integer limit) {
+        String sql = """
                 SELECT id, name, status, content_id, version, update_time
-                FROM de_report ORDER BY id
-                """,
-                (rs, rowNum) -> new ReportMetaVO(
-                        String.valueOf(rs.getLong("id")),
-                        rs.getString("name"),
-                        rs.getString("status"),
-                        String.valueOf(rs.getLong("content_id")),
-                        rs.getInt("version"),
-                        rs.getObject("update_time") == null ? null : rs.getLong("update_time")
-                )
+                FROM de_report
+                ORDER BY update_time DESC NULLS LAST, id DESC
+                """;
+        if (limit != null && limit > 0) {
+            int n = Math.min(limit, 50);
+            return jdbc.query(sql + " LIMIT ?", (rs, rowNum) -> mapMeta(rs), n);
+        }
+        return jdbc.query(sql, (rs, rowNum) -> mapMeta(rs));
+    }
+
+    private ReportMetaVO mapMeta(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new ReportMetaVO(
+                String.valueOf(rs.getLong("id")),
+                rs.getString("name"),
+                rs.getString("status"),
+                String.valueOf(rs.getLong("content_id")),
+                rs.getInt("version"),
+                rs.getObject("update_time") == null ? null : rs.getLong("update_time")
         );
     }
 

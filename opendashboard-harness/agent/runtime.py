@@ -11,8 +11,10 @@ from typing import Any, Dict, Generator, List, Optional
 from agent.context import convert_to_llm, history_to_agent_messages, transform_context
 from agent.memory import maybe_extract_fact, remember
 from agent.types import AgentMessage, sse, step
+from agent import session_store
 from llm_client import chat_completions, llm_configured, llm_settings
 from sqlbot.pipeline import bar_heights, iter_sqlbot
+from sqlbot.suggest import is_suggest_request, suggest_follows
 from tools.od_bi import ToolState, bi_call, dumps_result
 from tools.registry import create_registry
 
@@ -339,17 +341,77 @@ def _clarify_from_intent(plan: Dict[str, Any], message: str) -> Generator[str, N
                 hits.append(f"{x.get('phrase')}→{x.get('label') or x.get('field')}")
         if hits:
             html += "。已对齐：" + "、".join(hits)
+    ds_id = str(plan.get("datasetId") or "")
+    if ds_id:
+        yield from _emit_question_suggestions(
+            ds_id,
+            message,
+            title="当前数据集无法完整回答该问题",
+            failed_reason=html,
+        )
+        return
     yield sse(
         "answer_clarify",
         {
             "title": "当前数据集无法完整回答该问题",
             "headlineHtml": str(plan.get("rewrite") or ""),
             "insightHtml": html,
-            "follows": ["按该表已有字段重新提问", "各区域销售额对比"],
+            "follows": ["各区域销售额对比"],
             "question": message,
         },
     )
     yield sse("finish", {"reason": "answered", "detail": "clarify"})
+
+
+def _emit_question_suggestions(
+    ds_id: str,
+    message: str,
+    *,
+    title: str = "先选一个问数问题",
+    failed_reason: Optional[str] = None,
+) -> Generator[str, None, None]:
+    yield step(
+        "suggest",
+        "根据当前表反问可问问题",
+        kind="tool_start",
+        tool="od_get_schema",
+    )
+    try:
+        schema = bi_call("GET", f"/api/internal/bi/datasets/{urllib.parse.quote(ds_id)}/schema")
+    except Exception as e:
+        yield sse("error", {"code": "SCHEMA", "message": str(e)})
+        yield sse("finish", {"reason": "error", "detail": "schema"})
+        return
+    if not isinstance(schema, dict):
+        yield sse("error", {"code": "SCHEMA", "message": "no schema"})
+        yield sse("finish", {"reason": "error", "detail": "schema"})
+        return
+    prev = _schema_preview(schema)
+    name = str(schema.get("name") or schema.get("tableName") or "当前表")
+    yield step(
+        "suggest",
+        f"根据「{name}」字段反问可问问题",
+        kind="tool_end",
+        tool="od_get_schema",
+        preview=prev,
+        hint=(prev or {}).get("hint") or name,
+    )
+    follows = suggest_follows(schema, seed=message)
+    if not follows:
+        follows = [f"{name}有多少行"]
+    yield sse(
+        "answer_clarify",
+        {
+            "title": title,
+            "headlineHtml": f"当前表是「{name}」。点一个具体问题，我会生成 SQL 并出图。",
+            "insightHtml": str(failed_reason or "下面是根据这张表字段生成的可问问题，也可以自己输入。"),
+            "follows": follows,
+            "question": message,
+            "datasetId": ds_id,
+            "datasetName": name,
+        },
+    )
+    yield sse("finish", {"reason": "answered", "detail": "suggest"})
 
 
 def _quality_label(result: Dict[str, Any]) -> str:
@@ -401,6 +463,69 @@ def _emit_applied(applied_wrap: Dict[str, Any]) -> Generator[str, None, None]:
     )
 
 
+def _chart_titles(patch: Dict[str, Any]) -> List[str]:
+    out: List[str] = []
+    for op in (patch or {}).get("ops") or []:
+        if not isinstance(op, dict):
+            continue
+        if str(op.get("op") or "") != "upsert_chart":
+            continue
+        title = op.get("title")
+        if title:
+            out.append(str(title))
+    return out
+
+
+def _store_pending(conversation_id: str, run_id: str, pending: Dict[str, Any]) -> None:
+    if conversation_id and run_id:
+        session_store.set_run_pending(conversation_id, run_id, pending)
+
+
+def _plan_sse(pending: Dict[str, Any], message: str, via: str) -> str:
+    patch = pending.get("patch") or {}
+    return sse(
+        "plan",
+        {
+            "title": pending.get("title"),
+            "mode": pending.get("mode"),
+            "opsCount": len(patch.get("ops") or []),
+            "charts": _chart_titles(patch),
+            "message": message,
+            "via": via,
+            "awaitingConfirm": True,
+        },
+    )
+
+
+def run_confirm_plan(pending: Dict[str, Any]) -> Generator[str, None, None]:
+    title = pending.get("title") or "AI 生成看板"
+    mode = pending.get("mode") or "replace"
+    patch = pending.get("patch") or {}
+    linked = pending.get("linkedDashboardId")
+    yield step("apply", "确认计划，写入看板草稿")
+    try:
+        applied = bi_call(
+            "POST",
+            "/api/internal/bi/apply-patch",
+            {
+                "dashboardId": linked,
+                "title": title,
+                "mode": mode,
+                "patch": patch,
+            },
+        )
+    except Exception as e:
+        yield sse("error", {"code": "APPLY", "message": str(e)})
+        yield sse("finish", {"reason": "error", "detail": "apply"})
+        return
+    yield from _emit_applied({"title": title, "mode": mode, "patch": patch, "result": applied})
+    dash_id = applied.get("dashboardId")
+    charts = applied.get("charts") or []
+    hint = f"已生成「{title}」看板草稿 #{dash_id}，含 {len(charts)} 个组件。"
+    yield sse("message_delta", {"text": hint})
+    yield sse("finish", {"reason": "done", "detail": f"applied:{dash_id}", "dashboardId": dash_id})
+
+
 def run_agent(payload: Dict[str, Any]) -> Generator[str, None, None]:
     """Entry: lead if LLM configured (per mode), else deterministic. No silent fake success when mode=lead."""
     mode = harness_mode()
@@ -441,6 +566,7 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
 
     cfg = llm_settings()
     conversation_id = str(payload.get("conversationId") or "")
+    run_id = str(payload.get("runId") or "")
     message = payload.get("message") or ""
     dataset_ids: List[str] = [str(x) for x in (payload.get("datasetIds") or [])]
     linked = payload.get("linkedDashboardId") or None
@@ -452,18 +578,11 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
     yield step("agent_start", f"Pi Agent · model={cfg['model']}")
     resolved = resolve_intent(intent, message)
     intent = resolved
+    if not dataset_ids:
+        yield sse("error", {"code": "BI_DATASETS", "message": "未选择数据集"})
+        yield sse("finish", {"reason": "error", "detail": "datasets"})
+        return
     if intent in ("ask", "insight"):
-        if not dataset_ids:
-            try:
-                dataset_ids = _preferred_dataset_ids()
-            except Exception as e:
-                yield sse("error", {"code": "BI_DATASETS", "message": str(e)})
-                yield sse("finish", {"reason": "error", "detail": "datasets"})
-                return
-        if not dataset_ids:
-            yield sse("error", {"code": "BI_DATASETS", "message": "no datasets"})
-            yield sse("finish", {"reason": "error", "detail": "datasets"})
-            return
         yield from _run_ask(message, intent, dataset_ids)
         return
     yield step("context", "transformContext + skills + memory")
@@ -482,7 +601,7 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
         except Exception:
             board_summary = None
 
-    tools, state, by_name = create_registry(linked)
+    tools, state, by_name = create_registry(linked, defer_apply=(run_mode == "plan"))
     openai_tools = [t.openai_spec() for t in tools]
 
     intent_plan = _load_intent_plan(message, dataset_ids)
@@ -547,7 +666,7 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
                 for t in (state.todos or [])
                 if isinstance(t, dict) and str(t.get("status") or "") != "completed"
             ]
-            if incomplete and not state.applied and resolved == "gen" and round_i < max_rounds - 1:
+            if incomplete and not state.applied and not state.pending and resolved == "gen" and round_i < max_rounds - 1:
                 agent_msgs.append(
                     AgentMessage(
                         role="user",
@@ -562,6 +681,12 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
                 )
                 yield step("planner", "任务未完成，继续按数据特征规划")
                 continue
+            if state.pending and run_mode == "plan":
+                yield _plan_sse(state.pending, message, "pi+llm")
+                _store_pending(conversation_id, run_id, state.pending)
+                yield sse("finish", {"reason": "awaiting_confirm", "detail": "等待确认计划"})
+                finished = True
+                break
             if state.applied and not board_emitted:
                 yield from _emit_applied(state.applied)
                 board_emitted = True
@@ -649,19 +774,12 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
                 yield step("planner", _quality_label(result))
 
             if name == "od_emit_patch" and isinstance(result, dict) and result.get("ok"):
-                if state.applied and not board_emitted:
-                    if run_mode == "plan":
-                        yield sse(
-                            "plan",
-                            {
-                                "title": state.applied.get("title"),
-                                "mode": state.applied.get("mode"),
-                                "opsCount": len((state.applied.get("patch") or {}).get("ops") or []),
-                                "message": message,
-                                "via": "pi+llm",
-                                "awaitingConfirm": True,
-                            },
-                        )
+                if run_mode == "plan" and state.pending:
+                    yield _plan_sse(state.pending, message, "pi+llm")
+                    _store_pending(conversation_id, run_id, state.pending)
+                    yield sse("finish", {"reason": "awaiting_confirm", "detail": "等待确认计划"})
+                    finished = True
+                elif state.applied and not board_emitted:
                     yield from _emit_applied(state.applied)
                     board_emitted = True
 
@@ -732,20 +850,17 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
             break
 
     if not finished:
+        if run_mode == "plan" and state.pending:
+            yield _plan_sse(state.pending, message, "pi+llm")
+            _store_pending(conversation_id, run_id, state.pending)
+            yield sse("finish", {"reason": "awaiting_confirm", "detail": "等待确认计划"})
+            yield step("agent_end", "Agent 结束")
+            return
         if state.applied and not board_emitted:
             yield from _emit_applied(state.applied)
         yield sse("error", {"code": "LEAD_MAX_ROUNDS", "message": "超过最大工具轮次"})
         yield sse("finish", {"reason": "error", "detail": "max_rounds"})
     yield step("agent_end", "Agent 结束")
-
-
-def _preferred_dataset_ids() -> List[str]:
-    listed = bi_call("GET", "/api/internal/bi/datasets") or []
-    def _weak(d: Dict[str, Any]) -> bool:
-        blob = f"{d.get('name') or ''} {d.get('tableName') or ''} {d.get('folder') or ''}"
-        return bool(re.search(r"de_|验证|测试|工作室|dashboard|dashborad|清单", blob, re.I))
-    preferred = [str(d["id"]) for d in listed if d.get("id") and not _weak(d)]
-    return preferred[:3] or [str(d["id"]) for d in listed[:3] if d.get("id")]
 
 
 def pick_fields(schema: Dict[str, Any]) -> tuple[Optional[str], Optional[str], Optional[str]]:
@@ -785,12 +900,9 @@ def run_deterministic(payload: Dict[str, Any]) -> Generator[str, None, None]:
         remember(conversation_id, fact)
 
     if not dataset_ids:
-        try:
-            dataset_ids = _preferred_dataset_ids()
-        except Exception as e:
-            yield sse("error", {"code": "BI_DATASETS", "message": str(e)})
-            yield sse("finish", {"reason": "error", "detail": "datasets"})
-            return
+        yield sse("error", {"code": "BI_DATASETS", "message": "未选择数据集"})
+        yield sse("finish", {"reason": "error", "detail": "datasets"})
+        return
 
     yield step("schema", f"读取 {len(dataset_ids)} 个数据集的字段")
 
@@ -798,7 +910,15 @@ def run_deterministic(payload: Dict[str, Any]) -> Generator[str, None, None]:
         yield from _run_ask(message, intent, dataset_ids)
         return
 
-    yield from _run_gen(message, dataset_ids, linked, style_id, mode)
+    yield from _run_gen(
+        message,
+        dataset_ids,
+        linked,
+        style_id,
+        mode,
+        conversation_id,
+        str(payload.get("runId") or ""),
+    )
 
 
 def _emit_sqlbot(bot: Dict[str, Any]) -> Generator[str, None, None]:
@@ -1000,6 +1120,9 @@ def _sqlbot_child_step(ev: Dict[str, Any]) -> Generator[str, None, None]:
 
 def _run_ask(message: str, intent: str, dataset_ids: List[str]) -> Generator[str, None, None]:
     ds_id = dataset_ids[0]
+    if is_suggest_request(message):
+        yield from _emit_question_suggestions(ds_id, message)
+        return
     if llm_configured():
         yield step("sqlbot", "SQLBot 生成 SQL", kind="tool_start", tool="sqlbot")
         bot: Dict[str, Any] = {"ok": False, "reason": "error"}
@@ -1033,17 +1156,15 @@ def _run_ask(message: str, intent: str, dataset_ids: List[str]) -> Generator[str
             yield from _emit_sqlbot(bot)
             return
         if bot.get("reason") == "generate":
-            yield sse(
-                "answer_clarify",
-                {
-                    "title": "无法生成 SQL",
-                    "headlineHtml": str(bot.get("message") or "这个问题不能转成查询。"),
-                    "insightHtml": "我只能查询当前数据集，不能回答无关问题或修改数据。",
-                    "follows": ["换一个问数问题", "直接生成看板"],
-                    "question": message,
-                },
+            yield from _emit_question_suggestions(
+                ds_id,
+                message,
+                title="无法生成 SQL",
+                failed_reason=str(
+                    bot.get("message")
+                    or "未识别到具体问数需求。请点一个基于当前表的问题，或自己输入指标/维度。"
+                ),
             )
-            yield sse("finish", {"reason": "answered", "detail": "sqlbot_reject"})
             return
         yield step("sqlbot_fallback", str(bot.get("message") or "SQLBot 未命中，回退意图卡"))
 
@@ -1234,16 +1355,14 @@ def _run_gen(
     linked: Optional[str],
     style_id: str,
     run_mode: str,
+    conversation_id: str = "",
+    run_id: str = "",
 ) -> Generator[str, None, None]:
     mode = patch_mode(message, linked)
     if not dataset_ids:
-        try:
-            dataset_ids = _preferred_dataset_ids()
-            yield step("schema", f"未指定数据集，改用业务表 {len(dataset_ids)} 个")
-        except Exception as e:
-            yield sse("error", {"code": "BI_DATASETS", "message": str(e)})
-            yield sse("finish", {"reason": "error", "detail": "datasets"})
-            return
+        yield sse("error", {"code": "BI_DATASETS", "message": "未选择数据集"})
+        yield sse("finish", {"reason": "error", "detail": "datasets"})
+        return
     if linked:
         try:
             summary = bi_call(
@@ -1329,12 +1448,24 @@ def _run_gen(
         "title": title,
         "mode": mode,
         "opsCount": len(patch.get("ops") or []),
+        "charts": _chart_titles(patch),
         "message": message,
         "via": "deterministic",
     }
     if run_mode == "plan":
         plan["awaitingConfirm"] = True
         yield sse("plan", plan)
+        _store_pending(
+            conversation_id,
+            run_id,
+            {
+                "title": title,
+                "mode": mode,
+                "patch": patch,
+                "linkedDashboardId": linked,
+                "styleId": style_id,
+            },
+        )
         yield sse("finish", {"reason": "awaiting_confirm", "detail": "等待确认计划"})
         return
 

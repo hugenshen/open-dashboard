@@ -147,7 +147,21 @@ public class ConversationRepository implements ConversationGateway {
                 """,
                 id, cid, role, content == null ? "" : content, writeJson(atts), now
         );
-        jdbc.update("UPDATE de_conversation SET update_time = ? WHERE id = ?", now, cid);
+        String body = content == null ? "" : content.trim();
+        String title = body.length() > 40 ? body.substring(0, 40) : body;
+        if ("user".equals(role) && !title.isBlank()) {
+            jdbc.update(
+                    """
+                    UPDATE de_conversation
+                    SET update_time = ?,
+                        title = CASE WHEN title IS NULL OR btrim(title) = '' OR title = '新对话' THEN ? ELSE title END
+                    WHERE id = ?
+                    """,
+                    now, title, cid
+            );
+        } else {
+            jdbc.update("UPDATE de_conversation SET update_time = ? WHERE id = ?", now, cid);
+        }
         return new ConversationMessageVO(String.valueOf(id), conversationId, role,
                 content == null ? "" : content, List.copyOf(atts), now);
     }

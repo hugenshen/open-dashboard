@@ -32,9 +32,20 @@ paths:
     get:
       tags: [conversation]
       summary: List conversations for current user
+      description: |
+        Persisted in `de_conversation`. Workbench recent-asks uses `limit`.
+        Ordered by updateTime descending.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50 }
+          description: Cap for workbench chips; omit for the full list
       responses:
         '200':
           description: OK
+        '404':
+          description: Conversation feature disabled
     post:
       tags: [conversation]
       summary: Create conversation
@@ -100,6 +111,32 @@ paths:
       responses:
         '200':
           description: OK
+        '404':
+          description: Not found
+    post:
+      tags: [conversation]
+      summary: Append a message (ask history)
+      description: User questions are stored on send so workbench can list recent asks from the table.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                role: { type: string, enum: [user, assistant, system], default: user }
+                content: { type: string }
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Not found
   /conversations/{id}/runs:
     post:
       tags: [conversation]
@@ -107,7 +144,7 @@ paths:
       summary: "[DEPRECATED] Use harness POST /harness/v1/conversations/{id}/runs"
       description: |
         Java entry retired (HTTP 410). Frontend must call opendashboard-harness via Vite
-        proxy `/harness` → `:8091`. See docs/design/ai-harness.md.
+        proxy `/harness` → `:8091`. See docs/proposals/P004-conversation/harness-design.md.
       parameters:
         - name: id
           in: path
@@ -766,6 +803,13 @@ paths:
     get:
       tags: [report]
       summary: List reports
+      description: Ordered by updateTime descending. Workbench recent reports uses `limit`.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50 }
+          description: Cap for workbench recent reports (home shows 4); omit for the full list
       responses:
         '200':
           description: OK
@@ -1264,7 +1308,7 @@ components:
           datasetId: ds_sales
           chartType: bar
           encode: { category: city, value: amount, agg: SUM, format: thousand }
-        context: {}
+        context: { filters: [], linkages: [] }
 
     ChartQueryResult:
       type: object
@@ -1311,7 +1355,8 @@ components:
           description: |
             Filter AST. Intent-derived relative time is `{items:[{field,op:last,n,unit}]}`.
             Field names must be schema identifiers. Compiled into SQL WHERE by datasetQuery.
-            Dashboard query-bar widgets still do not inject here (P1).
+            Dashboard query-bar widgets inject here via chartQuery.context.filters
+            (eq / in / between / last). Intent encode.filters merge with the same AST.
         limit: { type: integer }
         options:
           type: object

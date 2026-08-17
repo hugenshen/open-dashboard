@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import AppShell from './shell/AppShell.vue'
 
 const route = useRoute()
-const fullBleed = computed(() => !!route.meta.fullBleed)
+const hideShell = computed(() => !!route.meta.hideShell)
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'full-bleed': fullBleed }">
-    <main class="main" :class="{ 'main-bleed': fullBleed }">
-      <router-view />
-    </main>
-  </div>
+  <AppShell v-if="!hideShell">
+    <router-view />
+  </AppShell>
+  <router-view v-else />
 </template>

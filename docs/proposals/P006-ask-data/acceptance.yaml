@@ -1,0 +1,101 @@
+proposal: P006
+items:
+  - id: PR-ASK-01
+    title: 对话默认问数
+    gate: acceptance
+    criterion: 普通自然语言问题默认返回会话内表、图或 SQL 证据，不自动修改画布。
+    method: ui
+    command_or_path: /conversations
+    expected: 至少出现一个 answer_* 事件和可复核结果。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-01
+  - id: PR-ASK-02
+    title: 保存本题图
+    gate: acceptance
+    criterion: 点击保存到仪表盘只写 DashboardPatch，不持久化结果行。
+    method: ui
+    command_or_path: /conversations
+    expected: draft 增加图表且可在编辑器重新取数。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-02
+  - id: PR-ASK-03
+    title: 独立整页生成意图
+    gate: acceptance
+    criterion: 落地页或 Composer 的生成看板意图可创建整页 draft。
+    method: ui
+    command_or_path: /conversations
+    expected: 结果卡不承担该入口；生成后可打开编辑器。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-03
+  - id: PR-ASK-04
+    title: Schema Guard
+    gate: code
+    criterion: 缺少可用 Schema 时拒答或澄清，不生成 SQL 或 Patch。
+    method: api
+    command_or_path: /harness/v1/conversations/{id}/runs
+    expected: finish 原因可解释且无 BI 写调用。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-04
+  - id: PR-ASK-05
+    title: 结果卡操作收敛
+    gate: hi-fi
+    criterion: 问数结果卡只展示保存到仪表盘，不展示直接生成仪表盘主按钮。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/conversation.html
+    expected: 整页生成只存在于落地页、Composer 或追问 Chip。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-05
+  - id: PR-ASK-06
+    title: 工作台问题自动执行
+    gate: acceptance
+    criterion: 工作台提交问题后跳转对话并自动执行原问题。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/workbench.html
+    expected: 对话中保留原问题并出现 answer_*，不落在空落地页。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-06
+  - id: PR-ASK-07
+    title: 可问集合一致
+    gate: acceptance
+    criterion: 工作台、对话和编辑器 SQLBot 只列 conversation:use 与 dataset:use 的交集。
+    method: api
+    command_or_path: askable datasets endpoint
+    expected: 三个入口集合一致，无权数据集不可通过手工 ID 绕过。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-07
+  - id: PR-ASK-08
+    title: Python Harness 边界
+    gate: code
+    criterion: Agent loop、LLM 和 NL2SQL 在 Python Harness；Java 仅执行内部 BI 工具。
+    method: script
+    command_or_path: opendashboard-harness/
+    expected: Java 无模型调用，旧 runs 入口不代理 Agent。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-08
+  - id: PR-ASK-09
+    title: 换题反问后出 SQL
+    gate: code
+    criterion: 已选数据集时，「换一个问数问题」或无法识别问数需求时，按当前表字段反问具体问题 Chip；点击 Chip 后生成 SQL 并展示表/图，不再把元指令送进 NL2SQL。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_sqlbot_suggest.py
+    expected: is_suggest_request 命中元指令；suggest_questions 产出基于字段的具体问法；follows 不含「换一个问数问题」。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-09

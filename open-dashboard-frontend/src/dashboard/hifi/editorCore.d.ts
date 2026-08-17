@@ -16,7 +16,13 @@ declare module '*.js' {
     onExportChart?: (chartId: string, chart?: unknown) => Promise<void> | void
     queryChart?: (
       chartId: string,
-      meta?: { datasetId?: string | null; chartType?: string; encode?: Record<string, unknown>; title?: string }
+      meta?: {
+        datasetId?: string | null
+        chartType?: string
+        encode?: Record<string, unknown>
+        title?: string
+        filters?: Array<{ componentId: string; field: string; operator: string; value: unknown }>
+      }
     ) => Promise<{ data?: unknown[][]; series?: Record<string, unknown> }>
     /** 重新拉取数据集目录，供选择器「刷新」使用 */
     refreshDatasets?: () => Promise<Record<string, unknown>>

@@ -10,7 +10,6 @@ import {
   hydrateHiFiDatasetRows,
   type HiFiDash
 } from './adapter'
-import ModuleTopbar from '../../shell/ModuleTopbar.vue'
 import EditorOnboarding from './EditorOnboarding.vue'
 import ConversationAiPanel from '../../conversation/components/ConversationAiPanel.vue'
 import './editor.css'
@@ -186,6 +185,7 @@ async function boot() {
       previewFrom: route.query.from === 'edit' ? 'editor' : 'list',
       dash,
       datasets,
+      preferredDatasetId: dash.datasetIds?.[0] || Object.keys(datasets)[0] || null,
       // 与 Vue 根 #app 隔离，避免渲染/销毁时清空整站
       rootIds: {
         app: 'od-hifi-app',
@@ -232,7 +232,7 @@ async function boot() {
         triggerBlobDownload(blob, filename)
       },
       refreshDatasets: () => loadHiFiDatasets(),
-      queryChart: (chartId: string, meta?: { datasetId?: string | null; chartType?: string; encode?: Record<string, unknown>; title?: string }) =>
+      queryChart: (chartId: string, meta?: { datasetId?: string | null; chartType?: string; encode?: Record<string, unknown>; title?: string; filters?: Array<{ componentId: string; field: string; operator: string; value: unknown }> }) =>
         chartQueryApi.query({
           chartId,
           dashboardId: id,
@@ -244,7 +244,7 @@ async function boot() {
                 encode: { ...(meta.encode || {}), datasetId: meta.datasetId }
               }
             : undefined,
-          context: { filters: [], linkages: [] }
+          context: { filters: meta?.filters || [], linkages: [] }
         })
     })
     guideReady.value = props.mode !== 'preview'
@@ -291,7 +291,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="hifi-dash-root">
-    <ModuleTopbar module="dashboards" theme="dark" />
     <div v-if="loading" class="boot">加载编辑器…</div>
     <div v-if="error" class="boot err">{{ error }}</div>
     <div class="app" id="od-hifi-app" />
@@ -317,7 +316,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .hifi-dash-root {
-  height: 100vh;
+  height: 100%;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -337,8 +336,8 @@ onBeforeUnmount(() => {
 }
 .save-chip {
   position: fixed;
-  right: 316px;
-  bottom: 60px;
+  right: 24px;
+  bottom: 24px;
   z-index: 80;
   background: rgba(31, 35, 41, 0.88);
   color: #fff;

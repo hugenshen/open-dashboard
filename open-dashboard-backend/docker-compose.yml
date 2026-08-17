@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: open-dashboard-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-opendashboard}
+      POSTGRES_USER: ${POSTGRES_USER:-opendashboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opendashboard}
+    volumes:
+      - od_pg_data:/var/lib/postgresql/data
+    ports:
+      - "${OD_PG_PORT:-5434}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    build: .
+    container_name: open-dashboard-api
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-opendashboard}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-opendashboard}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-opendashboard}
+      OPENDASHBOARD_BOOTSTRAP_META_DATASOURCE: ${OD_BOOTSTRAP_META_DATASOURCE:-true}
+      OPENDASHBOARD_STUB_QUERY: "false"
+    ports:
+      - "${OD_API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 60s
+
+volumes:
+  od_pg_data:

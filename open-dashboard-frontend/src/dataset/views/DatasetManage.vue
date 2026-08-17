@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import ModuleTopbar from '../../shell/ModuleTopbar.vue'
 import {
   datasetApi,
   datasourceApi,
@@ -578,7 +577,6 @@ watch(tab, (t) => {
 
 <template>
   <div class="page">
-    <ModuleTopbar module="datasets" />
     <p v-if="error && !showStudio" class="banner-err">{{ error }}</p>
 
     <div class="layout">
@@ -976,14 +974,14 @@ watch(tab, (t) => {
 
 <style scoped>
 .page {
-  --primary: #3370ff;
-  --ink: #1a2332;
-  --muted: #86909c;
-  --line: rgba(0, 0, 0, 0.08);
-  height: 100vh;
+  --primary: var(--od-brand, #4f46e5);
+  --ink: var(--od-ink, #111827);
+  --muted: var(--od-muted, #4b5563);
+  --line: var(--od-line, #dfe3ea);
+  height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f4f5f7;
+  background: var(--od-bg, #f6f7fb);
   color: var(--ink);
 }
 .banner-err {
@@ -1085,16 +1083,16 @@ watch(tab, (t) => {
   padding: 0 0.55rem;
   border: 1px solid #d8dee6;
   border-radius: 6px;
-  background: #f5f7fa;
+  background: var(--od-bg, #f6f7fb);
   color: #8a96a3;
   box-sizing: border-box;
   cursor: text;
 }
 .pool-search:focus-within {
-  border-color: var(--primary, #3370ff);
+  border-color: var(--primary);
   background: #fff;
-  box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.12);
-  color: var(--primary, #3370ff);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+  color: var(--primary);
 }
 .pool-search.disabled {
   opacity: 0.55;
@@ -1162,7 +1160,7 @@ watch(tab, (t) => {
   line-height: 1.4;
 }
 .filter.on {
-  background: #e8f0ff;
+  background: var(--od-brand-soft, #eef2ff);
   color: var(--primary);
   font-weight: 600;
 }
@@ -1184,10 +1182,10 @@ watch(tab, (t) => {
   cursor: pointer;
 }
 .ds:hover {
-  background: #f5f7fa;
+  background: var(--od-bg, #f6f7fb);
 }
 .ds.on {
-  background: #eef4ff;
+  background: var(--od-brand-soft, #eef2ff);
 }
 .ds-name {
   font-size: 0.86rem;
@@ -1354,7 +1352,7 @@ watch(tab, (t) => {
   padding: 0.08rem 0.35rem;
   border-radius: 4px;
   font-size: 0.68rem;
-  background: #f4f5f7;
+  background: var(--od-bg, #f6f7fb);
 }
 .tag.dim {
   background: #e6f4ff;

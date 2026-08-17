@@ -60,7 +60,7 @@ async function boot() {
         mask: 'od-share-mask',
         toasts: 'od-share-toasts'
       },
-      queryChart: (chartId: string, meta?: { datasetId?: string | null; chartType?: string; encode?: Record<string, unknown> }) =>
+      queryChart: (chartId: string, meta?: { datasetId?: string | null; chartType?: string; encode?: Record<string, unknown>; filters?: Array<{ componentId: string; field: string; operator: string; value: unknown }> }) =>
         shareApi.chartQuery(token(), {
           chartId,
           inline: meta?.datasetId
@@ -70,7 +70,7 @@ async function boot() {
                 encode: { ...(meta.encode || {}), datasetId: meta.datasetId }
               }
             : undefined,
-          context: { filters: [], linkages: [] }
+          context: { filters: meta?.filters || [], linkages: [] }
         })
     } as never)
   } catch (e) {

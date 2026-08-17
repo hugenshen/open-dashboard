@@ -1,0 +1,112 @@
+proposal: P007
+items:
+  - id: PR-SH-01
+    title: 产品壳与满宽工作台
+    gate: hi-fi
+    criterion: 工作台使用左模块栏、顶工具条和右上账号，内容区占满剩余宽度。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/workbench.html
+    expected: 桌面宽屏无无意义大留白。
+    evidence: docs/prototypes/snapshots/2026-08-17-p007-app-shell-final/
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-SH-02
+    title: 模块壳层一致
+    gate: hi-fi
+    criterion: 工作台可进入对话、数据源、数据集、仪表盘和报告且壳层不重建。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/index.html
+    expected: 一级导航、账号和主题入口位置一致。
+    evidence: docs/prototypes/snapshots/2026-08-17-p007-app-shell-final/
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-SH-03
+    title: 编辑器画布不被遮挡
+    gate: hi-fi
+    criterion: 仪表盘编辑器仍可切换 Phase 与保存，细轨不遮挡画布工具。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/dashboard.html
+    expected: 画布和工具条可完整操作。
+    evidence: docs/prototypes/snapshots/2026-08-17-p007-app-shell-final/
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-SH-04
+    title: 一模块一页
+    gate: hi-fi
+    criterion: 一级模块独立 HTML，菜单和通用配置只来自 shared/shell。
+    method: script
+    command_or_path: docs/prototypes/hi-fi/MANIFEST.md
+    expected: 模块文件和共享壳清单一致。
+    evidence: docs/prototypes/hi-fi/MANIFEST.md
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-SH-05
+    title: 原型版本治理
+    gate: hi-fi
+    criterion: 当前原型位于 hi-fi，冻结版本位于 snapshots 并登记 VERSIONS。
+    method: script
+    command_or_path: docs/prototypes/VERSIONS.md
+    expected: P007 定稿快照可追溯且不从运行时引用。
+    evidence: docs/prototypes/VERSIONS.md
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-SH-06
+    title: 工作台空少多状态
+    gate: hi-fi
+    criterion: 默认、空数据、1/2/10 条数据时布局稳定且不无限增高。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/workbench.html?state=empty
+    expected: 空态有引导，少数据补创建入口，多数据限制首屏数量。
+    evidence: docs/prototypes/snapshots/2026-08-17-p007-app-shell-final/
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-SH-07
+    title: 左栏收缩规则
+    gate: hi-fi
+    criterion: 工作台、对话和资源页保持展开，仅仪表盘编辑器自动收窄。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/index.html
+    expected: 用户手动偏好持久化且非编辑器切换不强制收缩。
+    evidence: docs/prototypes/snapshots/2026-08-17-p007-app-shell-final/
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-SH-08
+    title: SQLBot 显示范围
+    gate: hi-fi
+    criterion: SQLBot 只在仪表盘编辑器展示，其他一级页面无问数入口。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/dashboard.html
+    expected: 非编辑器页面不存在 SQLBot 按钮。
+    evidence: docs/prototypes/snapshots/2026-08-17-p007-app-shell-final/
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-SH-09
+    title: 深浅主题一致
+    gate: hi-fi
+    criterion: 浅色、深侧栏和全深色主题可切换，嵌入对话继承全局主题。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/conversation.html
+    expected: 全深色无黑壳白框；深侧栏模式内容区保持浅色。
+    evidence: docs/prototypes/snapshots/2026-08-17-p007-app-shell-final/
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-SH-10
+    title: Vue AppShell 产品交付
+    gate: acceptance
+    criterion: Vue 工作台、对话和资源页使用同一 AppShell，非编辑器路由不自动收窄。
+    method: ui
+    command_or_path: open-dashboard-frontend/
+    expected: 产品行为与 PR-SH-01 至 PR-SH-09 高保基线一致。
+    evidence: open-dashboard-frontend/src/shell/AppShell.vue
+    status: wip
+    blocker_of_done: true
+    requirements_target: PR-SH-10

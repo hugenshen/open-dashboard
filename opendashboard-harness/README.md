@@ -27,21 +27,6 @@ ask / insight / gen / multi-turn append / memory / deterministic fallback.
 
 ## Run
 
-Edit `.env` (gitignored):
+见 [deploy.md](./deploy.md)。
 
-```bash
-OD_LLM_API_KEY=sk-...
-OD_LLM_BASE_URL=https://api.deepseek.com/v1
-OD_LLM_MODEL=deepseek-v4-pro
-OD_BI_BASE=http://127.0.0.1:8082
-```
-
-```bash
-cd opendashboard-harness
-source .venv/bin/activate   # or python3 -m venv .venv && pip install -r requirements.txt
-python main.py              # :8091, loads .env
-```
-
-`GET /health` → `lead` / `llm` / `envFile` / `bi`.
-
-Contract: [docs/design/ai-harness.md](../docs/design/ai-harness.md). Pi reference: `refs/pi` (patterns only).
+Design: [P004 Harness](../docs/proposals/P004-conversation/harness-design.md). API contract: [OpenAPI](../docs/design/openapi.yaml).

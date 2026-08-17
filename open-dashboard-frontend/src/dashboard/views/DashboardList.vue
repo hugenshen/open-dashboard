@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import ModuleTopbar from '../../shell/ModuleTopbar.vue'
 import { dashboardApi, dashboardTreeApi } from '../../api/dashboard'
 import type {
   DashboardBarVO,
@@ -28,12 +27,7 @@ const selectedTemplateId = ref('blank')
 const createName = ref('')
 const loadingTemplates = ref(false)
 
-const FALLBACK_TEMPLATES: DashboardTemplateVO[] = [
-  { id: 'blank', name: '空白仪表盘', domain: '通用', description: '从空画布开始，自行添加组件' },
-  { id: 'sales', name: '销售分析', domain: '销售', description: 'KPI + 多图 + 查询筛选，区域点击联动明细' },
-  { id: 'ops', name: '运营看板', domain: '运营', description: '流量全景 + 查询筛选，模块点击联动明细' },
-  { id: 'finance', name: '财务概览', domain: '财务', description: '收支利润 + 查询筛选，科目点击联动明细' }
-]
+const templateError = ref('')
 
 const flat = computed(() => {
   const out: BusiNodeVO[] = []
@@ -136,13 +130,17 @@ async function openCreateModal() {
   showTemplateModal.value = true
   selectedTemplateId.value = 'blank'
   createName.value = ''
+  templateError.value = ''
   if (templates.value.length) return
   loadingTemplates.value = true
   try {
     templates.value = await dashboardApi.listTemplates()
-    if (!templates.value.length) templates.value = FALLBACK_TEMPLATES
-  } catch {
-    templates.value = FALLBACK_TEMPLATES
+    if (!templates.value.length) {
+      templateError.value = '后端未返回仪表盘模版'
+    }
+  } catch (e) {
+    templates.value = []
+    templateError.value = e instanceof Error ? e.message : String(e)
   } finally {
     loadingTemplates.value = false
   }
@@ -235,7 +233,6 @@ watch(filtered, (list) => {
 
 <template>
   <div class="page">
-    <ModuleTopbar module="dashboards" />
     <p v-if="error" class="banner-err">{{ error }}</p>
 
     <div class="layout">
@@ -346,6 +343,7 @@ watch(filtered, (list) => {
         </label>
 
         <div v-if="loadingTemplates" class="muted pad">加载模版…</div>
+        <div v-else-if="templateError" class="muted pad" style="color:#f54a45">{{ templateError }}</div>
         <div v-else class="tpl-grid">
           <button
             v-for="t in templates"
@@ -364,7 +362,7 @@ watch(filtered, (list) => {
 
         <footer class="modal-ft">
           <button type="button" class="btn" :disabled="creating" @click="closeCreateModal">取消</button>
-          <button type="button" class="btn primary" :disabled="creating" @click="confirmCreate">
+          <button type="button" class="btn primary" :disabled="creating || !templates.length" @click="confirmCreate">
             {{ creating ? '创建中…' : '使用模版创建' }}
           </button>
         </footer>
@@ -375,14 +373,14 @@ watch(filtered, (list) => {
 
 <style scoped>
 .page {
-  --primary: #3370ff;
-  --ink: #1a2332;
-  --muted: #86909c;
-  --line: rgba(0, 0, 0, 0.08);
-  height: 100vh;
+  --primary: var(--od-brand, #4f46e5);
+  --ink: var(--od-ink, #111827);
+  --muted: var(--od-muted, #4b5563);
+  --line: var(--od-line, #dfe3ea);
+  height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f4f5f7;
+  background: var(--od-bg, #f6f7fb);
   color: var(--ink);
 }
 .banner-err {
@@ -492,10 +490,10 @@ watch(filtered, (list) => {
   cursor: pointer;
 }
 .item:hover {
-  background: #f5f7fa;
+  background: var(--od-bg, #f6f7fb);
 }
 .item.on {
-  background: #eef4ff;
+  background: var(--od-brand-soft, #eef2ff);
 }
 .item-name {
   font-size: 0.86rem;
@@ -544,8 +542,8 @@ watch(filtered, (list) => {
   font-weight: 600;
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
-  background: #f4f5f7;
-  color: #86909c;
+  background: var(--od-bg, #f6f7fb);
+  color: var(--muted);
 }
 .pill.pub {
   background: #e6fffb;
@@ -637,7 +635,7 @@ watch(filtered, (list) => {
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--primary);
-  background: #eef4ff;
+  background: var(--od-brand-soft, #eef2ff);
   border-radius: 4px;
   padding: 0.15rem 0.35rem;
   text-align: center;
@@ -723,12 +721,12 @@ watch(filtered, (list) => {
   color: var(--ink);
 }
 .tpl-card:hover:not(:disabled) {
-  border-color: #3370ff;
+  border-color: var(--primary);
 }
 .tpl-card.on {
-  border-color: #3370ff;
-  background: #f5f8ff;
-  box-shadow: inset 0 0 0 1px #3370ff;
+  border-color: var(--primary);
+  background: var(--od-brand-soft, #eef2ff);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 .tpl-card:disabled {
   opacity: 0.6;
@@ -737,7 +735,7 @@ watch(filtered, (list) => {
 .tpl-domain {
   font-size: 0.68rem;
   font-weight: 700;
-  color: #3370ff;
+  color: var(--primary);
   letter-spacing: 0.02em;
 }
 .tpl-name {

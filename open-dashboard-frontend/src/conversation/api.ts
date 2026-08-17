@@ -1,4 +1,4 @@
-import { getAuthHeaders } from '../api/http'
+import { getAuthHeaders, apiFetch } from '../api/http'
 
 export type ConversationVO = {
   id: string
@@ -56,6 +56,22 @@ export type ConversationAdoptRequest = {
 export type SseHandler = (event: string, data: Record<string, unknown>) => void
 
 const HARNESS_BASE = '/harness/v1'
+
+function isUnavailable(e: unknown): boolean {
+  const m = e instanceof Error ? e.message : String(e)
+  return /Failed to fetch|NetworkError|AbortError|ERR_CONNECTION|ECONNREFUSED|→ 50[0234]/.test(m)
+}
+
+export function explainConversationError(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e)
+  if (/Failed to fetch|NetworkError|AbortError|ERR_CONNECTION|ECONNREFUSED/.test(m) || /问数失败 \(50[0234]\)/.test(m)) {
+    return '问数服务连不上（harness :8091）。请确认已启动后再发送。'
+  }
+  if (/→ 50[0234]/.test(m) && /\/conversations/.test(m)) {
+    return '后端 API 连不上（:8082）。问数未发出，请确认后端已启动后再试。'
+  }
+  return m
+}
 
 async function harnessFetch<T>(
   path: string,
@@ -155,14 +171,59 @@ async function readSse(res: Response, onEvent: SseHandler): Promise<void> {
   flush()
 }
 
+async function ensureRuntime(
+  id: string,
+  data?: { title?: string; datasetIds?: string[]; linkedDashboardId?: string }
+): Promise<void> {
+  try {
+    await harnessFetch(`/conversations/${id}/ensure`, { method: 'POST', data: data ?? {} })
+  } catch {
+    /* startRun also ensures */
+  }
+}
+
 export const conversationApi = {
-  feature: () => harnessFetch<{ enabled: boolean }>('/conversations/feature'),
-  styles: () => harnessFetch<StylePresetVO[]>('/conversations/styles'),
-  list: () => harnessFetch<ConversationVO[]>('/conversations'),
-  create: (data: { title?: string; datasetIds?: string[]; linkedDashboardId?: string }) =>
-    harnessFetch<ConversationVO>('/conversations', { method: 'POST', data }),
-  get: (id: string) => harnessFetch<ConversationVO>(`/conversations/${id}`),
-  update: (
+  feature: async () => {
+    try {
+      return await apiFetch<{ enabled: boolean }>('/conversations/feature', { timeoutMs: 4000 })
+    } catch (e) {
+      if (!isUnavailable(e)) throw e
+      return harnessFetch<{ enabled: boolean }>('/conversations/feature')
+    }
+  },
+  styles: async () => {
+    try {
+      return await apiFetch<StylePresetVO[]>('/conversations/styles', { timeoutMs: 4000 })
+    } catch (e) {
+      if (!isUnavailable(e)) throw e
+      return harnessFetch<StylePresetVO[]>('/conversations/styles')
+    }
+  },
+  list: (limit?: number) =>
+    apiFetch<ConversationVO[]>(
+      '/conversations',
+      limit ? { params: { limit: String(limit) } } : {}
+    ),
+  create: async (data: { title?: string; datasetIds?: string[]; linkedDashboardId?: string }) => {
+    try {
+      const created = await apiFetch<ConversationVO>('/conversations', {
+        method: 'POST',
+        data,
+        timeoutMs: 8000
+      })
+      await ensureRuntime(created.id, {
+        title: created.title,
+        datasetIds: created.datasetIds,
+        linkedDashboardId: created.linkedDashboardId || undefined
+      })
+      return created
+    } catch (e) {
+      if (!isUnavailable(e)) throw e
+      return harnessFetch<ConversationVO>('/conversations', { method: 'POST', data })
+    }
+  },
+  get: (id: string) => apiFetch<ConversationVO>(`/conversations/${id}`),
+  update: async (
     id: string,
     data: {
       title?: string
@@ -170,10 +231,23 @@ export const conversationApi = {
       datasetIds?: string[]
       linkedDashboardId?: string
     }
-  ) => harnessFetch<ConversationVO>(`/conversations/${id}`, { method: 'PATCH', data }),
-  remove: (id: string) => harnessFetch<void>(`/conversations/${id}`, { method: 'DELETE' }),
-  messages: (id: string) => harnessFetch<ConversationMessageVO[]>(`/conversations/${id}/messages`),
-  revisions: (id: string) => harnessFetch<ConversationRevisionVO[]>(`/conversations/${id}/revisions`),
+  ) => {
+    try {
+      return await apiFetch<ConversationVO>(`/conversations/${id}`, {
+        method: 'PATCH',
+        data,
+        timeoutMs: 8000
+      })
+    } catch (e) {
+      if (!isUnavailable(e)) throw e
+      return harnessFetch<ConversationVO>(`/conversations/${id}`, { method: 'PATCH', data })
+    }
+  },
+  remove: (id: string) => apiFetch<void>(`/conversations/${id}`, { method: 'DELETE' }),
+  messages: (id: string) => apiFetch<ConversationMessageVO[]>(`/conversations/${id}/messages`),
+  appendMessage: (id: string, data: { role?: string; content: string }) =>
+    apiFetch<ConversationMessageVO>(`/conversations/${id}/messages`, { method: 'POST', data }),
+  revisions: (id: string) => apiFetch<ConversationRevisionVO[]>(`/conversations/${id}/revisions`),
   restore: async (_id: string, _rev: string) => {
     throw new Error('revisions restore is not available on harness yet')
   },
@@ -181,15 +255,30 @@ export const conversationApi = {
     harnessFetch(`/conversations/${id}/runs/${runId}/cancel`, { method: 'POST' }),
 
   async startRun(id: string, body: ConversationRunRequest, onEvent: SseHandler) {
-    const res = await fetch(`${HARNESS_BASE}/conversations/${id}/runs`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        ...getAuthHeaders()
-      },
-      body: JSON.stringify(body)
-    })
+    const post = () =>
+      fetch(`${HARNESS_BASE}/conversations/${id}/runs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(body)
+      })
+    let res: Response
+    try {
+      res = await post()
+    } catch (e) {
+      throw new Error(explainConversationError(e))
+    }
+    if (res.status === 404) {
+      await ensureRuntime(id, { title: body.message, datasetIds: body.datasetIds })
+      try {
+        res = await post()
+      } catch (e) {
+        throw new Error(explainConversationError(e))
+      }
+    }
     await readSse(res, onEvent)
   },
 

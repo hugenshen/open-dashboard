@@ -157,7 +157,17 @@ public class StubQueryService {
 
     private DatasetQueryResult stubExecute(DatasetQueryRequest request) {
         long start = System.currentTimeMillis();
-        String datasetId = request.datasetId() == null ? "ds_sales" : request.datasetId();
+        String datasetId = request.datasetId() == null ? "" : request.datasetId();
+        if (datasetId.isBlank()) {
+            return new DatasetQueryResult(
+                    List.of(),
+                    List.of(),
+                    false,
+                    "-- stub: datasetId required (not falling back to ds_sales)",
+                    System.currentTimeMillis() - start
+            );
+        }
+        List<Map<String, Object>> table = FilterAst.apply(stubTable(datasetId), request.filters());
         boolean hasDim = request.dimensions() != null && !request.dimensions().isEmpty();
         String dim = hasDim ? firstField(request.dimensions(), defaultDim(datasetId)) : null;
         String measure = firstField(request.measures(), defaultMeasure(datasetId));
@@ -166,7 +176,7 @@ public class StubQueryService {
         List<List<Object>> rows;
         List<ColumnMeta> columns;
         if (dim == null) {
-            List<Number> values = stubTable(datasetId).stream()
+            List<Number> values = table.stream()
                     .map(r -> toNumber(r.get(measure)))
                     .toList();
             columns = List.of(new ColumnMeta(measure, "DECIMAL", measure, agg));
@@ -178,7 +188,7 @@ public class StubQueryService {
                     new ColumnMeta(dim, "STRING", dim, null),
                     new ColumnMeta(measure, "DECIMAL", measure, agg)
             );
-            rows = stubRows(datasetId, dim, measure, agg);
+            rows = stubRows(table, dim, measure, agg);
         }
         return new DatasetQueryResult(
                 columns,
@@ -247,15 +257,19 @@ public class StubQueryService {
         return a == null ? fallback : String.valueOf(a);
     }
 
-    private static List<List<Object>> stubRows(String datasetId, String dim, String measure, String agg) {
-        List<Map<String, Object>> table = stubTable(datasetId);
+    private static List<List<Object>> stubRows(
+            List<Map<String, Object>> table,
+            String dim,
+            String measure,
+            String agg
+    ) {
         Map<String, List<Number>> grouped = new LinkedHashMap<>();
         for (Map<String, Object> row : table) {
             String key = String.valueOf(row.getOrDefault(dim, "其他"));
             grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(toNumber(row.get(measure)));
         }
         if (grouped.isEmpty()) {
-            return List.of(List.of("—", 0));
+            return List.of();
         }
         List<List<Object>> out = new ArrayList<>();
         for (Map.Entry<String, List<Number>> e : grouped.entrySet()) {
@@ -507,16 +521,56 @@ public class StubQueryService {
             Map<?, ?> enc,
             Map<String, Object> context
     ) {
+        Map<String, Object> ast = null;
         if (enc != null && enc.get("filters") instanceof Map<?, ?> fm) {
-            return castFilterMap(fm);
+            ast = castFilterMap(fm);
+        } else if (inline != null && inline.get("filters") instanceof Map<?, ?> fm) {
+            ast = castFilterMap(fm);
         }
-        if (inline != null && inline.get("filters") instanceof Map<?, ?> fm) {
-            return castFilterMap(fm);
+        return mergeFilterAst(ast, contextFiltersToAst(context));
+    }
+
+    private static Map<String, Object> contextFiltersToAst(Map<String, Object> context) {
+        if (context == null) return null;
+        Object raw = context.get("filters");
+        if (raw instanceof Map<?, ?> fm) return castFilterMap(fm);
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Object o : list) {
+            if (!(o instanceof Map<?, ?> m)) continue;
+            String field = m.get("field") == null ? "" : String.valueOf(m.get("field"));
+            if (field.isBlank()) continue;
+            String op = m.get("operator") == null
+                    ? (m.get("op") == null ? "eq" : String.valueOf(m.get("op")))
+                    : String.valueOf(m.get("operator"));
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("field", field);
+            String lop = op.toLowerCase();
+            Object value = m.get("value");
+            if ("between".equals(lop) && value instanceof List<?> pair && pair.size() >= 2) {
+                item.put("op", "between");
+                item.put("from", pair.get(0));
+                item.put("to", pair.get(1));
+            } else {
+                item.put("op", lop.isBlank() ? "eq" : lop);
+                item.put("value", value);
+                if (m.get("n") != null) item.put("n", m.get("n"));
+                if (m.get("unit") != null) item.put("unit", m.get("unit"));
+            }
+            items.add(item);
         }
-        if (context != null && context.get("filters") instanceof Map<?, ?> fm) {
-            return castFilterMap(fm);
-        }
-        return null;
+        return items.isEmpty() ? null : Map.of("items", items);
+    }
+
+    private static Map<String, Object> mergeFilterAst(Map<String, Object> a, Map<String, Object> b) {
+        if (a == null || a.isEmpty()) return b;
+        if (b == null || b.isEmpty()) return a;
+        List<Object> items = new ArrayList<>();
+        if (a.get("items") instanceof List<?> la) items.addAll(la);
+        if (b.get("items") instanceof List<?> lb) items.addAll(lb);
+        Map<String, Object> out = new LinkedHashMap<>(a);
+        out.put("items", items);
+        return out;
     }
 
     private static Map<?, ?> encMap(Map<String, Object> inline) {

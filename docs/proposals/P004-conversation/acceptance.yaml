@@ -1,0 +1,90 @@
+proposal: P004
+items:
+  - id: PR-CONV-01
+    title: 开关与权限闸门
+    gate: code
+    criterion: 功能关闭或缺少 conversation:use 时，菜单和 run 均不可用。
+    method: api
+    command_or_path: /harness/v1/conversations/{id}/runs
+    expected: 请求被拒绝且不会调用 BI 工具。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-CONV-01
+  - id: PR-CONV-02
+    title: 两段式对话工作区
+    gate: acceptance
+    criterion: 用户可从落地页选择数据集、提问并进入带结果的对话工作区。
+    method: ui
+    command_or_path: /conversations
+    expected: 不停在空页面；会话和上下文可恢复。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-CONV-02
+  - id: PR-CONV-03
+    title: SSE 与 Patch 闭环
+    gate: code
+    criterion: Harness 按契约发送 run、step、answer、patch、chart_ready、finish 事件并可应用 DashboardPatch。
+    method: api
+    command_or_path: /harness/v1/conversations/{id}/runs
+    expected: 事件顺序可复核；失败返回 error 和 finish。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-CONV-03
+  - id: PR-CONV-04
+    title: 看板配置真相
+    gate: acceptance
+    criterion: 对话产物为可编辑 dashboard draft，布局不持久化查询结果行。
+    method: ui
+    command_or_path: /conversations
+    expected: 编辑器打开同一 draft；刷新经 chartQuery 或 datasetQuery。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-CONV-04
+  - id: PR-CONV-05
+    title: SQLBot 显示范围
+    gate: hi-fi
+    criterion: SQLBot 只在仪表盘编辑器展示，工作台、对话和资源模块无入口。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/dashboard.html
+    expected: 只有编辑态存在 SQLBot 入口。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-CONV-05
+  - id: PR-CONV-06
+    title: Harness 进程边界
+    gate: code
+    criterion: Vue 直连 Python Harness；Java conversation runs 不承担 Agent 编排。
+    method: api
+    command_or_path: opendashboard-harness/
+    expected: LLM 和 Agent loop 只存在于 Harness。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-CONV-06
+  - id: PR-CONV-07
+    title: 内部 BI 工具安全
+    gate: code
+    criterion: Harness 只能通过带内部 Token 的 /api/internal/bi/* 查询或写配置。
+    method: api
+    command_or_path: /api/internal/bi/*
+    expected: 缺失或错误 Token 返回拒绝，外部请求不可直接调用。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-CONV-07
+  - id: PR-CONV-08
+    title: 可问数据权限
+    gate: acceptance
+    criterion: run 只能使用同时满足 conversation:use 与 dataset:use 的数据集。
+    method: api
+    command_or_path: /harness/v1/conversations/{id}/runs
+    expected: 无权数据集不进入 Schema、提示词、SQL 或 Patch。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-CONV-08

@@ -1,0 +1,79 @@
+proposal: P008
+items:
+  - id: PR-ACL-01
+    title: 仪表盘双重权限
+    gate: acceptance
+    criterion: 有 dashboard ACL 且全部必需数据集均有 dataset:use 时才能打开和出数。
+    method: api
+    command_or_path: dashboard view and chartQuery APIs
+    expected: 缺任一权限时拒绝查询，不返回缩略指标或结果行。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-01
+  - id: PR-ACL-02
+    title: 静态报告独立查看
+    gate: acceptance
+    criterion: 只有 report:view、没有 dataset:use 的用户可打开已发布静态报告。
+    method: ui
+    command_or_path: /reports/{id}/view
+    expected: 页面读取静态稿且网络请求不包含 chartQuery 或 datasetQuery。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-02
+  - id: PR-ACL-03
+    title: 报告不继承问数权
+    gate: acceptance
+    criterion: 静态报告读者执行刷新、洞察或继续问数时重新校验 dataset:use。
+    method: api
+    command_or_path: report refresh and conversation APIs
+    expected: 无数据集权限时拒绝操作，静态正文仍可查看。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-03
+  - id: PR-ACL-04
+    title: 可问集合统一
+    gate: acceptance
+    criterion: 工作台、对话和编辑器 SQLBot 的可问集合均为 conversation:use 与 dataset:use 的交集。
+    method: api
+    command_or_path: workbench and askable datasets APIs
+    expected: 三个入口集合相同且不能通过手工 ID 绕过。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-04
+  - id: PR-ACL-05
+    title: 我的与共享资源
+    gate: hi-fi
+    criterion: 工作台分别展示我的和共享给我的仪表盘、报告，并标注所有者、更新时间、发布态和权限。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/workbench.html
+    expected: 仪表盘、报告和可问数据三类消费面清晰分组。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-05
+  - id: PR-ACL-06
+    title: 待办与失效资源
+    gate: acceptance
+    criterion: 待办只包含可编辑事项；失去数据权限的仪表盘最多显示无业务数据的不可用元数据卡。
+    method: ui
+    command_or_path: /workbench
+    expected: 无权用户看不到预览值、筛选值和结果数据。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-06
+  - id: PR-ACL-07
+    title: 无权限空状态
+    gate: acceptance
+    criterion: 无任何资源或可问数据的用户看到申请权限或连接数据引导。
+    method: ui
+    command_or_path: /workbench
+    expected: 不展示伪造业务动态、演示指标或不属于用户的资源。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-07

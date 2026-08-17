@@ -1,19 +1,29 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import ModuleTopbar from '../../shell/ModuleTopbar.vue'
+import { useRoute, useRouter } from 'vue-router'
 import { datasetApi, type DatasetMetaVO } from '../../datasource/api'
 import {
   conversationApi,
+  explainConversationError,
   type ConversationMessageVO,
   type ConversationVO,
   type StylePresetVO
 } from '../api'
 import ToolStepList, { type ToolPreview, type ToolStep } from '../components/ToolStepList.vue'
+import LiveChartPreview from '../components/LiveChartPreview.vue'
+import type { FilterContextItem } from '../../types/dashboard'
 
 type ChatLine = { role: 'user' | 'assistant' | 'system'; text: string; tools?: ToolStep[] }
 type StepLine = { id: string; label: string }
-type QueryBarItem = { kind?: string; field?: string; label?: string }
+type QueryBarItem = {
+  kind?: string
+  field?: string
+  label?: string
+  value?: string
+  from?: string
+  to?: string
+  options?: string[]
+}
 type QueryBar = { label?: string; items: QueryBarItem[] }
 type ChartReady = {
   chartId: string
@@ -73,12 +83,12 @@ type IntentMap = {
 }
 
 const router = useRouter()
+const route = useRoute()
 const enabled = ref(false)
 const loading = ref(true)
 const error = ref('')
 const phase = ref<'landing' | 'workspace'>('landing')
 const sidePanel = ref<'none' | 'history' | 'explore'>('none')
-const sideSlim = ref(false)
 
 const conversations = ref<ConversationVO[]>([])
 const current = ref<ConversationVO | null>(null)
@@ -114,6 +124,7 @@ const intentMap = ref<IntentMap | null>(null)
 const dsMenuOpen = ref(false)
 
 const EXAMPLES = [
+  { label: '换一个问数问题', text: '换一个问数问题', intent: 'ask' as const },
   { label: '区域销售额', text: '各区域销售额分别是多少？按从高到低排一下。', intent: 'ask' as const },
   { label: '渠道利润对比', text: '线上和线下渠道的利润对比如何？', intent: 'ask' as const },
   { label: '营收趋势', text: '近几个月营收趋势怎么样？哪个月最高？', intent: 'ask' as const },
@@ -135,6 +146,7 @@ const TOOL_LABELS: Record<string, string> = {
   od_emit_patch: '写入看板草稿',
   od_finish: '完成',
   schema: '读取字段 Schema',
+  suggest: '根据当前表反问可问问题',
   sqlbot: 'SQLBot 生成 SQL',
   sqlbot_sql: 'SQL 已生成',
   sqlbot_exec: '执行查询'
@@ -145,11 +157,20 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
 const importHint = ref('')
 
-const canSend = computed(() => prompt.value.trim().length > 0 && !streaming.value)
+const canSend = computed(
+  () => prompt.value.trim().length > 0 && !streaming.value && selectedDatasets.value.length > 0
+)
 const hasAnswer = computed(
   () => !!(answerChart.value || answerInsight.value || answerTable.value || answerClarify.value)
 )
 const canSave = computed(() => canAdopt.value && !answerClarify.value && !!(answerChart.value || answerInsight.value))
+const askChatMode = computed(
+  () =>
+    intent.value !== 'gen' &&
+    lastIntent.value !== 'gen' &&
+    !linkedDashboardId.value &&
+    !charts.value.length
+)
 const ctxName = computed(() => {
   const ids = selectedDatasets.value
   if (!ids.length) return '未选数据集'
@@ -162,9 +183,7 @@ const previewDatasetName = computed(() => {
   return datasets.value.find((d) => d.id === id)?.name || id
 })
 function isLiveChart(c: ChartReady): boolean {
-  if ((c.rowCount || 0) <= 0) return false
-  if (c.chartType === 'kpi' && (c.kpiValue == null || c.kpiValue === '')) return false
-  return true
+  return !!(c.chartId && (c.dashboardId || c.datasetId))
 }
 function isTableType(t?: string): boolean {
   return t === 'table' || t === 'grouptable'
@@ -174,15 +193,30 @@ const plotCharts = computed(() =>
   charts.value.filter((x) => x.chartType !== 'kpi' && !isTableType(x.chartType) && isLiveChart(x))
 )
 const tableCharts = computed(() => charts.value.filter((x) => isTableType(x.chartType) && isLiveChart(x)))
-
-function formatKpi(v: unknown): string {
-  if (v == null || v === '') return '—'
-  const n = typeof v === 'number' ? v : Number(String(v).replace(/,/g, ''))
-  if (!Number.isFinite(n)) return String(v)
-  if (Math.abs(n) >= 10000) return n.toLocaleString('zh-CN', { maximumFractionDigits: 0 })
-  if (Number.isInteger(n)) return String(n)
-  return n.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
-}
+const queryFilters = computed((): FilterContextItem[] => {
+  const items = queryBar.value?.items || []
+  const out: FilterContextItem[] = []
+  for (const it of items) {
+    if (!it.field) continue
+    if (it.kind === 'date' || it.kind === 'dateRange') {
+      if (it.from || it.to) {
+        out.push({
+          componentId: 'query-bar',
+          field: it.field,
+          operator: 'between',
+          value: [it.from || '', it.to || '']
+        })
+      }
+    } else if (it.value) {
+      out.push({ componentId: 'query-bar', field: it.field, operator: 'eq', value: it.value })
+    }
+  }
+  return out
+})
+const planCharts = computed(() => {
+  const raw = planPayload.value?.charts
+  return Array.isArray(raw) ? raw.map((x) => String(x)).filter(Boolean) : []
+})
 
 function pickDefaultDatasets(list: DatasetMetaVO[]): string[] {
   const score = (d: DatasetMetaVO) => {
@@ -215,6 +249,9 @@ function ingestLiveTool(
   hint?: string,
   parent?: string
 ) {
+  if (liveTools.value.some((t) => t.id === 'pending')) {
+    liveTools.value = liveTools.value.filter((t) => t.id !== 'pending')
+  }
   if (/^(turn_|message_end|agent_end|agent_start|context|think)/.test(id)) return
   if (/推理轮次|轮次\s*\d+\s*结束|transformContext|model=|skills \+ memory|assistant turn|^Pi Agent|^Lead /i.test(rawLabel)) return
   const toolName = tool || (rawLabel.match(/od_[a-z_]+/) || [])[0] || ''
@@ -358,7 +395,21 @@ onMounted(async () => {
     if (ds.length) {
       selectedDatasets.value = pickDefaultDatasets(ds)
     } else {
-      selectedDatasets.value = ['ds_sales']
+      selectedDatasets.value = []
+    }
+    const routeId = typeof route.params.id === 'string' ? route.params.id : ''
+    const resumed = routeId ? await openConversation(routeId) : false
+    const q = String(
+      route.query.q || sessionStorage.getItem('od.ask.q') || sessionStorage.getItem('od.ask.draft') || ''
+    ).trim()
+    const autorun =
+      String(route.query.autorun || '') === '1' || sessionStorage.getItem('od.ask.autorun') === '1'
+    sessionStorage.removeItem('od.ask.q')
+    sessionStorage.removeItem('od.ask.draft')
+    sessionStorage.removeItem('od.ask.autorun')
+    if (q && !resumed) {
+      prompt.value = q
+      if (autorun) await send()
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -374,24 +425,37 @@ watch(
   }
 )
 
-async function ensureConversation(): Promise<ConversationVO> {
+watch(
+  () => (typeof route.params.id === 'string' ? route.params.id : ''),
+  (id) => {
+    if (!id || streaming.value) return
+    if (current.value?.id === id) return
+    void openConversation(id)
+  }
+)
+
+async function ensureConversation(titleHint?: string): Promise<ConversationVO> {
   if (current.value) return current.value
-  const title = prompt.value.trim().slice(0, 32) || '新对话'
+  const title = (titleHint || prompt.value.trim()).slice(0, 32) || '新对话'
   const created = await conversationApi.create({
     title,
     datasetIds: selectedDatasets.value
   })
   conversations.value = [created, ...conversations.value]
   current.value = created
+  const path = `/conversations/${created.id}`
+  if (route.path !== path) {
+    void router.replace(path)
+  }
   return created
 }
 
-async function openConversation(id: string) {
+async function openConversation(id: string): Promise<boolean> {
   const detail = await conversationApi.get(id)
   current.value = detail
   messages.value = await conversationApi.messages(id)
   chat.value = messages.value.map((m) => ({
-    role: m.role === 'user' ? 'user' : 'assistant',
+    role: m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'assistant',
     text: m.content
   }))
   selectedDatasets.value = detail.datasetIds?.length ? [...detail.datasetIds] : selectedDatasets.value
@@ -399,6 +463,21 @@ async function openConversation(id: string) {
   resetAnswer()
   sidePanel.value = 'none'
   phase.value = 'workspace'
+  return maybeResumeUnanswered()
+}
+
+async function maybeResumeUnanswered(): Promise<boolean> {
+  if (streaming.value) return false
+  if (!selectedDatasets.value.length) return false
+  if (chat.value.some((m) => m.role === 'assistant')) return false
+  const lastUser = [...chat.value].reverse().find((m) => m.role === 'user' && m.text.trim())
+  const title = (current.value?.title || '').trim()
+  const text = lastUser?.text.trim() || (title && title !== '新对话' ? title : '')
+  if (!text) return false
+  prompt.value = text
+  intent.value = 'ask'
+  await send({ resume: !!lastUser })
+  return true
 }
 
 function useExample(ex: { text: string; intent: 'ask' | 'gen' }) {
@@ -416,7 +495,11 @@ function resetAnswer() {
   lastQuestion.value = ''
 }
 
-async function send() {
+async function send(opts?: { resume?: boolean }) {
+  if (!selectedDatasets.value.length) {
+    chat.value.push({ role: 'system', text: '请先连接数据源或上传 CSV / Excel，再提问。' })
+    return
+  }
   if (!canSend.value) return
   const text = prompt.value.trim()
   prompt.value = ''
@@ -434,12 +517,20 @@ async function send() {
   intentMap.value = null
   resetAnswer()
 
-  chat.value.push({ role: 'user', text })
+  if (!opts?.resume) {
+    chat.value.push({ role: 'user', text })
+  }
   lastQuestion.value = text
+  lastIntent.value = intent.value
   streaming.value = true
+  liveTools.value = [{ id: 'pending', label: '正在问数…', status: 'run' }]
+  let failed = false
   try {
-    const conv = await ensureConversation()
-    await conversationApi.update(conv.id, { datasetIds: selectedDatasets.value })
+    const conv = await ensureConversation(text)
+    void conversationApi.update(conv.id, { datasetIds: selectedDatasets.value }).catch(() => {})
+    if (!opts?.resume) {
+      void conversationApi.appendMessage(conv.id, { role: 'user', content: text }).catch(() => {})
+    }
     await conversationApi.startRun(
       conv.id,
       {
@@ -451,22 +542,39 @@ async function send() {
       },
       handleEvent
     )
-    current.value = await conversationApi.get(conv.id)
-    linkedDashboardId.value = current.value.linkedDashboardId || linkedDashboardId.value
-    conversations.value = await conversationApi.list()
+    try {
+      current.value = await conversationApi.get(conv.id)
+      linkedDashboardId.value = current.value.linkedDashboardId || linkedDashboardId.value
+    } catch {
+      current.value = conv
+    }
+    void conversationApi
+      .list()
+      .then((list) => {
+        conversations.value = list
+      })
+      .catch(() => {})
   } catch (e) {
+    failed = true
     chat.value.push({
       role: 'system',
-      text: e instanceof Error ? e.message : String(e)
+      text: explainConversationError(e)
     })
   } finally {
     streaming.value = false
-    flushAssistant()
+    if (failed) {
+      assistantBuf.value = ''
+      liveTools.value = []
+    } else {
+      flushAssistant()
+    }
   }
 }
 
 function flushAssistant() {
-  const tools = liveTools.value.map((t) => ({ ...t, status: 'done' as const }))
+  const tools = liveTools.value
+    .filter((t) => t.id !== 'pending')
+    .map((t) => ({ ...t, status: 'done' as const }))
   const text = assistantBuf.value.trim()
   if (text || tools.length) {
     chat.value.push({
@@ -474,6 +582,15 @@ function flushAssistant() {
       text: text || (charts.value.length ? '仪表盘已生成。' : ''),
       tools
     })
+  } else if (!hasAnswer.value && chat.value.at(-1)?.role !== 'system') {
+    chat.value.push({
+      role: 'system',
+      text: '问数没有返回结果，请再试一次。'
+    })
+  }
+  const cid = current.value?.id
+  if (cid && text) {
+    void conversationApi.appendMessage(cid, { role: 'assistant', content: text }).catch(() => {})
   }
   assistantBuf.value = ''
   liveTools.value = []
@@ -601,6 +718,7 @@ function handleEvent(event: string, data: Record<string, unknown>) {
       const q = data.query as { label?: string; items?: QueryBarItem[] }
       const items = Array.isArray(q.items) ? q.items : []
       queryBar.value = items.length ? { label: q.label ? String(q.label) : '查询条件', items } : null
+      if (queryBar.value) void hydrateQueryOptions()
     }
     if (!charts.value.length && Array.isArray(data.charts)) {
       for (const raw of data.charts as Record<string, unknown>[]) {
@@ -626,8 +744,8 @@ function handleEvent(event: string, data: Record<string, unknown>) {
     const reason = String(data.reason || '')
     const detail = String(data.detail || '')
     if (reason === 'awaiting_confirm') awaitingConfirm.value = true
-    if (reason === 'answered' && detail !== 'clarify') canAdopt.value = true
-    if (detail === 'clarify') canAdopt.value = false
+    if (reason === 'answered' && detail !== 'clarify' && detail !== 'suggest') canAdopt.value = true
+    if (detail === 'clarify' || detail === 'suggest') canAdopt.value = false
   }
 }
 
@@ -641,10 +759,55 @@ async function confirmPlan() {
     current.value = await conversationApi.get(current.value.id)
     linkedDashboardId.value = current.value.linkedDashboardId || linkedDashboardId.value
   } catch (e) {
+    awaitingConfirm.value = true
     chat.value.push({ role: 'system', text: e instanceof Error ? e.message : String(e) })
   } finally {
     streaming.value = false
     flushAssistant()
+  }
+}
+
+function cancelPlan() {
+  awaitingConfirm.value = false
+  chat.value.push({ role: 'system', text: '已取消计划，未写入看板。' })
+}
+
+function setQueryItem(index: number, patch: Partial<QueryBarItem>) {
+  const qb = queryBar.value
+  if (!qb) return
+  queryBar.value = {
+    ...qb,
+    items: qb.items.map((it, i) => (i === index ? { ...it, ...patch } : it))
+  }
+}
+
+async function hydrateQueryOptions() {
+  const qb = queryBar.value
+  const dsId = charts.value[0]?.datasetId || selectedDatasets.value[0]
+  if (!qb?.items.length || !dsId) return
+  try {
+    const preview = await datasetApi.preview(dsId)
+    const cols = preview.columns || []
+    const rows = preview.rows || []
+    queryBar.value = {
+      ...qb,
+      items: qb.items.map((it) => {
+        if (!it.field || it.kind === 'date' || it.kind === 'dateRange') return it
+        const idx = cols.findIndex((c) => c.name === it.field)
+        if (idx < 0) return it
+        const opts = [
+          ...new Set(
+            rows
+              .map((r) => r[idx])
+              .filter((v) => v != null && String(v) !== '')
+              .map(String)
+          )
+        ]
+        return { ...it, options: opts.slice(0, 40) }
+      })
+    }
+  } catch {
+    /* options stay empty */
   }
 }
 
@@ -680,8 +843,32 @@ async function adopt(action: 'save' | 'generate') {
 
 function followAsk(text: string) {
   prompt.value = text
+  intent.value = /生成/.test(text) ? 'gen' : 'ask'
+  void send()
+}
+
+function suggestAsk() {
+  if (!selectedDatasets.value.length || streaming.value) {
+    dsMenuOpen.value = true
+    return
+  }
+  prompt.value = '换一个问数问题'
   intent.value = 'ask'
   void send()
+}
+
+async function copyConclusion() {
+  const html =
+    answerChart.value?.insightHtml ||
+    answerInsight.value?.insightHtml ||
+    answerInsight.value?.headlineHtml ||
+    ''
+  const text = html.replace(/<[^>]+>/g, '').trim() || lastQuestion.value
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    /* ignore */
+  }
 }
 
 function newChat() {
@@ -698,6 +885,7 @@ function newChat() {
   sidePanel.value = 'none'
   phase.value = 'landing'
   prompt.value = ''
+  if (route.params.id) void router.replace('/conversations')
 }
 
 function openEditor() {
@@ -720,7 +908,6 @@ function toggleSide(panel: 'history' | 'explore') {
 
 <template>
   <div class="conv-root">
-    <ModuleTopbar module="conversations" />
     <input
       ref="fileInput"
       type="file"
@@ -731,52 +918,6 @@ function toggleSide(panel: 'history' | 'explore') {
     <div v-if="loading" class="boot">加载对话…</div>
     <div v-else-if="!enabled || error" class="boot err">{{ error || '对话未启用' }}</div>
     <div v-else class="body">
-      <nav class="side" :class="{ slim: sideSlim }" aria-label="对话侧栏">
-        <button class="nav on" type="button" @click="newChat">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          <span class="nav-txt">新对话</span>
-        </button>
-        <button
-          class="nav"
-          type="button"
-          :class="{ on: sidePanel === 'history' }"
-          @click="toggleSide('history')"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M4 6h16M4 12h16M4 18h10" />
-          </svg>
-          <span class="nav-txt">历史</span>
-        </button>
-        <div class="side-div" />
-        <button
-          class="nav"
-          type="button"
-          :class="{ on: sidePanel === 'explore' }"
-          @click="toggleSide('explore')"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7v5l3 2" />
-          </svg>
-          <span class="nav-txt">探索示例</span>
-        </button>
-        <button class="nav soon" type="button" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M8 8h8v8H8zM4 12h4M16 12h4M12 4v4M12 16v4" />
-          </svg>
-          <span class="nav-txt">AI 扩展<span class="tag-soon">二期</span></span>
-        </button>
-        <div class="gap" />
-        <button class="nav" type="button" @click="sideSlim = !sideSlim">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M4 6h16M4 12h10M4 18h16" />
-          </svg>
-          <span class="nav-txt">{{ sideSlim ? '展开侧栏' : '收起侧栏' }}</span>
-        </button>
-      </nav>
-
       <aside v-if="sidePanel !== 'none'" class="side-panel">
         <div class="sp-hd">
           {{ sidePanel === 'history' ? '最近对话' : '探索示例' }}
@@ -817,7 +958,7 @@ function toggleSide(panel: 'history' | 'explore') {
         <div class="landing-stack">
           <div class="hero-zone">
             <div class="brand-mark">先<em>问数</em></div>
-            <div class="brand-sub">看清结论后再决定：保存到仪表盘，或一键生成整页看板</div>
+            <div class="brand-sub">看清结论后再决定是否保存到仪表盘。整页看板请用下方「生成看板」或示例 Chip。</div>
           </div>
 
           <div class="dock">
@@ -846,7 +987,7 @@ function toggleSide(panel: 'history' | 'explore') {
                   />
                   {{ d.name }}
                 </label>
-                <span v-if="!datasets.length" class="muted">将使用演示 ds_sales</span>
+                <span v-if="!datasets.length" class="muted">请先连接数据源或上传 CSV / Excel</span>
               </div>
               <textarea
                 v-model="prompt"
@@ -914,7 +1055,7 @@ function toggleSide(panel: 'history' | 'explore') {
                 :key="c.id"
                 type="button"
                 class="recent-item"
-                @click="openConversation(c.id)"
+                @click="void router.push(`/conversations/${c.id}`)"
               >
                 <span class="dot" />
                 <span class="t">{{ c.title }}</span>
@@ -931,10 +1072,28 @@ function toggleSide(panel: 'history' | 'explore') {
       </section>
 
       <!-- Workspace -->
-      <section v-else class="stage workspace">
+      <section v-else class="stage workspace" :class="{ 'ask-chat': askChatMode }">
         <div class="chat-col">
           <div class="chat-hd">
             <span>{{ current?.title || '新对话' }}</span>
+            <span class="sp" />
+            <button class="gbtn" type="button" @click="newChat">新对话</button>
+            <button
+              class="gbtn"
+              type="button"
+              :class="{ on: sidePanel === 'history' }"
+              @click="toggleSide('history')"
+            >
+              历史
+            </button>
+            <button
+              class="gbtn"
+              type="button"
+              :class="{ on: sidePanel === 'explore' }"
+              @click="toggleSide('explore')"
+            >
+              探索示例
+            </button>
           </div>
           <div class="flow-bar">
             <span class="step-dot on">① 提问</span>
@@ -945,16 +1104,17 @@ function toggleSide(panel: 'history' | 'explore') {
             <span class="sep">→</span>
             <span class="step-dot" :class="{ on: hasAnswer || charts.length }">③ 结果</span>
             <span class="sep">→</span>
-            <span class="step-dot" :class="{ done: !!linkedDashboardId }">④ 保存 / 生成看板</span>
+            <span class="step-dot" :class="{ done: !!linkedDashboardId }">④ 保存到仪表盘</span>
           </div>
 
+          <div class="chat-scroll">
           <div class="msgs">
             <div v-for="(m, i) in chat" :key="i" class="msg" :class="m.role">
-              <div class="av" :class="m.role === 'user' ? 'me' : 'ai'">
+              <div v-if="m.role !== 'system'" class="av" :class="m.role === 'user' ? 'me' : 'ai'">
                 {{ m.role === 'user' ? '我' : 'AI' }}
               </div>
               <div class="asst-col">
-                <ToolStepList v-if="m.role === 'assistant' && m.tools?.length" :steps="m.tools" />
+                <ToolStepList v-if="m.role === 'assistant' && m.tools?.length" :steps="m.tools" default-open />
                 <div v-if="m.text" class="bub">
                   <div class="bub-text">{{ m.text }}</div>
                 </div>
@@ -979,30 +1139,143 @@ function toggleSide(panel: 'history' | 'explore') {
             </div>
           </div>
 
+          <div v-if="askChatMode && hasAnswer" class="ask-inline">
+            <template v-if="answerClarify">
+              <div class="ask-result">
+                <div class="ask-hd">
+                  <span class="badge warn">CLARIFY</span>
+                  <div>
+                    <h3>{{ answerClarify.title }}</h3>
+                    <div class="meta">「{{ answerClarify.question || lastQuestion }}」</div>
+                  </div>
+                </div>
+                <div v-if="answerClarify.headlineHtml" class="insight" v-html="answerClarify.headlineHtml" />
+                <div class="insight" v-html="answerClarify.insightHtml" />
+                <div class="ask-follow">
+                  <span class="ask-follow-lab">点一个问题开始查</span>
+                  <button v-for="f in answerClarify.follows" :key="f" type="button" class="chip" @click="followAsk(f)">
+                    {{ f }}
+                  </button>
+                </div>
+              </div>
+            </template>
+            <template v-else-if="answerInsight">
+              <div class="ask-result">
+                <div class="ask-hd">
+                  <span class="badge diag">DIAG</span>
+                  <div>
+                    <h3>{{ answerInsight.title }}</h3>
+                    <div class="meta">{{ answerInsight.datasetName || '数据集' }} · 「{{ answerInsight.question || lastQuestion }}」</div>
+                  </div>
+                </div>
+                <div class="insight">
+                  <span v-if="answerInsight.headlineHtml" v-html="answerInsight.headlineHtml" />
+                  <br v-if="answerInsight.headlineHtml" />
+                  <span v-html="answerInsight.insightHtml" />
+                </div>
+                <div class="ask-follow">
+                  <button v-for="f in answerInsight.follows" :key="f" type="button" class="chip" @click="followAsk(f)">
+                    {{ f }}
+                  </button>
+                </div>
+                <div class="ask-foot">
+                  <button class="btn" type="button" :disabled="streaming" @click="copyConclusion">复制结论</button>
+                  <span class="sp" />
+                  <button class="btn" type="button" :disabled="!canSave || streaming" @click="adopt('generate')">
+                    生成诊断看板
+                  </button>
+                  <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
+                    保存到仪表盘
+                  </button>
+                </div>
+              </div>
+            </template>
+            <template v-else-if="answerChart || answerTable">
+              <div class="ask-result">
+                <div class="ask-hd">
+                  <span class="badge">ASK</span>
+                  <div>
+                    <h3>{{ answerChart?.title || answerTable?.title || '问数结果' }}</h3>
+                    <div class="meta">
+                      {{ answerChart?.datasetName || answerChart?.datasetId || ctxName }}
+                      · 「{{ answerChart?.question || lastQuestion }}」
+                    </div>
+                  </div>
+                </div>
+                <div v-if="answerChart?.insightHtml" class="insight" v-html="answerChart.insightHtml" />
+                <div class="ask-body">
+                  <div v-if="answerChart" class="viz">
+                    <div class="vl">临时图 · {{ answerChart.chartType }} · chartQuery</div>
+                    <LiveChartPreview
+                      :dataset-id="answerChart.datasetId"
+                      :chart-type="answerChart.chartType || 'bar'"
+                      :encode="answerChart.encode || {}"
+                      :title="answerChart.title"
+                      :height="220"
+                    />
+                  </div>
+                  <div v-if="answerTable" class="viz">
+                    <div class="vl">明细表 · {{ answerTable.rowCount }} 行</div>
+                    <pre v-if="answerTable.sql" class="sql-block">{{ answerTable.sql }}</pre>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th v-for="c in answerTable.columns" :key="c">{{ c }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="(row, ri) in answerTable.rows" :key="ri">
+                          <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div v-if="answerChart?.follows?.length" class="ask-follow">
+                  <button v-for="f in answerChart.follows" :key="f" type="button" class="chip" @click="followAsk(f)">
+                    {{ f }}
+                  </button>
+                </div>
+                <div class="ask-foot">
+                  <button class="btn" type="button" :disabled="streaming" @click="copyConclusion">复制结论</button>
+                  <span class="sp" />
+                  <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
+                    保存到仪表盘
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+
           <div v-if="awaitingConfirm" class="plan-box">
             <div class="plan-title">待确认计划</div>
             <ol class="plan-ol">
               <li>数据：{{ ctxName }}</li>
               <li>{{ String(planPayload?.title || '分析看板') }} · {{ planPayload?.opsCount || '多' }} 个组件</li>
+              <li v-if="planCharts.length">图：{{ planCharts.join('、') }}</li>
               <li>写入方式：{{ planPayload?.mode === 'append' ? '追加到当前看板' : '整页替换' }}</li>
             </ol>
-            <button class="btn primary" type="button" :disabled="streaming" @click="confirmPlan">
-              确认并写入
-            </button>
+            <div class="plan-actions">
+              <button class="btn" type="button" :disabled="streaming" @click="cancelPlan">取消</button>
+              <button class="btn primary" type="button" :disabled="streaming" @click="confirmPlan">
+                确认并写入
+              </button>
+            </div>
           </div>
-          <div v-if="canSave" class="adopt-box">
+          <div v-if="canSave && !askChatMode" class="adopt-box">
             <button class="btn primary" type="button" :disabled="streaming" @click="adopt('save')">
               保存到仪表盘
             </button>
-            <button class="btn" type="button" :disabled="streaming" @click="adopt('generate')">
-              直接生成仪表盘
-            </button>
+          </div>
           </div>
 
             <div class="dock workspace-dock">
             <div class="ctx-row-ws">
               <span class="ctx-pill">上下文 <b>{{ ctxName }}</b></span>
               <button class="gbtn" type="button" @click="dsMenuOpen = !dsMenuOpen">更换数据集 ▾</button>
+              <button class="gbtn" type="button" :disabled="streaming || !selectedDatasets.length" @click="suggestAsk">
+                换一个问数问题
+              </button>
               <button class="gbtn" type="button" :disabled="importing" @click="fileInput?.click()">
                 {{ importing ? '导入中…' : '上传 CSV / Excel' }}
               </button>
@@ -1049,19 +1322,6 @@ function toggleSide(panel: 'history' | 'explore') {
           </div>
         </div>
 
-        <aside class="files-col">
-          <div class="col-h">本会话产物</div>
-          <button
-            v-if="linkedDashboardId"
-            type="button"
-            class="file dash"
-            @click="openEditor"
-          >
-            ▦ dashboard-{{ linkedDashboardId }}.dash
-          </button>
-          <div v-else class="muted pad">问数结果不落文件；保存/生成后出现 .dash</div>
-        </aside>
-
         <section class="canvas-col">
           <div v-if="linkedDashboardId" class="bridge-bar">
             <span>产物已写入 Dashboard draft</span>
@@ -1094,6 +1354,7 @@ function toggleSide(panel: 'history' | 'explore') {
                   </div>
                 </div>
                 <div class="ask-follow">
+                  <span class="ask-follow-lab">点一个问题开始查</span>
                   <button
                     v-for="f in answerClarify.follows"
                     :key="f"
@@ -1112,9 +1373,6 @@ function toggleSide(panel: 'history' | 'explore') {
                 <span class="ttl">洞察诊断</span>
                 <span class="muted">归因结论 · 证据表 · 不是普通问数图</span>
                 <span class="sp" />
-                <button class="btn" type="button" :disabled="!canSave || streaming" @click="adopt('generate')">
-                  生成诊断看板
-                </button>
                 <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
                   保存证据图
                 </button>
@@ -1191,9 +1449,6 @@ function toggleSide(panel: 'history' | 'explore') {
                 <span class="ttl">问数结果</span>
                 <span class="muted">会话预览 · 不落结果行</span>
                 <span class="sp" />
-                <button class="btn" type="button" :disabled="!canSave || streaming" @click="adopt('generate')">
-                  直接生成仪表盘
-                </button>
                 <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
                   保存到仪表盘
                 </button>
@@ -1222,18 +1477,14 @@ function toggleSide(panel: 'history' | 'explore') {
                 />
                 <div class="ask-body">
                   <div v-if="answerChart" class="viz">
-                    <div class="vl">临时图 · {{ answerChart.chartType }}</div>
-                    <div class="ask-bars">
-                      <span
-                        v-for="(h, i) in answerChart.heights"
-                        :key="i"
-                        :style="{ height: h + '%' }"
-                        :title="answerChart.labels[i] || ''"
-                      />
-                    </div>
-                    <div class="lab">
-                      <span v-for="(l, i) in answerChart.labels" :key="i">{{ l }}</span>
-                    </div>
+                    <div class="vl">临时图 · {{ answerChart.chartType }} · chartQuery</div>
+                    <LiveChartPreview
+                      :dataset-id="answerChart.datasetId"
+                      :chart-type="answerChart.chartType || 'bar'"
+                      :encode="answerChart.encode || {}"
+                      :title="answerChart.title"
+                      :height="220"
+                    />
                   </div>
                   <div v-if="answerTable" class="viz">
                     <div class="vl">明细表 · {{ answerTable.rowCount }} 行</div>
@@ -1277,9 +1528,6 @@ function toggleSide(panel: 'history' | 'explore') {
                 <div class="ask-foot">
                   <span class="muted">下一步：写入 DashboardPatch（仅配置，不含结果行）</span>
                   <span class="sp" />
-                  <button class="btn" type="button" :disabled="!canSave || streaming" @click="adopt('generate')">
-                    直接生成仪表盘
-                  </button>
                   <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
                     保存到仪表盘
                   </button>
@@ -1311,56 +1559,77 @@ function toggleSide(panel: 'history' | 'explore') {
                     {{ emptyPreview ? '无数据预览' : 'Live 预览 · chartQuery' }}
                   </div>
                 </div>
-                <div v-if="queryBar?.items?.length" class="query-bar" title="本轮筛选仅展示，不进入 chartQuery">
+                <div v-if="queryBar?.items?.length" class="query-bar">
                   <b>{{ queryBar.label || '查询条件' }}</b>
                   <div class="query-items">
                     <label v-for="(it, i) in queryBar.items" :key="it.field || i" class="q-item">
                       <span>{{ it.label || it.field }}</span>
                       <template v-if="it.kind === 'date' || it.kind === 'dateRange'">
-                        <input type="date" disabled />
+                        <input
+                          type="date"
+                          :value="it.from || ''"
+                          @change="setQueryItem(i, { from: ($event.target as HTMLInputElement).value })"
+                        />
                         <span>~</span>
-                        <input type="date" disabled />
+                        <input
+                          type="date"
+                          :value="it.to || ''"
+                          @change="setQueryItem(i, { to: ($event.target as HTMLInputElement).value })"
+                        />
                       </template>
-                      <select v-else disabled>
-                        <option>全部</option>
+                      <select
+                        v-else
+                        :value="it.value || ''"
+                        @change="setQueryItem(i, { value: ($event.target as HTMLSelectElement).value })"
+                      >
+                        <option value="">全部</option>
+                        <option v-for="opt in it.options || []" :key="opt" :value="opt">{{ opt }}</option>
                       </select>
                     </label>
                   </div>
                 </div>
                 <div v-if="kpiCharts.length" class="kpi-row" :style="{ gridTemplateColumns: `repeat(${Math.min(kpiCharts.length, 4)}, 1fr)` }">
                   <div v-for="c in kpiCharts" :key="c.chartId" class="kpi-card">
-                    <div class="l">{{ c.title || 'KPI' }}</div>
-                    <div class="v">{{ formatKpi(c.kpiValue) }}</div>
-                    <div class="d">{{ c.rowCount }} 行聚合</div>
+                    <LiveChartPreview
+                      :dashboard-id="c.dashboardId || linkedDashboardId || undefined"
+                      :chart-id="c.chartId"
+                      :dataset-id="c.datasetId"
+                      :chart-type="c.chartType || 'kpi'"
+                      :encode="c.encode || {}"
+                      :title="c.title"
+                      :filters="queryFilters"
+                      :height="96"
+                    />
                   </div>
                 </div>
                 <div v-if="plotCharts.length" class="chart-grid" :class="{ single: plotCharts.length === 1 }">
                   <div v-for="c in plotCharts" :key="c.chartId" class="ccard">
                     <h3>{{ c.title || c.chartType || c.chartId }}</h3>
-                    <div v-if="c.heights?.length" class="ask-bars mini">
-                      <span
-                        v-for="(h, i) in c.heights"
-                        :key="i"
-                        :style="{ height: h + '%' }"
-                        :title="c.labels?.[i] || ''"
-                      />
-                    </div>
-                    <div v-if="c.labels?.length" class="lab">
-                      <span v-for="(l, i) in c.labels" :key="i">{{ l }}</span>
-                    </div>
+                    <LiveChartPreview
+                      :dashboard-id="c.dashboardId || linkedDashboardId || undefined"
+                      :chart-id="c.chartId"
+                      :dataset-id="c.datasetId"
+                      :chart-type="c.chartType || 'bar'"
+                      :encode="c.encode || {}"
+                      :title="c.title"
+                      :filters="queryFilters"
+                      :height="220"
+                    />
                   </div>
                 </div>
                 <div v-if="tableCharts.length" class="table-grid">
                   <div v-for="c in tableCharts" :key="c.chartId" class="ccard table-card">
                     <h3>{{ c.title || '汇总表' }}</h3>
-                    <table class="mini-table">
-                      <tbody>
-                        <tr v-for="(l, i) in (c.labels || []).slice(0, 8)" :key="i">
-                          <td>{{ l }}</td>
-                          <td class="num">{{ c.rowCount ? '·' : '' }}</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    <LiveChartPreview
+                      :dashboard-id="c.dashboardId || linkedDashboardId || undefined"
+                      :chart-id="c.chartId"
+                      :dataset-id="c.datasetId"
+                      :chart-type="c.chartType || 'grouptable'"
+                      :encode="c.encode || {}"
+                      :title="c.title"
+                      :filters="queryFilters"
+                      :height="220"
+                    />
                   </div>
                 </div>
               </div>
@@ -1368,7 +1637,7 @@ function toggleSide(panel: 'history' | 'explore') {
 
             <div v-else class="empty">
               <div class="empty-t">从问数开始，再落到可编辑看板</div>
-              <div class="muted">左侧提问即可出表/图预览；满意后再保存到仪表盘，或直接生成整页 draft。</div>
+              <div class="muted">左侧提问即可出表/图预览；满意后再保存到仪表盘。整页生成请切换「生成看板」意图。</div>
             </div>
           </div>
         </section>
@@ -1379,23 +1648,51 @@ function toggleSide(panel: 'history' | 'explore') {
 
 <style scoped>
 .conv-root {
-  --ink: #1f2329;
-  --muted: #646a73;
-  --faint: #8f959e;
-  --line: #eff0f1;
-  --line-2: #dee0e3;
-  --soft: #f2f3f5;
-  --brand: #3370ff;
-  --brand-soft: #eaefff;
-  --ok: #00b578;
+  --ink: var(--od-ink, #111827);
+  --muted: var(--od-muted, #4b5563);
+  --faint: var(--od-faint, #6b7280);
+  --line: var(--od-line, #dfe3ea);
+  --line-2: var(--od-line, #dfe3ea);
+  --soft: #f3f4f8;
+  --brand: var(--od-brand, #4f46e5);
+  --brand-soft: var(--od-brand-soft, #eef2ff);
+  --ok: #047857;
   --danger: #f54a45;
-  --shadow: 0 6px 24px rgba(31, 35, 41, 0.08);
-  height: 100vh;
+  --shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 16px 40px rgba(79, 70, 229, 0.08);
+  --conv-glow: rgba(99, 102, 241, 0.18);
+  --conv-glow-2: rgba(165, 180, 252, 0.16);
+  height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f5f6f8;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--od-bg, #f6f7fb);
   color: var(--ink);
-  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-family: var(--od-font, ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif);
+}
+.conv-root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 78% 48% at 50% -12%, var(--conv-glow), transparent 58%),
+    radial-gradient(ellipse 42% 34% at 8% 92%, var(--conv-glow-2), transparent 52%),
+    radial-gradient(ellipse 36% 28% at 96% 12%, rgba(199, 210, 254, 0.22), transparent 48%);
+}
+:global(html[data-od-theme='dark']) .conv-root {
+  --conv-glow: rgba(99, 102, 241, 0.22);
+  --conv-glow-2: rgba(67, 56, 202, 0.16);
+  --soft: rgba(255, 255, 255, 0.06);
+}
+.conv-root > * {
+  position: relative;
+  z-index: 1;
+}
+.conv-modbar {
+  display: none;
 }
 .boot {
   flex: 1;
@@ -1411,75 +1708,7 @@ function toggleSide(panel: 'history' | 'explore') {
   min-height: 0;
   display: flex;
   width: 100%;
-  background: #f5f6f8;
-}
-.side {
-  width: 220px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--line);
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  padding: 8px;
-  gap: 2px;
-}
-.side.slim {
-  width: 56px;
-}
-.side.slim .nav-txt {
-  display: none;
-}
-.nav {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border-radius: 10px;
-  color: var(--muted);
-  font-size: 13px;
-  text-align: left;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
-.nav svg {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-.nav:hover {
-  background: var(--soft);
-  color: var(--ink);
-}
-.nav.on {
-  background: var(--brand-soft);
-  color: var(--brand);
-  font-weight: 600;
-}
-.nav.soon {
-  opacity: 0.42;
-  cursor: not-allowed;
-}
-.tag-soon {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 0 5px;
-  height: 16px;
-  line-height: 16px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--muted);
-  background: #eef0f3;
-}
-.side-div {
-  height: 1px;
-  background: var(--line);
-  margin: 6px;
-}
-.gap {
-  flex: 1;
+  background: transparent;
 }
 .side-panel {
   width: 260px;
@@ -1528,7 +1757,7 @@ function toggleSide(panel: 'history' | 'explore') {
   align-items: flex-start;
   overflow: auto;
   padding: min(14vh, 110px) 24px 48px;
-  background: #f5f6f8;
+  background: transparent;
 }
 .landing-stack {
   width: min(960px, 94%);
@@ -1570,18 +1799,20 @@ function toggleSide(panel: 'history' | 'explore') {
   padding-left: 4px;
 }
 .composer {
-  border: 1px solid #e5e6eb;
+  border: 1px solid #dfe4f2;
   border-radius: 22px;
-  background: #fff;
-  box-shadow: 0 8px 32px rgba(31, 35, 41, 0.08);
+  background: color-mix(in srgb, var(--od-card, #fff) 88%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: var(--shadow);
   padding: 16px 18px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 .composer:focus-within {
-  border-color: #b7c9ff;
-  box-shadow: 0 0 0 3px rgba(51, 112, 255, 0.1), var(--shadow);
+  border-color: color-mix(in srgb, var(--brand) 38%, #dfe4f2);
+  box-shadow: 0 0 0 4px var(--brand-soft), var(--shadow);
 }
 .comp-row {
   display: flex;
@@ -1602,7 +1833,8 @@ function toggleSide(panel: 'history' | 'explore') {
   background: transparent;
   cursor: pointer;
 }
-.gbtn:hover {
+.gbtn:hover,
+.gbtn.on {
   background: var(--soft);
   color: var(--ink);
 }
@@ -1707,8 +1939,8 @@ textarea {
   height: 32px;
   padding: 0 14px;
   border-radius: 999px;
-  border: 1px solid var(--line-2);
-  background: #fff;
+  border: 1px solid #dfe4f2;
+  background: color-mix(in srgb, var(--od-card, #fff) 82%, transparent);
   font-size: 13px;
   color: var(--muted);
   cursor: pointer;
@@ -1789,33 +2021,86 @@ textarea {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: 440px 180px 1fr;
+  grid-template-columns: 440px 1fr;
   /* Reset leaked dashboard `.stage` flex/overflow */
   flex-direction: initial;
   overflow: hidden;
-  background: #f5f6f7;
+  background: transparent;
 }
 .chat-col,
-.files-col,
 .canvas-col {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: color-mix(in srgb, var(--od-card, #fff) 72%, transparent);
   border-right: 1px solid var(--line);
 }
 .canvas-col {
   border-right: 0;
-  background: #f5f6f7;
+  background: transparent;
 }
 .chat-hd {
   height: 44px;
   padding: 0 16px;
   display: flex;
   align-items: center;
+  gap: 6px;
   font-size: 14px;
   font-weight: 600;
   border-bottom: 1px solid var(--line);
+}
+.chat-hd .sp {
+  flex: 1;
+}
+.chat-hd .gbtn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.ask-inline {
+  flex-shrink: 0;
+  max-height: 48%;
+  overflow: auto;
+  padding: 0 16px 12px;
+  border-top: 1px solid var(--line);
+}
+.stage.workspace.ask-chat {
+  grid-template-columns: minmax(0, 800px);
+  justify-content: center;
+}
+.stage.workspace.ask-chat .chat-col {
+  background: transparent;
+  border-right: 0;
+}
+.stage.workspace.ask-chat .chat-hd {
+  background: transparent;
+  border-bottom-color: transparent;
+}
+.stage.workspace.ask-chat .canvas-col {
+  display: none;
+}
+.stage.workspace.ask-chat .chat-scroll {
+  overflow: auto;
+}
+.stage.workspace.ask-chat .msgs {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.stage.workspace.ask-chat .ask-inline {
+  flex: 0 0 auto;
+  max-height: none;
+  overflow: visible;
+  border-top: 0;
+  padding-top: 4px;
 }
 .flow-bar {
   height: 32px;
@@ -1824,7 +2109,7 @@ textarea {
   gap: 8px;
   padding: 0 14px;
   border-bottom: 1px solid var(--line);
-  background: #fafbfd;
+  background: transparent;
   font-size: 12px;
   color: var(--faint);
   flex-shrink: 0;
@@ -1841,6 +2126,7 @@ textarea {
 }
 .msgs {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 12px 14px;
   display: flex;
@@ -1856,6 +2142,16 @@ textarea {
 }
 .msg.system {
   justify-content: center;
+}
+.msg.system .asst-col {
+  max-width: 100%;
+  align-items: center;
+}
+.msg.system .bub {
+  background: #fff3f0;
+  color: #c43e1c;
+  border: 1px solid #f0c0b4;
+  font-size: 13px;
 }
 .av {
   width: 26px;
@@ -1937,6 +2233,10 @@ textarea {
   line-height: 1.7;
   color: var(--ink);
 }
+.plan-actions {
+  display: flex;
+  gap: 8px;
+}
 .btn {
   height: 32px;
   padding: 0 14px;
@@ -1957,8 +2257,9 @@ textarea {
   cursor: not-allowed;
 }
 .workspace-dock {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   padding: 10px 12px 14px;
+  background: transparent;
 }
 .ctx-row-ws {
   display: flex;
@@ -1974,15 +2275,6 @@ textarea {
 .workspace-dock textarea {
   min-height: 56px;
   font-size: 13px;
-}
-.files-col {
-  background: #fafbfc;
-}
-.col-h {
-  padding: 12px 12px 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
 }
 .steps-list {
   display: flex;
@@ -2022,22 +2314,6 @@ textarea {
 .steps-list .step.done i {
   background: var(--ok);
 }
-.files-col ul {
-  margin: 0;
-  padding: 0 12px 12px 28px;
-  font-size: 12.5px;
-}
-.file.dash {
-  margin: 0 12px;
-  text-align: left;
-  border: 1px solid var(--line-2);
-  background: var(--brand-soft);
-  color: var(--brand);
-  border-radius: 8px;
-  padding: 8px 10px;
-  cursor: pointer;
-  font-size: 12.5px;
-}
 .bridge-bar {
   display: flex;
   align-items: center;
@@ -2064,7 +2340,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: linear-gradient(180deg, #f3f5f8 0%, #f5f6f7 120px);
+  background: transparent;
 }
 .ask-toolbar {
   display: flex;
@@ -2298,6 +2574,13 @@ textarea {
   flex-wrap: wrap;
   gap: 6px;
   padding: 0 16px 14px;
+  align-items: center;
+}
+.ask-follow-lab {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 650;
+  margin-right: 4px;
 }
 .ask-follow .chip {
   height: 28px;
@@ -2584,9 +2867,6 @@ textarea {
 @media (max-width: 1100px) {
   .stage.workspace {
     grid-template-columns: 1fr;
-  }
-  .files-col {
-    display: none;
   }
 }
 </style>

@@ -10,6 +10,7 @@ import { dashboardApi } from '../../api/dashboard'
 import { datasetApi, type DatasetMetaVO } from '../../datasource/api'
 import { conversationApi } from '../api'
 import ToolStepList, { type ToolPreview, type ToolStep } from './ToolStepList.vue'
+import LiveChartPreview from './LiveChartPreview.vue'
 
 const props = defineProps<{
   dashboardId: string
@@ -33,8 +34,11 @@ type ChatLine = {
   chartType?: string
   labels?: string[]
   heights?: number[]
+  datasetId?: string
+  encode?: Record<string, unknown>
   sql?: string
   clarify?: boolean
+  follows?: string[]
 }
 
 const route = useRoute()
@@ -62,6 +66,7 @@ const TOOL_LABELS: Record<string, string> = {
   od_run_query: '试查询',
   od_run_sql: '执行 SQL',
   schema: '读取字段 Schema',
+  suggest: '根据当前表反问可问问题',
   sqlbot: 'SQLBot 生成 SQL',
   sqlbot_sql: 'SQL 已生成',
   sqlbot_exec: '执行查询'
@@ -331,6 +336,8 @@ function onEvent(event: string, data: Record<string, unknown>) {
     const last = chat.value[chat.value.length - 1]
     if (last?.role === 'assistant') {
       last.chartType = String(data.chartType || 'bar')
+      last.datasetId = data.datasetId ? String(data.datasetId) : selectedDatasetId.value
+      last.encode = (data.encode as Record<string, unknown>) || {}
       last.labels = Array.isArray(data.labels) ? (data.labels as string[]) : []
       last.heights = Array.isArray(data.heights) ? (data.heights as number[]) : []
       if (!last.text) last.text = String(data.title || '图表')
@@ -343,6 +350,7 @@ function onEvent(event: string, data: Record<string, unknown>) {
       last.clarify = true
       last.text = String(data.headlineHtml || data.title || '需要澄清后再问')
         .replace(/<[^>]+>/g, '')
+      last.follows = Array.isArray(data.follows) ? (data.follows as string[]) : []
     }
     canSave.value = false
   }
@@ -366,6 +374,10 @@ function onEvent(event: string, data: Record<string, unknown>) {
 async function send() {
   const text = prompt.value.trim()
   if (!text || streaming.value || !enabled.value) return
+  if (!selectedDatasetId.value) {
+    chat.value.push({ role: 'system', text: '请先选择一张表，再提问或换一个问数问题。' })
+    return
+  }
   streaming.value = true
   canSave.value = false
   liveTools.value = []
@@ -377,6 +389,11 @@ async function send() {
   try {
     const id = await ensureConversation()
     const datasetIds = selectedDatasetId.value ? [selectedDatasetId.value] : undefined
+    try {
+      await conversationApi.appendMessage(id, { role: 'user', content: text })
+    } catch {
+      /* title already stored on create */
+    }
     await conversationApi.startRun(
       id,
       {
@@ -435,6 +452,16 @@ function goWorkspace() {
   router.push(conversationId.value ? `/conversations/${conversationId.value}` : '/conversations')
 }
 
+function followAsk(text: string) {
+  prompt.value = text
+  void send()
+}
+
+function suggestAsk() {
+  prompt.value = '换一个问数问题'
+  void send()
+}
+
 function closePanel() {
   open.value = false
 }
@@ -466,11 +493,6 @@ async function onPickFile(ev: Event) {
   } finally {
     importing.value = false
   }
-}
-
-function barStyle(h: number) {
-  const n = Number.isFinite(h) ? Math.max(8, Math.min(100, h)) : 8
-  return { height: `${n}%` }
 }
 </script>
 
@@ -506,12 +528,14 @@ function barStyle(h: number) {
             <ToolStepList
               v-else-if="line.role === 'assistant' && line.tools?.length"
               :steps="line.tools"
+              default-open
             />
             <div
               v-if="
                 line.mapping?.length ||
                 line.text ||
                 line.sql ||
+                line.datasetId ||
                 line.heights?.length ||
                 line.columns?.length
               "
@@ -526,13 +550,28 @@ function barStyle(h: number) {
                 </span>
               </div>
               <div v-if="line.text" class="bub-text" :class="{ clarify: line.clarify }">{{ line.text }}</div>
+              <div v-if="line.follows?.length" class="ask-follow">
+                <span class="ask-follow-lab">点一个问题开始查</span>
+                <button
+                  v-for="f in line.follows"
+                  :key="f"
+                  type="button"
+                  class="chip"
+                  :disabled="streaming"
+                  @click="followAsk(f)"
+                >
+                  {{ f }}
+                </button>
+              </div>
               <pre v-if="line.sql" class="sql">{{ line.sql }}</pre>
-              <div v-if="line.heights?.length" class="mini-bars" :title="line.chartType">
-                <i v-for="(h, hi) in line.heights.slice(0, 8)" :key="hi" :style="barStyle(h)" />
-              </div>
-              <div v-if="line.labels?.length" class="mini-labs">
-                <span v-for="(l, li) in line.labels.slice(0, 8)" :key="li">{{ l }}</span>
-              </div>
+              <LiveChartPreview
+                v-if="line.datasetId && (line.encode || line.chartType)"
+                :dataset-id="line.datasetId"
+                :chart-type="line.chartType || 'bar'"
+                :encode="line.encode || {}"
+                :title="line.text"
+                :height="160"
+              />
               <div v-if="line.columns?.length" class="mini-tbl">
                 <table>
                   <thead>
@@ -541,57 +580,72 @@ function barStyle(h: number) {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="(row, ri) in (line.rows || []).slice(0, 6)" :key="ri">
+                    <tr v-for="(row, ri) in (line.rows || []).slice(0, 12)" :key="ri">
                       <td v-for="(c, ci) in line.columns" :key="c">{{ cell(row[ci]) }}</td>
                     </tr>
                   </tbody>
                 </table>
+                <div v-if="(line.rows || []).length > 12" class="tbl-more">
+                  仅显示前 12 行，共 {{ line.rows.length }} 行
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div v-if="canSave && !streaming" class="adopt">
-        <button class="primary" type="button" @click="saveToBoard">保存到仪表盘</button>
-        <span class="hint">默认不改画布，与 DataEase SQLBot 一致</span>
-      </div>
+      <div class="dock">
+        <div v-if="canSave && !streaming" class="adopt">
+          <button class="primary save-btn" type="button" @click="saveToBoard">保存到仪表盘</button>
+          <p class="hint">默认不改画布，与 DataEase SQLBot 一致</p>
+        </div>
 
-      <div class="ds-row">
-        <span class="ds-lab">当前数据集</span>
-        <select v-model="selectedDatasetId" :disabled="streaming">
-          <option v-if="!datasetOptions.length" value="">暂无数据集</option>
-          <option v-for="d in datasetOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
-        <button type="button" class="ghost" title="拾取当前图" @click="emit('pick')">拾取</button>
-        <button type="button" class="ghost" :disabled="importing" @click="fileInput?.click()">
-          {{ importing ? '导入中' : '上传' }}
-        </button>
-      </div>
-      <input
-        ref="fileInput"
-        type="file"
-        class="file-hidden"
-        accept=".csv,.tsv,.txt,.xlsx"
-        @change="onPickFile"
-      />
-
-      <div class="composer">
-        <textarea
-          v-model="prompt"
-          rows="2"
-          :disabled="streaming"
-          :placeholder="selectedDatasetName ? `问 ${selectedDatasetName}，例如「近一年各商户收入」` : '描述要查的数据…'"
-          @keydown.enter.exact.prevent="send"
+        <div class="ds-row">
+          <span class="ds-lab">当前数据集</span>
+          <select v-model="selectedDatasetId" :disabled="streaming">
+            <option v-if="!datasetOptions.length" value="">暂无数据集</option>
+            <option v-for="d in datasetOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+          <div class="ds-acts">
+            <button
+              type="button"
+              class="ghost"
+              :disabled="streaming || !selectedDatasetId"
+              @click="suggestAsk"
+            >
+              换一个问数问题
+            </button>
+            <button type="button" class="ghost" title="拾取当前图" @click="emit('pick')">拾取</button>
+            <button type="button" class="ghost" :disabled="importing" @click="fileInput?.click()">
+              {{ importing ? '导入中' : '上传' }}
+            </button>
+          </div>
+        </div>
+        <input
+          ref="fileInput"
+          type="file"
+          class="file-hidden"
+          accept=".csv,.tsv,.txt,.xlsx"
+          @change="onPickFile"
         />
-        <button
-          class="primary send"
-          type="button"
-          :disabled="streaming || !prompt.trim()"
-          @click.prevent="send"
-        >
-          {{ streaming ? '查询中' : '发送' }}
-        </button>
+
+        <div class="composer">
+          <textarea
+            v-model="prompt"
+            rows="2"
+            :disabled="streaming"
+            :placeholder="selectedDatasetName ? `问 ${selectedDatasetName}，例如「近一年各商户收入」` : '描述要查的数据…'"
+            @keydown.enter.exact.prevent="send"
+          />
+          <button
+            class="primary send"
+            type="button"
+            :disabled="streaming || !prompt.trim() || !selectedDatasetId"
+            @click.prevent="send"
+          >
+            {{ streaming ? '查询中' : '发送' }}
+          </button>
+        </div>
       </div>
     </aside>
   </div>
@@ -600,13 +654,19 @@ function barStyle(h: number) {
 <style scoped>
 .sqlbot-dock {
   position: absolute;
-  top: 48px;
-  right: 12px;
+  right: 16px;
+  bottom: 16px;
+  top: auto;
   z-index: 130;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, calc(100% - 24px));
+  height: min(520px, calc(100% - 72px));
+  max-height: min(520px, calc(100vh - 148px));
 }
 .panel {
-  width: min(420px, calc(100vw - 32px));
-  height: min(640px, calc(100vh - 60px));
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -690,9 +750,9 @@ function barStyle(h: number) {
   min-height: 0;
 }
 .welcome {
-  margin: auto 0;
+  margin: 12px 0 auto;
   text-align: center;
-  padding: 24px 8px;
+  padding: 12px 8px;
 }
 .i-am {
   font-size: 16px;
@@ -707,6 +767,10 @@ function barStyle(h: number) {
 }
 .msg {
   display: flex;
+  min-width: 0;
+}
+.msg.assistant {
+  width: 100%;
 }
 .msg.user {
   justify-content: flex-end;
@@ -717,18 +781,20 @@ function barStyle(h: number) {
 .asst-col {
   flex: 1;
   min-width: 0;
-  max-width: 92%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  overflow: hidden;
 }
 .msg.user .asst-col {
   align-items: flex-end;
+  max-width: 85%;
+  flex: 0 1 auto;
 }
 .bub {
   max-width: 100%;
+  min-width: 0;
   padding: 8px 10px;
   border-radius: 10px;
   font-size: 13px;
@@ -755,6 +821,37 @@ function barStyle(h: number) {
 .bub-text.clarify {
   color: #d83931;
 }
+.ask-follow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  align-items: center;
+}
+.ask-follow-lab {
+  font-size: 11px;
+  color: #8c8c8c;
+  font-weight: 650;
+}
+.ask-follow .chip {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px dashed #d9d9d9;
+  background: #fff;
+  font-size: 12px;
+  color: #595959;
+  cursor: pointer;
+}
+.ask-follow .chip:hover:not(:disabled) {
+  border-color: #3370ff;
+  color: #3370ff;
+  background: #f0f5ff;
+}
+.ask-follow .chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .sql {
   margin: 8px 0 0;
   padding: 8px;
@@ -764,9 +861,9 @@ function barStyle(h: number) {
   font-size: 11px;
   line-height: 1.45;
   overflow: auto;
-  max-height: 140px;
+  max-height: 220px;
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: break-word;
 }
 .imap {
   display: flex;
@@ -778,6 +875,8 @@ function barStyle(h: number) {
   font-size: 11px;
   border-radius: 6px;
   padding: 2px 6px;
+  max-width: 100%;
+  word-break: break-word;
 }
 .imap .ok {
   background: #e8f8f3;
@@ -818,11 +917,13 @@ function barStyle(h: number) {
 .mini-tbl {
   margin-top: 8px;
   overflow: auto;
-  max-height: 160px;
+  max-height: 240px;
+  max-width: 100%;
 }
 .mini-tbl table {
   border-collapse: collapse;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   font-size: 11.5px;
 }
 .mini-tbl th,
@@ -836,38 +937,57 @@ function barStyle(h: number) {
   color: #8f959e;
   font-weight: 600;
 }
+.tbl-more {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #8f959e;
+}
+.dock {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-top: 1px solid #dee0e3;
+}
 .adopt {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-top: 1px solid #f2f3f5;
-  flex-shrink: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px 12px 8px;
 }
 .hint {
+  margin: 0;
   font-size: 11.5px;
+  line-height: 1.45;
   color: #8f959e;
 }
 .ds-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-top: 1px solid #f2f3f5;
-  flex-shrink: 0;
 }
 .ds-lab {
   font-size: 12px;
   color: #646a73;
-  flex-shrink: 0;
+  white-space: nowrap;
 }
 .ds-row select {
-  flex: 1;
+  flex: 1 1 140px;
   min-width: 0;
   height: 28px;
   border-radius: 6px;
   border: 1px solid #dee0e3;
   font-size: 12.5px;
+  background: #fff;
+}
+.ds-acts {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 .ghost {
   border: 1px solid #dee0e3;
@@ -877,6 +997,7 @@ function barStyle(h: number) {
   color: #1cba90;
   cursor: pointer;
   font-size: 12px;
+  white-space: nowrap;
 }
 .ghost:disabled {
   opacity: 0.4;
@@ -886,13 +1007,15 @@ function barStyle(h: number) {
 }
 .composer {
   display: flex;
+  align-items: flex-end;
   gap: 8px;
-  padding: 10px 12px 12px;
-  border-top: 1px solid #dee0e3;
-  flex-shrink: 0;
+  padding: 8px 12px 12px;
 }
 textarea {
   flex: 1;
+  min-width: 0;
+  min-height: 64px;
+  max-height: 96px;
   border: 1px solid #dee0e3;
   border-radius: 10px;
   padding: 8px;
@@ -900,19 +1023,27 @@ textarea {
   font: inherit;
   font-size: 13px;
   box-sizing: border-box;
+  line-height: 1.45;
 }
 .primary {
-  height: 32px;
-  padding: 0 12px;
+  height: 36px;
+  padding: 0 14px;
   border: 0;
   border-radius: 8px;
   background: #1cba90;
   color: #fff;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 36px;
+}
+.primary.save-btn {
+  width: 100%;
 }
 .primary.send {
-  align-self: flex-end;
+  height: 36px;
+  min-width: 64px;
 }
 .primary:disabled {
   opacity: 0.4;

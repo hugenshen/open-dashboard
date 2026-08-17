@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import ModuleTopbar from '../../shell/ModuleTopbar.vue'
 import { reportApi } from '../api/report'
 import { countReportCharts, formatUpdateTime, inferReportFolder } from '../utils/chartDoc'
 import type { ReportDetailVO, ReportMetaVO } from '../types'
@@ -113,7 +112,6 @@ watch(filtered, (list) => {
 
 <template>
   <div class="page">
-    <ModuleTopbar module="reports" />
     <p v-if="error" class="banner-err">{{ error }}</p>
 
     <div class="layout">
@@ -213,14 +211,14 @@ watch(filtered, (list) => {
 
 <style scoped>
 .page {
-  --primary: #3370ff;
-  --ink: #1a2332;
-  --muted: #86909c;
-  --line: rgba(0, 0, 0, 0.08);
-  height: 100vh;
+  --primary: var(--od-brand, #4f46e5);
+  --ink: var(--od-ink, #111827);
+  --muted: var(--od-muted, #4b5563);
+  --line: var(--od-line, #dfe3ea);
+  height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f4f5f7;
+  background: var(--od-bg, #f6f7fb);
   color: var(--ink);
 }
 .banner-err {
@@ -323,7 +321,7 @@ watch(filtered, (list) => {
   line-height: 1.4;
 }
 .filter.on {
-  background: #e8f0ff;
+  background: var(--od-brand-soft, #eef2ff);
   color: var(--primary);
   font-weight: 600;
 }
@@ -345,10 +343,10 @@ watch(filtered, (list) => {
   cursor: pointer;
 }
 .item:hover {
-  background: #f5f7fa;
+  background: var(--od-bg, #f6f7fb);
 }
 .item.on {
-  background: #eef4ff;
+  background: var(--od-brand-soft, #eef2ff);
 }
 .item-name {
   font-size: 0.86rem;
@@ -400,8 +398,8 @@ watch(filtered, (list) => {
   font-weight: 600;
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
-  background: #f4f5f7;
-  color: #86909c;
+  background: var(--od-bg, #f6f7fb);
+  color: var(--muted);
 }
 .pill.pub {
   background: #e6fffb;

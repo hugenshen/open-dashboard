@@ -2,6 +2,7 @@ package io.opendashboard.application.conversation;
 
 import io.opendashboard.domain.ConversationDtos.ConversationAdoptRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationCreateRequest;
+import io.opendashboard.domain.ConversationDtos.ConversationMessageCreateRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationMessageVO;
 import io.opendashboard.domain.ConversationDtos.ConversationRevisionVO;
 import io.opendashboard.domain.ConversationDtos.ConversationRunRequest;
@@ -58,8 +59,11 @@ public class ConversationAppService {
         return ConversationStyleCatalog.list();
     }
 
-    public List<ConversationVO> list() {
-        return store.listByOwner(AuthContext.userIdOr("demo"));
+    public List<ConversationVO> list(Integer limit) {
+        List<ConversationVO> rows = store.listByOwner(AuthContext.userIdOr("demo"));
+        if (limit == null || limit <= 0) return rows;
+        int n = Math.min(limit, 50);
+        return rows.size() <= n ? rows : rows.subList(0, n);
     }
 
     public ConversationVO create(ConversationCreateRequest request) {
@@ -85,6 +89,12 @@ public class ConversationAppService {
 
     public List<ConversationMessageVO> messages(String id) {
         return store.listMessages(id);
+    }
+
+    public ConversationMessageVO appendMessage(String id, ConversationMessageCreateRequest request) {
+        String role = request == null || request.role() == null || request.role().isBlank() ? "user" : request.role().trim();
+        String content = request == null || request.content() == null ? "" : request.content();
+        return store.appendMessage(id, role, content, List.of());
     }
 
     public List<ConversationRevisionVO> revisions(String id) {

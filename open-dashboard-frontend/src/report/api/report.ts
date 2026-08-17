@@ -9,7 +9,11 @@ async function http<T>(method: string, url: string, data?: unknown): Promise<T> 
 }
 
 export const reportApi = {
-  list: () => http<ReportMetaVO[]>('GET', '/report'),
+  list: (limit?: number) =>
+    apiFetch<ReportMetaVO[]>(
+      '/report',
+      limit ? { method: 'GET', params: { limit: String(limit) } } : { method: 'GET' }
+    ),
   get: (id: string) => http<ReportDetailVO>('GET', `/report/${id}`),
   create: (name: string) => http<ReportDetailVO>('POST', '/report', { name }),
   updateMeta: (id: string, data: { name?: string; folder?: string; desc?: string }) =>

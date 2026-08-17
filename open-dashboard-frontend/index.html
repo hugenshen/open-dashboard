@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Open Dashboard</title>
+    <script>
+      try {
+        document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light'
+      } catch (e) {
+        document.documentElement.dataset.odTheme = 'light'
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

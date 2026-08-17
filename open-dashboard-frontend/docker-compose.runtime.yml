@@ -1,0 +1,6 @@
+# Skip in-image npm: host must already have dist/
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime

@@ -54,7 +54,7 @@ export const router = createRouter({
       path: '/dashboards/:id/edit',
       name: 'dashboard-edit',
       component: () => import('../dashboard/views/DashboardEditor.vue'),
-      meta: { title: '编辑仪表盘', fullBleed: true }
+      meta: { title: '编辑仪表盘', fullBleed: true, shell: 'editor' }
     },
     {
       path: '/dashboards/:id/preview',
@@ -69,14 +69,8 @@ export const router = createRouter({
       meta: { title: '分享仪表盘', fullBleed: true, hideShell: true }
     },
     {
-      path: '/conversations',
+      path: '/conversations/:id?',
       name: 'conversations',
-      component: () => import('../conversation/views/ConversationWorkspace.vue'),
-      meta: { title: '对话分析', fullBleed: true }
-    },
-    {
-      path: '/conversations/:id',
-      name: 'conversation-detail',
       component: () => import('../conversation/views/ConversationWorkspace.vue'),
       meta: { title: '对话分析', fullBleed: true }
     },

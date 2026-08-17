@@ -92,6 +92,37 @@ def create_conversation(
     return _public_conv(doc)
 
 
+def ensure_conversation(
+    cid: str,
+    owner_id: str = "demo",
+    title: Optional[str] = None,
+    dataset_ids: Optional[List[str]] = None,
+    linked_dashboard_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Create a runtime session for a Java conversation id if missing."""
+    existing = _load(cid)
+    if existing:
+        return _public_conv(existing)
+    safe = (cid or "").strip()
+    if not safe or "/" in safe or "\\" in safe or safe in (".", ".."):
+        raise ValueError("invalid conversation id")
+    doc = {
+        "id": safe,
+        "title": title or "新对话",
+        "ownerId": owner_id or "demo",
+        "layoutPrefs": {},
+        "datasetIds": dataset_ids or [],
+        "linkedDashboardId": linked_dashboard_id,
+        "messages": [],
+        "memory": [],
+        "runs": [],
+        "createTime": _now(),
+        "updateTime": _now(),
+    }
+    _save(doc)
+    return _public_conv(doc)
+
+
 def get_conversation(cid: str) -> Optional[Dict[str, Any]]:
     doc = _load(cid)
     return _public_conv(doc) if doc else None
@@ -193,6 +224,47 @@ def finish_run(cid: str, run_id: str, status: str, detail: Optional[str] = None)
         if r.get("id") == run_id:
             r["status"] = status
             r["finishDetail"] = detail
+            r["updateTime"] = _now()
+            break
+    _save(doc)
+
+
+def get_run(cid: str, run_id: str) -> Optional[Dict[str, Any]]:
+    doc = _load(cid)
+    if not doc:
+        return None
+    for r in doc.get("runs") or []:
+        if r.get("id") == run_id:
+            return r
+    return None
+
+
+def set_run_pending(cid: str, run_id: str, pending: Dict[str, Any]) -> None:
+    doc = _load(cid)
+    if not doc:
+        return
+    for r in doc.get("runs") or []:
+        if r.get("id") == run_id:
+            r["pending"] = pending
+            r["status"] = "awaiting_confirm"
+            r["updateTime"] = _now()
+            break
+    _save(doc)
+
+
+def get_run_pending(cid: str, run_id: str) -> Optional[Dict[str, Any]]:
+    run = get_run(cid, run_id)
+    pending = (run or {}).get("pending")
+    return pending if isinstance(pending, dict) else None
+
+
+def clear_run_pending(cid: str, run_id: str) -> None:
+    doc = _load(cid)
+    if not doc:
+        return
+    for r in doc.get("runs") or []:
+        if r.get("id") == run_id:
+            r["pending"] = None
             r["updateTime"] = _now()
             break
     _save(doc)

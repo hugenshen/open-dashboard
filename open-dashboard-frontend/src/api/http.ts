@@ -53,6 +53,7 @@ export async function apiFetch<T>(
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
     data?: unknown
     params?: Record<string, string>
+    timeoutMs?: number
   } = {}
 ): Promise<T> {
   const method = opts.method || 'GET'
@@ -63,7 +64,8 @@ export async function apiFetch<T>(
       'Content-Type': 'application/json',
       ...getAuthHeaders()
     },
-    body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(opts.data ?? {})
+    body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(opts.data ?? {}),
+    signal: opts.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined
   })
   if (!res.ok) {
     let detail = ''

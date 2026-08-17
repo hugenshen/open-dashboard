@@ -240,7 +240,7 @@ public class JdbcDataSourcePort implements DataSourcePort {
         return executeSql(spec, sql, lim);
     }
 
-    /** Intent-derived filters only. Field names must be identifiers; values are numeric/unit enums. */
+    /** Filter AST from encode.filters and chartQuery.context.filters (query-bar). */
     @SuppressWarnings("unchecked")
     private String compileWhere(ConnectionSpec spec, Map<String, Object> filters) {
         if (filters == null || filters.isEmpty()) return "";
@@ -251,7 +251,8 @@ public class JdbcDataSourcePort implements DataSourcePort {
         for (Object it : items) {
             if (!(it instanceof Map<?, ?> m)) continue;
             String field = m.get("field") == null ? "" : String.valueOf(m.get("field"));
-            String op = m.get("op") == null ? "" : String.valueOf(m.get("op")).toLowerCase(Locale.ROOT);
+            Object opObj = m.get("op") != null ? m.get("op") : m.get("operator");
+            String op = opObj == null ? "eq" : String.valueOf(opObj).toLowerCase(Locale.ROOT);
             if (field.isBlank()) continue;
             requireIdent(field, "过滤字段");
             String qf = quote(spec, field);
@@ -274,6 +275,23 @@ public class JdbcDataSourcePort implements DataSourcePort {
                     };
                     parts.add(qf + " >= DATE_SUB(NOW(), INTERVAL " + n + " " + mysqlUnit + ")");
                 }
+            } else if ("between".equals(op) || "daterange".equals(op)) {
+                Object from = m.get("from") != null ? m.get("from") : (m.get("value") instanceof List<?> p && !p.isEmpty() ? p.get(0) : null);
+                Object to = m.get("to") != null ? m.get("to") : (m.get("value") instanceof List<?> p && p.size() > 1 ? p.get(1) : null);
+                if (from != null && !String.valueOf(from).isBlank()) {
+                    parts.add(qf + " >= " + sqlLiteral(from));
+                }
+                if (to != null && !String.valueOf(to).isBlank()) {
+                    parts.add(qf + " <= " + sqlLiteral(to));
+                }
+            } else if ("in".equals(op) && m.get("value") instanceof List<?> vals) {
+                List<String> lits = new ArrayList<>();
+                for (Object v : vals) {
+                    if (v != null && !String.valueOf(v).isBlank()) lits.add(sqlLiteral(v));
+                }
+                if (!lits.isEmpty()) parts.add(qf + " IN (" + String.join(", ", lits) + ")");
+            } else if (m.get("value") != null && !String.valueOf(m.get("value")).isBlank()) {
+                parts.add(qf + " = " + sqlLiteral(m.get("value")));
             }
         }
         return String.join(" AND ", parts);
@@ -373,6 +391,14 @@ public class JdbcDataSourcePort implements DataSourcePort {
             return quote(spec, spec.dbName()) + "." + quote(spec, table);
         }
         return quote(spec, table);
+    }
+
+    private static String sqlLiteral(Object raw) {
+        if (raw == null) return "NULL";
+        if (raw instanceof Number n) return n.toString();
+        String s = String.valueOf(raw);
+        if (s.length() > 128) s = s.substring(0, 128);
+        return "'" + s.replace("'", "''").replace("\0", "") + "'";
     }
 
     private String quote(ConnectionSpec spec, String ident) {

@@ -206,7 +206,7 @@
     kbd { background: #fff; box-shadow: 0 1px 0 #cbd5e1; }
 
     .flow {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;
       margin: 14px 0 18px;
     }
     .flow .card {
@@ -307,6 +307,7 @@
       <div class="group">功能模块</div>
       <nav>
         <a href="#workbench">工作台</a>
+        <a href="#conversation">对话分析</a>
         <a href="#datasource">数据源</a>
         <a href="#dataset">数据集</a>
         <a href="#dashboard">仪表盘</a>
@@ -328,17 +329,19 @@
           <div class="eyebrow">PRODUCT USER GUIDE · 用户操作手册</div>
           <h1>Open Dashboard</h1>
           <p class="lead">
-            开源仪表盘 / BI 画布。从接入数据源、维护数据集、配置看板，到撰写在线报告——
+            开源仪表盘 / BI 画布。从接入数据、问一句数，到编排看板、撰写在线报告——
             本手册按真实界面截图，给出可照做的操作步骤。
           </p>
           <div class="hero-meta">
-            <span class="pill">适用版本 v0.3 编辑器 + 取数 · v0.4 在线报告</span>
-            <span class="pill">推荐链路：数据源 → 数据集 → 仪表盘 → 报告</span>
-            <span class="pill">更新于 2026-08-05</span>
+            <span class="pill">适用版本 v0.5 · 左侧产品壳 + 工作台问数 + 编辑器 SQLBot</span>
+            <span class="pill">人手链路：数据源 → 数据集 → 仪表盘 → 报告</span>
+            <span class="pill">问数链路：工作台 / 对话 → 结果卡 → 保存到仪表盘</span>
+            <span class="pill">更新于 2026-08-18</span>
           </div>
           <div class="toc-quick" style="margin-top:28px">
             <a href="#quickstart"><strong>5 分钟上手</strong>从零完成一条分析链路</a>
-            <a href="#editor"><strong>画布编辑</strong>组件、编码槽、更新数据</a>
+            <a href="#conversation"><strong>对话问数</strong>先出表/图，再决定是否落看板</a>
+            <a href="#editor"><strong>画布编辑</strong>组件、编码槽、SQLBot</a>
             <a href="#report"><strong>在线报告</strong>引用看板图 / 新建图表</a>
           </div>
         </div>
@@ -349,7 +352,7 @@
         <!-- 1. 简介 -->
         <section class="chapter" id="intro">
           <h2>1. 产品简介</h2>
-          <p class="kicker">Open Dashboard 面向分析师与业务同学，把「连库 → 建模 → 出图 → 成文」串成一条清晰工作流。</p>
+          <p class="kicker">Open Dashboard 面向分析师与业务同学，把「连库 → 建模 → 问数 / 出图 → 成文」串成一条清晰工作流。</p>
 
           <div class="flow">
             <div class="card">
@@ -360,15 +363,20 @@
             <div class="card">
               <div class="n">02 数据集</div>
               <h4>定义语义字段</h4>
-              <p>选表，划分维度 / 指标，预览取数，供图表绑定。</p>
+              <p>选表，划分维度 / 指标，预览取数，供图表与问数绑定。</p>
             </div>
             <div class="card">
-              <div class="n">03 仪表盘</div>
+              <div class="n">03 问数</div>
+              <h4>先问一句数</h4>
+              <p>工作台或对话里用自然语言出表/图；满意后再保存到看板。</p>
+            </div>
+            <div class="card">
+              <div class="n">04 仪表盘</div>
               <h4>网格画布编排</h4>
-              <p>拖入图表与筛选控件，编码后发布、分享。</p>
+              <p>拖入图表与筛选控件，编码后发布、分享；编辑器可开 SQLBot。</p>
             </div>
             <div class="card">
-              <div class="n">04 报告</div>
+              <div class="n">05 报告</div>
               <h4>图文混排成文</h4>
               <p>Umo 排版，引用看板图或报告内新建图，实时取数。</p>
             </div>
@@ -388,29 +396,33 @@
         <!-- 2. 快速开始 -->
         <section class="chapter" id="quickstart">
           <h2>2. 快速开始（推荐路径）</h2>
-          <p class="kicker">第一次使用时，按下列顺序操作即可跑通全链路。工作台首页也提供了同样的「推荐链路」一键跳转。</p>
+          <p class="kicker">第一次使用时，先接数建模，再问数或画看板。工作台首页也提供问数框和常用入口。</p>
 
           <figure class="shot">
             <img src="screenshots/01-workbench.png" alt="工作台概览" loading="lazy" />
-            <figcaption><em>图 2-1</em> · 工作台：资产统计、推荐链路、最近仪表盘与数据源健康</figcaption>
+            <figcaption><em>图 2-1</em> · 工作台：左侧模块栏、问数框、常用入口、今日概览、最近看板与最近报告</figcaption>
           </figure>
 
           <ol class="steps">
             <li>
               <strong>接入数据源</strong>
-              <span>顶栏进入「数据源」→「新建连接」→ 填写主机/端口/库名/账号 → 测试连通 → 保存。</span>
+              <span>左侧「数据源」→「新建连接」→ 填写主机/端口/库名/账号 → 测试连通 → 保存。</span>
             </li>
             <li>
               <strong>创建数据集</strong>
               <span>在数据源详情里选一张表，点「创建数据集」；或在「数据集」页新建。配置维度与指标后保存。</span>
             </li>
             <li>
+              <strong>问一句数（可选）</strong>
+              <span>工作台输入问题点「问数」，或打开左侧「对话」。先勾选数据集，默认「问数」出表/图；要整页看板再切「生成看板」。</span>
+            </li>
+            <li>
               <strong>配置仪表盘</strong>
-              <span>「仪表盘」→「新建仪表盘」选模板或空白 → 拖入图表 → 选数据集并拖字段到编码槽 →「更新数据」。</span>
+              <span>「仪表盘」→「新建仪表盘」选模板或空白 → 拖入图表 → 选数据集并拖字段到编码槽。也可把问数结果「保存到仪表盘」。</span>
             </li>
             <li>
               <strong>发布与分享</strong>
-              <span>顶栏「发布」固化观看副本；「分享」生成公开链接，无需登录即可只读查看。</span>
+              <span>编辑器「发布」固化观看副本；「分享」生成公开链接，无需登录即可只读查看。</span>
             </li>
             <li>
               <strong>（可选）撰写报告</strong>
@@ -458,6 +470,18 @@
                 <td>公开只读链接 <code>/share/:token</code>，无需登录，仅展示已发布内容。</td>
               </tr>
               <tr>
+                <td><strong>对话 / 问数</strong></td>
+                <td>用自然语言查询已选数据集，结果只在会话里预览。点「保存到仪表盘」才写入看板草稿。侧栏标「内测」。</td>
+              </tr>
+              <tr>
+                <td><strong>生成看板</strong></td>
+                <td>对话里切换此意图后，会按当前数据集生成整页仪表盘草稿（含查询条），而不是单题结果卡。</td>
+              </tr>
+              <tr>
+                <td><strong>SQLBot</strong></td>
+                <td>仅出现在<strong>仪表盘编辑器</strong>顶栏。右下角浮层问数，默认不改画布；「保存到仪表盘」才写入当前看板。</td>
+              </tr>
+              <tr>
                 <td><strong>在线报告</strong></td>
                 <td>图文混排文档。可引用看板中的图，或在报告内单独建图；文档不存查询结果行，打开时实时取数。</td>
               </tr>
@@ -475,18 +499,21 @@
         <!-- 4. 导航 -->
         <section class="chapter" id="nav">
           <h2>4. 界面与导航</h2>
-          <p class="kicker">全局顶栏固定五个模块入口，右侧显示当前用户（演示环境为「演示用户」）。</p>
+          <p class="kicker">左侧是一级模块栏，顶栏放帮助、外观和账号。编辑仪表盘时左侧自动收成图标轨。</p>
 
           <table>
             <thead>
-              <tr><th>菜单</th><th>路径</th><th>做什么</th></tr>
+              <tr><th>区域</th><th>入口</th><th>做什么</th></tr>
             </thead>
             <tbody>
-              <tr><td>工作台</td><td><code>/workbench</code></td><td>资产概览、推荐链路、最近看板</td></tr>
-              <tr><td>数据源</td><td><code>/datasources</code></td><td>连接管理、库表浏览、跳转建数据集</td></tr>
-              <tr><td>数据集</td><td><code>/datasets</code></td><td>字段语义、预览、血缘</td></tr>
-              <tr><td>仪表盘</td><td><code>/dashboards</code></td><td>列表、编辑、预览、发布分享</td></tr>
-              <tr><td>报告</td><td><code>/reports</code></td><td>报告列表、Umo 编辑与预览</td></tr>
+              <tr><td>开始 · 工作台</td><td><code>/workbench</code></td><td>问数框、常用入口、今日概览、最近看板 / 报告</td></tr>
+              <tr><td>开始 · 对话</td><td><code>/conversations</code></td><td>问数或生成看板（侧栏带「内测」标记）</td></tr>
+              <tr><td>资源 · 数据源</td><td><code>/datasources</code></td><td>连接管理、库表浏览、跳转建数据集</td></tr>
+              <tr><td>资源 · 数据集</td><td><code>/datasets</code></td><td>字段语义、预览、血缘</td></tr>
+              <tr><td>资源 · 仪表盘</td><td><code>/dashboards</code></td><td>列表、编辑、预览、发布分享</td></tr>
+              <tr><td>资源 · 报告</td><td><code>/reports</code></td><td>报告列表、Umo 编辑与预览</td></tr>
+              <tr><td>顶栏</td><td>帮助 / 外观 / 账号</td><td>本手册、浅色 · 深色侧栏 · 深色、演示用户</td></tr>
+              <tr><td>编辑器顶栏</td><td>SQLBot</td><td>仅编辑看板时出现，打开右下角问数浮层</td></tr>
             </tbody>
           </table>
 
@@ -494,39 +521,94 @@
             <div class="icon">!</div>
             <div class="body"><strong>关于登录：</strong>产品本身不提供登录页。身份由请求头注入（如 <code>X-User-Id</code>）。本地 / Docker 开箱环境默认演示用户，权限为全部，可直接使用。</div>
           </div>
+          <div class="callout tip">
+            <div class="icon">i</div>
+            <div class="body">左侧栏可点「收起侧栏」变成图标轨，偏好会记住。进入仪表盘编辑器会<strong>自动细轨</strong>，离开后恢复你的偏好。分享页 <code>/share/:token</code> 没有产品壳。</div>
+          </div>
         </section>
 
         <!-- 5. 工作台 -->
         <section class="chapter" id="workbench">
           <h2>5. 工作台</h2>
-          <p class="kicker">打开产品后的首页，快速了解资产规模并跳转到各模块。</p>
+          <p class="kicker">打开产品后的首页。左侧问数与常用入口，右侧今日概览、待处理和最近活动。</p>
 
           <h3>你能做什么</h3>
           <ul>
-            <li>查看数据源 / 数据集 / 仪表盘 / 在线报告的数量与健康摘要</li>
-            <li>点击推荐链路四步，一键进入对应模块</li>
-            <li>从「最近仪表盘」直接进入编辑器</li>
-            <li>查看数据源连通状态</li>
-            <li>「刷新状态」重新拉取统计；「+ 新建仪表盘」快速创建空白看板并进入编辑</li>
+            <li>在问数框输入自然语言问题，回车或点「问数」进入对话并<strong>自动跑本题</strong></li>
+            <li>从「最近问数」芯片回到已有会话；无记录时显示「试试」示例</li>
+            <li>常用入口：对话问数、新建看板、数据源、数据集、仪表盘、报告</li>
+            <li>今日概览：数据源连通、待发布看板、最近同步时间</li>
+            <li>最近看板最多 3 张（窄屏 2 张），点封面进编辑，「全部」进列表；没有看板时会补「创建新看板」</li>
+            <li>最近报告按更新时间，点条目进报告编辑器</li>
           </ul>
 
           <figure class="shot">
             <img src="screenshots/01-workbench.png" alt="工作台" loading="lazy" />
-            <figcaption><em>图 5-1</em> · 工作台全貌</figcaption>
+            <figcaption><em>图 5-1</em> · 工作台全貌（左栏选中「工作台」，内容区为问数 + 三行工作区）</figcaption>
           </figure>
+
+          <div class="callout tip">
+            <div class="icon">✓</div>
+            <div class="body">新用户空状态会引导「连接数据源 → 准备数据集 → 问数或建看板」，右侧同步显示无待办、无问数记录，不会留空白卡。</div>
+          </div>
+        </section>
+
+        <!-- 6. 对话 -->
+        <section class="chapter" id="conversation">
+          <h2>6. 对话分析（内测）</h2>
+          <p class="kicker">用自然语言先看数，再决定要不要做成看板。侧栏「对话」带内测标记；能力仍在迭代，操作以当前界面为准。</p>
+
+          <figure class="shot">
+            <img src="screenshots/19-conversation.png" alt="对话分析落地页" loading="lazy" />
+            <figcaption><em>图 6-1</em> · 对话落地页：先选数据集，再选「问数」或「生成看板」，下方是最近对话</figcaption>
+          </figure>
+
+          <h3>6.1 问数</h3>
+          <ol class="steps">
+            <li>
+              <strong>勾选数据集</strong>
+              <span>未选表时不能发送。可多选；问数只在你勾选的表范围内取数。</span>
+            </li>
+            <li>
+              <strong>保持「问数」意图</strong>
+              <span>输入框上方默认是问数。结果只出现在会话里（表 / 图 / 结论），<strong>不会自动改仪表盘</strong>。</span>
+            </li>
+            <li>
+              <strong>发送问题</strong>
+              <span>例如「近一年各商户收入」。可点示例 Chip，或「换一个问数问题」按当前表字段给出可点问法。</span>
+            </li>
+            <li>
+              <strong>看结果再保存</strong>
+              <span>结果卡提供「保存到仪表盘」：把本题图写入看板草稿。还想要整页，用追问 Chip「生成经营分析看板」或切到「生成看板」意图。</span>
+            </li>
+          </ol>
+
+          <h3>6.2 生成看板</h3>
+          <p>切换意图为「生成看板」后发送，会按当前数据集生成整页 draft（含查询条）。生成过程中可确认 Plan；查询条里的筛选会进入图表查询条件。</p>
+
+          <h3>6.3 会话管理</h3>
+          <ul>
+            <li>顶条：新对话、历史（即落地页「最近对话」）、探索示例</li>
+            <li>从工作台问数框进来会自动打开会话并跑你刚提的问题</li>
+          </ul>
+
+          <div class="callout warn">
+            <div class="icon">!</div>
+            <div class="body"><strong>和 SQLBot 的区别：</strong>对话是独立模块，适合从零问数或生成整页；SQLBot 只在编辑某一张看板时打开，默认改的是当前看板上下文，且默认不写画布。</div>
+          </div>
         </section>
 
         <!-- 6. 数据源 -->
         <section class="chapter" id="datasource">
-          <h2>6. 数据源</h2>
-          <p class="kicker">管理到业务库的连接。完成测通后，即可从某张表创建下游数据集。</p>
+          <h2>7. 数据源</h2>
+          <p class="kicker">管理到业务库的连接。完成测通后，即可从某张表创建下游数据集。开箱环境可能已有「演示数据（模版）」和本地 JDBC 连接。</p>
 
           <figure class="shot">
             <img src="screenshots/02-datasources.png" alt="数据源管理" loading="lazy" />
-            <figcaption><em>图 6-1</em> · 「手册演示库」：MySQL · <code>od_manual_demo</code> · 用户 root；中间可浏览 <code>fact_sales</code> / <code>ops_daily</code> / <code>fact_finance</code></figcaption>
+            <figcaption><em>图 7-1</em> · 「本地mysql库」等连接：左侧列表、中间库表、右侧详情；顶栏为「数据源」</figcaption>
           </figure>
 
-          <h3>6.1 新建连接</h3>
+          <h3>7.1 新建连接</h3>
           <ol class="steps">
             <li>
               <strong>打开新建面板</strong>
@@ -548,10 +630,10 @@
 
           <figure class="shot">
             <img src="screenshots/12-datasource-create.png" alt="新建数据源" loading="lazy" />
-            <figcaption><em>图 6-2</em> · 新建连接表单（填写连接信息后先测通再保存）</figcaption>
+            <figcaption><em>图 7-2</em> · 新建连接表单（填写连接信息后先测通再保存）</figcaption>
           </figure>
 
-          <h3>6.2 浏览库表并创建数据集</h3>
+          <h3>7.2 浏览库表并创建数据集</h3>
           <ol class="steps">
             <li><strong>选中连接</strong><span>左侧点选一条数据源，中间展示库表清单（可用「筛选表名」缩小范围）。</span></li>
             <li><strong>测试 / 编辑 / 删除</strong><span>右上角可「测试连接」「编辑」或「删除」。</span></li>
@@ -566,15 +648,15 @@
 
         <!-- 7. 数据集 -->
         <section class="chapter" id="dataset">
-          <h2>7. 数据集</h2>
+          <h2>8. 数据集</h2>
           <p class="kicker">数据集是图表的「语义表」。没有配置好的维度 / 指标，编辑器里的图无法出数。</p>
 
           <figure class="shot">
             <img src="screenshots/03-datasets.png" alt="数据集管理" loading="lazy" />
-            <figcaption><em>图 7-1</em> · 数据集列表与字段页签（维度蓝 / 指标绿）</figcaption>
+            <figcaption><em>图 8-1</em> · 数据集列表与字段页签（维度蓝 / 指标绿）</figcaption>
           </figure>
 
-          <h3>7.1 查看数据集</h3>
+          <h3>8.1 查看数据集</h3>
           <ul>
             <li>左侧按文件夹标签筛选（如财务库存、运营增长、销售分析），或搜索名称</li>
             <li>选中后右侧三个页签：
@@ -587,10 +669,10 @@
 
           <figure class="shot">
             <img src="screenshots/10-dataset-preview.png" alt="数据集预览" loading="lazy" />
-            <figcaption><em>图 7-2</em> · 预览页签：确认字段与样本数据无误后再去绑图</figcaption>
+            <figcaption><em>图 8-2</em> · 预览页签：确认字段与样本数据无误后再去绑图</figcaption>
           </figure>
 
-          <h3>7.2 新建 / 编辑数据集（工作室）</h3>
+          <h3>8.2 新建 / 编辑数据集（工作室）</h3>
           <ol class="steps">
             <li>
               <strong>选定物理表</strong>
@@ -618,15 +700,15 @@
 
         <!-- 8. 仪表盘列表 -->
         <section class="chapter" id="dashboard">
-          <h2>8. 仪表盘列表</h2>
+          <h2>9. 仪表盘列表</h2>
           <p class="kicker">管理所有看板：新建（模板）、预览、编辑、删除，并查看发布状态与图表摘要。</p>
 
           <figure class="shot">
             <img src="screenshots/04-dashboards.png" alt="仪表盘列表" loading="lazy" />
-            <figcaption><em>图 8-1</em> · 仪表盘列表与摘要（状态、图表数、布局组件数）</figcaption>
+            <figcaption><em>图 9-1</em> · 仪表盘列表与摘要（状态、图表数、布局组件数）</figcaption>
           </figure>
 
-          <h3>8.1 新建仪表盘</h3>
+          <h3>9.1 新建仪表盘</h3>
           <ol class="steps">
             <li><strong>点「新建仪表盘」</strong><span>打开模板选择弹窗。</span></li>
             <li>
@@ -638,10 +720,10 @@
 
           <figure class="shot">
             <img src="screenshots/11-dashboard-create.png" alt="新建仪表盘模板" loading="lazy" />
-            <figcaption><em>图 8-2</em> · 新建仪表盘：选业务模板或从空白画布开始</figcaption>
+            <figcaption><em>图 9-2</em> · 新建仪表盘：选业务模板或从空白画布开始</figcaption>
           </figure>
 
-          <h3>8.2 列表常用操作</h3>
+          <h3>9.2 列表常用操作</h3>
           <div class="grid-2">
             <div class="mini">
               <h4>预览</h4>
@@ -664,23 +746,27 @@
 
         <!-- 9. 编辑器 -->
         <section class="chapter" id="editor">
-          <h2>9. 仪表盘编辑器</h2>
-          <p class="kicker">核心工作区。三栏布局：左组件库 · 中网格画布 · 右配置面板。首次进入会有新手指引。</p>
+          <h2>10. 仪表盘编辑器</h2>
+          <p class="kicker">核心工作区。左侧产品栏收成图标轨；画布仍是三栏：组件库 · 网格 · 配置。首次进入会有新手指引。</p>
 
           <figure class="shot">
             <img src="screenshots/06-dashboard-edit.png" alt="仪表盘编辑器" loading="lazy" />
-            <figcaption><em>图 9-1</em> · 编辑器：组件库 / 画布 / 数据·样式·高级配置；顶栏含 PC·移动、预览、分享、导出、发布</figcaption>
+            <figcaption><em>图 10-1</em> · 编辑器：细轨 + 画布工具条（PC / 移动布局、撤销、预览、分享、发布）；右侧数据配置</figcaption>
           </figure>
 
-          <h3>9.1 界面分区</h3>
+          <h3>10.1 界面分区</h3>
           <table>
             <thead>
               <tr><th style="width:18%">区域</th><th>作用</th></tr>
             </thead>
             <tbody>
               <tr>
-                <td><strong>顶栏</strong></td>
-                <td>返回、标题、草稿状态、PC / 移动端切换、收起配置、撤销、预览、分享、导出 CSV、发布。</td>
+                <td><strong>产品顶栏</strong></td>
+                <td>SQLBot、帮助、外观、账号。没有 Phase A/B/C 这类原型开关。</td>
+              </tr>
+              <tr>
+                <td><strong>画布顶栏</strong></td>
+                <td>返回、标题、草稿状态、PC / 移动布局、撤销、预览、分享、发布。</td>
               </tr>
               <tr>
                 <td><strong>左侧</strong></td>
@@ -697,7 +783,7 @@
             </tbody>
           </table>
 
-          <h3>9.2 添加并配置一张图</h3>
+          <h3>10.2 添加并配置一张图</h3>
           <ol class="steps">
             <li>
               <strong>从组件库加入图表</strong>
@@ -721,7 +807,7 @@
             </li>
           </ol>
 
-          <h3>9.3 常用组件类型</h3>
+          <h3>10.3 常用组件类型</h3>
           <table>
             <thead>
               <tr><th>类别</th><th>组件</th><th>用途</th></tr>
@@ -735,10 +821,22 @@
             </tbody>
           </table>
 
-          <h3>9.4 筛选与联动</h3>
+          <h3>10.4 筛选与联动</h3>
           <ul>
             <li>需要筛选时，拖入<strong>查询控件</strong>或<strong>切片器</strong>，在右侧配置关联字段。</li>
             <li>图间联动：在「高级」中配置联动关系（字段映射），保存后预览页点击源图可驱动目标图刷新。</li>
+          </ul>
+
+          <h3>10.5 SQLBot（编辑器问数）</h3>
+          <p>只在编辑仪表盘时，产品顶栏会出现 SQLBot。点开后是右下角浮层（约 400×520，不会铺满整屏）。</p>
+          <figure class="shot">
+            <img src="screenshots/20-sqlbot.png" alt="编辑器 SQLBot 浮层" loading="lazy" />
+            <figcaption><em>图 10-2</em> · SQLBot：选当前数据集后提问；默认不改画布，可「保存到仪表盘」写入当前看板</figcaption>
+          </figure>
+          <ul>
+            <li>下拉选择「当前数据集」，再输入问题或点「换一个问数问题」</li>
+            <li>默认 <strong>不自动改画布</strong>；要把本题图写进当前看板，用结果上的「保存到仪表盘」</li>
+            <li>「拾取」可带上画布里当前选中的图表字段；「上传」用于把文件表拉进可查询范围（以界面提示为准）</li>
           </ul>
 
           <div class="callout tip">
@@ -749,25 +847,25 @@
 
         <!-- 10. 发布分享 -->
         <section class="chapter" id="publish-share">
-          <h2>10. 预览、发布与分享</h2>
+          <h2>11. 预览、发布与分享</h2>
 
-          <h3>10.1 预览</h3>
+          <h3>11.1 预览</h3>
           <p>编辑器顶栏点「预览」，或从列表进入预览页。预览为只读：筛选、联动、取数走真实查询；可导出图表 CSV。</p>
 
           <figure class="shot">
             <img src="screenshots/07-dashboard-preview.png" alt="销售分析看板预览" loading="lazy" />
-            <figcaption><em>图 10-1</em> · 销售分析看板预览：KPI + 区域/产品/渠道多图（数据来自 <code>od_manual_demo.fact_sales</code>）</figcaption>
+            <figcaption><em>图 11-1</em> · 销售分析看板预览：KPI + 区域/产品/渠道多图（数据来自 <code>od_manual_demo.fact_sales</code>）</figcaption>
           </figure>
 
           <h3>场景效果示例</h3>
           <p>同一套链路可快速搭出不同业务看板。以下为手册演示库中的运营与财务场景预览：</p>
           <figure class="shot">
             <img src="screenshots/17-dashboard-ops.png" alt="运营增长看板" loading="lazy" />
-            <figcaption><em>图 10-1b</em> · 运营增长看板：UV / PV / 停留 / 跳出率与来源结构（<code>ops_daily</code>）</figcaption>
+            <figcaption><em>图 11-1b</em> · 运营增长看板：UV / PV / 停留 / 跳出率与来源结构（<code>ops_daily</code>）</figcaption>
           </figure>
           <figure class="shot">
             <img src="screenshots/18-dashboard-finance.png" alt="财务概览看板" loading="lazy" />
-            <figcaption><em>图 10-1c</em> · 财务概览看板：收支利润与科目结构（<code>fact_finance</code>）</figcaption>
+            <figcaption><em>图 11-1c</em> · 财务概览看板：收支利润与科目结构（<code>fact_finance</code>）</figcaption>
           </figure>
 
           <div class="callout tip">
@@ -775,14 +873,14 @@
             <div class="body">若尚未发布就进入预览，页面会提示「草稿没有已发布版本可预览」，并提供「发布并预览」按钮——点一次即可完成发布并进入观看态。</div>
           </div>
 
-          <h3>10.2 发布</h3>
+          <h3>11.2 发布</h3>
           <ol class="steps">
             <li><strong>在编辑器点「发布」</strong><span>确认名称 / 文件夹 / 描述（若弹窗要求）。</span></li>
             <li><strong>确认发布</strong><span>草稿内容写入已发布副本；预览与分享将优先看到该版本。</span></li>
             <li><strong>继续修改</strong><span>发布后若再改画布，状态变为「有未发布改动」，需再次发布才会更新对外视图。</span></li>
           </ol>
 
-          <h3>10.3 分享</h3>
+          <h3>11.3 分享</h3>
           <ol class="steps">
             <li><strong>先发布</strong><span>分享面向已发布内容；未发布时请先完成发布。</span></li>
             <li><strong>点「分享」</strong><span>生成公开链接（形如 <code>/share/&lt;token&gt;</code>）。</span></li>
@@ -791,7 +889,7 @@
 
           <figure class="shot">
             <img src="screenshots/16-share-view.png" alt="公开分享页" loading="lazy" />
-            <figcaption><em>图 10-2</em> · 公开分享页：无产品顶栏，凭 token 只读访问已发布看板</figcaption>
+            <figcaption><em>图 11-2</em> · 公开分享页：无产品顶栏，凭 token 只读访问已发布看板</figcaption>
           </figure>
 
           <div class="callout note">
@@ -802,7 +900,7 @@
 
         <!-- 11. 移动端 -->
         <section class="chapter" id="mobile">
-          <h2>11. 移动端布局</h2>
+          <h2>12. 移动端布局</h2>
           <p class="kicker">PC 与移动端使用<strong>独立布局</strong>（移动端为 6 列网格）。样式可选择同步或分设。</p>
 
           <ol class="steps">
@@ -828,25 +926,25 @@
 
         <!-- 12. 报告 -->
         <section class="chapter" id="report">
-          <h2>12. 在线报告</h2>
+          <h2>13. 在线报告</h2>
           <p class="kicker">基于 Umo 的图文混排编辑器。适合周报、汇报材料：文字叙述 + 实时图表。</p>
 
           <figure class="shot">
             <img src="screenshots/05-reports.png" alt="报告列表" loading="lazy" />
-            <figcaption><em>图 12-1</em> · 报告列表：新建、搜索、查看图表引用摘要</figcaption>
+            <figcaption><em>图 13-1</em> · 报告列表：新建、搜索、查看图表引用摘要</figcaption>
           </figure>
 
-          <h3>12.1 列表操作</h3>
+          <h3>13.1 列表操作</h3>
           <ul>
             <li>「新建报告」创建草稿并进入编辑</li>
             <li>左侧搜索 / 按文件夹筛选；选中查看摘要（图表总数、引用看板数、报告内新建数）</li>
             <li>双击或点「编辑」进入编辑器；可进入「预览」</li>
           </ul>
 
-          <h3>12.2 编辑报告</h3>
+          <h3>13.2 编辑报告</h3>
           <figure class="shot">
             <img src="screenshots/08-report-edit.png" alt="报告编辑器" loading="lazy" />
-            <figcaption><em>图 12-2</em> · 报告编辑器：宿主栏（保存 / 预览 / 发布）+ Umo 排版工具栏 + 正文画布</figcaption>
+            <figcaption><em>图 13-2</em> · 报告编辑器：宿主栏（保存 / 预览 / 发布）+ Umo 排版工具栏 + 正文画布</figcaption>
           </figure>
 
           <ol class="steps">
@@ -886,16 +984,16 @@
             <div class="body">报告<strong>不落库查询结果行</strong>，只存配置与正文。每次打开预览 / 编辑时图表都会重新查询，保证数据新鲜。</div>
           </div>
 
-          <h3>12.3 预览报告</h3>
+          <h3>13.3 预览报告</h3>
           <figure class="shot">
             <img src="screenshots/09-report-preview.png" alt="报告预览" loading="lazy" />
-            <figcaption><em>图 12-3</em> · 报告预览：只读文档 + 实时图表；可切换大纲与缩放</figcaption>
+            <figcaption><em>图 13-3</em> · 报告预览：只读文档 + 实时图表；可切换大纲与缩放</figcaption>
           </figure>
         </section>
 
         <!-- 13. 清单 -->
         <section class="chapter" id="checklist">
-          <h2>13. 日常操作清单</h2>
+          <h2>14. 日常操作清单</h2>
           <p class="kicker">把常见任务收成一张速查表。</p>
 
           <table>
@@ -905,6 +1003,9 @@
             <tbody>
               <tr><td>接上公司数据库</td><td>数据源 → 新建连接 → 测通 → 保存</td></tr>
               <tr><td>把某张表变成可分析模型</td><td>数据源表行「创建数据集」→ 配维度/指标 → 保存</td></tr>
+              <tr><td>用一句话问数</td><td>工作台问数框回车，或左侧「对话」→ 勾选数据集 → 问数</td></tr>
+              <tr><td>把问数结果做成图</td><td>结果卡「保存到仪表盘」；整页用「生成看板」意图</td></tr>
+              <tr><td>在编辑看板时问数</td><td>编辑器顶栏 SQLBot → 选当前数据集 → 提问；保存到仪表盘才会改画布</td></tr>
               <tr><td>从零做一张看板</td><td>仪表盘 → 新建（空白或模板）→ 拖组件 → 绑数据集 → 更新数据</td></tr>
               <tr><td>给领导只读链接</td><td>编辑器发布 → 分享 → 复制链接</td></tr>
               <tr><td>导出当前图数据</td><td>编辑器或预览中使用「导出 CSV」</td></tr>
@@ -917,7 +1018,7 @@
 
         <!-- 14. FAQ -->
         <section class="chapter" id="faq">
-          <h2>14. 常见问题</h2>
+          <h2>15. 常见问题</h2>
 
           <h4>Q：图表一直提示「缺少配置」？</h4>
           <p>请检查：① 是否已选择数据集；② 数据集是否至少配置了可用字段；③ 编码槽是否已放入必要的维度 / 指标；④ 改完后是否点了「更新数据」。</p>
@@ -936,6 +1037,15 @@
 
           <h4>Q：模板看板和空白看板有什么区别？</h4>
           <p>销售 / 运营 / 财务模板会预置一批组件与联动示意，便于快速改数；空白看板从空画布开始，自由度最高。</p>
+
+          <h4>Q：对话和 SQLBot 有什么区别？</h4>
+          <p>对话是一级模块（侧栏「内测」），适合从零问数或生成整页看板。SQLBot 只在编辑某一张看板时出现，浮层在右下角，默认不改画布。</p>
+
+          <h4>Q：为什么找不到 Phase A / B / C？</h4>
+          <p>那是原型分阶段开关，产品编辑器已去掉。移动端请用画布顶栏的「PC布局 / 移动布局」。</p>
+
+          <h4>Q：问数按钮是灰的、发不出去？</h4>
+          <p>先勾选至少一个数据集。没有可用表时，请先在「数据源」建连接并「创建数据集」。</p>
         </section>
 
       </div>

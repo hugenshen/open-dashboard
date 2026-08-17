@@ -1,0 +1,6 @@
+# Skip in-image Maven: host must already have open-dashboard-start/target/*.jar
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import ModuleTopbar from '../../shell/ModuleTopbar.vue'
 import { datasourceApi, datasetApi, type DatasourceVO, type TableItem } from '../api'
 
 const route = useRoute()
@@ -424,8 +423,6 @@ watch(
 
 <template>
   <div class="page">
-    <ModuleTopbar module="datasources" />
-
     <div v-if="toast" class="toast" role="status">{{ toast }}</div>
     <p v-if="error && !showEditor" class="banner-err">{{ error }}</p>
 
@@ -462,7 +459,7 @@ watch(
             :class="{ on: selected?.id === s.id }"
             @click="selectSrc(s.id)"
           >
-            <span class="mark" :style="{ background: (typeMeta[s.type]?.color || '#3480f9') + '18', color: typeMeta[s.type]?.color || '#3480f9' }">
+            <span class="mark" :style="{ background: (typeMeta[s.type]?.color || '#4f46e5') + '18', color: typeMeta[s.type]?.color || '#4f46e5' }">
               {{ typeShort(s.type) }}
             </span>
             <span class="src-body">
@@ -692,12 +689,12 @@ watch(
 
 <style scoped>
 .page {
-  --primary: #3480f9;
-  --ink: #1a2332;
-  --muted: #86909c;
-  --line: rgba(0, 0, 0, 0.08);
-  --bg: #f0f2f5;
-  height: 100vh;
+  --primary: var(--od-brand, #4f46e5);
+  --ink: var(--od-ink, #111827);
+  --muted: var(--od-muted, #4b5563);
+  --line: var(--od-line, #dfe3ea);
+  --bg: var(--od-bg, #f6f7fb);
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -819,7 +816,7 @@ watch(
   cursor: pointer;
 }
 .filter.on {
-  background: #e8f0ff;
+  background: var(--od-brand-soft, #eef2ff);
   color: var(--primary);
   font-weight: 600;
 }
@@ -842,10 +839,10 @@ watch(
   cursor: pointer;
 }
 .src:hover {
-  background: #f5f7fa;
+  background: var(--od-bg, #f6f7fb);
 }
 .src.on {
-  background: #eef4ff;
+  background: var(--od-brand-soft, #eef2ff);
 }
 .mark {
   width: 36px;
@@ -921,8 +918,8 @@ watch(
   font-weight: 600;
   padding: 0.12rem 0.45rem;
   border-radius: 999px;
-  background: #f0f0f0;
-  color: #5c6b7a;
+  background: var(--od-bg, #f6f7fb);
+  color: var(--muted);
 }
 .pill.ok {
   background: #f6ffed;
@@ -1070,7 +1067,7 @@ watch(
   cursor: pointer;
 }
 .ds-link:hover {
-  background: #eef4ff;
+  background: var(--od-brand-soft, #eef2ff);
 }
 .ds-name {
   font-size: 0.82rem;
@@ -1186,7 +1183,7 @@ watch(
 }
 .engine-btn.on {
   border-color: var(--primary);
-  background: #eef4ff;
+  background: var(--od-brand-soft, #eef2ff);
 }
 .engine-btn:disabled {
   opacity: 0.7;

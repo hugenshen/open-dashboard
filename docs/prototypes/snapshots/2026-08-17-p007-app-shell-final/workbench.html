@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>工作台 · Open Dashboard 高保</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <link rel="stylesheet" href="./shared/shell.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    button, input { font: inherit; }
+    .wb-home { max-width: none; }
+    .wb-layout {
+      display: grid;
+      grid-template-columns: minmax(680px, 1.65fr) minmax(320px, .72fr);
+      grid-template-areas:
+        "hero overview"
+        "common todo"
+        "recent asks";
+      column-gap: 24px;
+      row-gap: 22px;
+      align-items: start;
+    }
+    .wb-main, .wb-aside { display: contents; }
+    .wb-hero {
+      grid-area: hero; max-width: none; margin: 0; padding: 24px 28px 22px;
+      border: 1px solid #dfe4f2; border-radius: 20px;
+      background:
+        radial-gradient(circle at 92% 0, rgba(99, 102, 241, .14), transparent 34%),
+        linear-gradient(135deg, #fff 0%, #f8f9ff 100%);
+      box-shadow: var(--od-shadow);
+    }
+    .wb-greet { margin-bottom: 16px; }
+    .wb-greet .hello {
+      font-size: clamp(26px, 2.2vw, 34px); font-weight: 720; letter-spacing: -.035em; line-height: 1.2;
+    }
+    .wb-greet .sub {
+      margin-top: 10px; font-size: 15px; color: var(--od-muted); line-height: 1.6;
+    }
+    .wb-stats {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;
+      font-size: 13px; color: var(--od-muted); letter-spacing: -.01em;
+    }
+    .wb-stat {
+      display: inline-flex; align-items: center; gap: 5px; min-height: 28px;
+      padding: 3px 10px; border: 1px solid #e1e5f2; border-radius: 999px;
+      background: rgba(255, 255, 255, .76);
+    }
+    .wb-stats b { color: #3730a3; font-weight: 700; }
+    .wb-search {
+      display: flex; align-items: center; height: 54px; padding: 5px 5px 5px 16px;
+      background: var(--od-card); border-radius: 13px; border: 1px solid #cfd5e2;
+      box-shadow: 0 2px 8px rgba(17, 24, 39, .05);
+      transition: border-color .16s ease, box-shadow .16s ease;
+    }
+    .wb-search:focus-within {
+      border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99, 102, 241, .14), 0 4px 14px rgba(17, 24, 39, .07);
+    }
+    .wb-search .ico { width: 18px; color: var(--od-faint); display: grid; place-items: center; }
+    .wb-search .ico svg { width: 16px; height: 16px; }
+    .wb-search input {
+      flex: 1; border: 0; outline: 0; background: transparent;
+      font-size: 15px; margin: 0 12px; min-width: 0; color: var(--od-ink);
+    }
+    .wb-search input::placeholder { color: #a1a1aa; }
+    .wb-search .go {
+      height: 42px; min-width: 76px; padding: 0 18px; border: 0; border-radius: 10px;
+      background: var(--od-brand); color: #fff; font-size: 14px; font-weight: 650; cursor: pointer;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, .22);
+      transition: background .16s ease, transform .16s ease;
+    }
+    .wb-search .go:hover { background: var(--od-brand-hover); transform: translateY(-1px); }
+    .wb-examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .wb-examples span { font-size: 13px; color: var(--od-faint); align-self: center; margin-right: 2px; }
+    .wb-examples button {
+      min-height: 30px; border: 1px solid #e1e5eb; border-radius: 8px;
+      background: rgba(255, 255, 255, .72); color: var(--od-muted);
+      font-size: 13px; padding: 4px 9px; cursor: pointer;
+    }
+    .wb-examples button:hover { color: #3730a3; border-color: #a5b4fc; background: #fff; }
+    .wb-block { margin: 0; }
+    .wb-common { grid-area: common; }
+    #wbRecentSection { grid-area: recent; }
+    #wbOverviewPanel { grid-area: overview; align-self: stretch; }
+    #wbTodoPanel { grid-area: todo; align-self: stretch; }
+    #wbRecentAskPanel { grid-area: asks; align-self: stretch; }
+    .wb-block-hd {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .wb-block-hd h3 { font-size: 17px; font-weight: 700; color: var(--od-ink); letter-spacing: -.02em; }
+    .wb-block-hd .link, .wb-panel .phd .link {
+      min-height: 32px; border: 0; border-radius: 8px; background: transparent;
+      color: var(--od-brand); font-size: 14px; font-weight: 600; padding: 5px 8px;
+      cursor: pointer; text-decoration: none;
+    }
+    .wb-block-hd .link:hover, .wb-panel .phd .link:hover { color: var(--od-ink); }
+    .wb-apps { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 12px; }
+    .wb-app {
+      display: flex; align-items: center; gap: 12px;
+      min-width: 0; min-height: 66px; padding: 10px 12px;
+      border: 1px solid var(--od-line); background: var(--od-card); border-radius: 12px;
+      cursor: pointer; color: inherit; text-decoration: none; font: inherit;
+      box-shadow: 0 1px 2px rgba(17, 24, 39, .03);
+      transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+    }
+    .wb-app:hover { border-color: #c7d2fe; box-shadow: var(--od-shadow); transform: translateY(-2px); }
+    .wb-app .icon {
+      width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+      background: #eef2ff; color: #4f46e5; flex-shrink: 0;
+    }
+    .wb-app .icon svg { width: 16px; height: 16px; }
+    .wb-app .icon.c2 { background: #ecfdf5; color: #047857; }
+    .wb-app .icon.c3 { background: #eff6ff; color: #1d4ed8; }
+    .wb-app .icon.c4 { background: #fff7ed; color: #c2410c; }
+    .wb-app .icon.c5 { background: #f5f3ff; color: #7c3aed; }
+    .wb-app .icon.c6 { background: #fdf2f8; color: #be185d; }
+    .wb-app .label { font-size: 14px; color: var(--od-ink); font-weight: 650; }
+    .wb-dash-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .wb-dash:nth-child(n+4) { display: none; }
+    .wb-dash-create {
+      min-height: 189px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 9px; border: 1px dashed #c7cdd8; border-radius: 10px;
+      color: var(--od-muted); text-decoration: none; background: transparent;
+    }
+    .wb-dash-create:hover { border-color: #818cf8; color: var(--od-brand); background: var(--od-brand-soft); }
+    .wb-dash-create i {
+      width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+      background: var(--od-brand-soft); color: var(--od-brand); font-style: normal; font-size: 22px;
+    }
+    .wb-dash-create b { font-size: 14px; }
+    .wb-dash-create span { font-size: 12px; color: var(--od-faint); }
+    .wb-dash {
+      display: flex; flex-direction: column; background: var(--od-card); border-radius: 10px;
+      overflow: hidden; border: 1px solid var(--od-line); padding: 0; text-align: left;
+      font: inherit; color: inherit; cursor: pointer; text-decoration: none;
+      box-shadow: 0 1px 2px rgba(17, 24, 39, .03);
+      transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+    }
+    .wb-dash:hover { border-color: #a5b4fc; box-shadow: var(--od-shadow-hover); transform: translateY(-3px); }
+    .wb-dash .cover { height: 112px; padding: 22px 20px 14px; display: flex; flex-direction: column; background: #eef2ff; }
+    .wb-dash .cover.t0 { background: linear-gradient(145deg, #eef2ff, #e0e7ff); }
+    .wb-dash .cover.t1 { background: linear-gradient(145deg, #ecfdf5, #d1fae5); }
+    .wb-dash .cover.t2 { background: linear-gradient(145deg, #fff7ed, #ffedd5); }
+    .wb-dash .cover.t3 { background: linear-gradient(145deg, #eff6ff, #dbeafe); }
+    .wb-dash .sparkline { flex: 1; display: flex; align-items: flex-end; gap: 4px; min-height: 32px; }
+    .wb-dash .sparkline i {
+      display: block; flex: 1; min-height: 6px; border-radius: 2px;
+      background: rgba(79, 70, 229, .42);
+    }
+    .wb-dash .cover.t1 .sparkline i { background: rgba(4, 120, 87, .42); }
+    .wb-dash .cover.t2 .sparkline i { background: rgba(194, 65, 12, .4); }
+    .wb-dash .cover.t3 .sparkline i { background: rgba(29, 78, 216, .4); }
+    .wb-dash .meta { padding: 14px 16px 16px; }
+    .wb-dash .name { font-size: 15px; font-weight: 680; letter-spacing: -.015em; }
+    .wb-dash .desc {
+      margin-top: 6px; font-size: 13px; color: var(--od-muted);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .wb-dash .dot-st { width: 5px; height: 5px; border-radius: 50%; background: #d4d4d8; }
+    .wb-dash .dot-st.pub { background: var(--od-ok); }
+    .wb-dash .dot-st.dirty { background: var(--od-warn); }
+    .wb-panel {
+      background: var(--od-card); border-radius: 14px; padding: 4px 6px 10px;
+      border: 1px solid var(--od-line); box-shadow: 0 1px 2px rgba(17, 24, 39, .03);
+    }
+    .wb-panel .phd {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 14px 8px;
+    }
+    .wb-panel .phd h4 { font-size: 15px; font-weight: 680; color: var(--od-ink); }
+    .wb-row {
+      display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 12px;
+      border: 0; width: 100%; background: transparent;
+      text-align: left; font: inherit; color: inherit; cursor: pointer; text-decoration: none;
+      border-radius: 8px;
+    }
+    .wb-row:hover { background: #f7f7fb; }
+    .wb-row .av {
+      width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+      font-size: 12px; font-weight: 700; background: #eef2ff; color: #4338ca; flex-shrink: 0;
+    }
+    .wb-row .body { flex: 1; min-width: 0; }
+    .wb-row .t { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wb-row .m { font-size: 12.5px; color: var(--od-faint); margin-top: 3px; }
+    .wb-row .side { flex-shrink: 0; text-align: right; }
+    .wb-row .side .num { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .wb-row .side .delta { font-size: 12px; color: var(--od-ok); margin-top: 3px; }
+    .wb-todo {
+      display: flex; align-items: flex-start; gap: 11px; min-height: 42px; padding: 9px 12px; margin: 0 2px;
+      border-radius: 8px; background: transparent; border: 0; width: calc(100% - 4px); text-align: left;
+      font: inherit; cursor: pointer; text-decoration: none; color: inherit;
+    }
+    .wb-todo:hover { background: #f7f7fb; }
+    .wb-todo .mark { width: 6px; height: 6px; border-radius: 50%; margin-top: 7px; flex-shrink: 0; background: #d4d4d8; }
+    .wb-todo .mark.warn { background: var(--od-warn); }
+    .wb-todo .mark.info { background: var(--od-ink); }
+    .wb-todo .txt { font-size: 14px; color: var(--od-muted); line-height: 1.55; }
+    .wb-todo .txt b { color: var(--od-ink); font-weight: 600; }
+    .wb-kpis {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      padding: 4px 12px 12px;
+    }
+    .wb-kpi {
+      min-width: 0; padding: 14px; border: 1px solid var(--od-line); border-radius: 11px;
+      background: var(--od-bg); color: inherit; text-decoration: none;
+      transition: border-color .16s ease, background .16s ease;
+    }
+    .wb-kpi:hover { border-color: #a5b4fc; background: var(--od-brand-soft); }
+    .wb-kpi span { display: block; font-size: 12.5px; color: var(--od-muted); }
+    .wb-kpi strong {
+      display: block; margin-top: 6px; font-size: 24px; line-height: 1.1;
+      font-weight: 740; letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+    }
+    .wb-kpi small {
+      display: block; margin-top: 7px; font-size: 12px; color: var(--od-faint);
+    }
+    .wb-kpi small.ok { color: var(--od-ok); }
+    .wb-kpi small.warn { color: var(--od-warn); }
+    .wb-health {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin: 0 12px 8px; padding: 12px 2px 4px; border-top: 1px solid var(--od-line);
+      font-size: 12.5px; color: var(--od-faint);
+    }
+    .wb-health span { display: inline-flex; align-items: center; gap: 7px; }
+    .wb-health i {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--od-ok);
+      box-shadow: 0 0 0 3px rgba(4, 120, 87, .12);
+    }
+    .wb-health b { color: var(--od-muted); font-weight: 600; }
+    .wb-briefs {
+      min-height: 38px; display: flex; align-items: center; gap: 8px;
+      margin: 0 12px 8px; padding-top: 9px; border-top: 1px solid var(--od-line);
+      white-space: nowrap; overflow: hidden;
+    }
+    .wb-briefs > span {
+      flex-shrink: 0; padding: 3px 7px; border-radius: 6px;
+      background: var(--od-brand-soft); color: var(--od-brand); font-size: 11px; font-weight: 700;
+    }
+    .wb-briefs a {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis;
+      color: var(--od-muted); text-decoration: none; font-size: 12px;
+    }
+    .wb-briefs a:hover { color: var(--od-brand); }
+    .wb-briefs i { width: 3px; height: 3px; border-radius: 50%; background: var(--od-faint); flex-shrink: 0; }
+    .wb-empty {
+      grid-column: 1 / -1;
+      min-height: 280px; display: grid; grid-template-columns: minmax(280px, .9fr) minmax(360px, 1.1fr);
+      gap: 28px; align-items: center; padding: 32px;
+      border: 1px dashed #c7cdd8; border-radius: 16px;
+      background: linear-gradient(135deg, var(--od-card), var(--od-bg));
+    }
+    .wb-empty-visual {
+      min-height: 190px; display: grid; place-items: center; border-radius: 14px;
+      background:
+        radial-gradient(circle at 50% 35%, rgba(99, 102, 241, .16), transparent 38%),
+        var(--od-brand-soft);
+    }
+    .wb-empty-visual svg { width: 76px; height: 76px; color: var(--od-brand); }
+    .wb-empty-copy h4 { font-size: 20px; font-weight: 720; letter-spacing: -.025em; }
+    .wb-empty-copy > p { margin-top: 9px; color: var(--od-muted); font-size: 14px; line-height: 1.65; }
+    .wb-onboard-steps { display: flex; flex-direction: column; gap: 9px; margin-top: 20px; }
+    .wb-onboard-step { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--od-muted); }
+    .wb-onboard-step i {
+      width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--od-brand-soft); color: var(--od-brand); font-style: normal; font-weight: 700; font-size: 12px;
+    }
+    .wb-empty-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    .wb-empty-actions a {
+      min-height: 40px; padding: 0 15px; border-radius: 9px; display: inline-flex; align-items: center;
+      border: 1px solid var(--od-line); color: var(--od-ink); background: var(--od-card);
+      text-decoration: none; font-size: 14px; font-weight: 650;
+    }
+    .wb-empty-actions a.primary { border-color: var(--od-brand); background: var(--od-brand); color: #fff; }
+    .wb-empty-actions a:hover { border-color: #a5b4fc; }
+    .wb-empty-note { padding: 22px 16px; text-align: center; color: var(--od-faint); font-size: 13px; line-height: 1.6; }
+    .wb-empty-note b { display: block; color: var(--od-muted); font-size: 14px; margin-bottom: 3px; }
+    html[data-od-theme="dark"] .wb-app:hover,
+    html[data-od-theme="dark"] .wb-row:hover,
+    html[data-od-theme="dark"] .wb-todo:hover { background: #27272a; }
+    html[data-od-theme="dark"] .wb-hero {
+      border-color: #343846;
+      background:
+        radial-gradient(circle at 92% 0, rgba(99, 102, 241, .2), transparent 34%),
+        linear-gradient(135deg, #1a1d24 0%, #171922 100%);
+    }
+    html[data-od-theme="dark"] .wb-stat,
+    html[data-od-theme="dark"] .wb-examples button { border-color: #353946; background: rgba(24, 27, 34, .72); }
+    html[data-od-theme="dark"] .wb-stats b,
+    html[data-od-theme="dark"] .wb-examples button:hover { color: #c7d2fe; }
+    html[data-od-theme="dark"] .wb-search { border-color: #3d4250; }
+    html[data-od-theme="dark"] .wb-app .icon,
+    html[data-od-theme="dark"] .wb-dash .cover,
+    html[data-od-theme="dark"] .wb-row .av { background: #27272a; color: #d4d4d8; }
+    html[data-od-theme="dark"] .wb-kpi { background: #161920; }
+    html[data-od-theme="dark"] .wb-kpi:hover { background: rgba(99, 102, 241, .15); }
+    html[data-od-theme="dark"] .wb-empty { border-color: #3d4451; }
+    html[data-od-theme="dark"] .wb-empty-visual { background-color: rgba(99, 102, 241, .12); }
+    html[data-od-theme="dark"] .wb-dash-create { border-color: #3d4451; }
+    html[data-od-theme="dark"] .wb-search .go { background: #fafafa; color: #18181b; }
+    @media (max-width: 1180px) {
+      .wb-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "hero"
+          "overview"
+          "common"
+          "todo"
+          "recent"
+          "asks";
+      }
+    }
+    @media (max-width: 960px) {
+      .wb-apps { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+      .wb-dash-grid { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
+      .wb-dash:nth-child(n+3) { display: none; }
+      .wb-empty { grid-template-columns: 1fr; }
+      .wb-empty-visual { min-height: 140px; }
+      .wb-hero { padding: 24px; }
+      .wb-home { padding: 24px 20px 48px; }
+    }
+    @media (max-width: 560px) {
+      .wb-hero { padding: 20px 16px; border-radius: 16px; }
+      .wb-search { height: auto; min-height: 52px; flex-wrap: wrap; }
+      .wb-search .go { width: 100%; margin-top: 4px; }
+      .wb-apps { grid-template-columns: 1fr; }
+      .wb-dash-grid, .wb-aside, .wb-kpis { grid-template-columns: 1fr; }
+      .wb-empty { padding: 20px; }
+      .wb-overview-panel { grid-column: auto; }
+    }
+  </style>
+</head>
+<body data-mod="workbench">
+<div class="od-app" id="odApp">
+  <aside class="od-rail" id="odRail">
+    <a class="od-brand" href="./workbench.html"><i>OD</i><span>Open Dashboard</span></a>
+    <nav class="od-rail-nav" aria-label="产品模块">
+      <div class="od-rail-label">开始</div>
+      <a class="od-rail-item on" data-mod="workbench" href="./workbench.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span class="od-rail-txt">工作台</span>
+      </a>
+      <a class="od-rail-item" data-mod="conversation" href="./dashboard-commercial.html#/conversation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+        <span class="od-rail-txt">对话</span><span class="od-beta">内测</span>
+      </a>
+      <div class="od-rail-label">资源</div>
+      <a class="od-rail-item" data-mod="datasource" href="./dashboard-commercial.html#/datasource">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+        <span class="od-rail-txt">数据源</span>
+      </a>
+      <a class="od-rail-item" data-mod="dataset" href="./dashboard-commercial.html#/dataset">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18" cy="18" r="2"/></svg>
+        <span class="od-rail-txt">数据集</span>
+      </a>
+      <a class="od-rail-item" data-mod="dashboard" href="./dashboard-commercial.html#/dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        <span class="od-rail-txt">仪表盘</span>
+      </a>
+      <a class="od-rail-item" data-mod="report" href="./dashboard-commercial.html#/report">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>
+        <span class="od-rail-txt">报告</span>
+      </a>
+    </nav>
+    <div class="od-rail-foot">
+      <button class="od-rail-item" type="button" id="odRailSlim" title="收起侧栏">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+        <span class="od-rail-txt">收起侧栏</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="od-col">
+    <header class="od-top">
+      <div class="od-crumb">工作台</div>
+      <div class="od-top-actions">
+        <button class="od-ghost" type="button" data-od-act="sqlbot">SQLBot</button>
+        <button class="od-ghost" type="button" data-od-act="help">帮助</button>
+        <div style="position:relative">
+          <button class="od-account" type="button" id="odAccountBtn">
+            <span class="od-avatar">演</span>
+            演示账号
+          </button>
+          <div class="od-pop" id="odAccountPop">
+            <div class="who"><b>演示账号</b><span>租户 · Open Dashboard 内测</span></div>
+            <button type="button" data-od-act="switch">切换账号</button>
+            <button type="button" data-od-act="settings">通用设置</button>
+            <button type="button" data-od-act="logout">退出登录</button>
+            <div class="hint">高保演示 · 不接真实 IAM</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="od-page" id="mainContent">
+      <div class="wb-stage">
+        <div class="wb-home">
+          <div class="wb-layout">
+            <div class="wb-main">
+              <div class="wb-hero">
+            <div class="wb-greet">
+              <h1 class="hello" id="wbHello">晚上好，继续分析</h1>
+              <div class="sub" id="wbSubtitle">用一句话问数，或从最近看板接着看</div>
+              <div class="wb-stats" id="wbStats" aria-label="工作台摘要">
+                <span class="wb-stat"><b>7</b> 个仪表盘</span>
+                <span class="wb-stat"><b>6</b> 个数据源</span>
+                <span class="wb-stat"><b>3</b> 项待处理</span>
+              </div>
+            </div>
+            <div class="wb-search" role="search">
+              <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+              <input id="wbAskInput" type="search" aria-label="输入想分析的数据问题" placeholder="用自然语言问数，例如：本月华东 GMV 环比多少？" />
+              <button class="go" type="button" id="wbAskGo">问数</button>
+            </div>
+            <div class="wb-examples">
+              <span>试试</span>
+              <button type="button" data-q="本月各区域 GMV 环比？">本月各区域 GMV 环比？</button>
+              <button type="button" data-q="库存周转超过 30 天的 SKU">库存周转超过 30 天的 SKU</button>
+              <button type="button" data-q="今年收入多少">今年收入多少</button>
+            </div>
+              </div>
+
+              <section class="wb-block wb-common">
+            <div class="wb-block-hd"><h3>常用</h3></div>
+            <div class="wb-apps">
+              <a class="wb-app" href="./dashboard-commercial.html#/conversation"><div class="icon c1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div class="label">对话问数</div></a>
+              <a class="wb-app" href="./dashboard-commercial.html#/dashboard"><div class="icon c2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div><div class="label">新建看板</div></a>
+              <a class="wb-app" href="./dashboard-commercial.html#/datasource"><div class="icon c3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/></svg></div><div class="label">数据源</div></a>
+              <a class="wb-app" href="./dashboard-commercial.html#/dataset"><div class="icon c4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><div class="label">数据集</div></a>
+              <a class="wb-app" href="./dashboard-commercial.html#/dashboard"><div class="icon c5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></div><div class="label">仪表盘</div></a>
+              <a class="wb-app" href="./dashboard-commercial.html#/report"><div class="icon c6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/></svg></div><div class="label">在线报告</div></a>
+            </div>
+              </section>
+
+              <section class="wb-block" id="wbRecentSection">
+            <div class="wb-block-hd">
+              <h3>最近打开</h3>
+              <a class="link" href="./dashboard-commercial.html#/dashboard">全部</a>
+            </div>
+            <div class="wb-dash-grid">
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t0"><div class="sparkline"><i style="height:40%"></i><i style="height:70%"></i><i style="height:55%"></i><i style="height:88%"></i><i style="height:62%"></i></div></div>
+                <div class="meta"><div class="name">销售经营看板</div><div class="desc"><span class="dot-st pub"></span><span>经营 · 已发布</span></div></div>
+              </a>
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t1"><div class="sparkline"><i style="height:30%"></i><i style="height:50%"></i><i style="height:80%"></i><i style="height:45%"></i><i style="height:66%"></i></div></div>
+                <div class="meta"><div class="name">业务月报</div><div class="desc"><span class="dot-st dirty"></span><span>财务 · 有未发布改动</span></div></div>
+              </a>
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t2"><div class="sparkline"><i style="height:50%"></i><i style="height:40%"></i><i style="height:60%"></i><i style="height:35%"></i><i style="height:48%"></i></div></div>
+                <div class="meta"><div class="name">活动监控</div><div class="desc"><span class="dot-st"></span><span>运营 · 草稿</span></div></div>
+              </a>
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t3"><div class="sparkline"><i style="height:22%"></i><i style="height:58%"></i><i style="height:44%"></i><i style="height:90%"></i><i style="height:70%"></i></div></div>
+                <div class="meta"><div class="name">库存周报</div><div class="desc"><span class="dot-st pub"></span><span>供应链 · 已发布</span></div></div>
+              </a>
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t0"><div class="sparkline"><i style="height:60%"></i><i style="height:48%"></i><i style="height:72%"></i><i style="height:51%"></i><i style="height:80%"></i></div></div>
+                <div class="meta"><div class="name">区域对比</div><div class="desc"><span class="dot-st pub"></span><span>销售 · 已发布</span></div></div>
+              </a>
+            </div>
+              </section>
+            </div>
+
+            <aside class="wb-aside" aria-label="工作概览与最近活动">
+              <section class="wb-panel wb-overview-panel" id="wbOverviewPanel">
+                <div class="phd">
+                  <h4>今日概览</h4>
+                  <button class="link" type="button" id="wbRefresh">刷新</button>
+                </div>
+                <div class="wb-kpis">
+                  <a class="wb-kpi" href="./dashboard-commercial.html#/datasource">
+                    <span>数据源状态</span>
+                    <strong>6 / 6</strong>
+                    <small class="ok">全部连接正常</small>
+                  </a>
+                  <a class="wb-kpi" href="./dashboard-commercial.html#/dashboard">
+                    <span>待发布看板</span>
+                    <strong>2</strong>
+                    <small class="warn">存在未发布改动</small>
+                  </a>
+                </div>
+                <div class="wb-health">
+                  <span><i aria-hidden="true"></i>数据已同步</span>
+                  <b>今天 21:30</b>
+                </div>
+                <div class="wb-briefs" aria-label="近期业务动态">
+                  <span>近期动态</span>
+                  <a href="./dashboard-commercial.html#/conversation">华东 GMV 环比 +18.4%</a>
+                  <i aria-hidden="true"></i>
+                  <a href="./dashboard-commercial.html#/dashboard">业务月报待发布</a>
+                </div>
+              </section>
+
+              <section class="wb-panel" id="wbTodoPanel">
+              <div class="phd"><h4>待处理</h4></div>
+              <a class="wb-todo" href="./dashboard-commercial.html#/dashboard"><span class="mark warn"></span><span class="txt"><b>2 个看板</b> 有未发布改动</span></a>
+              <a class="wb-todo" href="./dashboard-commercial.html#/datasource"><span class="mark warn"></span><span class="txt"><b>2 个数据源</b> 待处理</span></a>
+              <a class="wb-todo" href="./dashboard-commercial.html#/conversation"><span class="mark info"></span><span class="txt">试问：<b>今年收入多少</b></span></a>
+              </section>
+
+              <section class="wb-panel" id="wbRecentAskPanel">
+              <div class="phd"><h4>最近问数</h4><a class="link" href="./dashboard-commercial.html#/conversation">继续</a></div>
+              <a class="wb-row" href="./dashboard-commercial.html#/conversation">
+                <div class="av">问</div>
+                <div class="body"><div class="t">华东本月 GMV 同比？</div><div class="m">会话结果 · 未写入看板</div></div>
+                <div class="side"><div class="num">¥2,186万</div><div class="delta">+18.4%</div></div>
+              </a>
+              <a class="wb-row" href="./dashboard-commercial.html#/conversation">
+                <div class="av">问</div>
+                <div class="body"><div class="t">今年收入多少</div><div class="m">会话结果 · 未写入看板</div></div>
+                <div class="side"><div class="num">576,800</div><div class="delta">今年累计</div></div>
+              </a>
+              <a class="wb-row" href="./dashboard-commercial.html#/conversation">
+                <div class="av">问</div>
+                <div class="body"><div class="t">本周销售员 TOP5？</div><div class="m">会话结果 · 未写入看板</div></div>
+                <div class="side"><div class="num">张伟</div><div class="delta">GMV ¥86万</div></div>
+              </a>
+              </section>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="./shared/shell.js"></script>
+<script>
+  (function () {
+    const emptyMode = new URLSearchParams(location.search).get('state') === 'empty';
+    const h = new Date().getHours();
+    const hello = h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好';
+    document.getElementById('wbHello').textContent = hello + '，继续分析';
+    if (emptyMode) {
+      document.getElementById('wbHello').textContent = '欢迎使用 Open Dashboard';
+      document.getElementById('wbSubtitle').textContent = '连接业务数据，完成你的第一次分析';
+      document.getElementById('wbStats').innerHTML = `
+        <span class="wb-stat"><b>1</b> 连接数据源</span>
+        <span class="wb-stat"><b>2</b> 准备数据集</span>
+        <span class="wb-stat"><b>3</b> 问数或建看板</span>`;
+      document.getElementById('wbAskInput').placeholder = '连接数据源后，即可用自然语言问数';
+      document.getElementById('wbAskGo').textContent = '开始配置';
+
+      const recent = document.getElementById('wbRecentSection');
+      recent.querySelector('h3').textContent = '开始搭建工作区';
+      recent.querySelector('.link').style.display = 'none';
+      recent.querySelector('.wb-dash-grid').innerHTML = `
+        <div class="wb-empty">
+          <div class="wb-empty-visual" aria-hidden="true">
+            <svg viewBox="0 0 96 96" fill="none" stroke="currentColor" stroke-width="3">
+              <ellipse cx="48" cy="26" rx="25" ry="10"/>
+              <path d="M23 26v20c0 5.5 11.2 10 25 10s25-4.5 25-10V26"/>
+              <path d="M23 46v20c0 5.5 11.2 10 25 10s25-4.5 25-10V46"/>
+              <path d="M73 58h12M79 52v12"/>
+            </svg>
+          </div>
+          <div class="wb-empty-copy">
+            <h4>先连接一个数据源</h4>
+            <p>支持数据库、文件和业务系统。连接后即可创建数据集，用自然语言问数或生成第一个仪表盘。</p>
+            <div class="wb-onboard-steps">
+              <div class="wb-onboard-step"><i>1</i><span>连接并验证数据源</span></div>
+              <div class="wb-onboard-step"><i>2</i><span>选择字段，准备分析数据集</span></div>
+              <div class="wb-onboard-step"><i>3</i><span>开始问数或创建仪表盘</span></div>
+            </div>
+            <div class="wb-empty-actions">
+              <a class="primary" href="./dashboard-commercial.html#/datasource">连接数据源</a>
+              <a href="./dashboard-commercial.html#/conversation">查看问数示例</a>
+            </div>
+          </div>
+        </div>`;
+
+      const kpis = document.querySelectorAll('#wbOverviewPanel .wb-kpi');
+      kpis[0].querySelector('strong').textContent = '0 / 0';
+      kpis[0].querySelector('small').textContent = '尚未连接数据源';
+      kpis[0].querySelector('small').className = '';
+      kpis[1].querySelector('strong').textContent = '0';
+      kpis[1].querySelector('small').textContent = '暂无仪表盘';
+      kpis[1].querySelector('small').className = '';
+      document.querySelector('#wbOverviewPanel .wb-health').innerHTML =
+        '<span><i aria-hidden="true" style="background:var(--od-faint);box-shadow:none"></i>等待首次配置</span>';
+      document.querySelector('#wbOverviewPanel .wb-briefs').innerHTML =
+        '<span>新手提示</span><a href="./dashboard-commercial.html#/datasource">连接数据后，这里会展示异常和增长线索</a>';
+      document.getElementById('wbTodoPanel').innerHTML =
+        '<div class="phd"><h4>待处理</h4></div><div class="wb-empty-note"><b>目前没有待处理事项</b>完成数据连接后，异常和提醒会出现在这里</div>';
+      document.getElementById('wbRecentAskPanel').innerHTML =
+        '<div class="phd"><h4>最近问数</h4></div><div class="wb-empty-note"><b>还没有问数记录</b>你的分析历史会保存在这里</div>';
+    } else {
+      const countParam = Number.parseInt(new URLSearchParams(location.search).get('count'), 10);
+      if (Number.isFinite(countParam) && countParam > 0 && countParam < 3) {
+        const grid = document.querySelector('.wb-dash-grid');
+        const cards = [...grid.querySelectorAll('.wb-dash')];
+        cards.forEach((card, index) => {
+          if (index >= countParam) card.style.display = 'none';
+        });
+        grid.insertAdjacentHTML('beforeend', `
+          <a class="wb-dash-create" href="./dashboard-commercial.html#/dashboard">
+            <i aria-hidden="true">+</i>
+            <b>创建新看板</b>
+            <span>从数据集开始搭建</span>
+          </a>`);
+      }
+    }
+    const goAsk = (preset) => {
+      const input = document.getElementById('wbAskInput');
+      if (preset) input.value = preset;
+      const q = input.value.trim();
+      if (!q) {
+        input.focus();
+        window.odToast('请先输入一个数据问题');
+        return;
+      }
+      sessionStorage.setItem('od.ask.draft', q);
+      if (emptyMode) {
+        window.odToast('请先连接数据源，问题已为你保留');
+        setTimeout(() => { location.href = './dashboard-commercial.html#/datasource'; }, 500);
+        return;
+      }
+      location.href = './dashboard-commercial.html#/conversation';
+    };
+    document.getElementById('wbAskGo').onclick = () => goAsk();
+    document.getElementById('wbAskInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') goAsk();
+    });
+    document.querySelectorAll('[data-q]').forEach((b) => {
+      b.onclick = () => goAsk(b.dataset.q);
+    });
+    document.getElementById('wbRefresh').onclick = () => {
+      window.odToast('工作台数据已刷新');
+    };
+    document.addEventListener('keydown', (e) => {
+      const input = document.getElementById('wbAskInput');
+      if (e.key === '/' && document.activeElement !== input) {
+        e.preventDefault();
+        input.focus();
+      }
+      if (e.key === 'Escape' && document.activeElement === input && input.value) {
+        input.value = '';
+      }
+    });
+  })();
+</script>
+</body>
+</html>

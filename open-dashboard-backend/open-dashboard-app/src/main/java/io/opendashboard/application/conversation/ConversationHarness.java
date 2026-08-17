@@ -627,7 +627,7 @@ public class ConversationHarness {
                 String.valueOf(m.getOrDefault("title", "问数结果")),
                 String.valueOf(m.getOrDefault("insightHtml", "")),
                 String.valueOf(m.getOrDefault("headlineHtml", "")),
-                String.valueOf(m.getOrDefault("datasetId", "ds_sales")),
+                String.valueOf(m.getOrDefault("datasetId", "")),
                 String.valueOf(m.getOrDefault("chartType", "bar")),
                 encode,
                 drivers,

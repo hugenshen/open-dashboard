@@ -28,9 +28,11 @@ export function mountHiFiDashboard(options) {
   state.mobile = false;
   state.editSurface = 'pc';
   if (__productOpts.datasets) {
-    // replace demo catalog with product datasets (keep stubs only as fallback rows)
+    // replace demo catalog with product datasets (preview rows only; charts use chartQuery)
     Object.keys(DATASETS).forEach((k) => { delete DATASETS[k]; });
     Object.keys(__productOpts.datasets).forEach((k) => { DATASETS[k] = __productOpts.datasets[k]; });
+    const preferred = __productOpts.preferredDatasetId;
+    state.datasetId = (preferred && DATASETS[preferred] ? preferred : Object.keys(DATASETS)[0]) || '';
   }
   const dash = __productOpts.dash;
   if (!dash) throw new Error('mountHiFiDashboard: dash required');
@@ -1384,7 +1386,7 @@ function defaultEncode(kind) {
   const base = { agg: 'SUM', format: 'thousand', calc: 'none', fieldCfg: {} };
   if (kind === 'kpi') return { ...base, value: 'amount', calc: 'yoy' };
   if (kind === 'table') {
-    const fields = DATASETS.ds_sales?.fields || [];
+    const fields = (DATASETS[defaultDatasetId()] || Object.values(DATASETS)[0])?.fields || [];
     const dims = fields.filter(f => f.group !== 'quota').map(f => f.name);
     const quotas = fields.filter(f => f.group === 'quota').map(f => f.name);
     return {
@@ -1438,7 +1440,8 @@ function adaptEncodeForChartType(prev, nextType) {
   return next;
 }
 
-function mkChart(type, title, encodeExtra = {}, styleExtra = {}, datasetId = 'ds_sales') {
+function mkChart(type, title, encodeExtra = {}, styleExtra = {}, datasetId) {
+  const dsId = datasetId || defaultDatasetId();
   const id = uid('chart');
   return {
     id,
@@ -2206,6 +2209,35 @@ function markDirty() {
 }
 
 function ds(id) { return DATASETS[id]; }
+function defaultDatasetId() {
+  const pref = __productOpts && __productOpts.preferredDatasetId;
+  if (pref && DATASETS[pref]) return pref;
+  const keys = Object.keys(DATASETS);
+  return keys[0] || '';
+}
+function dsOrFirst(id) {
+  return DATASETS[id] || Object.values(DATASETS)[0];
+}
+function isProductLive() {
+  return !!(__productOpts && typeof __productOpts.queryChart === 'function');
+}
+function currentChartQueryFilters() {
+  const out = [];
+  const filter = state.filter || {};
+  for (const [k, v] of Object.entries(filter)) {
+    if (!v || k.startsWith('_') || k === 'dateFrom' || k === 'dateTo') continue;
+    out.push({ componentId: 'query', field: k, operator: 'eq', value: v });
+  }
+  if (filter.dateFrom || filter.dateTo) {
+    out.push({
+      componentId: 'query',
+      field: filter._dateField || 'date',
+      operator: 'between',
+      value: [filter.dateFrom || '', filter.dateTo || '']
+    });
+  }
+  return out;
+}
 function fieldMeta(dsId, name) { return ds(dsId)?.fields.find(f => f.name === name); }
 
 /** 分析层角色：可覆盖物理类型（永洪式 维度⇄指标） */
@@ -3968,14 +4000,14 @@ function resolveReportChartSpec(block) {
     if (!ch && block.chartTitle) ch = findDashChartByTitle(block.dashboardId, block.chartTitle);
     if (!ch) return null;
     return {
-      datasetId: ch.datasetId || 'ds_sales',
+      datasetId: ch.datasetId || defaultDatasetId(),
       chartType: ch.chartType || 'bar',
       encode: ch.encode || { category: 'region', value: 'amount', agg: 'SUM' },
       title: block.title || ch.title
     };
   }
   return {
-    datasetId: block.datasetId || 'ds_sales',
+    datasetId: block.datasetId || defaultDatasetId(),
     chartType: block.chartType || 'bar',
     encode: block.encode || { category: 'region', value: 'amount', agg: 'SUM' },
     title: block.title || '图表'
@@ -3983,7 +4015,7 @@ function resolveReportChartSpec(block) {
 }
 
 function aggregateReportSeries(datasetId, encode) {
-  const ds = DATASETS[datasetId] || DATASETS.ds_sales;
+  const ds = dsOrFirst(datasetId);
   const cat = encode.category || encode.x || 'region';
   const val = encode.value || encode.y || 'amount';
   const map = new Map();
@@ -4062,7 +4094,7 @@ function reportDashChartOptions() {
 }
 
 function datasetFieldOptionsHtml(datasetId, selected, group) {
-  const ds = DATASETS[datasetId] || DATASETS.ds_sales;
+  const ds = dsOrFirst(datasetId);
   const fields = (ds.fields || []).filter(f => !group || f.group === group);
   const list = fields.length ? fields : (ds.fields || []);
   return list.map(f =>
@@ -4086,7 +4118,7 @@ function openReportChartConfigModal({ blockId = null, preferSource = 'inline' } 
   const firstDash = dashOpts[0];
   const dsList = Object.values(DATASETS);
   const enc = block?.encode || {};
-  const initDs = block?.datasetId || 'ds_sales';
+  const initDs = block?.datasetId || defaultDatasetId();
   const initCat = enc.category || 'region';
   const initVal = enc.value || 'amount';
   const initType = block?.chartType || 'bar';
@@ -4538,7 +4570,7 @@ function openCreateInlineChartModal() {
   const draft = {
     id: 'preview',
     source: 'inline',
-    datasetId: 'ds_sales',
+    datasetId: defaultDatasetId(),
     chartType: 'bar',
     encode: { ...defaultEncode('bar') },
     title: '',
@@ -4587,7 +4619,7 @@ function openCreateInlineChartModal() {
             <div class="sec-t">1. 数据集</div>
             <label class="f">选择数据集
               <select id="rptWzDs">
-                ${dsList.map(d => `<option value="${d.id}" ${d.id === 'ds_sales' ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
+                ${dsList.map(d => `<option value="${d.id}" ${d.id === defaultDatasetId() ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
               </select>
             </label>
             <div id="rptWzDsHint" style="margin-top:6px;font-size:11px;color:rgba(0,0,0,.45)"></div>
@@ -4682,7 +4714,7 @@ function openCreateInlineChartModal() {
 
   const fillFields = (prefer = {}) => {
     const dsId = dsSel.value;
-    const dsObj = DATASETS[dsId] || DATASETS.ds_sales;
+    const dsObj = DATASETS[dsId] || dsOrFirst(dsId);
     const enc = prefer.encode || defaultEncode(typeSel.value);
     const dims = (dsObj.fields || []).filter(f => f.group === 'dim');
     const quotas = (dsObj.fields || []).filter(f => f.group === 'quota');
@@ -6177,7 +6209,7 @@ function renderReportInspector(el) {
       if (e.target.value !== 'inline') return;
       const ch = resolveReportChartSpec(block);
       block.source = 'inline';
-      block.datasetId = ch?.datasetId || 'ds_sales';
+      block.datasetId = ch?.datasetId || defaultDatasetId();
       block.chartType = ch?.chartType || 'bar';
       block.encode = { ...(ch?.encode || defaultEncode('bar')) };
       block.dashboardId = undefined;
@@ -6301,7 +6333,7 @@ function renderReportInspector(el) {
     ch.chartType = e.target.value;
     ch.encode = { ...defaultEncode(ch.chartType), calc: ch.encode.calc || 'none' };
     block.encode = ch.encode;
-    if (!ch.datasetId) ch.datasetId = 'ds_sales';
+    if (!ch.datasetId) ch.datasetId = defaultDatasetId();
     patchChart(ch, { inspector: true });
   };
   el.querySelector('#cds').onchange = e => {
@@ -6398,7 +6430,7 @@ function renderList(app) {
   if (d && state.dash?.id !== d.id) selectDash(d.id);
   const chartCount = Object.keys(d.charts || {}).length;
   const dsNames = (d.datasetIds || []).map(id => DATASETS[id]?.name || id).join('、') || '—';
-  const sampleDs = DATASETS[(d.datasetIds || [])[0]] || DATASETS.ds_sales;
+  const sampleDs = DATASETS[(d.datasetIds || [])[0]] || dsOrFirst();
   const dim = sampleDs.fields.find(f => f.group === 'dim')?.name;
   const quota = sampleDs.fields.find(f => f.group === 'quota')?.name;
   app.innerHTML = `
@@ -6487,7 +6519,7 @@ function renderList(app) {
     render();
   };
   app.querySelector('#btnToDs').onclick = () => {
-    state.datasetId = (d.datasetIds || [])[0] || 'ds_sales';
+    state.datasetId = (d.datasetIds || [])[0] || defaultDatasetId();
     gotoModule('dataset');
   };
 }
@@ -6500,8 +6532,8 @@ function renderEditor(app) {
   app.innerHTML = `
     <div class="bar bar-editor ${editorShellClass()}">
       <div class="bar-leading">
-        <button class="btn ghost" id="toList" title="返回仪表盘">←</button>
-        <b contenteditable="true" id="title">${esc(d.name)}</b>
+        <button class="btn ghost" id="toList" title="返回仪表盘" aria-label="返回仪表盘">←</button>
+        <b contenteditable="true" id="title" title="${esc(d.name)}">${esc(d.name)}</b>
         ${statusTag(d.status)}
         ${mob.enabled ? '<span class="tag mob">移动端</span>' : ''}
       </div>
@@ -7481,14 +7513,15 @@ function widgetHtml(c, cw) {
 }
 
 function slicerOptions(field) {
-  const defaults = { region: ['华东', '华北', '华南'], channel: ['线上', '线下'] };
-  if (defaults[field]) return defaults[field];
   const set = new Set();
   Object.values(DATASETS).forEach(d => {
-    d.rows.forEach(r => { if (r[field] != null && r[field] !== '') set.add(String(r[field])); });
+    (d.rows || []).forEach(r => { if (r[field] != null && r[field] !== '') set.add(String(r[field])); });
   });
-  const list = [...set].slice(0, 8);
-  return list.length ? list : ['选项A', '选项B'];
+  const list = [...set].slice(0, 40);
+  if (list.length) return list;
+  if (isProductLive()) return [];
+  const defaults = { region: ['华东', '华北', '华南'], channel: ['线上', '线下'] };
+  return defaults[field] || [];
 }
 
 function wireSlicer(el) {
@@ -8089,7 +8122,8 @@ function beginLiveChartQuery(el, comp, ch) {
   if (!__productOpts || typeof __productOpts.queryChart !== 'function') return null;
   if (!state._chartQueryCache) state._chartQueryCache = {};
   const cache = state._chartQueryCache;
-  const key = `${ch.id}|${ch.chartType}|${ch.datasetId || ''}|${JSON.stringify(ch.encode || {})}`;
+  const filters = currentChartQueryFilters();
+  const key = `${ch.id}|${ch.chartType}|${ch.datasetId || ''}|${JSON.stringify(ch.encode || {})}|${JSON.stringify(filters)}`;
   const hit = cache[ch.id];
   if (hit && hit.key === key) {
     if (hit.status === 'ok') return { ready: true, ...hit.payload };
@@ -8103,7 +8137,8 @@ function beginLiveChartQuery(el, comp, ch) {
     datasetId: ch.datasetId,
     chartType: ch.chartType,
     encode: ch.encode,
-    title: ch.title
+    title: ch.title,
+    filters
   })).then((result) => {
     if (ch._qgen !== gen) return;
     cache[ch.id] = { key, status: 'ok', payload: packQueryResult(ch, result) };
@@ -8129,7 +8164,9 @@ function paintChart(el, comp) {
   const sn = ensureSenior(ch);
   const live = beginLiveChartQuery(el, comp, ch);
   const useLive = !!(live && live.ready);
-  const rows = useLive ? live.rows : ((live && live.pending) ? [] : filteredRows(ch));
+  const rows = useLive
+    ? live.rows
+    : ((live && (live.pending || live.failed)) || isProductLive() ? [] : filteredRows(ch));
   const catFields = encodeFields(ch.encode, 'category');
   const valFields = encodeFields(ch.encode, 'value');
   const colorField = encodePrimary(ch.encode, 'color');
@@ -11297,6 +11334,14 @@ function openShareModal() {
   };
 }
 
+function liveRowsForChart(ch) {
+  const cache = state._chartQueryCache || {};
+  const hit = cache[ch.id];
+  if (hit && hit.status === 'ok' && hit.payload?.rows) return hit.payload.rows;
+  if (isProductLive()) return [];
+  return filteredRows(ch);
+}
+
 function exportCsv() {
   const comp = state.dash.components.find(c => c.id === state.selectedId && c.type === 'chart');
   const ch = comp ? state.dash.charts[comp.chartId] : Object.values(state.dash.charts)[0];
@@ -11308,7 +11353,7 @@ function exportCsv() {
       .catch((e) => toast(e?.message || '导出失败', 'warn'));
     return;
   }
-  const rows = filteredRows(ch);
+  const rows = liveRowsForChart(ch);
   const catFields = encodeFields(ch.encode, 'category');
   const colFields = encodeFields(ch.encode, 'colDim');
   const valFields = encodeFields(ch.encode, 'value');
@@ -11338,7 +11383,7 @@ function exportCsv() {
 function openDataModal(comp) {
   if (comp.type !== 'chart') { toast('仅图表支持查看数据', 'warn'); return; }
   const ch = state.dash.charts[comp.chartId];
-  const rows = filteredRows(ch);
+  const rows = liveRowsForChart(ch);
   showModal(`<h3>查看数据 · ${esc(ch.title)}</h3>
     <div class="table-wrap" style="max-height:360px">
       <table class="dt"><thead><tr>${Object.keys(rows[0]||{empty:1}).map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead>
@@ -11474,6 +11519,7 @@ function openJumpModal(ch) {
 const __phaseTabs = typeof document !== 'undefined' ? document.getElementById('phaseTabs') : null;
 if (__phaseTabs) {
   __phaseTabs.onclick = e => {
+    if (__productOpts) return;
     const b = e.target.closest('button[data-phase]');
     if (!b) return;
     state.phase = b.dataset.phase;

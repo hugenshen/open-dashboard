@@ -109,10 +109,17 @@ public class InMemoryConversationStore implements ConversationGateway {
                 System.currentTimeMillis()
         );
         messages.computeIfAbsent(conversationId, k -> new ArrayList<>()).add(msg);
-        find(conversationId).ifPresent(c -> conversations.put(conversationId, new ConversationVO(
-                c.id(), c.title(), c.ownerId(), c.layoutPrefs(), c.datasetIds(), c.linkedDashboardId(),
-                c.createTime(), System.currentTimeMillis()
-        )));
+        find(conversationId).ifPresent(c -> {
+            String title = c.title();
+            if ("user".equals(role) && (title == null || title.isBlank() || "新对话".equals(title))) {
+                String body = content == null ? "" : content.trim();
+                if (!body.isBlank()) title = body.length() > 40 ? body.substring(0, 40) : body;
+            }
+            conversations.put(conversationId, new ConversationVO(
+                    c.id(), title, c.ownerId(), c.layoutPrefs(), c.datasetIds(), c.linkedDashboardId(),
+                    c.createTime(), System.currentTimeMillis()
+            ));
+        });
         return msg;
     }
 

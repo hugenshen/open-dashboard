@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from agent import session_store
-from agent.runtime import harness_mode, run_agent, use_lead
+from agent.runtime import harness_mode, run_agent, run_confirm_plan, use_lead
 from agent.types import sse
 from llm_client import llm_configured, llm_settings
 from tools.od_bi import bi_base, bi_health
@@ -167,6 +167,26 @@ def delete_conversation(cid: str):
     return Response(status_code=204)
 
 
+@app.post("/v1/conversations/{cid}/ensure")
+def ensure_conversation(
+    cid: str,
+    body: Optional[CreateConversationBody] = None,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+):
+    """Register a Java conversation id in the harness session store."""
+    body = body or CreateConversationBody()
+    try:
+        return session_store.ensure_conversation(
+            cid,
+            owner_id=_owner(x_user_id),
+            title=body.title,
+            dataset_ids=body.datasetIds,
+            linked_dashboard_id=body.linkedDashboardId,
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid conversation id")
+
+
 @app.get("/v1/conversations/{cid}/messages")
 def messages(cid: str):
     if not session_store.get_conversation(cid):
@@ -222,7 +242,15 @@ async def conversation_runs(
 ):
     conv = session_store.get_conversation(cid)
     if not conv:
-        raise HTTPException(status_code=404, detail="conversation not found")
+        try:
+            conv = session_store.ensure_conversation(
+                cid,
+                owner_id=_owner(x_user_id),
+                title=(body.message or "新对话")[:40],
+                dataset_ids=body.datasetIds,
+            )
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid conversation id")
 
     if body.datasetIds is not None:
         session_store.update_conversation(cid, {"datasetIds": body.datasetIds})
@@ -296,9 +324,63 @@ async def conversation_runs(
 
 @app.post("/v1/conversations/{cid}/runs/{run_id}/confirm-plan")
 async def confirm_plan(cid: str, run_id: str):
-    raise HTTPException(
-        status_code=501,
-        detail="confirm-plan not implemented in Pi harness yet; re-run with mode=auto",
+    conv = session_store.get_conversation(cid)
+    if not conv:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    pending = session_store.get_run_pending(cid, run_id)
+    if not pending:
+        raise HTTPException(status_code=400, detail="no pending plan to confirm")
+
+    def gen() -> Iterable[str]:
+        finish_reason = "error"
+        finish_detail = None
+        try:
+            for chunk in run_confirm_plan(pending):
+                if chunk.startswith("event: finish"):
+                    try:
+                        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
+                        data = json.loads(data_line)
+                        finish_reason = str(data.get("reason") or "done")
+                        finish_detail = data.get("detail")
+                        if data.get("dashboardId"):
+                            session_store.link_dashboard(cid, str(data["dashboardId"]))
+                    except Exception:
+                        pass
+                if chunk.startswith("event: board_ready"):
+                    try:
+                        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
+                        data = json.loads(data_line)
+                        if data.get("dashboardId"):
+                            session_store.link_dashboard(cid, str(data["dashboardId"]))
+                    except Exception:
+                        pass
+                if chunk.startswith("event: message_delta"):
+                    try:
+                        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
+                        data = json.loads(data_line)
+                        if data.get("text"):
+                            session_store.append_message(cid, "assistant", str(data["text"]), [])
+                    except Exception:
+                        pass
+                yield chunk
+        except Exception as e:
+            yield sse("error", {"code": "HARNESS", "message": str(e)})
+            yield sse("finish", {"reason": "error", "detail": "exception"})
+            finish_reason = "error"
+            finish_detail = "exception"
+        status = finish_reason if finish_reason in ("done", "answered", "awaiting_confirm", "error") else "done"
+        if finish_reason == "done":
+            session_store.clear_run_pending(cid, run_id)
+        session_store.finish_run(cid, run_id, status, str(finish_detail) if finish_detail else None)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

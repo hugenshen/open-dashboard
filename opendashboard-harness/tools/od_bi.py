@@ -61,6 +61,8 @@ class ToolState:
         self.last_plan: Optional[Dict[str, Any]] = None
         self.last_review: Optional[Dict[str, Any]] = None
         self.last_intent: Optional[Dict[str, Any]] = None
+        self.defer_apply: bool = False
+        self.pending: Optional[Dict[str, Any]] = None
 
 
 def build_od_tools(
@@ -377,6 +379,16 @@ def build_od_tools(
         title = args.get("title") or "AI 生成看板"
         patch = _normalize_patch(args.get("patch") or args)
         dash = args.get("dashboardId") or linked_dashboard_id
+        wrap = {"title": title, "mode": mode, "patch": patch, "linkedDashboardId": dash}
+        if state.defer_apply:
+            state.pending = wrap
+            state.applied = None
+            return {
+                "ok": True,
+                "deferred": True,
+                "opsCount": len(patch.get("ops") or []),
+                "terminate": True,
+            }
         applied = bi_call(
             "POST",
             "/api/internal/bi/apply-patch",

@@ -12,7 +12,6 @@
 ```bash
 chmod +x scripts/*.sh
 ./scripts/up.sh
-# 等价: make up
 ```
 
 完成后打开：
@@ -28,7 +27,11 @@ chmod +x scripts/*.sh
 ./scripts/down.sh     # 停止（保留数据）
 ```
 
-端口与密码见 `.env.example`；详细说明见 [docs/deploy.md](docs/deploy.md)。
+端口与密码见 `.env.example`。各服务的 Docker / 本地运行：
+
+- [后端](open-dashboard-backend/deploy.md)
+- [前端](open-dashboard-frontend/deploy.md)
+- [对话 Harness](opendashboard-harness/deploy.md)
 
 ## 技术栈
 
@@ -62,16 +65,18 @@ cd open-dashboard-frontend && npm install && npm run dev
 ## 高保交互参照（非产品运行时）
 
 ```bash
-npm run hi-fi
-# → http://127.0.0.1:8765/dashboard-commercial.html
+./docs/prototypes/hi-fi/start.sh
+# → http://127.0.0.1:8765/workbench.html
 ```
+
+目录：`docs/prototypes/hi-fi/`（当前）· `docs/prototypes/snapshots/`（冻结）· [VERSIONS.md](docs/prototypes/VERSIONS.md)。
 
 ## 仓库结构
 
 ```
 open-dashboard/
-├── docs/                         # 产品 / 设计 / API / 部署 / 用户手册
-├── prototypes/hi-fi/             # 静态高保参照
+├── docs/                         # 产品 / 设计 / 用户手册 / 高保原型
+│   └── prototypes/               # hi-fi（当前）+ snapshots（冻结）
 ├── open-dashboard-frontend/      # Vue 3 产品应用
 ├── open-dashboard-backend/       # Spring Boot COLA 多模块
 │   ├── open-dashboard-domain/
@@ -80,8 +85,6 @@ open-dashboard/
 │   ├── open-dashboard-adapter/
 │   └── open-dashboard-start/
 ├── scripts/                      # up / down / smoke / PG 初始化
-├── docker-compose.yml
-├── Makefile
 └── .env.example
 ```
 
@@ -91,15 +94,18 @@ open-dashboard/
 
 | 文档 | 内容 |
 |------|------|
-| [docs/product/overview.md](docs/product/overview.md) | 产品定位与模块地图 |
+| [AGENTS.md](AGENTS.md) | 给 AI 的协作短地图（Cursor 只读仓库根这份） |
+| [docs/product/README.md](docs/product/README.md) | 产品定位、用户、模块与边界 |
 | [docs/product/requirements.md](docs/product/requirements.md) | **已交付需求基线**（演进起点） |
-| [docs/product/roadmap.md](docs/product/roadmap.md) | 后续演进 |
-| [docs/design/frontend.md](docs/design/frontend.md) | 前端设计 |
-| [docs/design/backend.md](docs/design/backend.md) | 后端设计 |
-| [docs/design/auth.md](docs/design/auth.md) | 鉴权 SPI |
-| [docs/design/rest.md](docs/design/rest.md) · [docs/design/openapi.yaml](docs/design/openapi.yaml) | REST / OpenAPI |
-| [docs/process.md](docs/process.md) · [docs/guide.html](docs/guide.html) | 协作规范与使用说明 |
-| [docs/deploy.md](docs/deploy.md) | 部署与开箱 |
+| [docs/product/roadmap/](docs/product/roadmap/) | 进度（进行中 / 已完成 / 计划中） |
+| [docs/guide.html](docs/guide.html) | 规划 / BA / 开发 / 测试 / AI 怎么读、怎么迭代 |
+| [docs/design/architecture.html](docs/design/architecture.html) | 4A 现行架构（业务 / 应用 / 数据 / 技术） |
+| [docs/design/openapi.yaml](docs/design/openapi.yaml) | REST / OpenAPI 硬契约 |
+| [docs/proposals/README.md](docs/proposals/README.md) | 未实现需求与详细设计 |
+| [docs/process.md](docs/process.md) | 协作规范正文 |
+| [open-dashboard-backend/deploy.md](open-dashboard-backend/deploy.md) | 后端本地运行与 Docker |
+| [open-dashboard-frontend/deploy.md](open-dashboard-frontend/deploy.md) | 前端本地运行与 Docker |
+| [opendashboard-harness/deploy.md](opendashboard-harness/deploy.md) | 对话 Harness 本地运行 |
 | [docs/user-manual/index.html](docs/user-manual/index.html) | 终端用户手册（在线 `/help/`，顶栏「帮助」） |
 
 ## 设计要点（摘要）

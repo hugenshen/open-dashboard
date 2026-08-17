@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Open Dashboard · 4A 现行架构</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --surface: #fff;
+      --surface-2: #f8fafc;
+      --ink: #172033;
+      --muted: #586174;
+      --faint: #7c8699;
+      --line: #dfe4ec;
+      --brand: #4f46e5;
+      --brand-soft: #eef2ff;
+      --ok: #047857;
+      --ok-soft: #ecfdf5;
+      --warn: #b45309;
+      --warn-soft: #fff7ed;
+      --future: #64748b;
+      --future-soft: #f1f5f9;
+      --shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 12px 34px rgba(15, 23, 42, .06);
+      --radius: 16px;
+      --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    html[data-theme="dark"] {
+      --bg: #0f1218;
+      --surface: #181c24;
+      --surface-2: #202630;
+      --ink: #edf0f5;
+      --muted: #b2bac8;
+      --faint: #8d96a8;
+      --line: #303744;
+      --brand: #9aa5ff;
+      --brand-soft: rgba(99, 102, 241, .18);
+      --ok: #5ee0af;
+      --ok-soft: rgba(4, 120, 87, .18);
+      --warn: #f6bd66;
+      --warn-soft: rgba(180, 83, 9, .18);
+      --future: #a8b1c1;
+      --future-soft: #242a34;
+      --shadow: 0 14px 38px rgba(0, 0, 0, .28);
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; color: var(--ink); background: var(--bg); font-family: var(--font);
+      font-size: 15px; line-height: 1.62; -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--brand); text-underline-offset: 3px; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 38%, transparent); outline-offset: 2px; }
+    .top {
+      position: sticky; top: 0; z-index: 20; min-height: 58px; display: flex; align-items: center;
+      gap: 18px; padding: 0 28px; border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(14px);
+    }
+    .brand { font-weight: 760; letter-spacing: -.025em; white-space: nowrap; }
+    .brand span { color: var(--brand); }
+    .nav { display: flex; gap: 4px; overflow-x: auto; }
+    .nav a {
+      min-height: 34px; display: inline-flex; align-items: center; padding: 0 10px;
+      border-radius: 8px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 650; white-space: nowrap;
+    }
+    .nav a:hover { color: var(--ink); background: var(--surface-2); }
+    .top-actions { margin-left: auto; display: flex; gap: 6px; }
+    .icon-btn {
+      min-width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 10px;
+      color: var(--ink); background: var(--surface); cursor: pointer; font: inherit;
+    }
+    .page { width: min(1520px, 100%); margin: 0 auto; padding: 38px 32px 72px; }
+    .hero {
+      display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr);
+      gap: 22px; align-items: stretch; margin-bottom: 24px;
+    }
+    .hero-main, .hero-side, .panel {
+      border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow);
+    }
+    .hero-main {
+      padding: 34px; background:
+        radial-gradient(circle at 90% 0, color-mix(in srgb, var(--brand) 18%, transparent), transparent 34%),
+        var(--surface);
+    }
+    .eyebrow { color: var(--brand); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { max-width: 900px; margin: 8px 0 10px; font-size: clamp(30px, 4vw, 52px); line-height: 1.08; letter-spacing: -.045em; }
+    .lead { max-width: 820px; margin: 0; color: var(--muted); font-size: 16px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+    .chip, .status {
+      display: inline-flex; align-items: center; gap: 6px; min-height: 27px; padding: 3px 9px;
+      border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2);
+      color: var(--muted); font-size: 12px; font-weight: 650;
+    }
+    .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .status.done { color: var(--ok); background: var(--ok-soft); }
+    .status.coded { color: var(--warn); background: var(--warn-soft); }
+    .status.future { color: var(--future); background: var(--future-soft); }
+    .hero-side { padding: 24px; }
+    .hero-side h2 { margin: 0 0 12px; font-size: 16px; }
+    .hero-side ol { margin: 0; padding-left: 20px; color: var(--muted); }
+    .hero-side li + li { margin-top: 7px; }
+    .notice {
+      margin: 24px 0; padding: 14px 16px; border: 1px solid var(--line); border-left: 4px solid var(--brand);
+      border-radius: 10px; background: var(--brand-soft); color: var(--muted);
+    }
+    .section { scroll-margin-top: 78px; margin-top: 28px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 0 2px 13px; }
+    .section-head h2 { margin: 0; font-size: 23px; letter-spacing: -.025em; }
+    .section-head p { margin: 3px 0 0; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
+    .panel { grid-column: span 4; min-width: 0; padding: 20px; box-shadow: none; }
+    .panel.wide { grid-column: span 8; }
+    .panel.full { grid-column: 1 / -1; }
+    .panel h3 { margin: 0 0 8px; font-size: 16px; }
+    .panel p { margin: 0; color: var(--muted); }
+    .panel ul { margin: 10px 0 0; padding-left: 19px; color: var(--muted); }
+    .panel li + li { margin-top: 5px; }
+    .metric { margin-top: 12px; font-size: 27px; font-weight: 760; letter-spacing: -.035em; }
+    .metric small { font-size: 12px; font-weight: 650; color: var(--faint); letter-spacing: 0; }
+    .flow {
+      display: flex; align-items: stretch; gap: 8px; overflow-x: auto; padding: 6px 2px 10px;
+    }
+    .node {
+      min-width: 145px; flex: 1; padding: 14px; border: 1px solid var(--line);
+      border-radius: 12px; background: var(--surface-2);
+    }
+    .node b { display: block; font-size: 13px; }
+    .node span { display: block; margin-top: 3px; color: var(--faint); font-size: 11px; }
+    .arrow { flex: 0 0 auto; align-self: center; color: var(--faint); font-weight: 800; }
+    .stack { display: flex; flex-direction: column; gap: 8px; }
+    .layer { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+    .layer b { display: block; font-size: 13px; }
+    .layer code, code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
+    }
+    .layer code { display: block; margin-top: 4px; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 13px; }
+    th, td { padding: 11px 13px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); background: var(--surface-2); font-weight: 700; white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    td code { overflow-wrap: anywhere; }
+    .source { margin-top: 11px; color: var(--faint); font-size: 11px; }
+    .source code { color: var(--muted); }
+    .vflow { display: flex; flex-direction: column; gap: 0; }
+    .vflow .vnode {
+      padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2);
+    }
+    .vflow .vnode b { display: block; font-size: 13px; }
+    .vflow .vnode span { display: block; margin-top: 3px; color: var(--faint); font-size: 11px; }
+    .vflow .varrow { align-self: center; color: var(--faint); font-weight: 800; line-height: 1.4; padding: 2px 0; }
+    .seq-wrap { overflow-x: auto; }
+    .seq { min-width: 860px; }
+    .seq th { text-align: center; }
+    .seq td { font-size: 12px; color: var(--muted); }
+    .seq .act { font-weight: 700; color: var(--ink); }
+    .seq .msg { color: var(--brand); font-weight: 650; }
+    .footer {
+      margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line);
+      display: flex; justify-content: space-between; gap: 16px; color: var(--faint); font-size: 12px;
+    }
+    @media (max-width: 980px) {
+      .hero { grid-template-columns: 1fr; }
+      .panel, .panel.wide { grid-column: span 6; }
+      .top { padding: 0 16px; }
+      .page { padding: 28px 20px 56px; }
+    }
+    @media (max-width: 640px) {
+      .brand { display: none; }
+      .panel, .panel.wide { grid-column: 1 / -1; }
+      .hero-main { padding: 24px 20px; }
+      .page { padding-inline: 14px; }
+      .section-head { align-items: start; flex-direction: column; }
+    }
+    @media print {
+      :root { --bg: #fff; --surface: #fff; --surface-2: #f8fafc; --ink: #111827; --muted: #4b5563; --line: #d1d5db; }
+      .top, .top-actions { display: none !important; }
+      .page { width: 100%; padding: 0; }
+      .panel, .hero-main, .hero-side { box-shadow: none; break-inside: avoid; }
+      .section { break-before: auto; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">Open Dashboard <span>4A</span></div>
+    <nav class="nav" aria-label="架构章节">
+      <a href="#overview">总览</a>
+      <a href="#business">业务架构 BA</a>
+      <a href="#application">应用架构 AA</a>
+      <a href="#ask">问数流程</a>
+      <a href="#gen">生成看板</a>
+      <a href="#compare">业界对照</a>
+      <a href="#data">数据架构 DA</a>
+      <a href="#technology">技术架构 TA</a>
+      <a href="#trace">追溯</a>
+    </nav>
+    <div class="top-actions">
+      <button class="icon-btn" id="themeBtn" type="button" title="切换深浅主题" aria-label="切换深浅主题">◐</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="hero" id="overview">
+      <div class="hero-main">
+        <div class="eyebrow">Current Architecture · As Built</div>
+        <h1>Open Dashboard 4A 现行架构</h1>
+        <p class="lead">以当前代码为证据，将业务、应用、数据与技术四个架构视图放在同一入口。未实现设计不进入本页，详细方案保留在对应 Pxxx 提案目录。</p>
+        <div class="meta">
+          <span class="chip">更新：2026-08-17</span>
+          <span class="chip">代码根：open-dashboard-frontend / open-dashboard-backend / opendashboard-harness</span>
+          <a class="chip" href="./openapi.yaml">OpenAPI 硬契约</a>
+        </div>
+      </div>
+      <aside class="hero-side">
+        <h2>阅读状态</h2>
+        <ol>
+          <li><span class="status done">已交付</span> 已进入 requirements 的产品能力</li>
+          <li><span class="status coded">已编码未验收</span> 代码存在，但提案尚未 done</li>
+          <li><span class="status future">仅提案 / 高保</span> 不属于现行产品架构</li>
+        </ol>
+      </aside>
+    </section>
+
+    <div class="notice">
+      4A 采用 TOGAF 常见 BDAT 分层：业务架构定义价值与能力，数据架构描述资产与流动，应用架构承载业务能力，技术架构提供运行保障。本文不是未来蓝图，而是当前代码的架构快照。
+    </div>
+
+    <section class="section" id="business">
+      <div class="section-head">
+        <div><h2>业务架构 BA</h2><p>用户角色、业务能力与端到端价值流</p></div>
+        <span class="status done">核心 BI 已交付</span>
+      </div>
+      <div class="grid">
+        <article class="panel"><h3>分析人员</h3><p>连接业务数据库、准备语义数据集、编排仪表盘并发布。</p><div class="metric">5 <small>核心资源域</small></div></article>
+        <article class="panel"><h3>报告作者</h3><p>使用 Umo 编辑报告，引用看板图或创建报告内联图表。</p><div class="metric">7 <small>PR-RPT 已交付项</small></div></article>
+        <article class="panel"><h3>分享阅读者</h3><p>通过匿名 Token 查看已发布看板并按权限导出 CSV。</p><div class="metric">1 <small>published 强制视图</small></div></article>
+        <article class="panel full">
+          <h3>核心价值流</h3>
+          <div class="flow" aria-label="核心业务价值流">
+            <div class="node"><b>工作台</b><span>左栏壳 · 三行概览 · 问数入口</span></div><div class="arrow">→</div>
+            <div class="node"><b>数据源</b><span>JDBC 接入 / 探库</span></div><div class="arrow">→</div>
+            <div class="node"><b>数据集</b><span>字段语义 / 计算字段</span></div><div class="arrow">→</div>
+            <div class="node"><b>仪表盘</b><span>draft 编辑 / publish</span></div><div class="arrow">→</div>
+            <div class="node"><b>问数</b><span>会话表/图预览 · 采纳写 draft</span></div><div class="arrow">→</div>
+            <div class="node"><b>消费</b><span>预览 / 分享 / 报告</span></div>
+          </div>
+        </article>
+        <article class="panel wide"><h3>已交付能力边界</h3><ul><li>JDBC 数据源、数据集建模与预览</li><li>仪表盘树、编辑、移动布局、发布、分享、CSV</li><li>在线报告、引用图表、内联图表与实时取数</li><li>Auth SPI、权限码、当前用户和菜单</li><li>左栏产品壳 AppShell、工作台三行布局与问数框（P007 已编码，PR-SH-10 未验收）</li></ul></article>
+        <article class="panel"><h3>未进入已交付基线</h3><ul><li>对话问数 / 生成看板：P004、P006 已编码未验收</li><li>可问集合 ACL、RLS/CLS：P008 / roadmap</li><li>术语库、SQL 示例、自定义提示词、行级权限改写：未搬 SQLBot</li></ul></article>
+      </div>
+      <p class="source">证据：<code>docs/product/requirements.md</code>、<code>open-dashboard-frontend/src/router/index.ts</code>、各 Controller。</p>
+    </section>
+
+    <section class="section" id="application">
+      <div class="section-head">
+        <div><h2>应用架构 AA</h2><p>前端模块、后端分层、接口域与集成边界</p></div>
+      </div>
+      <div class="grid">
+        <article class="panel wide">
+          <h3>Vue 3 前端</h3>
+          <div class="stack">
+            <div class="layer"><b>壳与路由</b><code>src/App.vue · src/router/index.ts · src/shell/AppShell.vue</code></div>
+            <div class="layer"><b>业务模块</b><code>src/workbench · datasource · dataset · dashboard · report · conversation</code></div>
+            <div class="layer"><b>基础能力</b><code>src/api/http.ts · api/auth.ts · ECharts · Pinia · Umo Editor</code></div>
+          </div>
+        </article>
+        <article class="panel">
+          <h3>仪表盘编辑器</h3>
+          <p>Vue Host 挂载高保内核，Adapter 负责 REST 与内核模型转换；不是纯 Vue 重写。</p>
+          <p class="source"><code>src/dashboard/hifi/</code></p>
+        </article>
+        <article class="panel full">
+          <h3>Java COLA 分层</h3>
+          <div class="flow">
+            <div class="node"><b>Adapter</b><span>Controller / Security</span></div><div class="arrow">→</div>
+            <div class="node"><b>Application</b><span>AppService / Query</span></div><div class="arrow">→</div>
+            <div class="node"><b>Domain</b><span>模型 / Port / AuthContext</span></div><div class="arrow">→</div>
+            <div class="node"><b>Infrastructure</b><span>JDBC Repo / Gateway</span></div><div class="arrow">→</div>
+            <div class="node"><b>Start</b><span>Spring / Flyway / Profile</span></div>
+          </div>
+        </article>
+        <article class="panel full">
+          <h3>REST 接口域</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>接口域</th><th>入口</th><th>职责</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>Auth</td><td><code>/api/auth</code></td><td>当前用户、菜单、Auth SPI</td><td><span class="status done">已交付</span></td></tr>
+                <tr><td>Datasource / Dataset</td><td><code>/api/datasource</code> · <code>/api/dataset</code></td><td>连接、语义字段、预览</td><td><span class="status done">已交付</span></td></tr>
+                <tr><td>Query</td><td><code>/api/datasetQuery</code> · <code>/api/chartQuery</code></td><td>统一 QuerySpec、取数、导出</td><td><span class="status done">已交付</span></td></tr>
+                <tr><td>Dashboard / Share</td><td><code>/api/dashboard*</code> · <code>/api/share</code></td><td>生命周期、发布副本、匿名消费</td><td><span class="status done">已交付</span></td></tr>
+                <tr><td>Report / Catalog</td><td><code>/api/report</code> · <code>/api/catalog</code></td><td>文档、插图目录、发布</td><td><span class="status done">已交付</span></td></tr>
+                <tr><td>Conversation / BI Tools</td><td><code>/api/conversations</code> · <code>/api/internal/bi</code></td><td>会话持久化与 Harness 工具面</td><td><span class="status coded">已编码未验收</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel wide"><h3>AI Harness 集成</h3><p>会话元数据与消息写入 Java <code>de_conversation*</code>（<code>GET/POST /api/conversations</code>）。Agent 仍走 <code>/harness/v1/conversations/{id}/runs</code>（SSE）；若 Harness 本地没有该 id，按 Java 会话 id 补建运行时文件。Java 不跑 LLM。</p></article>
+        <article class="panel"><h3>问数入口</h3><p>工作台问数框下展示 <code>GET /api/conversations?limit=8</code> 最近问数；无记录时才显示「试试」。右栏最近报告走 <code>GET /api/report?limit=4</code>（<code>de_report.update_time</code> 倒序），条目用文档图标：已发布绿、草稿紫。提交问数后跳转 <code>/conversations</code> 并自动执行本题。</p><span class="status coded">已编码未验收</span></article>
+      </div>
+      <p class="source">代码：<code>open-dashboard-frontend/src/</code>、<code>open-dashboard-backend/open-dashboard-*/</code>、<code>opendashboard-harness/</code>。</p>
+    </section>
+
+    <section class="section" id="ask">
+      <div class="section-head">
+        <div>
+          <h2>问数流程（P006 已编码）</h2>
+          <p>自然语言 → 会话内表/图；采纳才写仪表盘 draft。对照 SQLBot 只搬了生成 SQL 主路径，不是整仓。</p>
+        </div>
+        <span class="status coded">已编码未验收</span>
+      </div>
+      <div class="grid">
+        <article class="panel full">
+          <h3>用户交互</h3>
+          <div class="flow" aria-label="问数用户交互">
+            <div class="node"><b>入口</b><span>/conversations 或编辑器浮层</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>选数据集</b><span>可上传 CSV/xlsx；未选则拒答，不悄悄挑业务表</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>提问或换题</b><span>默认 intent=ask；「换一个问数问题」先反问具体 Chip</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>步骤条</b><span>Schema / 抽样 / SQL / 校验 / 执行 / 选图</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>结果卡</b><span>结论 · 表 · 临时图（chartQuery + ECharts） · 折叠 SQL</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>保存本题图</b><span>adopt → DashboardPatch；不落结果行</span></div>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h3>入口与产物</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>入口</th><th>代码</th><th>默认行为</th><th>写画布</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>对话工作区</td>
+                  <td><code>ConversationWorkspace.vue</code></td>
+                  <td>落地页 Chip + Composer；问数与步骤、结果卡同列。无对话内侧栏 / 本会话产物列</td>
+                  <td>仅「保存到仪表盘」或快捷「生成看板」</td>
+                </tr>
+                <tr>
+                  <td>编辑器浮层</td>
+                  <td><code>ConversationAiPanel.vue</code></td>
+                  <td>当前看板数据集优先；<code>intent=ask</code></td>
+                  <td>否，直到 adopt</td>
+                </tr>
+                <tr>
+                  <td>工作台问数框</td>
+                  <td><code>Workbench.vue</code></td>
+                  <td>提交后带 <code>q</code> / <code>autorun</code> 进入对话并自动跑本题</td>
+                  <td>否</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel">
+          <h3>硬边界</h3>
+          <ul>
+            <li>会话结果 ephemeral，禁止写入布局 / HTML</li>
+            <li>前端无任意 SQL 入口</li>
+            <li>看板运行时仍是 encode + <code>chartQuery</code></li>
+            <li>Java 零 LLM；编排在 Harness</li>
+          </ul>
+        </article>
+
+        <article class="panel full">
+          <h3>端到端协作（主路径）</h3>
+          <div class="seq-wrap">
+            <table class="seq">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>用户 / Vue</th>
+                  <th>Harness :8091</th>
+                  <th>Java :8080</th>
+                  <th>业务库 / LLM</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="act">1</td>
+                  <td>POST <code>/harness/v1/conversations/{id}/runs</code></td>
+                  <td class="msg">SSE <code>run</code> · 解析 intent</td>
+                  <td></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="act">2</td>
+                  <td>步骤条展开「SQLBot 生成 SQL」</td>
+                  <td class="msg"><code>iter_sqlbot</code></td>
+                  <td>GET <code>/internal/bi/datasets/{id}/schema</code></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="act">3</td>
+                  <td>抽样预览（前 3 行）</td>
+                  <td></td>
+                  <td>POST <code>/internal/bi/query/dataset</code></td>
+                  <td>JDBC 抽样</td>
+                </tr>
+                <tr>
+                  <td class="act">4</td>
+                  <td>模型生成 SQL</td>
+                  <td>M-Schema + 抽样拼 Prompt</td>
+                  <td></td>
+                  <td>LLM → JSON <code>{sql, chart-type, brief}</code></td>
+                </tr>
+                <tr>
+                  <td class="act">5</td>
+                  <td>只读校验</td>
+                  <td>sqlglot：仅 SELECT/WITH + 当前表白名单</td>
+                  <td></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="act">6</td>
+                  <td>执行查询</td>
+                  <td>POST <code>/query/sql</code></td>
+                  <td><code>ReadSqlGuard</code> 二次闸门后 JDBC</td>
+                  <td>返回行（上限 1000）</td>
+                </tr>
+                <tr>
+                  <td class="act">7</td>
+                  <td>选图</td>
+                  <td>LLM 图表 JSON，失败则启发式 encode</td>
+                  <td></td>
+                  <td>可选第二次 LLM</td>
+                </tr>
+                <tr>
+                  <td class="act">8</td>
+                  <td>结果卡：表 / 图 / SQL</td>
+                  <td class="msg">SSE <code>answer_sql</code> · <code>answer_table</code> · <code>answer_chart</code> · <code>finish</code></td>
+                  <td></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="act">9</td>
+                  <td>「保存到仪表盘」</td>
+                  <td>adopt / Patch</td>
+                  <td><code>DashboardPatchApplier</code> 写 draft</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="act">10</td>
+                  <td>画布刷新本题图</td>
+                  <td></td>
+                  <td><code>chartQuery</code>（不再用会话 SQL）</td>
+                  <td>JDBC 实时取数</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h3>SQLBot 管道（Ask-3）</h3>
+          <div class="vflow">
+            <div class="vnode"><b>读 Schema</b><span>单数据集物理表 + 字段语义</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>抽样 3 行</b><span>帮助模型理解取值</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>LLM 生成 SQL</b><span>只返回 JSON；标识符必须与 m-schema 一致</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>sqlglot 只读校验</b><span>禁止写操作；表名必须是当前数据集表</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>Java 执行</b><span><code>/api/internal/bi/query/sql</code></span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>图表配置</b><span>LLM 或启发式 → OD encode</span></div>
+          </div>
+        </article>
+        <article class="panel">
+          <h3>失败回退（Ask-2）</h3>
+          <div class="vflow">
+            <div class="vnode"><b>LLM 未配置 / 生成失败</b><span>不静默编造 SQL</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>无具体问数 / 换题</b><span>按当前表字段反问 Chip（<code>answer_clarify</code>）</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>点选具体问题</b><span>再走 SQLBot 出 SQL / 表 / 图</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>IntentResolver 回退</b><span>短语对齐 schema；缺字段同样反问</span></div>
+          </div>
+        </article>
+        <article class="panel">
+          <h3>意图分流</h3>
+          <p>Harness <code>resolve_intent</code>：显式 <code>ask | insight | gen</code>，或从文案推断。</p>
+          <ul>
+            <li><b>ask / insight</b>：走上方问数轨，不进 Lead 生成环</li>
+            <li><b>换一个问数问题</b>：不生成 SQL，按当前表字段反问可点问题；点选后再 ask</li>
+            <li><b>gen</b>：规划图表 → layout → <code>od_emit_patch</code></li>
+            <li>「为什么 / 下滑」倾向 insight；结果卡可出解读，不复用上一张问数图当诊断</li>
+          </ul>
+        </article>
+
+        <article class="panel full">
+          <h3>与 SQLBot 代码对照（只写现行差异）</h3>
+          <p>OD 对照 <code>refs/sqlbot</code>（<a href="https://github.com/dataease/SQLBot">dataease/SQLBot</a>）搬了「生成 SQL → 只读执行 → 出图」这一段，没有搬独立 ChatBI 产品。</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>维度</th><th>SQLBot（refs/sqlbot）</th><th>Open Dashboard 现行</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>产品形态</td>
+                  <td>独立问数站：用户 / 工作空间 / 数据源 / RAG / xpack</td>
+                  <td>嵌在 OD 对话与编辑器浮层；数据源与数据集仍是 OD 自己的</td>
+                </tr>
+                <tr>
+                  <td>谁跑 LLM</td>
+                  <td>Python <code>LLMService.run_task</code> 流式生成 SQL / 图 / 分析 / 预测</td>
+                  <td>仅 <code>opendashboard-harness</code>；Java 只提供 schema / query / patch</td>
+                </tr>
+                <tr>
+                  <td>谁执行 SQL</td>
+                  <td>Python 直连业务库 <code>exec_sql</code></td>
+                  <td>Harness 调 Java <code>/query/sql</code>；Java 再 JDBC</td>
+                </tr>
+                <tr>
+                  <td>Prompt 资源</td>
+                  <td>术语库 embedding、SQL 示例训练、自定义提示词、表关系、多表选表</td>
+                  <td>静态压缩 Prompt（<code>sqlbot/prompts.py</code>）+ 当前数据集 M-Schema + 3 行抽样。无术语 / 示例 / 自定义提示词管理面</td>
+                </tr>
+                <tr>
+                  <td>表范围</td>
+                  <td>数据源下多表；embedding 选表；sqlglot 抽出表名后对允许表集合校验</td>
+                  <td>一次只绑一个 Dataset 物理表；白名单就是该表名</td>
+                </tr>
+                <tr>
+                  <td>行级权限</td>
+                  <td>普通用户可走 LLM 把 RLS filter 改写进 SQL</td>
+                  <td>未实现；P008 另议</td>
+                </tr>
+                <tr>
+                  <td>分析 / 预测</td>
+                  <td>主任务出图后，另有 analysis / predict 二次 LLM</td>
+                  <td>问数主路径出表+图；insight 目前是规则/启发式解读，不是 SQLBot 那套二次分析模型</td>
+                </tr>
+                <tr>
+                  <td>失败策略</td>
+                  <td>生成失败直接报错；执行失败可把 error 塞回 Prompt 重试</td>
+                  <td>执行失败同样重试一次；生成失败则澄清或回退 <code>chartQuery</code> encode</td>
+                </tr>
+                <tr>
+                  <td>只读闸门</td>
+                  <td>sqlglot + 危险函数/模式；可选允许 SHOW/DESCRIBE</td>
+                  <td>Harness sqlglot 表白名单 + Java <code>ReadSqlGuard</code>（仅 SELECT/WITH，禁止多语句）</td>
+                </tr>
+                <tr>
+                  <td>写回看板</td>
+                  <td>问数旁路，不写 DataEase 画布</td>
+                  <td>同样默认不写；显式 adopt 才 <code>DashboardPatch</code></td>
+                </tr>
+                <tr>
+                  <td>会话存储</td>
+                  <td>SQLBot 自己的 chat / record / log，并落 SQL 执行结果</td>
+                  <td>Harness session + Java <code>de_conversation*</code>；结果行只在 SSE 预览</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="source">
+            搬过来的：M-Schema 文本、JSON <code>{sql, chart-type, brief}</code>、sqlglot 抽表、执行失败重试、图表 JSON → encode。<br />
+            证据：<code>opendashboard-harness/sqlbot/</code>（含 <code>suggest.py</code>）、<code>agent/runtime.py</code> <code>_run_ask</code>、<code>ReadSqlGuard.java</code>、<code>ConversationWorkspace.vue</code>、<code>ConversationAiPanel.vue</code>。
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="gen">
+      <div class="section-head">
+        <div>
+          <h2>生成看板（P004 已编码）</h2>
+          <p>自然语言 → DashboardPatch → draft；预览走 chartQuery。编排抄 DeerFlow planner，质检抄 JoyAgent critic 的确定性闸，画布真相对齐 DataEase 分层，而不是 HTML 报告。</p>
+        </div>
+        <span class="status coded">已编码未验收</span>
+      </div>
+      <div class="grid">
+        <article class="panel full">
+          <h3>用户交互</h3>
+          <div class="flow" aria-label="生成看板用户交互">
+            <div class="node"><b>入口</b><span>落地页 Chip / Composer「生成看板」</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>选数据集 + 风格</b><span>intent=gen；可选 Auto / Plan</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>规划</b><span>特征探测 → 选图 → 质检 → 布局；Plan 需确认后才 apply</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>写入 draft</b><span>DashboardPatch · 不含结果行</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>画布预览</b><span>SSE chart_ready + chartQuery / ECharts</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>编辑器打开</b><span>同一份 draft，可继续问数或手改</span></div>
+          </div>
+        </article>
+
+        <article class="panel wide">
+          <h3>默认稿面（layout 落地）</h3>
+          <div class="stack">
+            <div class="layer"><b>顶栏查询条</b><code>type=query · 日期 + 1～3 个枚举 · 写入 chartQuery.context.filters</code></div>
+            <div class="layer"><b>KPI 行</b><code>仅 probe 有数且聚合非 null；无 yoy/mom 则关假环比</code></div>
+            <div class="layer"><b>两列满铺图</b><code>4～6 张量级；奇数最后一张拉满；饼图不与柱图同维</code></div>
+            <div class="layer"><b>底汇总表</b><code>grouptable；禁止明细全列表占位</code></div>
+          </div>
+        </article>
+        <article class="panel">
+          <h3>硬边界</h3>
+          <ul>
+            <li>唯一写通道：<code>od_emit_patch</code> → Java <code>apply-patch</code></li>
+            <li>禁止把查询结果行写入布局 / HTML</li>
+            <li>探测为空则不 emit 空看板</li>
+            <li>多轮有 linkedDashboard 默认 append；用户说整页才 replace</li>
+          </ul>
+        </article>
+
+        <article class="panel full">
+          <h3>端到端协作（主路径）</h3>
+          <div class="seq-wrap">
+            <table class="seq">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>用户 / Vue</th>
+                  <th>Harness :8091</th>
+                  <th>Java :8080</th>
+                  <th>业务库</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="act">1</td>
+                  <td>POST runs，<code>intent=gen</code></td>
+                  <td class="msg">SSE <code>run</code> · 走 Lead 或确定性环</td>
+                  <td></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="act">2</td>
+                  <td>步骤：分析数据特征</td>
+                  <td><code>od_profile_dataset</code></td>
+                  <td>POST <code>/profile-dataset</code></td>
+                  <td>探测 dim / measure / 是否有数</td>
+                </tr>
+                <tr>
+                  <td class="act">3</td>
+                  <td>步骤：按特征选图</td>
+                  <td><code>od_plan_charts</code>（只保留 probe 有数的 encode）</td>
+                  <td>schema + 试查询</td>
+                  <td>空表则 <code>empty=true</code>，不写稿</td>
+                </tr>
+                <tr>
+                  <td class="act">4</td>
+                  <td>质检修复</td>
+                  <td>确定性闸（plan 内跑，layout 再跑）</td>
+                  <td></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="act">5</td>
+                  <td>编排查询条 + KPI + 图 + 表</td>
+                  <td><code>od_layout_board</code> → Patch ops</td>
+                  <td></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="act">6</td>
+                  <td>写入草稿</td>
+                  <td><code>od_emit_patch</code></td>
+                  <td><code>DashboardPatchApplier</code></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="act">7</td>
+                  <td>画布出现 draft</td>
+                  <td class="msg">SSE <code>patch</code> · <code>chart_ready</code> · <code>board_ready</code></td>
+                  <td><code>chartQuery</code> 预览</td>
+                  <td>实时取数</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h3>Lead 路径（LLM 已配置）</h3>
+          <div class="vflow">
+            <div class="vnode"><b>write_todos</b><span>DeerFlow 式任务列表</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>od_profile_dataset</b><span>字段角色 + probes</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>od_plan_charts</b><span>按探测选图，禁止套固定模板</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>od_review_charts</b><span>可省略；layout 仍会再修</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>od_layout_board → od_emit_patch</b><span>再 <code>od_finish</code></span></div>
+          </div>
+        </article>
+        <article class="panel">
+          <h3>确定性路径（无 LLM / Lead 失败）</h3>
+          <div class="vflow">
+            <div class="vnode"><b>同一套 plan_charts + layout</b><span>不经 Lead 工具环</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>空探测 → 停</b><span>不写空 KPI / 空趋势</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>双失败才 compose-board</b><span>Java <code>DeterministicPlanner</code> 机械模板，仅兜底</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>apply-patch</b><span>与 Lead 同一写通道</span></div>
+          </div>
+        </article>
+        <article class="panel">
+          <h3>质检闸（确定性）</h3>
+          <p>对照 JoyAgent「分析后再可视化」，OD 不另起 LLM critic，规则在 harness 本地跑两遍。</p>
+          <ul>
+            <li>KPI 无 yoy/mom → 关假环比</li>
+            <li>饼图与已有柱图同维 → 去掉饼图</li>
+            <li>折线过密或原始时间戳 → 丢掉</li>
+            <li><code>table</code> → <code>grouptable</code></li>
+          </ul>
+        </article>
+
+        <article class="panel full">
+          <h3>现行缺口（代码事实）</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>点</th><th>现状</th></tr></thead>
+              <tbody>
+                <tr><td>Plan 确认</td><td>FE 确认盒 → Harness <code>POST …/confirm-plan</code> 取出 pending patch，再 <code>apply-patch</code>。Plan 模式 <code>od_emit_patch</code> 只存稿不落库。</td></tr>
+                <tr><td>adopt</td><td>生成路径直接 emit_patch；Harness adopt 仍 501。问数「保存本题图」走 Java <code>/runs/{id}/adopt</code> 或会话内二次 gen。</td></tr>
+                <tr><td>查询条</td><td>控件写入 draft，并进入 <code>chartQuery.context.filters</code>（eq / between / in / last）。Java 把数组转 Filter AST 后编进 SQL WHERE。</td></tr>
+                <tr><td>单表规划</td><td>生成主路径取 <code>datasetIds[0]</code>；跨表关联未做。</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="source">证据：<code>opendashboard-harness/agent/runtime.py</code> <code>_run_gen</code> / <code>run_confirm_plan</code>、<code>api/app.py</code> confirm-plan、<code>tools/od_bi.py</code> <code>defer_apply</code>、<code>StubQueryService</code> / <code>JdbcDataSourcePort.compileWhere</code>、<code>ConversationWorkspace.vue</code> / <code>LiveChartPreview.vue</code>。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="compare">
+      <div class="section-head">
+        <div>
+          <h2>业界对照</h2>
+          <p>对照仓不入本仓 git：DataEase、SQLBot、DeerFlow、JoyAgent DataAgent。下表只解释 OD 现行取舍，不是对方产品说明书。</p>
+        </div>
+      </div>
+      <div class="grid">
+        <article class="panel full">
+          <h3>四条生成链路</h3>
+          <div class="flow" aria-label="四产品生成链路">
+            <div class="node"><b>DataEase</b><span>人手：DS → Dataset → Chart → Canvas；SQLBot 旁路不写画布</span></div>
+            <div class="arrow">vs</div>
+            <div class="node"><b>JoyAgent</b><span>NL2SQL → 会话图 → 诊断 → HTML/PPT 报告</span></div>
+            <div class="arrow">vs</div>
+            <div class="node"><b>DeerFlow</b><span>Lead + 中间件 + 沙箱 → 文件产物（md/ppt）</span></div>
+            <div class="arrow">vs</div>
+            <div class="node"><b>Open Dashboard</b><span>planner + 质检闸 → Patch → 可编辑 draft</span></div>
+          </div>
+        </article>
+
+        <article class="panel full">
+          <h3>方案对比</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>维度</th>
+                  <th>DataEase + SQLBot</th>
+                  <th>JoyAgent DataAgent</th>
+                  <th>DeerFlow</th>
+                  <th>OD 现行</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>产品定位</td>
+                  <td>开源 BI。看板人手搭；AI 是嵌入问数。</td>
+                  <td>智能问数 + 诊断 + 工作建议。报告是主产物。</td>
+                  <td>通用 SuperAgent。研究/写稿/代码，不是 BI。</td>
+                  <td>BI 看板是运行时真相；对话只写配置。</td>
+                </tr>
+                <tr>
+                  <td>生成看板？</td>
+                  <td>无 NL→整页画布。模板市场是人手套模板。</td>
+                  <td>不生成可编辑仪表盘，生成 HTML/MD/PPT。</td>
+                  <td>不生成仪表盘，生成工作区文件。</td>
+                  <td>有。自然语言直出 Dashboard draft。</td>
+                </tr>
+                <tr>
+                  <td>编排</td>
+                  <td>无 Lead。SQLBot 单任务流水线。</td>
+                  <td>Java SSE 编排 + Python 工具（NL2SQL / 分析 / 报告）。</td>
+                  <td>LangGraph Lead + 中间件链 + Skills/MCP/沙箱。</td>
+                  <td>精简 Pi 工具环；<code>write_todos</code> 抄 DeerFlow；Java 零 LLM。</td>
+                </tr>
+                <tr>
+                  <td>产物</td>
+                  <td>DV JSON 画布 + 问数会话旁路。</td>
+                  <td>会话表/图 + 常内嵌数据的报告文件。</td>
+                  <td>md / ppt / 代码 / 沙箱输出。</td>
+                  <td><code>DashboardPatch</code> → draft；刷新再 <code>chartQuery</code>。</td>
+                </tr>
+                <tr>
+                  <td>质检 / 规划</td>
+                  <td>分析师自己排版。</td>
+                  <td>LLM critic（FinalAnswerCheck）+ SOPPlan 诊断。</td>
+                  <td>TodoList / 澄清中间件；无 BI 质检。</td>
+                  <td>确定性质检闸：假环比、同维饼图、过密折线、明细表。LLM 跳过也会被 layout 兜住。</td>
+                </tr>
+                <tr>
+                  <td>取数真相</td>
+                  <td>Dataset + getData（整 DTO，OD 不抄）。</td>
+                  <td>Python/Java 直查 + 结果进聊天/HTML。</td>
+                  <td>沙箱任意代码，无 schema 闸。</td>
+                  <td>Java QuerySpec；问数 SQL 只读预览；看板只用 encode。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h3>DataEase：抄什么 / 不抄</h3>
+          <p><b>优势（对方）</b>：画布、数据集、发布分享成熟；SQLBot 术语/示例/多表选表完整；分析师可控。</p>
+          <p style="margin-top:8px"><b>劣势（对方）</b>：没有「一句话出整页看板」；问数不写 DV；AI 与 BI 两套产品。</p>
+          <ul>
+            <li>OD 抄：DS→Dataset→Chart→Canvas 分层；编辑器浮层壳；问数默认不写画布</li>
+            <li>OD 不抄：getData 整 DTO、模板市场当生成、iframe 整站 SQLBot</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h3>JoyAgent：抄什么 / 不抄</h3>
+          <p><b>优势（对方）</b>：NL2SQL + 诊断归因强；TableRAG / DGP 治理；报告叙事完整；BirdSQL 成绩。</p>
+          <p style="margin-top:8px"><b>劣势（对方）</b>：HTML/PPT ≠ 可运营看板；结果行容易进文档；没有 draft/publish 生命周期。</p>
+          <ul>
+            <li>OD 抄：先问数再落配置；「分析后再可视化」收成确定性质检闸</li>
+            <li>OD 不抄：结果行进 HTML、SOP 诊断、TableRAG、DGP 预编织（洞察归 P005）</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h3>DeerFlow：抄什么 / 不抄</h3>
+          <p><b>优势（对方）</b>：Lead + 中间件 + SSE 成熟；Plan/澄清/Todos；Skills 可扩展；适合开放任务。</p>
+          <p style="margin-top:8px"><b>劣势（对方）</b>：无 BI schema/query/dashboard 真相；沙箱文件不能当看板运行；部署重（Docker/E2B）。</p>
+          <ul>
+            <li>OD 抄：<code>write_todos</code> planner、SSE run、工具 name+schema+execute、Session</li>
+            <li>OD 不抄：bash/沙箱当产物、LangGraph 整套中间件、通用研究 Agent</li>
+          </ul>
+        </article>
+
+        <article class="panel wide">
+          <h3>OD 相对三家的优势</h3>
+          <ul>
+            <li><b>产物可运营</b>：生成的是可编辑、可发布、可分享的 Dashboard draft，不是静态页或 PPT。</li>
+            <li><b>配置与数据分离</b>：布局只存 encode；刷新走 chartQuery。问数 SQL 不进入画布真相。</li>
+            <li><b>Java 零 LLM</b>：权限、取数、Patch 在 Java；模型失败可降级确定性规划，看板仍能出。</li>
+            <li><b>空稿拦截 + 质检闸</b>：无有效行不 emit；假环比/同维饼图/过密折线有规则修，不依赖第二次 LLM 心情。</li>
+            <li><b>双意图不混</b>：问数默认 ephemeral；生成才写整页。分析师仍可用 DataEase 式画布手改。</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h3>OD 相对三家的劣势</h3>
+          <ul>
+            <li>没有 JoyAgent 级诊断 / TableRAG / 数据治理协议</li>
+            <li>没有 SQLBot 术语库、SQL 示例、多表 embedding 选表</li>
+            <li>没有 DeerFlow 沙箱分析与通用 Skills 生态</li>
+            <li>图表类型与画布能力窄于 DataEase DV</li>
+            <li>跨表规划尚未闭环</li>
+            <li>Harness 未进 Docker Compose，不是开箱即用 AI</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="data">
+      <div class="section-head">
+        <div><h2>数据架构 DA</h2><p>数据资产、持久化、发布副本与查询流</p></div>
+      </div>
+      <div class="grid">
+        <article class="panel"><h3>连接与语义资产</h3><ul><li>Datasource：连接配置与元数据</li><li>Dataset：表绑定、维度、指标、计算字段</li><li>业务库只经 Query Service（chartQuery / datasetQuery / 内部 query/sql）</li></ul></article>
+        <article class="panel"><h3>分析内容资产</h3><ul><li>Dashboard / Chart / Layout / Linkage</li><li>draft 与 published 双副本</li><li>Share Token 指向 published 消费面</li></ul></article>
+        <article class="panel"><h3>文档与会话资产</h3><ul><li>Report：元数据 + Umo JSON，不存结果行</li><li>Conversation：<code>de_conversation</code> / <code>de_conversation_message</code> / run / revision；工作台最近问数读会话表</li><li>ACL 表已预留但未接业务</li></ul></article>
+        <article class="panel full">
+          <h3>取数链路</h3>
+          <div class="flow">
+            <div class="node"><b>看板运行时</b><span>encode + chartQuery</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>QuerySpec</b><span>统一查询协议</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>datasetQuery</b><span>JDBC 边界</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>Result</b><span>ECharts / CSV</span></div>
+          </div>
+          <p style="margin-top:12px">问数会话预览另有一条 ephemeral 路径：Harness 校验后的 SELECT 经 <code>POST /api/internal/bi/query/sql</code> 执行。SQL 不进入 draft；采纳后仍走 chartQuery。</p>
+        </article>
+        <article class="panel wide"><h3>配置库表族</h3><p><code>de_datasource*</code>、<code>de_dataset*</code>、<code>de_dashboard*</code>、<code>de_chart_view</code>、<code>de_dashboard_share</code>、<code>de_report</code>、<code>de_conversation*</code>。Flyway V1…V10 管理演进。</p></article>
+        <article class="panel"><h3>运行模式</h3><p><code>stub-query=true</code> 使用演示数据；Docker / 真实环境走 JDBC。编排入口仍由 Query Service 统一。</p></article>
+        <article class="panel full">
+          <h3>关键一致性规则</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>规则</th><th>约束</th></tr></thead>
+              <tbody>
+                <tr><td>配置与数据分离</td><td>图表 JSON 只存查询意图，不存业务结果行。</td></tr>
+                <tr><td>发布隔离</td><td>编辑默认 draft；公开分享强制 published。</td></tr>
+                <tr><td>ID 语义</td><td>前端与 OpenAPI 中 ID 按 string 处理。</td></tr>
+                <tr><td>查询边界</td><td>前端不得直连业务库。看板只经 chartQuery / datasetQuery；问数预览的 SQL 只经 Harness 校验后的 internal <code>/query/sql</code>。</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+      <p class="source">证据：Flyway migrations、ChartQueryController、DatasetQueryController、QuerySpec 与 Repository 实现。</p>
+    </section>
+
+    <section class="section" id="technology">
+      <div class="section-head">
+        <div><h2>技术架构 TA</h2><p>技术栈、运行节点、安全边界与部署</p></div>
+      </div>
+      <div class="grid">
+        <article class="panel"><h3>Web</h3><p>Vue 3、Vite、TypeScript、Pinia、ECharts、Umo Editor。</p><p class="source"><code>open-dashboard-frontend/</code></p></article>
+        <article class="panel"><h3>API</h3><p>JDK 21、Spring Boot 3、Spring JDBC、Flyway、COLA 分层。</p><p class="source"><code>open-dashboard-backend/</code></p></article>
+        <article class="panel"><h3>Agent</h3><p>Python FastAPI Harness（默认 :8091），承载问数 SQLBot 管道、Lead 生成环与 SSE。</p><span class="status coded">未纳入标准部署</span></article>
+        <article class="panel wide">
+          <h3>部署拓扑</h3>
+          <div class="flow">
+            <div class="node"><b>Browser</b><span>用户访问</span></div><div class="arrow">→</div>
+            <div class="node"><b>Frontend :8088</b><span>静态资源 / 代理</span></div><div class="arrow">→</div>
+            <div class="node"><b>Harness :8091</b><span>问数 / 生成 SSE</span></div><div class="arrow">→</div>
+            <div class="node"><b>Backend :8080</b><span>REST / Query / Patch</span></div><div class="arrow">→</div>
+            <div class="node"><b>PostgreSQL :5434</b><span>配置库</span></div>
+          </div>
+        </article>
+        <article class="panel"><h3>外部业务库</h3><p>MySQL / PostgreSQL 经 JDBC 接入；凭证仅在后端使用。</p></article>
+        <article class="panel"><h3>鉴权</h3><p>前端附加 <code>X-User-Id</code>、<code>X-User-Name</code>、<code>X-User-Perms</code>；后端 Auth SPI 与拦截器执行登录和权限码校验。</p></article>
+        <article class="panel"><h3>公开边界</h3><p><code>/api/share/**</code> 可匿名；Token、启用状态和过期时间形成公开访问边界。</p></article>
+        <article class="panel"><h3>启动</h3><p><code>./scripts/up.sh</code> 启动 PostgreSQL、API 与 Web；<code>docs/prototypes/hi-fi/start.sh</code> 仅预览文档原型。</p></article>
+        <article class="panel full">
+          <h3>质量与约束</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>领域</th><th>当前约束</th><th>未完成</th></tr></thead>
+              <tbody>
+                <tr><td>安全</td><td>Auth SPI、写权限码、匿名分享隔离</td><td>资源 ACL、RLS/CLS、内置登录</td></tr>
+                <tr><td>部署</td><td>Docker Compose 单机开箱</td><td>Harness 标准编排、高可用</td></tr>
+                <tr><td>数据</td><td>QuerySpec、超时/限制、Dataset 边界</td><td>统一权限消费闸门</td></tr>
+                <tr><td>前端</td><td>模块路由、AppShell、三行工作台、编辑器 Host、响应式移动布局</td><td>问数验收 PR-ASK-*、P007 PR-SH-10 手验</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="trace">
+      <div class="section-head">
+        <div><h2>架构追溯与更新</h2><p>从提案到代码，再回写现行架构</p></div>
+      </div>
+      <div class="grid">
+        <article class="panel full">
+          <div class="flow">
+            <div class="node"><b>Proposal</b><span>需求 + 详细设计 + 验收</span></div><div class="arrow">→</div>
+            <div class="node"><b>OpenAPI</b><span>实现分支先定契约</span></div><div class="arrow">→</div>
+            <div class="node"><b>Code</b><span>Frontend / Backend / Harness</span></div><div class="arrow">→</div>
+            <div class="node"><b>Verify</b><span>测试与验收</span></div><div class="arrow">→</div>
+            <div class="node"><b>Architecture</b><span>同提交更新 4A 现状</span></div><div class="arrow">→</div>
+            <div class="node"><b>Requirements</b><span>只写已交付能力</span></div>
+          </div>
+        </article>
+        <article class="panel wide"><h3>何时必须更新本页</h3><ul><li>业务能力或端到端流程变化</li><li>应用模块、服务边界、集成方式变化</li><li>实体、表族、查询链路或数据治理变化</li><li>技术栈、部署拓扑、端口、安全边界变化</li></ul></article>
+        <article class="panel"><h3>哪里写详细设计</h3><p>未实现方案全部写入 <a href="../proposals/README.md">对应 Pxxx 目录</a>。本页不保存讨论过程、候选方案或未来承诺。</p></article>
+        <article class="panel full">
+          <h3>证据入口</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>真相类型</th><th>入口</th></tr></thead>
+              <tbody>
+                <tr><td>已交付产品能力</td><td><a href="../product/requirements.md"><code>product/requirements.md</code></a></td></tr>
+                <tr><td>机器接口契约</td><td><a href="./openapi.yaml"><code>design/openapi.yaml</code></a></td></tr>
+                <tr><td>详细需求与设计</td><td><a href="../proposals/README.md"><code>proposals/Pxxx-name/</code></a></td></tr>
+                <tr><td>交互原型</td><td><a href="../prototypes/hi-fi/index.html"><code>prototypes/hi-fi/</code></a></td></tr>
+                <tr><td>代码</td><td><code>open-dashboard-frontend/</code> · <code>open-dashboard-backend/</code> · <code>opendashboard-harness/</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>Open Dashboard · 4A 当前架构</span>
+      <span>业务驱动 · 数据支撑 · 应用承载 · 技术保障</span>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const key = 'od.arch.theme';
+      const root = document.documentElement;
+      try { root.dataset.theme = localStorage.getItem(key) || 'light'; } catch (_) { /* ignore */ }
+      document.getElementById('themeBtn').addEventListener('click', function () {
+        const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        root.dataset.theme = next;
+        try { localStorage.setItem(key, next); } catch (_) { /* ignore */ }
+      });
+    })();
+  </script>
+</body>
+</html>

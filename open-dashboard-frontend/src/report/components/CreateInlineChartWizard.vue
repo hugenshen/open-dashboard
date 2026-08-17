@@ -18,10 +18,10 @@ const CHART_TYPES = [
 ]
 
 const datasets = ref<DatasetCatalogItem[]>([])
-const datasetId = ref('ds_sales')
+const datasetId = ref('')
 const chartType = ref('bar')
-const category = ref('region')
-const value = ref('amount')
+const category = ref('')
+const value = ref('')
 const agg = ref('SUM')
 const title = ref('')
 const height = ref(320)
@@ -48,12 +48,18 @@ watch(open, async (v) => {
   }
   const cat = await catalogApi.get()
   datasets.value = cat.datasets
-  datasetId.value = cat.datasets[0]?.id || 'ds_sales'
+  datasetId.value = cat.datasets[0]?.id || ''
   chartType.value = 'bar'
-  category.value = 'region'
-  value.value = 'amount'
+  category.value = dimFields.value[0]?.name || ''
+  value.value = quotaFields.value[0]?.name || ''
   title.value = ''
   refreshPreview()
+})
+
+watch(datasetId, () => {
+  if (!open.value) return
+  category.value = dimFields.value[0]?.name || ''
+  value.value = quotaFields.value[0]?.name || ''
 })
 
 watch([datasetId, chartType, category, value, agg, title], () => {

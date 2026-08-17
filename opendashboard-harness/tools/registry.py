@@ -8,8 +8,13 @@ from agent.types import AgentTool
 from tools.od_bi import ToolState, build_od_tools
 
 
-def create_registry(linked_dashboard_id: Optional[str] = None) -> tuple[List[AgentTool], ToolState, Dict[str, AgentTool]]:
+def create_registry(
+    linked_dashboard_id: Optional[str] = None,
+    *,
+    defer_apply: bool = False,
+) -> tuple[List[AgentTool], ToolState, Dict[str, AgentTool]]:
     state = ToolState()
+    state.defer_apply = defer_apply
     tools = build_od_tools(linked_dashboard_id, state)
     by_name = {t.name: t for t in tools}
     return tools, state, by_name

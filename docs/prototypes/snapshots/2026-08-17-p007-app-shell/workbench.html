@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>工作台 · Open Dashboard 高保</title>
+  <link rel="stylesheet" href="./shared/shell.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    button, input { font: inherit; }
+    .btn {
+      height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px;
+      border: 1px solid #dee0e3; background: #fff; cursor: pointer; color: #1f2329;
+    }
+    .btn.primary { background: #3370ff; color: #fff; border-color: #3370ff; }
+    .btn.primary:hover { background: #2860e1; }
+    .wb-greet {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .wb-greet .hello { font-size: 24px; font-weight: 650; letter-spacing: -.03em; line-height: 1.25; }
+    .wb-greet .sub { margin-top: 6px; font-size: 13px; color: #8f959e; line-height: 1.45; }
+    .wb-greet .actions { display: flex; gap: 8px; }
+    .wb-search {
+      display: flex; align-items: center; height: 48px; padding: 5px 5px 5px 16px;
+      background: #fff; border-radius: 12px; border: 1px solid rgba(222,224,227,.8);
+      box-shadow: 0 1px 2px rgba(31,35,41,.04), 0 8px 24px rgba(31,35,41,.06);
+    }
+    .wb-search:focus-within { border-color: #a8c1ff; box-shadow: 0 0 0 4px rgba(51,112,255,.12); }
+    .wb-search .ico { width: 20px; color: #3370ff; display: grid; place-items: center; }
+    .wb-search .ico svg { width: 18px; height: 18px; }
+    .wb-search input {
+      flex: 1; border: 0; outline: 0; background: transparent; font-size: 15px; margin: 0 12px; min-width: 0;
+    }
+    .wb-search input::placeholder { color: #bbbfc4; }
+    .wb-search .go {
+      height: 38px; padding: 0 18px; border: 0; border-radius: 9px;
+      background: #3370ff; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .wb-examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; margin-bottom: 22px; }
+    .wb-examples span { font-size: 12px; color: #8f959e; align-self: center; }
+    .wb-examples button {
+      border: 0; background: transparent; color: #646a73; font-size: 12px;
+      padding: 4px 2px; cursor: pointer; border-bottom: 1px dashed transparent;
+    }
+    .wb-examples button:hover { color: #3370ff; border-bottom-color: #a8c1ff; }
+    .wb-apps { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 28px; }
+    .wb-app {
+      width: 88px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+      padding: 12px 6px; border: 0; background: transparent; border-radius: 12px;
+      cursor: pointer; color: #1f2329; text-decoration: none; font: inherit;
+    }
+    .wb-app:hover { background: rgba(255,255,255,.9); }
+    .wb-app .icon {
+      width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+      box-shadow: 0 2px 8px rgba(31,35,41,.06);
+    }
+    .wb-app .icon svg { width: 22px; height: 22px; }
+    .wb-app .icon.c1 { background: linear-gradient(145deg, #5b8cff, #3370ff); color: #fff; }
+    .wb-app .icon.c2 { background: linear-gradient(145deg, #34d399, #10b981); color: #fff; }
+    .wb-app .icon.c3 { background: linear-gradient(145deg, #60a5fa, #3b82f6); color: #fff; }
+    .wb-app .icon.c4 { background: linear-gradient(145deg, #a78bfa, #7c3aed); color: #fff; }
+    .wb-app .icon.c5 { background: linear-gradient(145deg, #fbbf24, #f59e0b); color: #fff; }
+    .wb-app .icon.c6 { background: linear-gradient(145deg, #fb7185, #f43f5e); color: #fff; }
+    .wb-app .label { font-size: 12px; color: #646a73; font-weight: 500; }
+    .wb-sec { margin-bottom: 24px; }
+    .wb-sec-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .wb-sec-hd h3 { font-size: 15px; font-weight: 650; }
+    .wb-sec-hd .link, .wb-panel .phd .link {
+      border: 0; background: transparent; color: #8f959e; font-size: 13px; cursor: pointer; text-decoration: none;
+    }
+    .wb-sec-hd .link:hover, .wb-panel .phd .link:hover { color: #3370ff; }
+    .wb-dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .wb-dash {
+      display: flex; flex-direction: column; background: #fff; border-radius: 12px; overflow: hidden;
+      border: 0; padding: 0; text-align: left; font: inherit; color: inherit; cursor: pointer;
+      text-decoration: none; box-shadow: 0 1px 2px rgba(31,35,41,.04);
+    }
+    .wb-dash:hover { box-shadow: 0 8px 24px rgba(31,35,41,.08); transform: translateY(-1px); }
+    .wb-dash .cover { height: 96px; padding: 12px; display: flex; flex-direction: column; }
+    .wb-dash .cover.t0 { background: linear-gradient(160deg, #eef3ff, #e4ecff); }
+    .wb-dash .cover.t1 { background: linear-gradient(160deg, #eefbf4, #e3f6eb); }
+    .wb-dash .cover.t2 { background: linear-gradient(160deg, #f3f4f6, #e8eaed); }
+    .wb-dash .cover.t3 { background: linear-gradient(160deg, #fff1f2, #ffe4e6); }
+    .wb-dash .sparkline { flex: 1; display: flex; align-items: flex-end; gap: 4px; min-height: 36px; }
+    .wb-dash .sparkline i { display: block; flex: 1; min-height: 8px; border-radius: 3px 3px 1px 1px; background: #3370ff; opacity: .85; }
+    .wb-dash .cover.t1 .sparkline i { background: #10b981; }
+    .wb-dash .cover.t2 .sparkline i { background: #64748b; }
+    .wb-dash .cover.t3 .sparkline i { background: #f43f5e; }
+    .wb-dash .meta { padding: 10px 12px 12px; }
+    .wb-dash .name { font-size: 13px; font-weight: 600; }
+    .wb-dash .desc { margin-top: 3px; font-size: 12px; color: #8f959e; display: flex; align-items: center; gap: 6px; }
+    .wb-dash .dot-st { width: 6px; height: 6px; border-radius: 50%; background: #bbbfc4; }
+    .wb-dash .dot-st.pub { background: #00b578; }
+    .wb-dash .dot-st.dirty { background: #ff8800; }
+    .wb-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .wb-panel { background: #fff; border-radius: 12px; padding: 14px 16px 8px; box-shadow: 0 1px 2px rgba(31,35,41,.04); }
+    .wb-panel .phd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+    .wb-panel .phd h4 { font-size: 13px; font-weight: 650; }
+    .wb-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 4px;
+      border: 0; border-bottom: 1px solid #f0f1f2; width: 100%; background: transparent;
+      text-align: left; font: inherit; color: inherit; cursor: pointer; text-decoration: none;
+    }
+    .wb-panel .wb-row:last-child { border-bottom: 0; }
+    .wb-row:hover { background: #f7f8fa; border-radius: 8px; }
+    .wb-row .av { width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: #eef3ff; color: #3370ff; flex-shrink: 0; }
+    .wb-row .body { flex: 1; min-width: 0; }
+    .wb-row .t { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wb-row .m { font-size: 11px; color: #8f959e; margin-top: 2px; }
+    .wb-row .side { flex-shrink: 0; text-align: right; }
+    .wb-row .side .num { font-size: 13px; font-weight: 650; }
+    .wb-row .side .delta { font-size: 11px; color: #00b578; margin-top: 2px; }
+    .wb-todo {
+      display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; margin-bottom: 8px;
+      border-radius: 10px; background: #fafbfc; border: 0; width: 100%; text-align: left;
+      font: inherit; cursor: pointer; text-decoration: none; color: inherit;
+    }
+    .wb-todo:hover { background: #f0f4ff; }
+    .wb-todo .mark { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+    .wb-todo .mark.warn { background: #ff8800; }
+    .wb-todo .mark.info { background: #3370ff; }
+    .wb-todo .txt { font-size: 13px; color: #646a73; line-height: 1.45; }
+    .wb-todo .txt b { color: #1f2329; }
+    @media (max-width: 960px) {
+      .wb-split { grid-template-columns: 1fr; }
+      .wb-home { padding: 20px 16px 36px; }
+    }
+  </style>
+</head>
+<body data-mod="workbench">
+<div class="od-app" id="odApp">
+  <aside class="od-rail" id="odRail">
+    <a class="od-brand" href="./workbench.html"><i>OD</i><span>Open Dashboard</span></a>
+    <nav class="od-rail-nav" aria-label="产品模块">
+      <a class="od-rail-item on" data-mod="workbench" href="./workbench.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span class="od-rail-txt">工作台</span>
+      </a>
+      <a class="od-rail-item" data-mod="conversation" href="./dashboard-commercial.html#/conversation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+        <span class="od-rail-txt">对话</span><span class="od-beta">内测</span>
+      </a>
+      <a class="od-rail-item" data-mod="datasource" href="./dashboard-commercial.html#/datasource">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+        <span class="od-rail-txt">数据源</span>
+      </a>
+      <a class="od-rail-item" data-mod="dataset" href="./dashboard-commercial.html#/dataset">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18" cy="18" r="2"/></svg>
+        <span class="od-rail-txt">数据集</span>
+      </a>
+      <a class="od-rail-item" data-mod="dashboard" href="./dashboard-commercial.html#/dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        <span class="od-rail-txt">仪表盘</span>
+      </a>
+      <a class="od-rail-item" data-mod="report" href="./dashboard-commercial.html#/report">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>
+        <span class="od-rail-txt">报告</span>
+      </a>
+    </nav>
+    <div class="od-rail-foot">
+      <button class="od-rail-item" type="button" id="odRailSlim" title="收起侧栏">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+        <span class="od-rail-txt">收起侧栏</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="od-col">
+    <header class="od-top">
+      <div class="od-search">
+        <input id="odSearchInput" type="search" placeholder="搜索看板，或直接问数…" />
+        <button class="go" type="button" id="odSearchGo">问数</button>
+      </div>
+      <div class="od-top-actions">
+        <button class="od-ghost" type="button" data-od-act="sqlbot">SQLBot</button>
+        <button class="od-ghost" type="button" data-od-act="help">帮助</button>
+        <button class="od-icon-btn" type="button" data-od-act="settings" title="设置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        </button>
+        <div style="position:relative">
+          <button class="od-account" type="button" id="odAccountBtn">
+            <span class="od-avatar">演</span>
+            演示账号
+          </button>
+          <div class="od-pop" id="odAccountPop">
+            <div class="who"><b>演示账号</b><span>租户 · Open Dashboard 内测</span></div>
+            <button type="button" data-od-act="switch">切换账号</button>
+            <button type="button" data-od-act="settings">通用设置</button>
+            <button type="button" data-od-act="logout">退出登录</button>
+            <div class="hint">高保演示 · 不接真实 IAM</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="od-page">
+      <div class="wb-stage">
+        <div class="wb-home">
+          <div class="wb-greet">
+            <div>
+              <div class="hello" id="wbHello">晚上好，继续分析</div>
+              <div class="sub">问一句拿结果，或打开最近看板 · 7 个仪表盘 · 6 个数据源</div>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" id="wbRefresh">刷新</button>
+              <a class="btn primary" href="./dashboard-commercial.html#/dashboard">新建仪表盘</a>
+            </div>
+          </div>
+
+          <div class="wb-search">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+            <input id="wbAskInput" type="text" placeholder="用自然语言问数，例如：本月华东 GMV 环比多少？" />
+            <button class="go" type="button" id="wbAskGo">问数</button>
+          </div>
+          <div class="wb-examples">
+            <span>试试</span>
+            <button type="button" data-q="本月各区域 GMV 环比？">本月各区域 GMV 环比？</button>
+            <button type="button" data-q="库存周转超过 30 天的 SKU">库存周转超过 30 天的 SKU</button>
+            <button type="button" data-q="今年收入多少">今年收入多少</button>
+          </div>
+
+          <div class="wb-apps">
+            <a class="wb-app" href="./dashboard-commercial.html#/conversation"><div class="icon c1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div class="label">对话问数</div></a>
+            <a class="wb-app" href="./dashboard-commercial.html#/dashboard"><div class="icon c2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div><div class="label">新建看板</div></a>
+            <a class="wb-app" href="./dashboard-commercial.html#/datasource"><div class="icon c3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/></svg></div><div class="label">数据源</div></a>
+            <a class="wb-app" href="./dashboard-commercial.html#/dataset"><div class="icon c4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><div class="label">数据集</div></a>
+            <a class="wb-app" href="./dashboard-commercial.html#/dashboard"><div class="icon c5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></div><div class="label">仪表盘</div></a>
+            <a class="wb-app" href="./dashboard-commercial.html#/report"><div class="icon c6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/></svg></div><div class="label">在线报告</div></a>
+          </div>
+
+          <section class="wb-sec">
+            <div class="wb-sec-hd">
+              <h3>最近打开</h3>
+              <a class="link" href="./dashboard-commercial.html#/dashboard">全部</a>
+            </div>
+            <div class="wb-dash-grid">
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t0"><div class="sparkline"><i style="height:40%"></i><i style="height:70%"></i><i style="height:55%"></i><i style="height:88%"></i><i style="height:62%"></i></div></div>
+                <div class="meta"><div class="name">销售经营看板</div><div class="desc"><span class="dot-st pub"></span><span>经营 · 已发布</span></div></div>
+              </a>
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t1"><div class="sparkline"><i style="height:30%"></i><i style="height:50%"></i><i style="height:80%"></i><i style="height:45%"></i><i style="height:66%"></i></div></div>
+                <div class="meta"><div class="name">业务月报</div><div class="desc"><span class="dot-st dirty"></span><span>财务 · 有未发布改动</span></div></div>
+              </a>
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t2"><div class="sparkline"><i style="height:50%"></i><i style="height:40%"></i><i style="height:60%"></i><i style="height:35%"></i><i style="height:48%"></i></div></div>
+                <div class="meta"><div class="name">活动监控</div><div class="desc"><span class="dot-st"></span><span>运营 · 草稿</span></div></div>
+              </a>
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t3"><div class="sparkline"><i style="height:22%"></i><i style="height:58%"></i><i style="height:44%"></i><i style="height:90%"></i><i style="height:70%"></i></div></div>
+                <div class="meta"><div class="name">库存周报</div><div class="desc"><span class="dot-st pub"></span><span>供应链 · 已发布</span></div></div>
+              </a>
+              <a class="wb-dash" href="./dashboard-commercial.html#/dashboard">
+                <div class="cover t0"><div class="sparkline"><i style="height:60%"></i><i style="height:48%"></i><i style="height:72%"></i><i style="height:51%"></i><i style="height:80%"></i></div></div>
+                <div class="meta"><div class="name">区域对比</div><div class="desc"><span class="dot-st pub"></span><span>销售 · 已发布</span></div></div>
+              </a>
+            </div>
+          </section>
+
+          <div class="wb-split">
+            <div class="wb-panel">
+              <div class="phd"><h4>待处理</h4></div>
+              <a class="wb-todo" href="./dashboard-commercial.html#/dashboard"><span class="mark warn"></span><span class="txt"><b>2 个看板</b> 有未发布改动</span></a>
+              <a class="wb-todo" href="./dashboard-commercial.html#/datasource"><span class="mark warn"></span><span class="txt"><b>2 个数据源</b> 待处理</span></a>
+              <a class="wb-todo" href="./dashboard-commercial.html#/conversation"><span class="mark info"></span><span class="txt">试问：<b>今年收入多少</b></span></a>
+            </div>
+            <div class="wb-panel">
+              <div class="phd"><h4>最近问数</h4><a class="link" href="./dashboard-commercial.html#/conversation">继续</a></div>
+              <a class="wb-row" href="./dashboard-commercial.html#/conversation">
+                <div class="av">问</div>
+                <div class="body"><div class="t">华东本月 GMV 同比？</div><div class="m">会话结果 · 未写入看板</div></div>
+                <div class="side"><div class="num">¥2,186万</div><div class="delta">+18.4%</div></div>
+              </a>
+              <a class="wb-row" href="./dashboard-commercial.html#/conversation">
+                <div class="av">问</div>
+                <div class="body"><div class="t">今年收入多少</div><div class="m">会话结果 · 未写入看板</div></div>
+                <div class="side"><div class="num">576,800</div><div class="delta">今年累计</div></div>
+              </a>
+              <a class="wb-row" href="./dashboard-commercial.html#/conversation">
+                <div class="av">问</div>
+                <div class="body"><div class="t">本周销售员 TOP5？</div><div class="m">会话结果 · 未写入看板</div></div>
+                <div class="side"><div class="num">张伟</div><div class="delta">GMV ¥86万</div></div>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="./shared/shell.js"></script>
+<script>
+  (function () {
+    const h = new Date().getHours();
+    const hello = h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好';
+    document.getElementById('wbHello').textContent = hello + '，继续分析';
+    const goAsk = (preset) => {
+      const input = document.getElementById('wbAskInput');
+      if (preset) input.value = preset;
+      const q = input.value.trim();
+      if (q) sessionStorage.setItem('od.ask.draft', q);
+      location.href = './dashboard-commercial.html#/conversation';
+    };
+    document.getElementById('wbAskGo').onclick = () => goAsk();
+    document.getElementById('wbAskInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') goAsk();
+    });
+    document.getElementById('wbRefresh').onclick = () => odToast('已同步（演示）');
+    document.querySelectorAll('[data-q]').forEach((b) => {
+      b.onclick = () => goAsk(b.dataset.q);
+    });
+  })();
+</script>
+</body>
+</html>

@@ -11,7 +11,7 @@ import java.util.Optional;
 
 public interface ReportGateway {
 
-    List<ReportMetaVO> list();
+    List<ReportMetaVO> list(Integer limit);
 
     Optional<ReportDetailVO> get(String id);
 

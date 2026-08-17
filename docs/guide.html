@@ -163,15 +163,21 @@
     <header>
       <p class="eyebrow">Open Dashboard Docs</p>
       <h1>文档与协作使用说明</h1>
-      <p class="lead">给参与产品演进的人与 AI：目录怎么读、新需求怎么走、版本与提案怎么管。终端用户操作手册见 <a href="./user-manual/index.html">user-manual</a>。</p>
+      <p class="lead">给规划、BA、开发、测试与 AI：同一套契约怎么读、验收清单一处维护、月初排期到月底上线过程产物怎么协同。终端用户操作手册见 <a href="./user-manual/index.html">user-manual</a>。</p>
     </header>
 
     <nav class="toc" aria-label="目录">
       <strong>本页目录</strong>
       <ol>
         <li><a href="#layout">目录一览</a></li>
+        <li><a href="#roles">谁读什么</a></li>
+        <li><a href="#skills">docs 与工程技能包</a></li>
         <li><a href="#flow">新需求怎么协作</a></li>
-        <li><a href="#version">版本（里程碑）怎么用</a></li>
+        <li><a href="#proto">高保原型怎么改</a></li>
+        <li><a href="#acceptance">验收清单怎么维护</a></li>
+        <li><a href="#version">版本怎么分层</a></li>
+        <li><a href="#iteration">按状态怎么推进</a></li>
+        <li><a href="#commit">提交与发版</a></li>
         <li><a href="#examples">场景实例</a></li>
         <li><a href="#rules">硬规则</a></li>
         <li><a href="#links">相关链接</a></li>
@@ -184,75 +190,304 @@
         <tr><th>路径</th><th>用途</th></tr>
       </thead>
       <tbody>
-        <tr><td><span class="path">product/overview.md</span></td><td>产品是什么</td></tr>
+        <tr><td><span class="path">product/README.md</span></td><td>产品是什么：定位、用户、模块、边界（不含仓库实现）</td></tr>
         <tr><td><span class="path">product/requirements.md</span></td><td>仅<strong>已交付</strong>需求基线</td></tr>
-        <tr><td><span class="path">product/roadmap.md</span></td><td>下一步；按 v0.x 分组并链到提案</td></tr>
-        <tr><td><span class="path">design/</span></td><td>现行说明书 + <span class="path">openapi.yaml</span>（硬契约）</td></tr>
-        <tr><td><span class="path">proposals/</span></td><td>进行中 / 已交付规格（用 status 标记）</td></tr>
+        <tr><td><span class="path">product/roadmap/</span></td><td>按状态分夹，每夹一份 README：进行中 / 已完成 / 计划中 / 搁置 / 不做</td></tr>
+        <tr><td><span class="path">proposals/Pxxx-name/</span></td><td>主键目录不搬家；文首 <code>status</code> + README「开发入口」+ <code>acceptance.yaml</code></td></tr>
+        <tr><td><span class="path">design/architecture.html</span></td><td>已实现的 4A 现行架构</td></tr>
+        <tr><td><span class="path">design/openapi.yaml</span></td><td>FE↔BE 机器可读硬契约</td></tr>
         <tr><td><span class="path">process.md</span></td><td>协作规范正文</td></tr>
-        <tr><td><span class="path">prototypes/hi-fi/</span></td><td>当前高保原型（可改）</td></tr>
-        <tr><td><span class="path">prototypes/snapshots/</span></td><td>可选冻结快照（只读）</td></tr>
+        <tr><td><span class="path">prototypes/hi-fi/</span></td><td>当前增量高保（可改）</td></tr>
+        <tr><td><span class="path">prototypes/snapshots/</span></td><td>历史冻结；看 SNAPSHOT.md 的提案 / kind / 相对上一版</td></tr>
+        <tr><td><span class="path">prototypes/VERSIONS.md</span></td><td>用 Pxxx 识别该对照哪一版</td></tr>
       </tbody>
     </table>
     <div class="callout">
       <strong>没有 archive 目录。</strong>历史看 <span class="path">proposals</span> 里 <code>status: done</code>，或 git tag（例如 <code>v0.4.0</code>）。
     </div>
 
-    <h2 id="flow">2. 新需求怎么协作</h2>
+    <h2 id="roles">2. 谁读什么</h2>
+    <p>同一套真相，按角色只换入口，不复制文档。聊天记录不是长期真相。</p>
+    <table>
+      <thead>
+        <tr><th>角色</th><th>先打开</th><th>只回答</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>规划</td>
+          <td><a href="./product/README.md">product/README.md</a> · <a href="./product/roadmap/">roadmap 状态夹</a></td>
+          <td>产品是什么、现在推什么</td>
+        </tr>
+        <tr>
+          <td>BA</td>
+          <td>提案 README 的范围 / 非目标 / 用户流程 + 对应高保</td>
+          <td>用户怎么走、边界是什么、验收 ID 有哪些</td>
+        </tr>
+        <tr>
+          <td>开发</td>
+          <td>README「开发入口」→ 冻结快照或 hi-fi → design → OpenAPI</td>
+          <td>对照哪一版、改哪些代码、契约变不变、回归哪些 ID</td>
+        </tr>
+        <tr>
+          <td>测试</td>
+          <td><code>acceptance.yaml</code> + <code>prototype-snapshot</code></td>
+          <td>前置、动作、期望、证据；哪些阻塞上线</td>
+        </tr>
+        <tr>
+          <td>AI</td>
+          <td><a href="../AGENTS.md">AGENTS.md</a>，然后走和人对同一条链</td>
+          <td>禁止把未验收能力写入 requirements / 4A；当轮把决策写回 Pxxx</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      提案目录按 Pxxx <strong>主键不搬家</strong>。进度看 <span class="path">roadmap/&lt;状态&gt;/</span> 和文首 <code>status</code> / <code>gates</code>，不要看聊天或最新 hi-fi。
+    </div>
+
+    <h2 id="skills">3. docs 与工程技能包</h2>
+    <p>本仓 <span class="path">docs/</span> 和 <a href="https://github.com/mattpocock/skills">mattpocock/skills</a> 不是同一类东西，也不能互相替代。</p>
+    <p>技能包管<strong>怎么干活</strong>（Agent 怎么问清楚、写 spec、拆票、TDD）。<span class="path">docs/</span> 管<strong>这个产品的事实是什么</strong>（做到哪、对照哪份原型、怎么验收）。</p>
+    <table>
+      <thead>
+        <tr><th></th><th>本仓 <span class="path">docs/</span></th><th>mattpocock/skills</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>性质</td>
+          <td>团队知识沉淀与交付契约</td>
+          <td>Agent 可调用的通用工程工作流</td>
+        </tr>
+        <tr>
+          <td>内容</td>
+          <td>路线图、Pxxx、验收、4A、OpenAPI、高保</td>
+          <td><code>/grill-with-docs</code>、<code>/to-spec</code>、<code>/implement</code>、<code>/tdd</code>、一次性 prototype</td>
+        </tr>
+        <tr>
+          <td>何时变</td>
+          <td>随产品和提案变</td>
+          <td>随工程方法变，与看板业务无关</td>
+        </tr>
+        <tr>
+          <td>开发入口</td>
+          <td>提案 README「开发入口」</td>
+          <td>你输入的技能命令，例如 <code>/implement</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>可以对应，但不要两套真相</h3>
+    <table>
+      <thead>
+        <tr><th>技能</th><th>本仓落点</th><th>注意</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>/grill-with-docs</code>、CONTEXT.md、ADR</td>
+          <td>多轮对话回写 Pxxx；术语可进 <span class="path">product/README.md</span></td>
+          <td>产品决策写进提案，不要另开一套 ADR 树</td>
+        </tr>
+        <tr>
+          <td><code>/to-spec</code></td>
+          <td><span class="path">proposals/Pxxx-name/</span></td>
+          <td>本仓 spec 就是提案，不要再生成一份独立 spec</td>
+        </tr>
+        <tr>
+          <td><code>/to-tickets</code></td>
+          <td><code>acceptance.yaml</code> 的可执行项</td>
+          <td>票是 Pxxx 的切片，主键仍是 Pxxx</td>
+        </tr>
+        <tr>
+          <td>技能里的 <code>prototype</code></td>
+          <td>一次性 HTML，用来回答一个设计问题</td>
+          <td>本仓高保是可验收基线（hi-fi + snapshots），不要用 throwaway 流程维护</td>
+        </tr>
+        <tr>
+          <td><code>/implement</code></td>
+          <td>先读「开发入口」，再改代码</td>
+          <td>技能管节奏（TDD、review），不管定义需求</td>
+        </tr>
+        <tr>
+          <td><code>/triage</code> 与 issue 状态</td>
+          <td><span class="path">product/roadmap/</span> 状态夹</td>
+          <td>进度以路线图为准；GitHub / Linear 只是可选镜像</td>
+        </tr>
+        <tr>
+          <td><code>/setup-matt-pocock-skills</code></td>
+          <td>问「文档存在哪」时指向现有 <span class="path">docs/</span></td>
+          <td>不要再造 <span class="path">docs/ai/</span>、<span class="path">specs/</span>、平行 CONTEXT 世界</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout warn">
+      技能包可以当加速器，挂在 <span class="path">AGENTS.md</span> 的工作方式之外。两套都写「当前该做什么」时，以提案和路线图为准；技能输出只能回写这些文件，不能另立门户。
+    </div>
+
+    <h2 id="flow">4. 新需求怎么协作</h2>
     <ol class="steps">
-      <li><strong>立项</strong> — 在 <span class="path">roadmap.md</span> 对应里程碑下挂一条，链到即将创建的 Pxxx。</li>
-      <li><strong>写规格</strong> — 新建 <span class="path">proposals/Pxxx-*.md</span>：<code>draft</code> → 评审 <code>accepted</code> → 开工 <code>in-progress</code>。</li>
-      <li><strong>定契约</strong> — 跨前后端时，先改 <span class="path">design/openapi.yaml</span> 与相关 design 文，再改实现。</li>
-      <li><strong>原型（可选）</strong> — 有新交互则改 <span class="path">prototypes/hi-fi/</span>；大改前可拷到 snapshots。</li>
-      <li><strong>实现</strong> — 前端 / 后端按 OpenAPI 与提案实现；PR 注明 Pxxx。<strong>未验收不要写进 requirements。</strong></li>
-      <li><strong>交付</strong> — 验收点合并进 <span class="path">requirements.md</span>；roadmap 勾掉；提案改为 <code>status: done</code> 并填 <code>done</code> 日期。</li>
+      <li><strong>立项</strong> — 在 <span class="path">product/roadmap/planned/</span> 或 <span class="path">in-progress/</span> 的 README 加一行，链到即将创建的 Pxxx。</li>
+      <li><strong>写提案</strong> — 新建 <span class="path">proposals/Pxxx-name/README.md</span>，文首写状态，正文先写「开发入口」，并补 <code>acceptance.yaml</code>。</li>
+      <li><strong>建映射</strong> — 用 Pxxx 关联增量原型、冻结快照、详细设计、architecture 与 PR-*。</li>
+      <li><strong>原型</strong> — 改 <span class="path">hi-fi/</span>；过程打 <code>increment</code> 快照，定稿打 <code>acceptance</code> 快照并写入 <code>prototype-snapshot</code>。</li>
+      <li><strong>实现</strong> — 打开该提案「开发入口」。高保已 accepted 时对照快照，不要对照最新 hi-fi。未验收不要写进 requirements。</li>
+      <li><strong>架构同步</strong> — 代码验证并提交时，在同一提交更新 <span class="path">design/architecture.html</span>；只写最终架构事实。</li>
+      <li><strong>交付</strong> — 已验收能力写入 <span class="path">requirements.md</span>；把该行挪到 <span class="path">roadmap/done/</span>，提案改为 <code>done</code>。</li>
     </ol>
-    <pre><code>roadmap → proposals/Pxxx → design + openapi → FE/BE → requirements → Pxxx done</code></pre>
+    <pre><code>roadmap/状态夹 README 挂条 → proposal 开发入口 → hi-fi 增量 / snapshot 冻结 → OpenAPI → 代码 + architecture → requirements → 该行挪到 done/</code></pre>
+    <div class="callout">
+      <strong>开发某个提案时：</strong>打开 <span class="path">proposals/Pxxx-name/README.md</span> 顶部的状态行和开发入口表。它会告诉你读哪份 design、对照 hi-fi 还是冻结快照、改哪些代码。提案目录不随状态搬家。
+    </div>
+    <div class="callout">
+      能力地图、模块边界、数据流、技术栈或部署变化，必须和代码在同一提交更新 <span class="path">architecture.html</span>；类名、函数细节、候选方案留在 Pxxx。
+    </div>
+    <div class="callout warn">
+      <strong>三个 gate 不能混用：</strong>高保通过只代表交互基线，代码合入只代表实现存在；仅当 <code>acceptance.yaml</code> 的阻塞项全部 <code>pass</code>，才可回写 requirements 并把提案标记为 done。
+    </div>
 
     <h3>短路径（不必走完全程）</h3>
     <table>
       <thead><tr><th>类型</th><th>做法</th></tr></thead>
       <tbody>
-        <tr><td>纯 UI、契约不变</td><td>可不建提案；必要时补一句 design</td></tr>
+        <tr><td>小型纯 UI、契约不变</td><td>可不建提案；改变长期架构或能力基线时再更新 architecture/requirements</td></tr>
         <tr><td>文档与线上不符</td><td>无提案；改 openapi 或改代码</td></tr>
         <tr><td>笔误</td><td>直接改对应文件</td></tr>
       </tbody>
     </table>
 
-    <h2 id="version">3. 版本（里程碑）怎么用</h2>
-    <p>版本用于<strong>排期与发版对齐</strong>，不是复制多份需求基线。</p>
-    <ul>
-      <li><span class="path">roadmap.md</span> 用 <code>## v0.5</code> 等分组计划项</li>
-      <li>提案文首写 <code>milestone: v0.5</code></li>
-      <li>发版时 docs / 前端 / 后端尽量打同号 tag（如 <code>v0.5.0</code>）</li>
-      <li><span class="path">requirements.md</span> 始终只有一份：当前已交付全集；顶部可注明「基线对齐 v0.x」</li>
-    </ul>
-    <div class="callout warn">
-      不要维护长期并存的 <code>requirements-v0.4.md</code> / <code>requirements-v0.5.md</code> 当日常入口。看旧版用 git：<code>git show v0.4.0:docs/product/requirements.md</code>。
+    <h3>提案里必须能看见波及</h3>
+    <p>每个在途提案 README 用一张表写清影响面，避免把下一轮想法做进当前范围（例如 P007 壳层不要顺便做 P008 权限工作台）。</p>
+    <table>
+      <thead><tr><th>列</th><th>写什么</th></tr></thead>
+      <tbody>
+        <tr><td>依赖</td><td>必须先存在的提案或已交付能力</td></tr>
+        <tr><td>改动面</td><td>FE / BE / Harness / OpenAPI / 高保，以及明确「不改」什么</td></tr>
+        <tr><td>回归验收</td><td>本提案和依赖提案里要复测的 <code>PR-*</code> ID</td></tr>
+        <tr><td>不要动</td><td>已拆到其他提案的范围</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="proto">4.1 高保原型怎么改</h2>
+    <p>高保是文档资产，放在 <span class="path">docs/prototypes/</span>。<strong>当前增量</strong>只改 <span class="path">hi-fi/</span>；<strong>历史冻结</strong>看 <a href="./prototypes/VERSIONS.md">VERSIONS.md</a> 与 <span class="path">snapshots/</span>（只读，看 SNAPSHOT.md 的提案 / kind / 相对上一版）。清单见 <a href="./prototypes/hi-fi/MANIFEST.md">MANIFEST.md</a>。预览：<span class="path">docs/prototypes/hi-fi/start.sh</span>。</p>
+    <table>
+      <thead><tr><th>文件</th><th>改什么</th></tr></thead>
+      <tbody>
+        <tr><td><span class="path">shared/shell.css</span> · <span class="path">shell.js</span></td><td>左栏 + 顶栏产品壳（各页统一引用）</td></tr>
+        <tr><td><span class="path">workbench.html</span></td><td>工作台</td></tr>
+        <tr><td><span class="path">conversation.html</span></td><td>对话</td></tr>
+        <tr><td><span class="path">datasource.html</span></td><td>数据源</td></tr>
+        <tr><td><span class="path">dataset.html</span></td><td>数据集</td></tr>
+        <tr><td><span class="path">dashboard.html</span></td><td>仪表盘</td></tr>
+        <tr><td><span class="path">report.html</span></td><td>报告</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <strong>一模块一页。</strong>壳层只改 <span class="path">shared/</span>。高保必须挂提案并更新 MANIFEST。打快照：<code>cd docs/prototypes && ./snapshot.sh YYYY-MM-DD-slug "说明" Pxxx increment|acceptance</code>。<code>acceptance</code> 快照才是实现对照版。
     </div>
 
-    <h2 id="examples">4. 场景实例</h2>
-    <h3>跨端新功能（如分享加密码）</h3>
-    <p class="muted">roadmap 挂条 → 新建提案 in-progress → 改 openapi + design → 前后端实现 → 写入 requirements → 提案标 done。</p>
-    <h3>纯前端（如画布吸附）</h3>
-    <p class="muted">可无提案；只改前端（可选补 design/frontend）。</p>
-    <h3>进行中大功能（对话分析 P004）</h3>
-    <p class="muted">以 <a href="./proposals/P004-conversation.md">P004</a> + <a href="./design/conversation.md">design/conversation.md</a> + 原型为准；未验收前 requirements 不写「已支持对话分析」。</p>
-
-    <h2 id="rules">5. 硬规则</h2>
+    <h2 id="acceptance">5. 验收清单怎么维护</h2>
+    <p><code>acceptance.yaml</code> 是测试与发版共用的那一份清单，不是第二份需求说明书。能维护的前提：<strong>判据、路径、状态、证据只写在 yaml 里</strong>。</p>
+    <table>
+      <thead><tr><th>谁</th><th>动什么</th><th>何时</th></tr></thead>
+      <tbody>
+        <tr><td>BA / 规划</td><td>相关 ID、标题、<code>criterion</code></td><td>锁范围；范围变更时必须改 yaml 并记修订</td></tr>
+        <tr><td>测试</td><td>只改 <code>status</code> / <code>evidence</code></td><td>高保验收、代码验收、月底放行</td></tr>
+        <tr><td>开发 / AI</td><td><code>command_or_path</code>、code gate 的命令</td><td>实现对照路径变化时</td></tr>
+      </tbody>
+    </table>
     <ul>
-      <li>现行契约 = <strong>requirements + design（含 OpenAPI）</strong>；仅非 done 的提案指导开发。</li>
-      <li><code>done</code> 提案只读追溯，不驱动新开发。</li>
-      <li>跨 FE/BE：先合文档契约，再合实现。</li>
-      <li>OpenAPI 与实现冲突：以<strong>已上线行为</strong>为准，并尽快修契约。</li>
+      <li>README 只保留 ID + 一句话标题，<strong>不要复制</strong> criterion / expected / status 长表。</li>
+      <li>一条在途提案建议 5～12 条阻塞项；当前不做的不要写进 <span class="path">in-progress/</span>。</li>
+      <li><code>done</code> 之后 yaml 冻结，只追溯。</li>
+      <li>不要再平行维护 Excel / 禅道测试用例页；缺陷单只贴 <code>PR-SH-10</code> 这类稳定 ID。</li>
+    </ul>
+    <div class="callout warn">
+      yaml 会烂掉的三种情况：和 README 双写、一个提案上百条还跨好几个月、聊天里改了范围却不改清单。
+    </div>
+
+    <h2 id="version">6. 版本怎么分层</h2>
+    <p>有四层，不要合成一层，也不要再加第五套版本文件。</p>
+    <table>
+      <thead>
+        <tr><th>层</th><th>机制</th><th>干什么</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>产品里程碑</td><td>提案 <code>milestone: v0.x</code> · 状态夹</td><td>这个大版本要交付哪些 Pxxx</td></tr>
+        <tr><td>当前进度</td><td><a href="./product/roadmap/in-progress/">in-progress/</a></td><td>正在做的条目与当前验收 ID</td></tr>
+        <tr><td>交互</td><td><a href="./prototypes/VERSIONS.md">VERSIONS.md</a> + snapshots</td><td><code>increment</code> 是过程档；<code>acceptance</code> 才是实现对照</td></tr>
+        <tr><td>发版</td><td>git tag（如 <code>v0.5.0</code>）</td><td>整仓可回放；含当时的 requirements</td></tr>
+      </tbody>
+    </table>
+    <p><span class="path">requirements.md</span> 始终只有一份：当前已交付全集。不要维护长期并存的 <code>requirements-v0.4.md</code>。看旧版：<code>git show v0.4.0:docs/product/requirements.md</code>。</p>
+    <div class="callout warn">
+      当前动手的只看 <a href="./product/roadmap/in-progress/">in-progress/</a>。P008 可以和 P004 同在进行中，但「当前范围」列写清还没开始高保/代码，开发就不要顺手做。
+    </div>
+
+    <h2 id="iteration">7. 按状态怎么推进</h2>
+    <p>进度只看状态夹，每夹一份 README。当前开发看 <a href="./product/roadmap/in-progress/">in-progress/</a>。不要按月建文件，也不要为每条再建 <code>Pxxx.md</code>。验收 ID 写在提案 <code>acceptance.yaml</code>。</p>
+    <p>过程产物不要平行繁殖：不要另开「迭代需求说明书」「测试用例.xls」「发版 checklist.doc」。</p>
+    <table>
+      <thead><tr><th>过程</th><th>已有产物</th></tr></thead>
+      <tbody>
+        <tr><td>排期</td><td>路线图状态夹</td></tr>
+        <tr><td>需求 / 边界</td><td>提案 README（范围、非目标、波及）</td></tr>
+        <tr><td>交互</td><td>hi-fi 增量 → 定稿 snapshot</td></tr>
+        <tr><td>怎么做</td><td>提案内 <code>design*.md</code></td></tr>
+        <tr><td>契约</td><td><span class="path">design/openapi.yaml</span></td></tr>
+        <tr><td>是否可上线</td><td><code>acceptance.yaml</code> 的 <code>status</code></td></tr>
+        <tr><td>已上线真相</td><td>requirements + architecture + git tag</td></tr>
+      </tbody>
+    </table>
+    <ol class="steps">
+      <li><strong>立项</strong> — 在 planned 或 in-progress 挂条；BA 锁范围；测试确认 ID 可测。</li>
+      <li><strong>交互冻结</strong> — 改 hi-fi；测试跑 <code>gate: hi-fi</code>；通过后打 <code>acceptance</code> 快照。</li>
+      <li><strong>实现</strong> — 跨端先改 OpenAPI 再改代码；PR 带 Pxxx；边界变化时 <code>architecture.html</code> 同提交。</li>
+      <li><strong>验收</strong> — yaml 阻塞项 <code>pass</code> 才回写 requirements。未做完保持 in-progress。</li>
+      <li><strong>交付</strong> — 全部阻塞项 pass 后把该行挪到 <span class="path">done/</span>，提案标 <code>done</code>，可打 git tag。</li>
+    </ol>
+    <p>例如 P007 产品门只剩 <code>PR-SH-10</code>：in-progress 表的「当前范围」写这一条；P008 同夹但范围写「尚未开始」，开发就不要动它。PR-SH-10 过了只回写这一条，P007 仍可留在进行中。</p>
+
+    <h2 id="commit">8. 提交与发版</h2>
+    <ul>
+      <li>Commit / PR 标题带 Pxxx，例如 <code>P007: 用 AppShell 替换 ModuleTopbar</code>。</li>
+      <li>跨端同一 PR：OpenAPI 与实现一起合，契约不单独合入。</li>
+      <li>模块边界、数据流、技术栈或部署变化：<span class="path">architecture.html</span> 必须同 commit。</li>
+      <li>tag 的内容 = <code>blocker_of_done: true</code> 且 <code>status: pass</code> 的项；未 pass 的不得进 requirements。</li>
     </ul>
 
-    <h2 id="links">6. 相关链接</h2>
+    <h2 id="examples">9. 场景实例</h2>
+    <h3>跨端新功能（如分享加密码）</h3>
+    <p class="muted">roadmap 挂条 → 提案目录内写需求与详细设计 → 接受后先契约再实现 → 验证时同提交更新 architecture → 验收后写 requirements → 提案标 done。</p>
+    <h3>纯前端（如画布吸附）</h3>
+    <p class="muted">小改可无提案；先实现验收，仅在改变应用边界或长期能力时更新 architecture/requirements。</p>
+    <h3>进行中大功能（对话分析 P004）</h3>
+    <p class="muted">先看 <a href="./product/roadmap/in-progress/">进行中</a> 确认仍在该夹，再打开 <a href="./proposals/P004-conversation/">提案开发入口</a>。实现对照入口表里的原型；验收前 requirements 不写「已支持对话分析」。</p>
+    <h3>部分交付（产品壳 P007）</h3>
+    <p class="muted">高保 ID 已 <code>pass</code> 只说明交互冻结。当前范围若只含 <code>PR-SH-10</code>，只回写这一条；P007 保持 in-progress，权限工作台仍走 <a href="./proposals/P008-permission-aware-workbench/">P008</a>。</p>
+
+    <h2 id="rules">10. 硬规则</h2>
+    <ul>
+      <li>现行契约 = <strong>requirements + architecture + OpenAPI</strong>；未来需求与设计只在非 done 提案中指导开发。</li>
+      <li><code>design/</code> 只保留 <code>architecture.html</code> 与 <code>openapi.yaml</code>；未实现详细设计只进提案目录。</li>
+      <li>Pxxx 是 proposal、prototype、architecture、implementation 与 PR-* 的统一映射主键；目录不随状态搬家。</li>
+      <li>进度按状态夹；每夹一份 README。当前开发只做 <span class="path">in-progress/</span> 里写了当前范围的条目。</li>
+      <li><code>acceptance.yaml</code> 是验收状态唯一真相；README 不复制长表。</li>
+      <li>高保、代码、产品验收三个 gate 不能互相替代。</li>
+      <li><code>done</code> 提案只读追溯，不驱动新开发；部分交付时提案保持 in-progress。</li>
+      <li>跨 FE/BE：先更新 OpenAPI，再改实现；代码验证提交时同步更新 architecture。</li>
+      <li>OpenAPI 与实现冲突：以<strong>已上线行为</strong>为准，并尽快修契约。</li>
+      <li>改流转时，必须同时改 <span class="path">AGENTS.md</span>、<span class="path">process.md</span>、<span class="path">docs/README.md</span>、本页、<span class="path">proposals/README.md</span>。</li>
+      <li>工程技能包（如 mattpocock/skills）只加速过程；产出必须回写本仓 <span class="path">docs/</span>，禁止平行 spec、ADR 树或 throwaway 高保。</li>
+    </ul>
+
+    <h2 id="links">11. 相关链接</h2>
     <ul>
       <li><a href="./process.md">process.md</a> — 规范正文</li>
       <li><a href="./README.md">docs/README.md</a> — 文档导航</li>
-      <li><a href="./proposals/README.md">proposals 索引</a></li>
+      <li><a href="./proposals/README.md">proposals 索引（按状态）</a></li>
+      <li><a href="./product/roadmap/">路线图状态夹</a></li>
+      <li><a href="./product/roadmap/in-progress/">进行中</a></li>
+      <li><a href="./proposals/P007-app-shell/acceptance.yaml">P007 acceptance.yaml</a> — 验收清单样例</li>
+      <li><a href="./design/architecture.html">4A 现行架构</a></li>
       <li><a href="../AGENTS.md">AGENTS.md</a> — 给 AI 的短地图</li>
+      <li><a href="https://github.com/mattpocock/skills">mattpocock/skills</a> — 通用工程技能包；与本仓 docs 的关系见 <a href="#skills">第 3 节</a></li>
       <li><a href="./user-manual/index.html">终端用户手册</a></li>
     </ul>
 

@@ -34,14 +34,15 @@ export type ToolStep = {
 const props = defineProps<{
   steps: ToolStep[]
   live?: boolean
+  defaultOpen?: boolean
 }>()
 
-const bodyOpen = ref(!!props.live)
+const bodyOpen = ref(props.defaultOpen !== false)
 
 watch(
   () => props.live,
   (v) => {
-    bodyOpen.value = !!v
+    if (v) bodyOpen.value = true
   }
 )
 

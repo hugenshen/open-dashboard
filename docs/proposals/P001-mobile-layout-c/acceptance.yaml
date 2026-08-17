@@ -1,0 +1,35 @@
+proposal: P001
+items:
+  - id: PR-DASH-11
+    title: 独立移动端布局
+    gate: acceptance
+    criterion: 桌面布局与 6 列移动布局独立保存，切换和重载后组件位置不丢失。
+    method: ui
+    command_or_path: /dashboards/{id}/edit
+    expected: mobile_json 持久化；桌面布局不被移动端调整覆盖。
+    evidence: open-dashboard-frontend/src/dashboard/
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-DASH-11
+  - id: PR-DASH-11-A
+    title: 移动端组件池
+    gate: code
+    criterion: 桌面组件可选择性加入移动布局，未加入组件不在移动预览渲染。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/dashboard.html
+    expected: 勾选、取消和排序结果稳定。
+    evidence: open-dashboard-frontend/src/dashboard/
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-DASH-11
+  - id: PR-DASH-11-B
+    title: 样式同步与覆盖
+    gate: code
+    criterion: styleSync 开启时桌面样式同步；关闭后移动端覆盖独立保存。
+    method: ui
+    command_or_path: /dashboards/{id}/edit
+    expected: 两种模式切换无样式丢失。
+    evidence: open-dashboard-frontend/src/dashboard/
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-DASH-11

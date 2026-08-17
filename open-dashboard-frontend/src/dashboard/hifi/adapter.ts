@@ -64,33 +64,6 @@ export interface HiFiLinkage {
   enabled: boolean
 }
 
-const STUB_ROWS: Record<string, Record<string, unknown>[]> = {
-  ds_sales: [
-    { region: '华东', product: 'A', channel: '线上', salesman: '张三', amount: 1200, qty: 30, profit: 420, order_cnt: 12, date: '2026-07-01' },
-    { region: '华东', product: 'B', channel: '线下', salesman: '李四', amount: 860, qty: 18, profit: 210, order_cnt: 8, date: '2026-07-02' },
-    { region: '华北', product: 'A', channel: '线上', salesman: '王五', amount: 980, qty: 22, profit: 300, order_cnt: 10, date: '2026-07-03' },
-    { region: '华北', product: 'C', channel: '投放', salesman: '张三', amount: 640, qty: 14, profit: 160, order_cnt: 6, date: '2026-07-04' },
-    { region: '华南', product: 'B', channel: '线上', salesman: '赵六', amount: 760, qty: 16, profit: 190, order_cnt: 7, date: '2026-07-05' },
-    { region: '华南', product: 'C', channel: '线下', salesman: '李四', amount: 520, qty: 11, profit: 120, order_cnt: 5, date: '2026-07-06' }
-  ],
-  ds_ops: [
-    { day: '周一', module: '首页', platform: 'App', channel: '自然', uv: 1200, pv: 3400, bounce: 0.32, duration: 48, date: '2026-07-01' },
-    { day: '周一', module: '详情', platform: 'H5', channel: '投放', uv: 800, pv: 2100, bounce: 0.41, duration: 36, date: '2026-07-01' },
-    { day: '周二', module: '搜索', platform: 'App', channel: '分享', uv: 420, pv: 980, bounce: 0.25, duration: 55, date: '2026-07-02' },
-    { day: '周二', module: '首页', platform: 'App', channel: '自然', uv: 1400, pv: 3900, bounce: 0.28, duration: 52, date: '2026-07-02' },
-    { day: '周三', module: '结算', platform: 'App', channel: '投放', uv: 620, pv: 1500, bounce: 0.22, duration: 70, date: '2026-07-03' },
-    { day: '周四', module: '详情', platform: 'H5', channel: '分享', uv: 760, pv: 1900, bounce: 0.36, duration: 38, date: '2026-07-04' }
-  ],
-  ds_fin: [
-    { month: '4月', subject: '商品销售', dept: '电商', income: 760000, expense: 480000, profit: 280000 },
-    { month: '4月', subject: '服务费', dept: '零售', income: 110000, expense: 38000, profit: 72000 },
-    { month: '5月', subject: '商品销售', dept: '电商', income: 820000, expense: 510000, profit: 310000 },
-    { month: '5月', subject: '广告投放', dept: '市场', income: 0, expense: 95000, profit: -95000 },
-    { month: '6月', subject: '商品销售', dept: '电商', income: 910000, expense: 560000, profit: 350000 },
-    { month: '7月', subject: '人力成本', dept: '中台', income: 0, expense: 185000, profit: -185000 }
-  ]
-}
-
 export function datasetsToHiFi(details: DatasetDetailVO[]): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const d of details) {
@@ -106,14 +79,13 @@ export function datasetsToHiFi(details: DatasetDetailVO[]): Record<string, unkno
         group: f.group === 'quota' ? 'quota' : 'dim',
         dataType: f.dataType || ''
       })),
-      // Prefer real preview rows later; never invent demo numbers for product datasets.
-      rows: STUB_ROWS[id] ? STUB_ROWS[id] : []
+      rows: []
     }
   }
   return out
 }
 
-/** Fill DATASETS.rows from POST /dataset/{id}/preview so editor matches chartQuery. */
+/** Fill DATASETS.rows from POST /dataset/{id}/preview so field pickers match live schema. */
 export async function hydrateHiFiDatasetRows(
   details: DatasetDetailVO[],
   datasets: Record<string, unknown>,
@@ -127,7 +99,6 @@ export async function hydrateHiFiDatasetRows(
       const id = d.meta.id
       const slot = datasets[id] as { rows?: Record<string, unknown>[] } | undefined
       if (!slot) return
-      if (STUB_ROWS[id]) return
       try {
         const res = await preview(id)
         const cols = (res.columns || []).map((c) => c.name)

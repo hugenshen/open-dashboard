@@ -51,15 +51,20 @@ public final class ConversationDtos {
             Long createTime
     ) {}
 
-    public record ConversationCreateRequest(
-            String title,
-            List<String> datasetIds,
-            String linkedDashboardId
+    public record ConversationMessageCreateRequest(
+            String role,
+            String content
     ) {}
 
     public record ConversationUpdateRequest(
             String title,
             Map<String, Object> layoutPrefs,
+            List<String> datasetIds,
+            String linkedDashboardId
+    ) {}
+
+    public record ConversationCreateRequest(
+            String title,
             List<String> datasetIds,
             String linkedDashboardId
     ) {}

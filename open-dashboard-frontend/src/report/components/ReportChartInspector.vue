@@ -76,12 +76,15 @@ function onSourceChange(mode: string) {
   if (!props.chart?.id) return
   if (mode === 'inline' && props.chart.source === 'dashboard') {
     const c = dashCharts.value.find((x) => x.id === props.chart?.chartId)
-    const dsId = c?.datasetId || datasets.value[0]?.id || 'ds_sales'
+    const dsId = c?.datasetId || datasets.value[0]?.id || ''
+    const ds = datasets.value.find((d) => d.id === dsId)
+    const dim = (ds?.fields || []).find((f) => f.group === 'dim')?.name || ''
+    const quota = (ds?.fields || []).find((f) => f.group === 'quota')?.name || ''
     store.patchChart(props.chart.id, {
       source: 'inline',
       datasetId: dsId,
       chartType: c?.chartType || 'bar',
-      encode: { category: 'region', value: 'amount', agg: 'SUM', format: 'raw' },
+      encode: { category: dim, value: quota, agg: 'SUM', format: 'raw' },
       dashboardId: null,
       chartId: null,
       title: props.chart.title?.replace(/（引用）$/, '') || c?.title || '图表'

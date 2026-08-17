@@ -1,0 +1,12 @@
+services:
+  frontend:
+    build:
+      context: ..
+      dockerfile: open-dashboard-frontend/Dockerfile
+    container_name: open-dashboard-web
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${OD_WEB_PORT:-8088}:80"

@@ -33,11 +33,15 @@ public class InMemoryReportStore implements ReportGateway {
     }
 
     @Override
-    public List<ReportMetaVO> list() {
+    public List<ReportMetaVO> list(Integer limit) {
         List<ReportMetaVO> out = new ArrayList<>();
         reports.values().forEach(d -> out.add(d.meta()));
-        out.sort((a, b) -> a.id().compareTo(b.id()));
-        return out;
+        out.sort((a, b) -> Long.compare(
+                b.updateTime() == null ? 0L : b.updateTime(),
+                a.updateTime() == null ? 0L : a.updateTime()
+        ));
+        if (limit == null || limit <= 0 || out.size() <= limit) return out;
+        return out.subList(0, Math.min(limit, 50));
     }
 
     @Override

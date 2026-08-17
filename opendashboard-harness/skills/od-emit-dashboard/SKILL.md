@@ -15,7 +15,7 @@ Dashboard write path is only `od_emit_patch` → Java `apply-patch`.
    - 用户点名某图时可删 1–2 张，**禁止新增未探测 encode**
 4. `od_review_charts` — 显式质检（可省略：`od_layout_board` 会再跑同一闸）
 5. `od_layout_board({ title, styleId, charts, query })` 得到 patch（顶栏 type=query + 两列满铺 + 底汇总表）
-6. `od_emit_patch`（无 linkedDashboard 用 replace）
+6. `od_emit_patch`（无 linkedDashboard 用 replace）。`mode=plan` 时只缓存 patch，等用户 confirm-plan 后再 apply。
 7. `write_todos` 全部 completed，再 `od_finish(reason=done)`，用中文说明选图依据与质检修复
 
 `od_compose_board` **禁止**作为默认构图路径。
