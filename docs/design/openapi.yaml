@@ -132,6 +132,12 @@ paths:
               properties:
                 role: { type: string, enum: [user, assistant, system], default: user }
                 content: { type: string }
+                attachments:
+                  type: array
+                  description: Assistant 消息可携带思考过程 trace（{kind: 'trace', steps: [...]}），历史会话回溯用
+                  items:
+                    type: object
+                    additionalProperties: true
       responses:
         '200':
           description: OK

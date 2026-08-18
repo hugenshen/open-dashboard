@@ -456,20 +456,74 @@ async function openConversation(id: string): Promise<boolean> {
   messages.value = await conversationApi.messages(id)
   chat.value = messages.value.map((m) => ({
     role: m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'assistant',
-    text: m.content
+    text: m.content,
+    // 历史会话回溯：从持久化的 attachments 恢复思考过程步骤链
+    tools: extractTrace(m.attachments)
   }))
   selectedDatasets.value = detail.datasetIds?.length ? [...detail.datasetIds] : selectedDatasets.value
   linkedDashboardId.value = detail.linkedDashboardId || null
+  // 后端记录可能未同步生成时建立的 linkedDashboardId，从运行时补拉权威值
+  if (!linkedDashboardId.value) {
+    try {
+      const runtime = await conversationApi.getHarness(id)
+      linkedDashboardId.value = runtime.linkedDashboardId || null
+    } catch {
+      /* 运行时不回退 */
+    }
+  }
   resetAnswer()
   sidePanel.value = 'none'
   phase.value = 'workspace'
+  if (linkedDashboardId.value) {
+    // 重新打开已生成的对话：从草稿看板重建图表预览，避免刷新后图表区空白
+    void hydratePreviewFromDashboard(linkedDashboardId.value)
+  }
   return maybeResumeUnanswered()
+}
+
+/** 从已关联的草稿看板重建 charts / queryBar（用于对话页刷新后的预览回填） */
+async function hydratePreviewFromDashboard(dashboardId: string): Promise<void> {
+  try {
+    const dash = await dashboardApi.get(dashboardId, 'draft')
+    const comps = Array.isArray(dash?.components) ? dash.components : []
+    const chMap = (dash?.charts || {}) as Record<string, { id: string; chartType: string; title?: string; datasetId: string | null; encode: Record<string, unknown> }>
+    const list: ChartReady[] = []
+    for (const comp of comps) {
+      if (comp.type !== 'chart' || !comp.chartViewId) continue
+      const ch = chMap[comp.chartViewId]
+      if (!ch) continue
+      list.push({
+        chartId: ch.id || comp.chartViewId,
+        dashboardId,
+        chartType: ch.chartType,
+        title: ch.title,
+        datasetId: ch.datasetId || undefined,
+        encode: ch.encode || undefined
+      })
+    }
+    if (list.length) {
+      charts.value = list
+      boardTitle.value = dash.meta?.name || boardTitle.value
+    }
+    // 查询条：取 type=query 组件的 items
+    const qComp = comps.find((c) => c.type === 'query')
+    const items = (qComp?.props?.items as QueryBarItem[] | undefined) || []
+    if (items.length) {
+      queryBar.value = { label: (qComp?.props?.label as string) || '查询条件', items }
+      void hydrateQueryOptions()
+    }
+  } catch {
+    // 拉取失败不阻塞对话打开
+  }
 }
 
 async function maybeResumeUnanswered(): Promise<boolean> {
   if (streaming.value) return false
   if (!selectedDatasets.value.length) return false
   if (chat.value.some((m) => m.role === 'assistant')) return false
+  // 已生成过看板/产物的会话视为已完成：打开时不自动重放生成，
+  // 避免每次进入历史会话都重复触发一次 run（消息越积越多）。
+  if (linkedDashboardId.value) return false
   const lastUser = [...chat.value].reverse().find((m) => m.role === 'user' && m.text.trim())
   const title = (current.value?.title || '').trim()
   const text = lastUser?.text.trim() || (title && title !== '新对话' ? title : '')
@@ -483,6 +537,44 @@ async function maybeResumeUnanswered(): Promise<boolean> {
 function useExample(ex: { text: string; intent: 'ask' | 'gen' }) {
   prompt.value = ex.text
   intent.value = ex.intent
+}
+
+/** 把 liveTools 精简为可持久化的思考过程 trace（去掉 run 态与非必要字段），供后端存储与回溯展示。 */
+function sanitizeTrace(tools: ToolStep[]): ToolStep[] {
+  return tools.map((t) => ({
+    id: String(t.id || ''),
+    label: String(t.label || ''),
+    status: 'done' as const,
+    tool: t.tool ? String(t.tool) : undefined,
+    hint: t.hint ? String(t.hint) : undefined,
+    children: t.children?.length ? sanitizeTrace(t.children) : undefined
+  }))
+}
+
+/** 从持久化消息的 attachments 里恢复思考过程步骤链（kind === 'trace' 的条目）。 */
+function extractTrace(attachments?: Record<string, unknown>[]): ToolStep[] | undefined {
+  const trace = (attachments || []).find((a) => a && a.kind === 'trace')
+  const steps = trace?.steps
+  if (!Array.isArray(steps) || !steps.length) return undefined
+  return (steps as ToolStep[]).map((t) => ({
+    id: String(t.id || ''),
+    label: String(t.label || ''),
+    status: t.status === 'run' ? 'done' : 'done',
+    tool: t.tool ? String(t.tool) : undefined,
+    hint: t.hint ? String(t.hint) : undefined,
+    open: false,
+    children: Array.isArray(t.children) && t.children.length ? extractTraceChildren(t.children) : undefined
+  }))
+}
+function extractTraceChildren(children: ToolStep[]): ToolStep[] {
+  return children.map((c) => ({
+    id: String(c.id || ''),
+    label: String(c.label || ''),
+    status: 'done',
+    tool: c.tool ? String(c.tool) : undefined,
+    hint: c.hint ? String(c.hint) : undefined,
+    children: Array.isArray(c.children) && c.children.length ? extractTraceChildren(c.children) : undefined
+  }))
 }
 
 function resetAnswer() {
@@ -589,8 +681,15 @@ function flushAssistant() {
     })
   }
   const cid = current.value?.id
-  if (cid && text) {
-    void conversationApi.appendMessage(cid, { role: 'assistant', content: text }).catch(() => {})
+  if (cid && (text || tools.length)) {
+    // 把本次生成的完整思考过程（工具步骤链）随 assistant 消息持久化到后端，
+    // 供历史会话回溯展示。attachments 用现有合约承载 steps trace，不引入新表。
+    const attachments = tools.length
+      ? [{ kind: 'trace', steps: sanitizeTrace(tools) }]
+      : undefined
+    void conversationApi
+      .appendMessage(cid, { role: 'assistant', content: text || '已生成。', attachments })
+      .catch(() => {})
   }
   assistantBuf.value = ''
   liveTools.value = []

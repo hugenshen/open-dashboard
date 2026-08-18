@@ -53,8 +53,13 @@ public final class ConversationDtos {
 
     public record ConversationMessageCreateRequest(
             String role,
-            String content
-    ) {}
+            String content,
+            List<Map<String, Object>> attachments
+    ) {
+        public ConversationMessageCreateRequest {
+            attachments = attachments == null ? List.of() : attachments;
+        }
+    }
 
     public record ConversationUpdateRequest(
             String title,

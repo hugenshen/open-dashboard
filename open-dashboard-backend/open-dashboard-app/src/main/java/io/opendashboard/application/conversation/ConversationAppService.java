@@ -94,7 +94,8 @@ public class ConversationAppService {
     public ConversationMessageVO appendMessage(String id, ConversationMessageCreateRequest request) {
         String role = request == null || request.role() == null || request.role().isBlank() ? "user" : request.role().trim();
         String content = request == null || request.content() == null ? "" : request.content();
-        return store.appendMessage(id, role, content, List.of());
+        List<Map<String, Object>> atts = request == null ? List.of() : request.attachments();
+        return store.appendMessage(id, role, content, atts == null ? List.of() : atts);
     }
 
     public List<ConversationRevisionVO> revisions(String id) {

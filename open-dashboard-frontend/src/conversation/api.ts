@@ -245,8 +245,10 @@ export const conversationApi = {
   },
   remove: (id: string) => apiFetch<void>(`/conversations/${id}`, { method: 'DELETE' }),
   messages: (id: string) => apiFetch<ConversationMessageVO[]>(`/conversations/${id}/messages`),
-  appendMessage: (id: string, data: { role?: string; content: string }) =>
-    apiFetch<ConversationMessageVO>(`/conversations/${id}/messages`, { method: 'POST', data }),
+  appendMessage: (
+    id: string,
+    data: { role?: string; content: string; attachments?: Record<string, unknown>[] }
+  ) => apiFetch<ConversationMessageVO>(`/conversations/${id}/messages`, { method: 'POST', data }),
   revisions: (id: string) => apiFetch<ConversationRevisionVO[]>(`/conversations/${id}/revisions`),
   restore: async (_id: string, _rev: string) => {
     throw new Error('revisions restore is not available on harness yet')
