@@ -7,6 +7,7 @@ import os
 import re
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Generator, List, Optional
 
 from agent.context import convert_to_llm, history_to_agent_messages, transform_context
@@ -18,6 +19,12 @@ from sqlbot.pipeline import bar_heights, iter_sqlbot
 from sqlbot.suggest import is_suggest_request, suggest_follows
 from tools.od_bi import ToolState, bi_call, dumps_result
 from tools.registry import create_registry
+from tools.guard import execute_guarded
+
+# 记录在途 run 的 conversation/run/dashboard 上下文，供 _emit_applied 落盘 revision。
+# 每个 SSE gen 是单线程串行执行的，run_lead/run_agent 开头写入、结尾清除。
+_CURRENT_RUN: Dict[str, Any] = {"conversationId": "", "runId": ""}
+_CURRENT_DASHBOARD: Dict[str, Any] = {"id": ""}
 
 
 def harness_mode() -> str:
@@ -59,6 +66,30 @@ def is_specific_board_request(message: str) -> bool:
     """True when the user asked to tweak/add a specific chart rather than a full board."""
     q = message or ""
     return bool(re.search(r"(再加|加一张|只要|仅要|改成|换成|追加|这一张|把.+改)", q))
+
+
+def classify_multiturn(message: str) -> str:
+    """Classify a multi-turn edit of an existing dashboard (linked).
+
+    Returns one of:
+      - 'rechart':  surgical edit/delete/replace of specific chart(s) (改/换/删/重做某张)
+      - 'insert':   add new chart(s) to the existing board  (加一张/多来些/再放一个)
+      - 'replace':  explicit full-page regeneration 整页/从零/重新生成
+      - 'gen':      ambiguous footer; default to appending to the existing board
+    """
+    q = message or ""
+    if re.search(r"(重新生成|整页|替换全部|从零|全部重做|整页重新)", q):
+        return "replace"
+    if re.search(
+        r"(换掉|删掉|删除|去掉|只要|只留|仅要|这张|那张|换成折线图|改成折线|改成柱图|改成柱状|"
+        r"改成饼图|改个指标|换个指标|换个维度|重做这张|重新做这张|把.{0,12}(图|表|卡).{0,12}"
+        r"(改|换|换成|删|去掉|重做))",
+        q,
+    ):
+        return "rechart"
+    if re.search(r"(再加|加一张|多来些|再放|再增加|追加|再来|加个|再多)", q):
+        return "insert"
+    return "gen"
 
 
 def _parse_args(raw: Any) -> Dict[str, Any]:
@@ -435,6 +466,23 @@ def _emit_applied(applied_wrap: Dict[str, Any]) -> Generator[str, None, None]:
     applied = applied_wrap.get("result") or {}
     dash_id = applied.get("dashboardId")
     charts = applied.get("charts") or []
+    _CURRENT_DASHBOARD["id"] = dash_id or ""
+    try:
+        if dash_id and (_CURRENT_RUN.get("conversationId") or _CURRENT_RUN.get("runId")):
+            bi_call(
+                "POST",
+                "/api/internal/bi/record-revision",
+                {
+                    "conversationId": _CURRENT_RUN.get("conversationId"),
+                    "runId": _CURRENT_RUN.get("runId"),
+                    "dashboardId": dash_id,
+                    "patch": patch,
+                    "label": "ai-" + title,
+                },
+            )
+    except Exception:
+        # 版本记录失败不阻断生成主链
+        pass
     yield sse("patch", {"dashboardId": dash_id, "mode": mode, "ops": patch.get("ops") or []})
     live: List[Dict[str, Any]] = []
     empty_n = 0
@@ -656,6 +704,9 @@ def run_adopt(conversation: Dict[str, Any], run: Dict[str, Any], artifact: Dict[
 
 def run_agent(payload: Dict[str, Any]) -> Generator[str, None, None]:
     """Entry: lead if LLM configured (per mode), else deterministic. No silent fake success when mode=lead."""
+    _CURRENT_RUN["conversationId"] = str(payload.get("conversationId") or "")
+    _CURRENT_RUN["runId"] = str(payload.get("runId") or "")
+    _CURRENT_RUN["styleId"] = payload.get("styleId") or "feishu-blue"
     mode = harness_mode()
     if use_lead():
         try:
@@ -696,6 +747,9 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
     conversation_id = str(payload.get("conversationId") or "")
     run_id = str(payload.get("runId") or "")
     message = payload.get("message") or ""
+    _CURRENT_RUN["conversationId"] = conversation_id
+    _CURRENT_RUN["runId"] = run_id
+    _CURRENT_RUN["styleId"] = payload.get("styleId") or "feishu-blue"
     dataset_ids: List[str] = [str(x) for x in (payload.get("datasetIds") or [])]
     linked = payload.get("linkedDashboardId") or None
     style_id = payload.get("styleId") or "feishu-blue"
@@ -867,7 +921,8 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
                 if not tool:
                     result: Any = {"ok": False, "error": f"unknown tool: {name}"}
                 else:
-                    result = tool.execute(args)
+                    # 统一治理管线：guard → 超时 → 重试退避 → 归一化
+                    result = execute_guarded(tool, args)
             except Exception as e:
                 result = {"ok": False, "error": str(e)}
             preview = _tool_preview(name, result, args)
@@ -1477,6 +1532,61 @@ def _run_ask(message: str, intent: str, dataset_ids: List[str]) -> Generator[str
     yield sse("finish", {"reason": "answered", "detail": intent})
 
 
+def _plan_one_dataset(linked: Optional[str], ds_id: str) -> Dict[str, Any]:
+    """单数据集规划（独立 ToolState/registry，供多数据集并行调用，互不串扰）。"""
+    try:
+        tools, _state, by_name = create_registry(linked)
+        planned = execute_guarded(by_name["od_plan_charts"], {"datasetId": ds_id}) or {}
+        return {"datasetId": ds_id, "planned": planned}
+    except Exception as e:  # noqa: BLE001
+        return {"datasetId": ds_id, "planned": {"ok": False, "error": str(e)}}
+
+
+def _merge_plans(plans: List[Dict[str, Any]], style_id: str) -> Dict[str, Any]:
+    """把多个数据集的规划合并成一个看板计划：charts 合并、query 去重、标题拼接。"""
+    charts: List[Dict[str, Any]] = []
+    query_items: List[Dict[str, Any]] = []
+    titles: List[str] = []
+    rationale: List[str] = []
+    probes: List[Any] = []
+    weak = False
+    ok = False
+    for p in plans:
+        planned = p.get("planned") or {}
+        if not isinstance(planned, dict):
+            continue
+        if planned.get("ok") and not planned.get("empty"):
+            ok = True
+        for c in planned.get("charts") or []:
+            if isinstance(c, dict) and c.get("title"):
+                charts.append(c)
+        for qi in (planned.get("query") or {}).get("items") or []:
+            if isinstance(qi, dict) and qi.get("field") and not any(
+                str(x.get("field")) == str(qi.get("field")) for x in query_items
+            ):
+                query_items.append(qi)
+        if planned.get("ok") and not planned.get("empty"):
+            name = str(planned.get("title") or p.get("datasetId") or "")
+            if name and name not in titles:
+                titles.append(name)
+        for r in planned.get("rationale") or []:
+            rationale.append(str(r))
+        for pr in planned.get("probes") or []:
+            probes.append(pr)
+        if (planned.get("features") or {}).get("weakDataset"):
+            weak = True
+    title = " + ".join(titles) if titles else "AI 生成看板"
+    return {
+        "ok": ok,
+        "title": title,
+        "charts": charts,
+        "query": {"items": query_items},
+        "rationale": rationale,
+        "probes": probes,
+        "weakDataset": weak,
+    }
+
+
 def _run_gen(
     message: str,
     dataset_ids: List[str],
@@ -1503,74 +1613,148 @@ def _run_gen(
             yield step("board", "无可用看板摘要，按新建处理")
 
     tools, _state, by_name = create_registry(linked)
-    ds_id = dataset_ids[0]
     planned: Dict[str, Any] = {}
-    yield step("planner", "分析数据特征 → 按特征选图 → 质检修复")
-    try:
-        planned = by_name["od_plan_charts"].execute({"datasetId": ds_id}) or {}
-    except Exception as e:
-        yield step("fallback", f"plan_charts 失败，降级 compose：{e}")
-        planned = {"ok": False}
-
+    composed: Dict[str, Any] = {}
     patch: Dict[str, Any] = {}
     title = "AI 生成看板"
-    composed: Dict[str, Any] = {}
 
-    if isinstance(planned, dict) and planned.get("ok") and not planned.get("empty") and planned.get("charts"):
-        n = len(planned.get("charts") or [])
-        yield step("planner", f"按特征规划 {n} 张图")
-        yield step("planner", _quality_label(planned))
-        laid = by_name["od_layout_board"].execute(
-            {
-                "title": planned.get("title") or title,
-                "styleId": style_id,
-                "charts": planned.get("charts"),
-                "query": planned.get("query"),
+    if len(dataset_ids) > 1:
+        # 多数据集并行：每个数据集独立 registry/ToolState 规划（子任务并行），再合并
+        yield step("planner", f"并行分析 {len(dataset_ids)} 个数据集 → 按特征选图 → 质检修复")
+        results: List[Dict[str, Any]] = []
+        with ThreadPoolExecutor(max_workers=min(4, len(dataset_ids))) as pool:
+            futs = {
+                pool.submit(_plan_one_dataset, linked, ds): ds for ds in dataset_ids
             }
-        )
-        if not (isinstance(laid, dict) and laid.get("ok")):
-            yield sse("error", {"code": "LAYOUT", "message": (laid or {}).get("error") or "layout failed"})
-            yield sse("finish", {"reason": "error", "detail": "layout"})
-            return
-        yield step("planner", _quality_label(laid))
-        patch = laid.get("patch") or {}
-        title = laid.get("title") or planned.get("title") or title
-    else:
-        if isinstance(planned, dict) and planned.get("empty"):
-            yield step("planner", str(planned.get("hint") or "数据无有效行，不写空看板"))
-            yield sse("message_delta", {"text": str(planned.get("hint") or "探测无有效行，请换有数据的业务表。")})
-            yield sse("finish", {"reason": "answered", "detail": "empty_dataset"})
-            return
-        yield step("compose", "规划失败，降级 compose-board")
-        try:
-            composed = bi_call(
-                "POST",
-                "/api/internal/bi/compose-board",
+            for fut in futs:
+                try:
+                    results.append(fut.result())
+                except Exception as e:  # noqa: BLE001
+                    results.append({"datasetId": str(futs[fut]), "planned": {"ok": False, "error": str(e)}})
+        planned = _merge_plans(results, style_id)
+        yield step("planner", f"合并 {len(planned.get('charts') or [])} 张图")
+        if planned.get("rationale"):
+            yield step("planner", _quality_label(planned))
+        if not (isinstance(planned, dict) and planned.get("ok") and planned.get("charts")):
+            # 全部空/失败：降级 compose（可处理多数据集）
+            if isinstance(planned, dict) and planned.get("empty"):
+                yield step("planner", str(planned.get("hint") or "数据无有效行，不写空看板"))
+                yield sse("message_delta", {"text": str(planned.get("hint") or "探测无有效行，请换有数据的业务表。")})
+                yield sse("finish", {"reason": "answered", "detail": "empty_dataset"})
+                return
+            yield step("compose", "多数据集规划失败，降级 compose-board")
+            try:
+                composed = bi_call(
+                    "POST",
+                    "/api/internal/bi/compose-board",
+                    {
+                        "message": message,
+                        "dashboardId": linked if mode == "append" else None,
+                        "styleId": style_id,
+                        "datasetIds": dataset_ids,
+                        "mode": mode,
+                    },
+                )
+            except Exception as e:
+                yield sse("error", {"code": "COMPOSE", "message": str(e)})
+                yield sse("finish", {"reason": "error", "detail": "compose"})
+                return
+            if not composed.get("ok"):
+                yield sse(
+                    "error",
+                    {
+                        "code": "COMPOSE",
+                        "message": composed.get("error") or "compose failed",
+                        "missing": composed.get("missing"),
+                    },
+                )
+                yield sse("finish", {"reason": "error", "detail": "compose"})
+                return
+            patch = composed.get("patch") or {}
+            title = composed.get("title") or title
+        else:
+            # 合并后的图表直接走 layout（A 层确定性布局，统一分配 chartId）
+            laid = execute_guarded(
+                by_name["od_layout_board"],
                 {
-                    "message": message,
-                    "dashboardId": linked if mode == "append" else None,
+                    "title": planned.get("title") or title,
                     "styleId": style_id,
-                    "datasetIds": dataset_ids,
-                    "mode": mode,
+                    "charts": planned.get("charts"),
+                    "query": planned.get("query"),
                 },
             )
+            if not (isinstance(laid, dict) and laid.get("ok")):
+                yield sse("error", {"code": "LAYOUT", "message": (laid or {}).get("error") or "layout failed"})
+                yield sse("finish", {"reason": "error", "detail": "layout"})
+                return
+            yield step("planner", _quality_label(laid))
+            patch = laid.get("patch") or {}
+            title = laid.get("title") or planned.get("title") or title
+    else:
+        ds_id = dataset_ids[0]
+        yield step("planner", "分析数据特征 → 按特征选图 → 质检修复")
+        try:
+            planned = execute_guarded(by_name["od_plan_charts"], {"datasetId": ds_id}) or {}
         except Exception as e:
-            yield sse("error", {"code": "COMPOSE", "message": str(e)})
-            yield sse("finish", {"reason": "error", "detail": "compose"})
-            return
-        if not composed.get("ok"):
-            yield sse(
-                "error",
+            yield step("fallback", f"plan_charts 失败，降级 compose：{e}")
+            planned = {"ok": False}
+
+        if isinstance(planned, dict) and planned.get("ok") and not planned.get("empty") and planned.get("charts"):
+            n = len(planned.get("charts") or [])
+            yield step("planner", f"按特征规划 {n} 张图")
+            yield step("planner", _quality_label(planned))
+            laid = execute_guarded(
+                by_name["od_layout_board"],
                 {
-                    "code": "COMPOSE",
-                    "message": composed.get("error") or "compose failed",
-                    "missing": composed.get("missing"),
+                    "title": planned.get("title") or title,
+                    "styleId": style_id,
+                    "charts": planned.get("charts"),
+                    "query": planned.get("query"),
                 },
             )
-            yield sse("finish", {"reason": "error", "detail": "compose"})
-            return
-        patch = composed.get("patch") or {}
-        title = composed.get("title") or title
+            if not (isinstance(laid, dict) and laid.get("ok")):
+                yield sse("error", {"code": "LAYOUT", "message": (laid or {}).get("error") or "layout failed"})
+                yield sse("finish", {"reason": "error", "detail": "layout"})
+                return
+            yield step("planner", _quality_label(laid))
+            patch = laid.get("patch") or {}
+            title = laid.get("title") or planned.get("title") or title
+        else:
+            if isinstance(planned, dict) and planned.get("empty"):
+                yield step("planner", str(planned.get("hint") or "数据无有效行，不写空看板"))
+                yield sse("message_delta", {"text": str(planned.get("hint") or "探测无有效行，请换有数据的业务表。")})
+                yield sse("finish", {"reason": "answered", "detail": "empty_dataset"})
+                return
+            yield step("compose", "规划失败，降级 compose-board")
+            try:
+                composed = bi_call(
+                    "POST",
+                    "/api/internal/bi/compose-board",
+                    {
+                        "message": message,
+                        "dashboardId": linked if mode == "append" else None,
+                        "styleId": style_id,
+                        "datasetIds": dataset_ids,
+                        "mode": mode,
+                    },
+                )
+            except Exception as e:
+                yield sse("error", {"code": "COMPOSE", "message": str(e)})
+                yield sse("finish", {"reason": "error", "detail": "compose"})
+                return
+            if not composed.get("ok"):
+                yield sse(
+                    "error",
+                    {
+                        "code": "COMPOSE",
+                        "message": composed.get("error") or "compose failed",
+                        "missing": composed.get("missing"),
+                    },
+                )
+                yield sse("finish", {"reason": "error", "detail": "compose"})
+                return
+            patch = composed.get("patch") or {}
+            title = composed.get("title") or title
 
     plan = {
         "title": title,
