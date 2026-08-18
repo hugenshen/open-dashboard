@@ -127,6 +127,14 @@ const lastIntent = ref('')
 const lastQuestion = ref('')
 const intentMap = ref<IntentMap | null>(null)
 const dsMenuOpen = ref(false)
+const dsKeyword = ref('')
+const filteredDatasets = computed(() => {
+  const kw = dsKeyword.value.trim().toLowerCase()
+  if (!kw) return datasets.value
+  return datasets.value.filter((d) => {
+    return (d.name || '').toLowerCase().includes(kw) || (d.tableName || '').toLowerCase().includes(kw)
+  })
+})
 
 const EXAMPLES = [
   { label: '换一个问数问题', text: '换一个问数问题', intent: 'ask' as const },
@@ -179,8 +187,12 @@ const askChatMode = computed(
 const ctxName = computed(() => {
   const ids = selectedDatasets.value
   if (!ids.length) return '未选数据集'
-  const hit = datasets.value.find((d) => d.id === ids[0])
-  return hit?.name || ids[0]
+  const names = ids
+    .map((id) => datasets.value.find((d) => d.id === id)?.name)
+    .filter((n): n is string => !!n)
+  if (!names.length) return ids.length > 1 ? `${ids.length} 个数据集` : ids[0]
+  if (names.length === 1) return names[0]
+  return `${names[0]} 等 ${names.length} 个`
 })
 const previewDatasetName = computed(() => {
   const id = charts.value[0]?.datasetId
@@ -373,7 +385,10 @@ async function onPickFile(ev: Event) {
       text: `已把 ${file.name} 作为问数数据集（${(detail.fields || []).length} 个字段）。对齐 DataEase：先落表再查，不是每次上传都打 HTTP。`
     })
   } catch (e) {
-    importHint.value = e instanceof Error ? e.message : String(e)
+    // 后端已透传具体原因（格式/大小/解析失败），去掉 "POST /dataset/import →" 前缀让提示更可读
+    const raw = e instanceof Error ? e.message : String(e)
+    const m = raw.match(/: (.+)$/)
+    importHint.value = m ? m[1] : raw
   } finally {
     importing.value = false
   }
@@ -1050,7 +1065,7 @@ function toggleSide(panel: 'history' | 'explore') {
       ref="fileInput"
       type="file"
       class="file-hidden"
-      accept=".csv,.tsv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      accept=".csv,.tsv,.txt,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       @change="onPickFile"
     />
     <div v-if="loading" class="boot">加载对话…</div>
@@ -1117,15 +1132,28 @@ function toggleSide(panel: 'history' | 'explore') {
                 <span class="sp" />
               </div>
               <div v-if="dsMenuOpen" class="ds-menu">
-                <label v-for="d in datasets" :key="d.id" class="ds">
-                  <input
-                    type="checkbox"
-                    :checked="selectedDatasets.includes(d.id)"
-                    @change="toggleDataset(d.id)"
-                  />
-                  {{ d.name }}
-                </label>
-                <span v-if="!datasets.length" class="muted">请先连接数据源或上传 CSV / Excel</span>
+                <div class="ds-search">
+                  <input v-model="dsKeyword" type="text" placeholder="搜索数据集…" />
+                  <span class="ds-count">{{ selectedDatasets.length }} 已选</span>
+                </div>
+                <div class="ds-list">
+                  <label
+                    v-for="d in filteredDatasets"
+                    :key="d.id"
+                    class="ds"
+                    :class="{ on: selectedDatasets.includes(d.id) }"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="selectedDatasets.includes(d.id)"
+                      @change="toggleDataset(d.id)"
+                    />
+                    <span class="ds-name">{{ d.name }}</span>
+                    <span class="ds-meta">{{ d.tableName || d.folder || '' }}</span>
+                    <span v-if="selectedDatasets.includes(d.id)" class="ds-tick">✓</span>
+                  </label>
+                </div>
+                <div v-if="!filteredDatasets.length" class="muted pad">没有匹配的数据集，或先上传 CSV / Excel</div>
               </div>
               <textarea
                 v-model="prompt"
@@ -1424,14 +1452,28 @@ function toggleSide(panel: 'history' | 'explore') {
               </button>
             </div>
             <div v-if="dsMenuOpen" class="ds-menu">
-              <label v-for="d in datasets" :key="d.id" class="ds">
-                <input
-                  type="checkbox"
-                  :checked="selectedDatasets.includes(d.id)"
-                  @change="toggleDataset(d.id)"
-                />
-                {{ d.name }}
-              </label>
+              <div class="ds-search">
+                <input v-model="dsKeyword" type="text" placeholder="搜索数据集…" />
+                <span class="ds-count">{{ selectedDatasets.length }} 已选</span>
+              </div>
+              <div class="ds-list">
+                <label
+                  v-for="d in filteredDatasets"
+                  :key="d.id"
+                  class="ds"
+                  :class="{ on: selectedDatasets.includes(d.id) }"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="selectedDatasets.includes(d.id)"
+                    @change="toggleDataset(d.id)"
+                  />
+                  <span class="ds-name">{{ d.name }}</span>
+                  <span class="ds-meta">{{ d.tableName || d.folder || '' }}</span>
+                  <span v-if="selectedDatasets.includes(d.id)" class="ds-tick">✓</span>
+                </label>
+              </div>
+              <div v-if="!filteredDatasets.length" class="muted pad">没有匹配的数据集，或先上传 CSV / Excel</div>
             </div>
             <div class="composer">
               <textarea
@@ -2022,16 +2064,88 @@ function toggleSide(panel: 'history' | 'explore') {
 }
 .ds-menu {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   padding: 4px 2px 8px;
 }
-.ds {
-  display: inline-flex;
-  gap: 6px;
+.ds-search {
+  display: flex;
   align-items: center;
+  gap: 8px;
+}
+.ds-search input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  background: #fff;
+  color: var(--ink);
+  outline: 0;
+}
+.ds-search input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.ds-count {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.ds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow: auto;
+}
+.ds {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12.5px;
   color: var(--muted);
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ds:hover {
+  background: var(--soft);
+}
+.ds.on {
+  border-color: color-mix(in srgb, var(--brand) 35%, transparent);
+  background: var(--brand-soft);
+  color: var(--ink);
+}
+.ds input {
+  accent-color: var(--brand);
+  flex-shrink: 0;
+}
+.ds-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: inherit;
+}
+.ds-meta {
+  flex-shrink: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--faint);
+}
+.ds-tick {
+  flex-shrink: 0;
+  color: var(--brand);
+  font-weight: 700;
 }
 textarea {
   width: 100%;
