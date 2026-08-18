@@ -113,6 +113,26 @@ public class ConversationAppService {
         return rev;
     }
 
+    /** 生成落盘后记录一个版本：把 dashboard 的权威快照 + patch 存为 revision，支持历史回滚/回溯。 */
+    public Optional<ConversationRevisionVO> recordRevision(
+            String conversationId,
+            String runId,
+            String dashboardId,
+            Map<String, Object> patch,
+            String label
+    ) {
+        Optional<ConversationVO> conv = store.find(conversationId);
+        if (conv.isEmpty()) return Optional.empty();
+        Map<String, Object> snapshot = applier.snapshotOf(dashboardId);
+        ConversationRevisionVO rev = store.createRevision(
+                conversationId, runId, dashboardId,
+                patch == null ? Map.of() : patch,
+                snapshot,
+                label == null || label.isBlank() ? "ai-generated" : label
+        );
+        return Optional.of(rev);
+    }
+
     public Optional<ConversationRunVO> cancel(String conversationId, String runId) {
         Optional<ConversationRunVO> run = store.findRun(runId);
         if (run.isEmpty() || !conversationId.equals(run.get().conversationId())) {

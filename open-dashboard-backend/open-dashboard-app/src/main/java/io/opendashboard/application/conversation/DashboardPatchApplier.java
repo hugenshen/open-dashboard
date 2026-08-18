@@ -172,6 +172,14 @@ public class DashboardPatchApplier {
         Object compsObj = snapshot.get("components");
         if (compsObj instanceof List<?> list) {
             List<DashboardComponentVO> comps = new ArrayList<>();
+            List<String> deleteIds = new ArrayList<>();
+            // 回滚 = 全量替换：先取当前看板的组件 id 作为删除列表，避免旧组件残留与新组件混排
+            Optional<DashboardDetailVO> current = dashboards.get(dashboardId, "draft");
+            if (current.isPresent()) {
+                for (DashboardComponentVO c : current.get().components()) {
+                    deleteIds.add(c.id());
+                }
+            }
             for (Object o : list) {
                 if (!(o instanceof Map<?, ?> m)) continue;
                 Map<String, Object> c = castMap(m);
@@ -188,7 +196,7 @@ public class DashboardPatchApplier {
                         c.get("props") instanceof Map<?, ?> p ? castMap(p) : Map.of()
                 ));
             }
-            dashboards.updateComponents(dashboardId, new DashboardComponentsUpdateRequest(comps, List.of(), null));
+            dashboards.updateComponents(dashboardId, new DashboardComponentsUpdateRequest(comps, deleteIds, null));
         }
         Object chartsObj = snapshot.get("charts");
         if (chartsObj instanceof Map<?, ?> charts) {
@@ -222,7 +230,7 @@ public class DashboardPatchApplier {
         return created.id();
     }
 
-    private Map<String, Object> snapshotOf(String dashboardId) {
+    public Map<String, Object> snapshotOf(String dashboardId) {
         Optional<DashboardDetailVO> detail = dashboards.get(dashboardId, "draft");
         Map<String, Object> snap = new LinkedHashMap<>();
         if (detail.isEmpty()) {

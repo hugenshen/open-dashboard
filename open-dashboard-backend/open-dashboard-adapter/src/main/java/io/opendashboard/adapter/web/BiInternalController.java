@@ -1,6 +1,7 @@
 package io.opendashboard.adapter.web;
 
 import io.opendashboard.application.conversation.BiPlatformService;
+import io.opendashboard.application.conversation.ConversationAppService;
 import io.opendashboard.application.conversation.ConversationProperties;
 import io.opendashboard.domain.QueryDtos.ChartQueryRequest;
 import io.opendashboard.domain.QueryDtos.DatasetQueryRequest;
@@ -27,10 +28,16 @@ public class BiInternalController {
 
     private final BiPlatformService bi;
     private final ConversationProperties props;
+    private final ConversationAppService conversations;
 
-    public BiInternalController(BiPlatformService bi, ConversationProperties props) {
+    public BiInternalController(
+            BiPlatformService bi,
+            ConversationProperties props,
+            ConversationAppService conversations
+    ) {
         this.bi = bi;
         this.props = props;
+        this.conversations = conversations;
     }
 
     private boolean authed(String token) {
@@ -136,5 +143,23 @@ public class BiInternalController {
     ) {
         if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(bi.applyPatch(body));
+    }
+
+    @PostMapping("/record-revision")
+    public ResponseEntity<?> recordRevision(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String conversationId = body == null ? "" : String.valueOf(body.getOrDefault("conversationId", ""));
+        String runId = body == null ? "" : String.valueOf(body.getOrDefault("runId", ""));
+        String dashboardId = body == null ? "" : String.valueOf(body.getOrDefault("dashboardId", ""));
+        Object patchObj = body == null ? null : body.get("patch");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> patch = patchObj instanceof Map<?, ?> m ? (Map<String, Object>) m : Map.of();
+        String label = body == null ? null : body.get("label") == null ? null : String.valueOf(body.get("label"));
+        return conversations.recordRevision(conversationId, runId, dashboardId, patch, label)
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }
