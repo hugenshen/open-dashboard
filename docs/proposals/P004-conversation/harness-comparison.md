@@ -114,13 +114,13 @@ model 发出 tool-call 块
 
 ```
 FE → /v1/conversations/{id}/runs (SSE)
-   → Python Agent loop + tools  (lead_agent / run_agent)
+   → Python Agent loop + tools  (runtime.py::run_agent)
    → Java /api/internal/bi/*    (零 AI 的 BI 执行层：chartQuery/datasetQuery/apply-patch)
 ```
 
 ### 1. 双跑通模式（可贵的务实设计）
 `run_agent()` 分两路：
-- **Lead Agent（LLM 路径）**：重放 ReAct 工具环，`lead_agent.py` / `runtime.py::run_lead`。
+- **Lead Agent（LLM 路径）**：重放 ReAct 工具环，`runtime.py::run_lead`。
 - **Deterministic 工具环（无 LLM 降级）**：`run_deterministic`，纯规则 profile→plan→layout→apply。
 - LLM 未配置/异常时自动降级「确定性工具环」，不假成功。三种意图 `ask / insight / gen` 由正则 `resolve_intent` 初判，`patch_mode` 判 append/replace。
 
@@ -137,8 +137,8 @@ FE → /v1/conversations/{id}/runs (SSE)
 2. `od_profile_dataset`（看 dim/measure/time、是否 empty、probe）→ `od_plan_charts`（**只按探测出有数的图**，不套模板；内置质检：ferret 假环比/同维饼图/过密折线）→ `od_layout_board`（拿到 `DashboardPatch`）。
 3. 落盘唯一入口 `od_emit_patch` → Java `apply-patch`。`plan` 模式先缓存 patch 等用户 confirm。
 
-### 4. 能力/工具清单（tools_od.py）
-`od_list_datasets`·`od_get_schema`·`od_run_query`·`od_run_sql`·`od_profile_dataset`·`od_plan_charts`·`od_review_charts`·`od_layout_board`·`od_compose_board`·`od_get_board_summary`·`od_emit_patch`·`od_finish`·`write_todos`。
+### 4. 能力/工具清单（tools/od_bi.py + registry.py）
+`od_list_datasets`·`od_get_schema`·`od_run_query`·`od_run_sql`·`od_profile_dataset`·`od_plan_charts`·`od_review_charts`·`od_layout_board`·`od_compose_board`·`od_get_board_summary`·`od_rechart_chart`（多轮改/删/加单图）·`od_emit_patch`·`od_finish`·`write_todos`。
 
 ### 5. Skills / Memory / SSE 事件
 - Skills：`skills/*/SKILL.md`，`agent/context.py::load_skills_prompt()` 主动扫目录注入 system prompt。
