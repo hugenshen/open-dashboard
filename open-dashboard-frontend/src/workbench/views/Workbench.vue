@@ -89,7 +89,7 @@ const showCreateCard = computed(() => {
   return n > 0 && n < DESKTOP_RECENT
 })
 
-const DESKTOP_RECENT_REPORTS = 8
+const DESKTOP_RECENT_REPORTS = 6
 
 const recentReports = computed(() => {
   if (emptyMode.value) return []
