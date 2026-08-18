@@ -60,9 +60,11 @@ class ToolState:
         self.todos: List[Dict[str, Any]] = []
         self.last_plan: Optional[Dict[str, Any]] = None
         self.last_review: Optional[Dict[str, Any]] = None
+        self.last_layout: Optional[Dict[str, Any]] = None
         self.last_intent: Optional[Dict[str, Any]] = None
         self.defer_apply: bool = False
         self.pending: Optional[Dict[str, Any]] = None
+        self.rechart: bool = False
 
 
 def build_od_tools(
@@ -159,6 +161,131 @@ def build_od_tools(
             f"/api/internal/bi/board-summary?dashboardId={urllib.parse.quote(str(dash))}",
         )
 
+    def rechart_chart(args: Dict[str, Any]) -> Any:
+        """Multi-turn, dialogue-driven chart surgery.
+
+        Rebuild the target dashboard as a replace-mode patch that PRESERVES every
+        existing chart (position/layout untouched) while applying the caller's
+        per-chart changes, additions and removals. Java apply(mode="replace")
+        keeps only what this patch lists, so ops must include all charts to retain.
+        """
+        dash = args.get("dashboardId") or linked_dashboard_id
+        if not dash:
+            return {"ok": False, "error": "dashboardId required (multi-turn needs a linked dashboard)"}
+        summary = bi_call(
+            "GET",
+            f"/api/internal/bi/board-summary?dashboardId={urllib.parse.quote(str(dash))}",
+        )
+        existing = {str(c.get("chartId") or ""): c for c in (summary.get("charts") or []) if isinstance(c, dict)}
+        comps = {str(c.get("chartId") or ""): c for c in (summary.get("components") or []) if isinstance(c, dict)}
+        if not existing:
+            return {
+                "ok": False,
+                "error": f"dashboard {dash} has no charts — use normal generation (od_profile_dataset→od_plan_charts→od_layout_board) instead",
+            }
+
+        changes = [c for c in (args.get("changes") or []) if isinstance(c, dict)]
+        adds = [a for a in (args.get("adds") or []) if isinstance(a, dict)]
+        remove_ids = [str(c) for c in (args.get("removeChartIds") or [])]
+
+        # Validate references
+        unknown_chg = [str(c.get("chartId") or "") for c in changes]
+        unknown_chg = [cid for cid in unknown_chg if cid and cid not in existing]
+        unknown_rm = [cid for cid in remove_ids if cid and cid not in existing]
+        if unknown_chg or unknown_rm:
+            return {
+                "ok": False,
+                "error": (
+                    "unknown chartId(s) "
+                    f"changes={unknown_chg} remove={unknown_rm}; available={sorted(existing)}. "
+                    "Call od_get_board_summary first to learn the real chartIds."
+                ),
+            }
+
+        # start layout from the first known grid setting
+        theme = "default"
+        base = int(time.time() * 1000) % 1_000_000_000
+        ops: List[Dict[str, Any]] = [{"op": "set_layout", "gridCols": 72, "themeRef": theme}]
+
+        apply_change = {str(c.get("chartId") or ""): c for c in changes}
+        max_y = 0
+        grid_n = [0]
+        kept: List[str] = []
+
+        def add_chart(spec: Dict[str, Any], chart_id: str, x: int, y: int, w: int, h: int) -> None:
+            ops.append(
+                {
+                    "op": "upsert_chart",
+                    "chartId": chart_id,
+                    "type": spec.get("chartType") or spec.get("type") or "bar",
+                    "datasetId": spec.get("datasetId"),
+                    "title": spec.get("title") or chart_id,
+                    "encode": spec.get("encode") or {},
+                    "style": spec.get("style") or {},
+                }
+            )
+            ops.append(
+                {
+                    "op": "upsert_component",
+                    "id": "c_" + chart_id,
+                    "type": "chart",
+                    "chartId": chart_id,
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": h,
+                }
+            )
+
+        # keep / modify existing charts, preserving their positions
+        for cid, cur in existing.items():
+            if cid in remove_ids:
+                continue  # Java replace diff will delete it
+            comp = comps.get(cid) or {}
+            x = intVal(comp.get("x"), 0)
+            y = intVal(comp.get("y"), 0)
+            w = intVal(comp.get("w"), 24)
+            h = intVal(comp.get("h"), 12)
+            max_y = max(max_y, y + h)
+            grid_n[0] += 1
+            chg = apply_change.get(cid)
+            spec = dict(cur)
+            if chg:
+                spec = {**cur, **{k: v for k, v in chg.items() if k != "chartId" and v is not None}}
+            add_chart(spec, cid, x, y, w, h)
+            kept.append(cid)
+
+        # append new charts below the existing content (2-col like layout_board)
+        col_w = 36
+        row_h = 20
+        for idx, a in enumerate(adds):
+            nid = str(base + grid_n[0] + 1)
+            grid_n[0] += 1
+            # new chart always needs datasetId+encode from caller
+            if not a.get("datasetId"):
+                return {
+                    "ok": False,
+                    "error": "each 'adds' item needs datasetId (e.g. the dataset used by the board)",
+                }
+            new_x = (idx % 2) * col_w
+            new_y = max_y + 2 + (idx // 2) * (row_h + 2)
+            add_chart(a, nid, new_x, new_y, col_w, row_h)
+            kept.append(nid)
+
+        patch = {"ops": ops}
+        state.last_layout = {"patch": patch, "mode": "replace", "title": str(args.get("title") or (summary.get("name") or "AI 看板"))}
+        state.rechart = True
+        return {
+            "ok": True,
+            "dashboardId": dash,
+            "chartCount": len(kept),
+            "keptChartIds": kept,
+            "removedChartIds": remove_ids,
+            "addedChartIds": [nid for nid in kept if not existing.get(nid)],
+            "changedChartIds": list(apply_change.keys()),
+            "patch": patch,
+        }
+
     def profile_dataset(args: Dict[str, Any]) -> Any:
         ds = args.get("datasetId") or ""
         return bi_call("POST", "/api/internal/bi/profile-dataset", {"datasetId": ds})
@@ -168,7 +295,14 @@ def build_od_tools(
         if not ds:
             return {"ok": False, "error": "datasetId required"}
         profile = bi_call("POST", "/api/internal/bi/profile-dataset", {"datasetId": ds})
-        planned = _plan_charts_from_profile(ds, profile if isinstance(profile, dict) else {})
+        if isinstance(profile, dict) and profile.get("ok") and not profile.get("empty") and not profile.get("measures"):
+            # 无业务度量：补探测分布取值/度量/用户维度/日期跨度，支撑丰富多图表
+            profile = _enrich_count_profile(ds, profile)
+        planned = _plan_charts_from_profile(
+            ds,
+            profile if isinstance(profile, dict) else {},
+            mode=str(args.get("mode") or ""),
+        )
         filters = args.get("filters") or (state.last_intent or {}).get("filters")
         if isinstance(planned, dict) and filters:
             for c in planned.get("charts") or []:
@@ -200,15 +334,21 @@ def build_od_tools(
         return planned
 
     def review_charts(args: Dict[str, Any]) -> Any:
-        charts = args.get("charts")
-        query = args.get("query")
-        probes = args.get("probes") or []
-        if (not charts) and isinstance(state.last_plan, dict):
-            charts = state.last_plan.get("charts") or []
-            if query is None:
-                query = state.last_plan.get("query")
-            if not probes:
-                probes = list(state.last_plan.get("probes") or [])
+        # A 层确定性规划为准：LLM 只做 mode 取舍，不允许改图（防丢图/混入杂图）
+        if isinstance(state.last_plan, dict) and state.last_plan.get("charts"):
+            charts = state.last_plan.get("charts")
+            query = state.last_plan.get("query")
+            probes = list(state.last_plan.get("probes") or [])
+        else:
+            charts = args.get("charts")
+            query = args.get("query")
+            probes = args.get("probes") or []
+            if (not charts) and isinstance(state.last_plan, dict):
+                charts = state.last_plan.get("charts") or []
+                if query is None:
+                    query = state.last_plan.get("query")
+                if not probes:
+                    probes = list(state.last_plan.get("probes") or [])
         if not isinstance(charts, list) or not charts:
             return {"ok": False, "error": "charts required, or call od_plan_charts first"}
         reviewed = _review_and_repair(charts, query, probes if isinstance(probes, list) else [])
@@ -250,12 +390,17 @@ def build_od_tools(
         return {"ok": True, "todos": normalized}
 
     def layout_board(args: Dict[str, Any]) -> Any:
-        charts = args.get("charts") or []
+        # A 层确定性规划为准：LLM 只做 mode 取舍，不允许改图（防丢图/混入杂图）
+        if isinstance(state.last_plan, dict) and state.last_plan.get("charts"):
+            charts = state.last_plan.get("charts")
+            query = state.last_plan.get("query")
+        else:
+            charts = args.get("charts") or []
+            query = args.get("query") or {}
         style_id = args.get("styleId") or "feishu-blue"
         title = args.get("title") or "AI 生成看板"
         if not isinstance(charts, list) or not charts:
             return {"ok": False, "error": "charts required: [{type,title,datasetId,encode}]"}
-        query = args.get("query") or {}
         probes = []
         if isinstance(state.last_plan, dict):
             probes = list(state.last_plan.get("probes") or [])
@@ -337,24 +482,21 @@ def build_od_tools(
             add_chart(spec, i * kpi_w, y, kpi_w, 10)
         if kpi_n:
             y += 12
-        col = 0
-        for i, spec in enumerate(plots):
-            last = i == len(plots) - 1
-            if len(plots) == 1 or (last and col == 0):
-                w, x = 72, 0
-            else:
-                w, x = 36, col * 36
-            add_chart(spec, x, y, w, 20)
-            if w == 72 or col == 1:
+        # 图表与汇总表合并成「两列铺满」，避免单张全宽导致的右侧留白/压缩感。
+        fillers = list(plots) + list(tables)
+        if fillers:
+            # 2列：每个图表占半宽(36)，两两成行；奇数个时补一个占位让整体仍铺满。
+            rows = (len(fillers) + 1) // 2
+            for r in range(rows):
+                for col in (0, 1):
+                    i = r * 2 + col
+                    if i >= len(fillers):
+                        break
+                    add_chart(fillers[i], col * 36, y, 36, 20)
                 y += 22
-                col = 0
-            else:
-                col = 1
-        if col == 1:
-            y += 22
-        for spec in tables[:1]:
-            add_chart(spec, 0, y, 72, 18)
         patch = {"ops": ops}
+        # 记录权威 layout patch：本轮 emit 必须用它，不允许 LLM 自拼 patch 覆盖
+        state.last_layout = {"patch": patch, "mode": "replace", "title": title}
         return {
             "ok": True,
             "title": title,
@@ -377,7 +519,20 @@ def build_od_tools(
     def emit_patch(args: Dict[str, Any]) -> Any:
         mode = args.get("mode") or "replace"
         title = args.get("title") or "AI 生成看板"
-        patch = _normalize_patch(args.get("patch") or args)
+        # rechart：multi-turn 精控 patch（od_rechart_chart 已构造，含现存+新图）优先
+        if state.rechart and isinstance(state.last_layout, dict) and state.last_layout.get("patch"):
+            patch = state.last_layout["patch"]
+            mode = state.last_layout.get("mode") or "replace"
+            title = state.last_layout.get("title") or title
+            state.rechart = False
+        # A 层确定性为准：本轮 od_plan_charts→od_layout_board 已产出权威 patch 时，
+        # 不允许 LLM 传自拼 patch 覆盖（防丢图/混入杂图/append 旧稿残留）
+        elif isinstance(state.last_layout, dict) and state.last_layout.get("patch"):
+            patch = state.last_layout["patch"]
+            mode = state.last_layout.get("mode") or "replace"
+            title = state.last_layout.get("title") or title
+        else:
+            patch = _normalize_patch(args.get("patch") or args)
         dash = args.get("dashboardId") or linked_dashboard_id
         wrap = {"title": title, "mode": mode, "patch": patch, "linkedDashboardId": dash}
         if state.defer_apply:
@@ -460,17 +615,26 @@ def build_od_tools(
         AgentTool(
             name="od_plan_charts",
             description=(
-                "Plan charts from dataset probes (not a fixed KPI+bar+pie template). "
-                "Returns {charts, query, rationale, quality}. query.items go to od_layout_board. "
-                "Runs a deterministic quality gate (JoyAgent-style critic): no fake KPI compare, "
-                "no pie duplicating a bar dim, no raw-timestamp line, table→grouptable. "
-                "ONLY emit charts already in this result — never invent unprobed KPI/line/bar. "
-                "If empty=true, do NOT emit a board. You may drop 1-2 charts if the user asked, "
-                "but do not add encodes that were not probed live."
+                "Plan a multi-chart dashboard from dataset probes. Analyzes field roles "
+                "(dim/measure/time) and builds a template-style board independent of field count: "
+                "top query bar + KPI row + distribution/trend/summary (COUNT-based fallback when "
+                "the dataset has no business measures). Returns {charts, query, rationale, quality}; "
+                "query.items go to od_layout_board. Runs a deterministic quality gate (JoyAgent-style): "
+                "no fake KPI compare, no pie duplicating a bar dim, too-granular line trimmed, "
+                "table→grouptable. ONLY emit charts from this result — never invent unprobed encodes. "
+                "Set mode='single' (or 'kpi_only') ONLY when the user explicitly wants just one chart. "
+                "If empty=true, do NOT emit a board."
             ),
             parameters={
                 "type": "object",
-                "properties": {"datasetId": {"type": "string"}},
+                "properties": {
+                    "datasetId": {"type": "string"},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["full", "single"],
+                        "description": "default 'full' = multi-chart template board; 'single' = only one KPI when the user explicitly asked",
+                    },
+                },
                 "required": ["datasetId"],
             },
             execute=plan_charts,
@@ -556,6 +720,58 @@ def build_od_tools(
                 "properties": {"dashboardId": {"type": "string"}},
             },
             execute=board_summary,
+        ),
+        AgentTool(
+            name="od_rechart_chart",
+            description=(
+                "MULTI-TURN surgical edit of an EXISTING dashboard (requires linkedDashboardId). "
+                "Rebuilds a replace-mode patch that PRESERVES every existing chart's position and encode, "
+                "then applies your per-chart changes, additions and removals. Call od_get_board_summary FIRST "
+                "to learn the real chartIds. Supply: "
+                "changes=[{chartId, chartType?, title?, encode?, datasetId?, style?}] to modify specific charts; "
+                "removeChartIds=[...] to delete specific charts (they vanish, others untouched); "
+                "adds=[{chartType, title, datasetId, encode}] to insert new charts below existing content. "
+                "Then call od_emit_patch to apply. Do NOT use for first-time full generation."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "dashboardId": {"type": "string"},
+                    "title": {"type": "string"},
+                    "changes": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "chartId": {"type": "string"},
+                                "chartType": {"type": "string"},
+                                "title": {"type": "string"},
+                                "datasetId": {"type": "string"},
+                                "encode": {"type": "object"},
+                                "style": {"type": "object"},
+                            },
+                            "required": ["chartId"],
+                        },
+                    },
+                    "removeChartIds": {"type": "array", "items": {"type": "string"}},
+                    "adds": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "chartType": {"type": "string"},
+                                "title": {"type": "string"},
+                                "datasetId": {"type": "string"},
+                                "encode": {"type": "object"},
+                            },
+                            "required": ["chartType", "datasetId", "encode"],
+                        },
+                    },
+                },
+                "required": [],
+            },
+            execute=rechart_chart,
+            execution_mode="sequential",
         ),
         AgentTool(
             name="od_layout_board",
@@ -780,13 +996,8 @@ def _review_and_repair(charts: List[Any], query: Any, probes: List[Any]) -> Dict
     fixes: List[str] = []
     rationale: List[str] = []
     out: List[Dict[str, Any]] = []
-    bar_cats = {
-        _category_of(c)
-        for c in charts
-        if isinstance(c, dict) and _chart_kind(c) == "bar" and _category_of(c)
-    }
     seen_pie: set[str] = set()
-    saw_table = False
+    seen_table_dims: set[str] = set()
 
     for raw in charts:
         if not isinstance(raw, dict):
@@ -811,12 +1022,19 @@ def _review_and_repair(charts: List[Any], query: Any, probes: List[Any]) -> Dict
             continue
 
         if kind in ("table", "grouptable"):
-            if saw_table:
+            cat = _category_of(spec)
+            if cat and cat in seen_table_dims:
                 issues.append("duplicate_table")
                 fixes.append("drop_extra_table")
-                rationale.append("只保留一张汇总表垫底")
+                rationale.append("同一维度只保留一张汇总表垫底")
                 continue
-            saw_table = True
+            if cat:
+                seen_table_dims.add(cat)
+            elif seen_table_dims:
+                issues.append("duplicate_table")
+                fixes.append("drop_extra_table")
+                rationale.append("只保留两张汇总表垫底")
+                continue
             if kind == "table":
                 issues.append("detail_table")
                 fixes.append("table_to_grouptable")
@@ -831,11 +1049,7 @@ def _review_and_repair(charts: List[Any], query: Any, probes: List[Any]) -> Dict
 
         if kind in ("pie", "donut"):
             cat = _category_of(spec)
-            if cat and cat in bar_cats:
-                issues.append("duplicate_dim_pie")
-                fixes.append("drop_pie_same_as_bar")
-                rationale.append(f"饼图与柱图共用维度「{cat}」，去掉饼图")
-                continue
+            # 同维 pie 与 bar 并存是运营模板的常规（柱看量、饼看占比），只去重同维饼图
             if cat and cat in seen_pie:
                 issues.append("duplicate_pie")
                 fixes.append("drop_duplicate_pie")
@@ -875,9 +1089,161 @@ def _review_and_repair(charts: List[Any], query: Any, probes: List[Any]) -> Dict
     }
 
 
-def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[str, Any]:
+def _short_label(label: Any, maxlen: int = 8) -> str:
+    """去掉括号后缀/超长说明，得到适合做图表标题的短标签（如「调用人工号(从请求头…)」→「调用人工号」）。"""
+    s = str(label or "").strip()
+    if not s:
+        return s
+    if "(" in s:
+        head = s.split("(")[0].strip()
+        if head:
+            s = head
+    return s if len(s) <= maxlen else s[:maxlen]
+
+
+def _enrich_count_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[str, Any]:
+    """无业务度量（log/junk 数据集）时补探测，让多图表与查询默认值有据可依：
+    1) 计数维度的取值分布（供 pie 占比、成功/异常拆分 KPI）
+    2) 第一个 DECIMAL 字段的 AVG（作度量 KPI 与横向对比）
+    3) 用户类低基数维度（按人看调用量）
+    4) 时间字段的 MIN/MAX（查询条日期默认值 = 真实数据区间，不丢数据）
+    全部走确定性探测，探测失败只跳过对应槽位，不阻断规划。
+    """
+    probes = [dict(p) for p in (profile.get("probes") or []) if isinstance(p, dict)]
+    fields = list(profile.get("fields") or [])
+    dims = list(profile.get("dims") or [])
+    query_fields = list(profile.get("queryFields") or [])
+
+    count_d = next(
+        (d for d in dims if _is_status_like(d) and _probe_kpi_live(probes, _field_name(d))),
+        next((d for d in dims if _probe_kpi_live(probes, _field_name(d))), None),
+    )
+    cd = _field_name(count_d) if count_d is not None else ""
+
+    def chart_probe(encode: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            r = bi_call(
+                "POST",
+                "/api/internal/bi/query/chart",
+                {
+                    "chartId": "probe",
+                    "view": "draft",
+                    "inline": {
+                        "datasetId": dataset_id,
+                        "chartType": str(encode.get("chartType") or "bar"),
+                        "title": "probe",
+                        "encode": encode,
+                    },
+                    "context": {"filters": [], "linkages": []},
+                },
+            )
+            return r if isinstance(r, dict) else {}
+        except Exception:
+            return {}
+
+    have = {str(p.get("field") or "") for p in probes}
+
+    # 1) 计数维度分布取值（替换后端只有 kpiValue 的 count probe）
+    if cd:
+        probes = [p for p in probes if not (str(p.get("kind") or "") == "count" and str(p.get("field") or "") == cd)]
+        r = chart_probe({"datasetId": dataset_id, "agg": "COUNT", "category": cd, "value": cd, "chartType": "bar"})
+        data = r.get("data") or []
+        if data:
+            probes.append(
+                {
+                    "kind": "count",
+                    "field": cd,
+                    "rowCount": len(data),
+                    "cardinality": len(data),
+                    "values": [str(v[0]) for v in data],
+                    "sample": [v[1] for v in data[:20]],
+                    "kpiValue": sum(int(v[1] or 0) for v in data),
+                    "emptyValue": False,
+                    "tooGranular": False,
+                }
+            )
+            have.add(cd)
+
+    # 2) 第一个 DECIMAL 字段作度量（AVG 探测非 null 才用）
+    for f in fields:
+        fn = str(f.get("name") or "")
+        if str(f.get("dataType") or "") != "DECIMAL" or fn in ("id", cd) or fn in have:
+            continue
+        if str(f.get("role") or "") not in ("junk", "quota", "measure"):
+            continue
+        r = chart_probe({"datasetId": dataset_id, "agg": "AVG", "value": fn, "chartType": "kpi"})
+        data = r.get("data") or []
+        if data and data[0] and data[0][0] is not None:
+            probes.append(
+                {
+                    "kind": "kpi",
+                    "field": fn,
+                    "rowCount": 1,
+                    "kpiValue": data[0][0],
+                    "label": _short_label(f.get("label") or fn),
+                    "emptyValue": False,
+                }
+            )
+            have.add(fn)
+            break
+
+    # 3) 用户类低基数维度（STRING junk 字段，探测 COUNT 基数 2..15）
+    for f in fields:
+        fn = str(f.get("name") or "")
+        if fn in have or fn == cd or str(f.get("dataType") or "") != "STRING":
+            continue
+        blob = f"{fn} {f.get('label') or ''}".lower()
+        if not any(k in blob for k in ("user", "人", "员工", "账号", "emp", "ip")):
+            continue
+        r = chart_probe({"datasetId": dataset_id, "agg": "COUNT", "category": fn, "value": cd or fn, "chartType": "bar"})
+        data = r.get("data") or []
+        if 2 <= len(data) <= 15:
+            probes.append(
+                {
+                    "kind": "count",
+                    "field": fn,
+                    "rowCount": len(data),
+                    "cardinality": len(data),
+                    "values": [str(v[0]) for v in data],
+                    "kpiValue": sum(int(v[1] or 0) for v in data),
+                    "label": _short_label(f.get("label") or fn),
+                    "emptyValue": False,
+                    "tooGranular": False,
+                }
+            )
+            have.add(fn)
+            break
+
+    # 4) 查询条日期字段 MIN/MAX（默认值 = 数据真实区间）
+    date_qf = next((qf for qf in query_fields if isinstance(qf, dict) and str(qf.get("kind") or "") in ("date", "dateRange")), None)
+    if date_qf is not None:
+        df = _field_name(date_qf)
+        if df and df not in {str(p.get("field") or "") for p in probes}:
+            mn = chart_probe({"datasetId": dataset_id, "agg": "MIN", "value": df, "chartType": "kpi"}).get("data") or []
+            mx = chart_probe({"datasetId": dataset_id, "agg": "MAX", "value": df, "chartType": "kpi"}).get("data") or []
+            if mn and mx and mn[0] and mx[0]:
+                probes.append(
+                    {
+                        "kind": "daterange",
+                        "field": df,
+                        "from": str(mn[0][0])[:10],
+                        "to": str(mx[0][0])[:10],
+                        "emptyValue": False,
+                    }
+                )
+
+    out = dict(profile)
+    out["probes"] = probes
+    return out
+
+
+def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any], mode: str = "") -> Dict[str, Any]:
     if not profile.get("ok"):
         return {"ok": False, "error": profile.get("error") or "profile failed"}
+
+    # mode 是 LLM 的低风险决策提示（B 层）；非法/缺省一律走 A 默认多图骨架。
+    mode = str(mode or "").strip().lower()
+    single = mode in ("single", "single_chart", "one", "kpi_only", "1")
 
     name = str(profile.get("name") or dataset_id)
     measures = list(profile.get("measures") or [])
@@ -902,13 +1268,16 @@ def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[
     charts: List[Dict[str, Any]] = []
     rationale: List[str] = []
 
-    def kpi(title: str, value: str, agg: str, why: str) -> None:
+    def kpi(title: str, value: str, agg: str, why: str, flt: Optional[List[Dict[str, Any]]] = None) -> None:
+        enc: Dict[str, Any] = {"datasetId": dataset_id, "value": value, "agg": agg, "calc": "none"}
+        if flt:
+            enc["filters"] = {"items": flt}
         charts.append(
             {
                 "type": "kpi",
                 "title": title,
                 "datasetId": dataset_id,
-                "encode": {"datasetId": dataset_id, "value": value, "agg": agg, "calc": "none"},
+                "encode": enc,
                 "style": {"showCompare": False, "showTitle": True},
             }
         )
@@ -930,7 +1299,7 @@ def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[
         kpi("记录数", count_key, "COUNT", f"用 {_field_label(dims[0])} 计数看规模")
 
     for m in measures[:4]:
-        if sum(1 for c in charts if c.get("type") == "kpi") >= 4:
+        if sum(1 for c in charts if c.get("type") == "kpi") >= (1 if single else 4):
             break
         mn, ml = _field_name(m), _field_label(m)
         if not mn:
@@ -947,7 +1316,7 @@ def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[
         agg = "AVG"
 
     used_dims: set[str] = set()
-    if value and dims:
+    if value and dims and not single:
         d0 = dims[0]
         d0n, d0l = _field_name(d0), _field_label(d0)
         if d0n and _probe_live(probes, "bar", d0n):
@@ -974,11 +1343,13 @@ def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[
     if value and times:
         for t0 in times:
             tn, tl = _field_name(t0), _field_label(t0)
+            if single:
+                break
             if tn and _probe_live(probes, "line", tn):
                 plot("line", f"{tl}走势 · {value_label}", tn, value, agg, f"有时间字段「{tl}」且探测有行，做趋势")
                 lined = True
                 break
-    if not lined and value and len(dims) > 2:
+    if not lined and value and len(dims) > 2 and not single:
         for extra in dims:
             en, el = _field_name(extra), _field_label(extra)
             if not en or en in used_dims:
@@ -988,11 +1359,105 @@ def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[
             plot("bar", f"{el} · {value_label}", en, value, agg, f"无可用趋势，用「{el}」补对比")
             break
 
-    if value and dims:
+    if value and dims and not single:
         d0 = dims[0]
         d0n, d0l = _field_name(d0), _field_label(d0)
         if d0n and (_probe_live(probes, "bar", d0n) or d0n in used_dims):
             plot("grouptable", f"{d0l}汇总", d0n, value, agg, f"汇总表垫底，避免明细全列")
+
+    # ---- A 层 COUNT 兜底多图 IA（对齐运营模板：4 KPI + 分布 + 占比 + 对比 + 汇总） ----
+    # profile 没有业务度量（log/junk 数据集）时，用「计数」把可数维度做成分布+占比+汇总，
+    # 并尽量凑 4 KPI（总记录数/成功/异常/平均耗时）与多张图。除非 mode=single 明确只出一张。
+    if not single and not measures:
+        existing_cats = {str(_category_of(c) or "") for c in charts}
+        # 选一个低基数可数维度：优先 status-like，否则第一个有 count probe 的 dim
+        count_d = next(
+            (d for d in dims if _is_status_like(d) and _probe_kpi_live(probes, _field_name(d))),
+            next((d for d in dims if _probe_kpi_live(probes, _field_name(d))), None),
+        )
+        cd = _field_name(count_d)
+        cl = _field_label(count_d)
+        cd_probe = _probe_for(probes, "count", cd) or _probe_for(probes, "bar", cd)
+        card = int((cd_probe or {}).get("cardinality") or 0)
+        cd_values = [str(v) for v in ((cd_probe or {}).get("values") or [])]
+        # 度量（DECIMAL 字段 AVG 探测成功）
+        ms_probe = next(
+            (p for p in probes if isinstance(p, dict) and str(p.get("kind") or "") == "kpi" and str(p.get("field") or "") != cd),
+            None,
+        )
+        ms_field = str((ms_probe or {}).get("field") or "")
+        ms_label = str((ms_probe or {}).get("label") or ms_field)
+        # 用户类低基数维度
+        user_probe = next(
+            (
+                p
+                for p in probes
+                if isinstance(p, dict)
+                and str(p.get("kind") or "") == "count"
+                and str(p.get("field") or "") not in (cd, ms_field)
+            ),
+            None,
+        )
+        ud = str((user_probe or {}).get("field") or "")
+        ul = str((user_probe or {}).get("label") or ud)
+        ucard = int((user_probe or {}).get("cardinality") or 0)
+
+        # 状态取值拆分：成功 / 异常（有取值时才出对应 KPI）
+        ok_v = next(
+            (v for v in cd_values if any(k in v.lower() for k in ("success", "ok", "成功", "通过", "正常"))),
+            None,
+        )
+        bad_vs = [
+            v
+            for v in cd_values
+            if any(k in v.lower() for k in ("error", "fail", "timeout", "aborted", "失败", "错误", "异常", "超时"))
+        ]
+
+        kpi_used = sum(1 for c in charts if c.get("type") == "kpi")
+        kpi_titles = {str(c.get("title") or "") for c in charts if c.get("type") == "kpi"}
+
+        def maybe_kpi(title: str, value: str, agg: str, why: str, flt: Optional[List[Dict[str, Any]]] = None) -> None:
+            nonlocal kpi_used
+            if kpi_used >= 4 or title in kpi_titles:
+                return
+            kpi(title, value, agg, why, flt=flt)
+            kpi_used += 1
+            kpi_titles.add(title)
+
+        if cd and kpi_used < 4:
+            if _probe_kpi_live(probes, cd):
+                maybe_kpi("记录数", cd, "COUNT", f"「{cl}」计数看总规模")
+            if ok_v:
+                maybe_kpi(
+                    f"{cl}成功", cd, "COUNT",
+                    f"「{cl}={ok_v}」过滤计数",
+                    flt=[{"field": cd, "op": "eq", "value": ok_v}],
+                )
+            if bad_vs:
+                maybe_kpi(
+                    f"{cl}异常", cd, "COUNT",
+                    f"「{cl}∈{bad_vs}」过滤计数",
+                    flt=[{"field": cd, "op": "in", "value": bad_vs}],
+                )
+            if ms_field:
+                maybe_kpi(f"平均{ms_label}", ms_field, "AVG", f"「{ms_label}」做均值 KPI")
+
+        if card and card <= 15:
+            if cd not in existing_cats:
+                plot("bar", f"{cl}分布", cd, cd, "COUNT", f"「{cl}」低基数({card})分布（计数）")
+                plot("pie", f"{cl}占比", cd, cd, "COUNT", f"「{cl}」占比，与柱图互补")
+                existing_cats.add(cd)
+            if ms_field:
+                plot("hbar", f"平均{ms_label}按{cl}", cd, ms_field, "AVG", f"「{ms_label}」按「{cl}」横向对比")
+        if ud and 2 <= ucard <= 15 and ud not in existing_cats:
+            plot("bar", f"{ul}调用量", ud, ud, "COUNT", f"「{ul}」{ucard}个取值，按人看调用量")
+            existing_cats.add(ud)
+        table_dims = {str(_category_of(c)) for c in charts if _chart_kind(c) in ("table", "grouptable")}
+        if card and cd not in table_dims:
+            plot("grouptable", f"{cl}汇总", cd, cd, "COUNT", f"「{cl}」计数汇总表垫底")
+            table_dims.add(cd)
+        if ud and 2 <= ucard <= 15 and ud not in table_dims:
+            plot("grouptable", f"{ul}汇总", ud, ud, "COUNT", f"「{ul}」第二张汇总表，按人核对")
 
     query_items: List[Dict[str, Any]] = []
     for qf in query_fields[:3]:
@@ -1001,15 +1466,22 @@ def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[
         fl = _field_label(qf)
         if not fn:
             continue
-        query_items.append(
-            {
-                "kind": "dateRange" if kind in ("date", "dateRange") else "select",
-                "field": fn,
-                "label": fl,
-                "scope": "all",
-                "targetChartIds": [],
-            }
-        )
+        item: Dict[str, Any] = {
+            "kind": "dateRange" if kind in ("date", "dateRange") else "select",
+            "field": fn,
+            "label": fl,
+            "scope": "all",
+            "targetChartIds": [],
+        }
+        if kind in ("date", "dateRange"):
+            # 日期默认值 = 数据真实区间（探测 MIN/MAX），既不显空也不丢数据
+            dr = _probe_for(probes, "daterange", fn)
+            if dr:
+                item["from"] = str(dr.get("from") or "")
+                item["to"] = str(dr.get("to") or "")
+                item["fromDefault"] = item["from"]
+                item["toDefault"] = item["to"]
+        query_items.append(item)
 
     if not charts:
         return {
@@ -1059,3 +1531,15 @@ def dumps_result(obj: Any) -> str:
         return json.dumps(obj, ensure_ascii=False, default=str)
     except Exception:
         return json.dumps({"raw": str(obj)}, ensure_ascii=False)
+
+
+def intVal(o: Any, default: int) -> int:
+    if isinstance(o, bool):
+        return default
+    if isinstance(o, int):
+        return o
+    if isinstance(o, float):
+        return int(o)
+    if isinstance(o, str) and o.strip().lstrip("-").isdigit():
+        return int(o)
+    return default

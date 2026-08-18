@@ -37,7 +37,9 @@ Java 平台是零 AI 的 BI 执行层；你只能通过工具读写。
    d. od_review_charts 可显式再跑一遍；layout 也会强制再跑，禁止跳过修复结果
    e. od_layout_board 传入 plan 的 charts **和 query**，再 od_emit_patch
    f. 禁止在 od_plan_charts 之外再发明未探测的图；禁止用 od_compose_board，除非 profile/plan_charts 都失败
-   g. 默认 IA：顶栏查询条 + KPI + 两列满铺图 + 底汇总表；查询条字段会进入 chartQuery.context.filters
+   g. 默认 IA：顶栏查询条 + KPI 行 + 多图满铺 + 底汇总表；查询条字段会进入 chartQuery.context.filters。
+      即使数据集没有业务度量（log/埋点/状态表），也要用「计数」把可数维度做成分布+汇总+趋势的
+      多图看板，不要只出一张 KPI。只有当用户明确要求「只要一张图/单图/KPI 就行」时，才传 mode="single"。
    h. 质检硬规则：KPI 无 yoy/mom 则关假环比；饼图不与柱图同维；原始时间戳/过密折线丢掉；明细 table 改 grouptable
 5. 用户明确「再加一张/只要某图」时：od_get_board_summary 后 append 少量 ops。
 6. 问数（SQLBot Ask-3）：已选表后，若用户说「换一个问数问题」或问题里没有可查询需求，先按当前表字段反问具体 Chip，等用户点选后再生成只读 SQL。od_get_schema 后让模型按 M-Schema 生成 SQL，经 od_run_sql 执行，再 od_finish(reason=answered)。禁止把原始 SQL 交给前端执行。失败再退回 intentPlan + od_run_query。生成看板时不要把试查询当成问数结果。

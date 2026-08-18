@@ -196,6 +196,29 @@ def add_memory_fact(cid: str, fact: str) -> None:
 
 def link_dashboard(cid: str, dashboard_id: str) -> None:
     update_conversation(cid, {"linkedDashboardId": dashboard_id})
+    _sync_backend_conversation_link(cid, dashboard_id)
+
+
+def _sync_backend_conversation_link(cid: str, dashboard_id: str) -> None:
+    """把 linkedDashboardId 回写后端 Java `/api/conversations/{cid}`（PATCH），
+    使前端打开对话时能以该字段为准回填工作台。失败静默。"""
+    if not cid or not dashboard_id:
+        return
+    try:
+        import json as _json
+        import urllib.request as _ur
+        from tools.od_bi import bi_base
+        body = _json.dumps({"linkedDashboardId": str(dashboard_id)}).encode("utf-8")
+        req = _ur.Request(
+            f"{bi_base()}/api/conversations/{cid}",
+            data=body,
+            method="PATCH",
+            headers={"Content-Type": "application/json"},
+        )
+        with _ur.urlopen(req, timeout=5):
+            pass
+    except Exception:
+        pass
 
 
 def create_run(cid: str, mode: str = "auto", style_id: str = "feishu-blue") -> Optional[Dict[str, Any]]:

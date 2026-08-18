@@ -18,8 +18,8 @@ items:
     method: ui
     command_or_path: /conversations
     expected: 不停在空页面；会话和上下文可恢复。
-    evidence: ""
-    status: todo
+    evidence: "回归：打开历史会话 #11 正常渲染 4 KPI + 6 图表，消息 3 条不重复触发；新会话 gen 生成看板 #55（10 charts）并可回溯。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-CONV-02
   - id: PR-CONV-03
@@ -29,8 +29,8 @@ items:
     method: api
     command_or_path: /harness/v1/conversations/{id}/runs
     expected: 事件顺序可复核；adopt 从 run artifact 生成 Patch；失败返回 error 和 finish。
-    evidence: ""
-    status: todo
+    evidence: "回归：gen 与 ask 均按 run→step→patch→chart_ready→board_ready→finish 顺序发事件；ask 路径 answer_sql+answer_table+finish(answered/sqlbot)。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-CONV-03
   - id: PR-CONV-04
@@ -40,8 +40,8 @@ items:
     method: ui
     command_or_path: /conversations
     expected: 编辑器打开同一 draft；刷新经 chartQuery 或 datasetQuery。
-    evidence: ""
-    status: todo
+    evidence: "回归：对话产物为 draft 看板 #55/#56，'在编辑器打开' 走新标签页；历史会话预览从 draft 重建 charts/queryBar。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-CONV-04
   - id: PR-CONV-05
@@ -88,3 +88,47 @@ items:
     status: todo
     blocker_of_done: true
     requirements_target: PR-CONV-08
+  - id: PR-CONV-09
+    title: 思考过程持久化与历史回溯
+    gate: acceptance
+    criterion: 每次生成的工具步骤链（od_profile_dataset/od_plan_charts/od_review_charts/od_layout_board/od_emit_patch 及质检说明）随 assistant 消息持久化到后端，打开历史会话可在「已思考」区回溯完整推理/执行过程。
+    method: ui
+    command_or_path: /conversations
+    expected: 新生成会话重新打开后展示完整步骤链；有 linkedDashboardId 的会话打开不重复触发生成。
+    evidence: "回归：UI gen 后 assistant 消息 attachments 含 trace（SQLBot→读取 Schema→试查询→只读校验→选择图表）；重新打开无 POST /runs，'已思考' 展示步骤链；#11 旧数据无 trace 属预期。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-09
+  - id: PR-CONV-10
+    title: 生成版本记录与回滚
+    gate: acceptance
+    criterion: 每次看板落盘自动记录 revision（patch+权威快照）；对话工作台提供版本历史列表，可回滚到任一版本并刷新预览。
+    method: ui
+    command_or_path: /conversations
+    expected: 版本历史展示 label/#dashboardId/时间；最新版回滚禁用；回滚后看板内容恢复为快照。
+    evidence: "回归：harness 生成自动落 revision（含 runId/patch/snapshot）；UI 版本历史面板 2 条；点旧版回滚 POST /revisions/{rev}/restore 成功；后端 restoreSnapshot 先删旧组件再替换，看板 components 11↔11 精确恢复。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-10
+  - id: PR-CONV-11
+    title: 工具治理中间件
+    gate: code
+    criterion: 工具执行经统一管线（pre guard → 超时 → 重试退避 → 归一化）；查询类工具超时/瞬时失败自动重试，错误结构化返回不崩溃。
+    method: api
+    command_or_path: opendashboard-harness/tools/guard.py
+    expected: 缺参被 guard 拦截；超时兜底返回结构化错误；可重试错误退避重试；正常生成不误伤。
+    evidence: "单测：guard 拦截缺参、1s 超时 kill 3s 任务、Connection refused 重试 2 次；回归：gen/ask 多轮走管线全部正常完成。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-11
+  - id: PR-CONV-12
+    title: 多数据集并行规划
+    gate: acceptance
+    criterion: 多数据集 gen 时各数据集独立 ToolState 并行规划，合并 charts/query/标题到一张看板；empty/失败数据集跳过。
+    method: api
+    command_or_path: /harness/v1/conversations/{id}/runs
+    expected: 并行分析 N 个数据集并合并；看板含多数据集图表；标题拼接数据集名。
+    evidence: "回归：确定性并行分析 2 数据集→合并 14 张图→chart_ready 分布 ds_78f81f1b:10+ds_861730f6:1；看板标题'问数日志数据集分析 + data_agent_application_data_insight_record分析'；ds_sales/ds_4f137714 empty 正确跳过。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-12

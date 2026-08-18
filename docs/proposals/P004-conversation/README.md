@@ -9,12 +9,14 @@ design:
   - docs/proposals/P004-conversation/design.md
   - docs/proposals/P004-conversation/harness-design.md
   - docs/proposals/P004-conversation/dashboard-generation-design.md
+  - docs/proposals/P004-conversation/multi-turn-design.md
+  - docs/proposals/P004-conversation/harness-comparison.md
 acceptance: docs/proposals/P004-conversation/acceptance.yaml
 gates:
   proposal: accepted
   hi-fi: wip
   code: wip
-  acceptance: blocked
+  acceptance: in-progress
 architecture: docs/design/architecture.html
 contract: docs/design/openapi.yaml
 implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backend/, opendashboard-harness/]
@@ -22,7 +24,7 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 
 # P004 · 对话分析（内测一期）
 
-> **状态** `in-progress` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 wip · 代码 wip · 验收 blocked
+> **状态** `in-progress` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 wip · 代码 wip · 验收 in-progress
 
 ## 开发入口
 
@@ -36,6 +38,8 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | Agent / SSE | [harness-design.md](./harness-design.md) |
 | 生成看板（现行代码） | [architecture.html#gen](../../design/architecture.html#gen) · [业界对照](../../design/architecture.html#compare) |
 | 生成看板（提案设计） | [dashboard-generation-design.md](./dashboard-generation-design.md) |
+| 多轮 / 单图改造 / 删图（对话驱动） | [multi-turn-design.md](./multi-turn-design.md) |
+| Harness 业界对标（dsh / DeerFlow / 问数 对比） | [harness-comparison.md](./harness-comparison.md) |
 | 原型 | 当前增量 [`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html)；**尚未冻结快照** |
 | 代码落点 | `open-dashboard-frontend/src/conversation/` · `opendashboard-harness/` · Java `/api/internal/bi/*` |
 | 不要做 | 问数结果卡双按钮（归 P006）；权限消费面（归 P008）；SQLBot 出现在非编辑器页（归 P007） |
@@ -111,7 +115,7 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 ## 关联
 
 - 现行生成流程：[architecture.html#gen](../../design/architecture.html#gen) · [业界对照](../../design/architecture.html#compare)
-- 设计：[design.md](./design.md) · [dashboard-generation-design.md](./dashboard-generation-design.md) · [harness-design.md](./harness-design.md)
+- 设计：[design.md](./design.md) · [dashboard-generation-design.md](./dashboard-generation-design.md) · [harness-design.md](./harness-design.md) · [multi-turn-design.md](./multi-turn-design.md) · [harness-comparison.md](./harness-comparison.md)
 - 原型：`docs/prototypes/hi-fi/conversation-workspace.html`
 - 权限与可问数据：[P008](../P008-permission-aware-workbench/)
 - Roadmap：v0.5 / P1；洞察报告 → v0.6 / P005
@@ -126,3 +130,4 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | 2026-08-17 | 本月不交付 PR-CONV-08（可问集合）；等 P008 契约与 askable API |
 | 2026-08-18 | 对话画布对齐工作台 `--od-bg`，落地页加轻靛蓝光晕（对照 ChatGPT / Kimi 居中输入） |
 | 2026-08-18 | 确认 run / confirm-plan / adopt 均由 Harness 承担；Java 删除 public adopt，只提供 `/api/internal/bi/*`，避免 FE → Java → Harness → Java 循环 |
+| 2026-08-18 | 新增 [multi-turn-design.md](./multi-turn-design.md)（对话驱动多轮/单图改造/删图）与 [harness-comparison.md](./harness-comparison.md)（dsh / DeerFlow / 问数栈对比），并登记文首设计清单与开发入口 |

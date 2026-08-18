@@ -731,11 +731,27 @@
                 <tr><td>Plan 确认</td><td>FE 确认盒 → Harness <code>POST …/confirm-plan</code> 取出 pending patch，再 <code>apply-patch</code>。Plan 模式 <code>od_emit_patch</code> 只存稿不落库。</td></tr>
                 <tr><td>adopt</td><td>生成路径直接 emit_patch；Harness adopt 仍 501。问数「保存本题图」走 Java <code>/runs/{id}/adopt</code> 或会话内二次 gen。</td></tr>
                 <tr><td>查询条</td><td>控件写入 draft，并进入 <code>chartQuery.context.filters</code>（eq / between / in / last）。Java 把数组转 Filter AST 后编进 SQL WHERE。</td></tr>
-                <tr><td>单表规划</td><td>生成主路径取 <code>datasetIds[0]</code>；跨表关联未做。</td></tr>
+                <tr><td>单表规划</td><td>单数据集主路径不变；多数据集（>1）时各数据集独立 ToolState 并行 <code>od_plan_charts</code>，<code>_merge_plans</code> 合并 charts/query/标题后统一 layout。跨表关联（JOIN 同库）未做。</td></tr>
               </tbody>
             </table>
           </div>
-          <p class="source">证据：<code>opendashboard-harness/agent/runtime.py</code> <code>_run_gen</code> / <code>run_confirm_plan</code>、<code>api/app.py</code> confirm-plan、<code>tools/od_bi.py</code> <code>defer_apply</code>、<code>StubQueryService</code> / <code>JdbcDataSourcePort.compileWhere</code>、<code>ConversationWorkspace.vue</code> / <code>LiveChartPreview.vue</code>。</p>
+          <p class="source">证据：<code>opendashboard-harness/agent/runtime.py</code> <code>_run_gen</code> / <code>_plan_one_dataset</code> / <code>_merge_plans</code> / <code>run_confirm_plan</code>、<code>api/app.py</code> confirm-plan、<code>tools/od_bi.py</code> <code>defer_apply</code>、<code>StubQueryService</code> / <code>JdbcDataSourcePort.compileWhere</code>、<code>ConversationWorkspace.vue</code> / <code>LiveChartPreview.vue</code>。</p>
+        </article>
+
+        <article class="panel full">
+          <h3>工程化能力（已编码）</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>能力</th><th>实现</th></tr></thead>
+              <tbody>
+                <tr><td>工具治理</td><td><code>tools/guard.py::execute_guarded</code> 统一管线：pre guard → 线程软超时 → 可重试错误退避重试 → 异常归一化。查询类工具 60s/1-2 次重试，写类不重试。LLM 环与确定性规划均接入。</td></tr>
+                <tr><td>生成版本回放</td><td>每次落盘 harness 调 Java <code>POST /api/internal/bi/record-revision</code>，后端 <code>snapshotOf</code> 存权威快照到 <code>de_conversation_revision</code>；工作台「版本历史」列版本、可回滚（<code>restoreSnapshot</code> 先删旧组件再替换，避免 upsert 混排）。</td></tr>
+                <tr><td>思考过程持久化</td><td>生成结束前端把 <code>liveTools</code> 步骤链作为 assistant 消息 <code>attachments</code>（<code>kind=trace</code>）写入后端；历史会话打开从 attachments 恢复，在「已思考」区回溯完整推理/执行过程。</td></tr>
+                <tr><td>重复生成防护</td><td><code>maybeResumeUnanswered</code> 对已有 <code>linkedDashboardId</code> 的会话跳过自动 resume，历史会话打开不再重复触发生成。</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="source">证据：<code>tools/guard.py</code>、<code>ConversationAppService.recordRevision</code> / <code>DashboardPatchApplier.restoreSnapshot</code>、<code>BiInternalController.recordRevision</code>、<code>ConversationWorkspace.vue</code> <code>sanitizeTrace/extractTrace/toggleRevisions/restoreRevision</code>。</p>
         </article>
       </div>
     </section>
