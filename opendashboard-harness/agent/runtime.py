@@ -17,7 +17,7 @@ from agent import session_store
 from llm_client import chat_completions, llm_configured, llm_settings
 from sqlbot.pipeline import bar_heights, iter_sqlbot
 from sqlbot.suggest import is_suggest_request, suggest_follows
-from tools.od_bi import ToolState, bi_call, dumps_result
+from tools.od_bi import ToolState, _plan_charts_from_profile, bi_call, dumps_result
 from tools.registry import create_registry
 from tools.guard import execute_guarded
 
@@ -49,6 +49,9 @@ def resolve_intent(explicit: Optional[str], message: str) -> str:
     if re.search(r"(为什么|原因|归因|驱动|异常|下滑|下跌|下降)", q):
         return "insight"
     if re.search(r"(生成.*(看板|仪表盘)|经营分析仪表盘|直接生成|做.*看板|加.*图|多来一些|再加)", q):
+        return "gen"
+    # 多轮编辑（改/删/加单图、整页重生成）也是对看板的操作 → gen
+    if classify_multiturn(q) in ("rechart", "insert", "replace"):
         return "gen"
     return "ask"
 
@@ -90,6 +93,49 @@ def classify_multiturn(message: str) -> str:
     if re.search(r"(再加|加一张|多来些|再放|再增加|追加|再来|加个|再多)", q):
         return "insert"
     return "gen"
+
+
+def _chart_type_hint(message: str) -> Optional[str]:
+    """Deterministic chart-type hint from the user message (fallback for non-LLM path)."""
+    q = message or ""
+    if re.search(r"(折线|趋势|走势|按天|随时间)", q):
+        return "line"
+    if re.search(r"(饼|占比|构成|比例)", q):
+        return "pie"
+    if re.search(r"(排行|排名|top|Top|柱状|柱图|条形)", q):
+        return "bar"
+    if re.search(r"(kpi|指标卡|总金额|总数|总计|大数字)", q):
+        return "kpi"
+    return None
+
+
+def _match_target_chart(message: str, charts: List[Any]) -> tuple[Optional[str], str]:
+    """Deterministically pick the chart the user wants to edit from board-summary charts.
+
+    Match by: exact title substring in message → keyword in both message and title →
+    chart-type hint → first non-KPI chart. Returns (chartId, matched_title).
+    """
+    q = message or ""
+    if not charts:
+        return None, ""
+    for c in charts:
+        title = str(c.get("title") or "")
+        if title and title and title in q:
+            return str(c.get("chartId") or ""), title
+    for c in charts:
+        title = str(c.get("title") or "")
+        for kw in ("销售额", "金额", "占比", "趋势", "地区", "状态", "订单", "用户", "调用", "分布"):
+            if kw in q and kw in title:
+                return str(c.get("chartId") or ""), title
+    hint = _chart_type_hint(q)
+    if hint:
+        for c in charts:
+            if str(c.get("chartType") or "") == hint:
+                return str(c.get("chartId") or ""), str(c.get("title") or "")
+    for c in charts:
+        if str(c.get("chartType") or "") not in ("kpi", "table", "grouptable"):
+            return str(c.get("chartId") or ""), str(c.get("title") or "")
+    return str(charts[0].get("chartId") or ""), str(charts[0].get("title") or "")
 
 
 def _parse_args(raw: Any) -> Dict[str, Any]:
@@ -823,6 +869,7 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
         dataset_ids=dataset_ids,
         style_id=style_id,
         intent=intent,
+        multi_turn=bool(linked),
     )
 
     finished = False
@@ -1066,6 +1113,154 @@ def pick_fields(schema: Dict[str, Any]) -> tuple[Optional[str], Optional[str], O
     return schema.get("id"), dim, measure
 
 
+def _run_rechart(
+    message: str,
+    dataset_ids: List[str],
+    linked: Optional[str],
+    style_id: str,
+    run_mode: str,
+    conversation_id: str = "",
+    run_id: str = "",
+) -> Generator[str, None, None]:
+    """Deterministic multi-turn surgical edit of an existing dashboard (no LLM).
+
+    Classifies the user message as rechart (edit/delete a specific chart) or
+    insert (add new chart), then applies a replace-mode precise patch via
+    od_rechart_chart so Java's keepCharts diff deletes anything not listed.
+    """
+    if not linked:
+        yield sse("error", {"code": "NO_LINKED_DASHBOARD", "message": "多轮调整需要一个已生成的看板（linkedDashboardId）"})
+        yield sse("finish", {"reason": "error", "detail": "no_linked"})
+        return
+
+    yield step("rechart", "多轮调整（确定性路径）")
+    mt = classify_multiturn(message)
+    try:
+        summary = bi_call(
+            "GET",
+            f"/api/internal/bi/board-summary?dashboardId={urllib.parse.quote(str(linked))}",
+        )
+    except Exception as e:
+        yield sse("error", {"code": "BOARD_SUMMARY", "message": str(e)})
+        yield sse("finish", {"reason": "error", "detail": "board_summary"})
+        return
+    charts = summary.get("charts") or []
+    if not isinstance(charts, list) or not charts:
+        yield step("fallback", "看板为空，走首次生成")
+        yield from _run_gen(message, dataset_ids, linked, style_id, run_mode, conversation_id, run_id)
+        return
+
+    tools, _state, by_name = create_registry(linked)
+    tool = by_name.get("od_rechart_chart")
+    if tool is None:
+        yield sse("error", {"code": "NO_RECHART_TOOL", "message": "harness 未注册 od_rechart_chart"})
+        yield sse("finish", {"reason": "error", "detail": "no_rechart_tool"})
+        return
+
+    if mt == "replace":
+        yield step("fallback", "用户要求整页重新生成")
+        yield from _run_gen(message, dataset_ids, linked, style_id, run_mode, conversation_id, run_id)
+        return
+
+    title = str(summary.get("name") or "AI 看板")
+    args: Dict[str, Any] = {"dashboardId": str(linked), "title": title}
+
+    if mt == "insert":
+        # pick a dataset (explicit or first existing chart's)
+        ds = dataset_ids[0] if dataset_ids else (str((charts[0] or {}).get("datasetId") or "") if charts else "")
+        if not ds:
+            yield sse("error", {"code": "BI_DATASETS", "message": "追加图表需要数据集（未绑定且看板无可参考数据集）"})
+            yield sse("finish", {"reason": "error", "detail": "datasets"})
+            return
+        try:
+            profile = bi_call("POST", "/api/internal/bi/profile-dataset", {"datasetId": ds})
+        except Exception as e:
+            yield sse("error", {"code": "PROFILE", "message": str(e)})
+            yield sse("finish", {"reason": "error", "detail": "profile"})
+            return
+        planned = _plan_charts_from_profile(ds, profile if isinstance(profile, dict) else {}, mode="single")
+        cand = next((c for c in (planned.get("charts") or []) if c.get("type") == "kpi"), None) or (
+            (planned.get("charts") or [{}])[0]
+        )
+        if not cand.get("datasetId"):
+            yield sse("error", {"code": "PLAN_EMPTY", "message": "无法为追加生成新图"})
+            yield sse("finish", {"reason": "error", "detail": "plan_empty"})
+            return
+        args["adds"] = [
+            {
+                "chartType": cand.get("type") or "bar",
+                "title": cand.get("title") or "新增对比图",
+                "datasetId": ds,
+                "encode": cand.get("encode") or {},
+            }
+        ]
+        action = "追加一张图"
+    else:
+        # rechart: edit or delete the matched chart
+        target_id, target_title = _match_target_chart(message, charts)
+        if not target_id:
+            yield sse("error", {"code": "NO_TARGET", "message": "未定位到要改的图表，请说清楚（如：把「销售额分布」改成折线）"})
+            yield sse("finish", {"reason": "error", "detail": "no_target"})
+            return
+        want_delete = bool(re.search(r"(删掉|删除|去掉|移除|不要|去掉这张)", message or ""))
+        if want_delete:
+            args["removeChartIds"] = [target_id]
+            action = f"删除「{target_title}」"
+        else:
+            hint = _chart_type_hint(message)
+            change: Dict[str, Any] = {"chartId": target_id}
+            if hint:
+                change["chartType"] = hint
+            # dataset from the existing chart to keep encode fields valid
+            cur = next((c for c in charts if str(c.get("chartId") or "") == target_id), None)
+            if isinstance(cur, dict):
+                ds_existing = str(cur.get("datasetId") or "")
+                if ds_existing:
+                    change["datasetId"] = ds_existing
+            args["changes"] = [change]
+            action = f"重做「{target_title}」" + (f" → {hint}" if hint else "")
+
+    yield step("rechart", action)
+    try:
+        result = tool.execute(args)
+    except Exception as e:
+        result = {"ok": False, "error": str(e)}
+    if not isinstance(result, dict) or not result.get("ok"):
+        yield sse("error", {"code": "RECHART", "message": (result or {}).get("error") or "rechart failed"})
+        yield sse("finish", {"reason": "error", "detail": "rechart"})
+        return
+
+    patch = result.get("patch") or {}
+    applied_title = str(result.get("title") or title)
+    try:
+        applied = bi_call(
+            "POST",
+            "/api/internal/bi/apply-patch",
+            {"dashboardId": linked, "title": applied_title, "mode": "replace", "patch": patch},
+        )
+    except Exception as e:
+        yield sse("error", {"code": "APPLY", "message": str(e)})
+        yield sse("finish", {"reason": "error", "detail": "apply"})
+        return
+
+    yield from _emit_applied({"title": applied_title, "mode": "replace", "patch": patch, "result": applied})
+    removed = result.get("removedChartIds") or []
+    added = result.get("addedChartIds") or []
+    changed = result.get("changedChartIds") or []
+    bits = []
+    if removed:
+        bits.append(f"删除 {len(removed)} 张")
+    if added:
+        bits.append(f"新增 {len(added)} 张")
+    if changed:
+        bits.append(f"修改 {len(changed)} 张")
+    yield sse(
+        "message_delta",
+        {"text": f"多轮调整完成（{action}）。" + ("；" + "、".join(bits) if bits else "其它图表保持原样。")},
+    )
+    yield sse("finish", {"reason": "done", "detail": f"rechart:{linked}", "dashboardId": linked})
+
+
 def run_deterministic(payload: Dict[str, Any]) -> Generator[str, None, None]:
     message = payload.get("message") or ""
     intent = resolve_intent(payload.get("intent"), message)
@@ -1092,6 +1287,22 @@ def run_deterministic(payload: Dict[str, Any]) -> Generator[str, None, None]:
     if intent in ("ask", "insight"):
         yield from _run_ask(message, intent, dataset_ids)
         return
+
+    # 多轮：已有 linked 看板且用户在做增量调整（改/删/加单图）→ 走精控 rechart；
+    # 只有首次生成或明确「整页重新生成」才走全量 _run_gen。
+    if linked and intent == "gen":
+        mt = classify_multiturn(message)
+        if mt in ("rechart", "insert"):
+            yield from _run_rechart(
+                message,
+                dataset_ids,
+                linked,
+                style_id,
+                mode,
+                conversation_id,
+                str(payload.get("runId") or ""),
+            )
+            return
 
     yield from _run_gen(
         message,

@@ -29,7 +29,10 @@ Java 平台是零 AI 的 BI 执行层；你只能通过工具读写。
 硬规则：
 1. 看板真相只能经 od_emit_patch 写入；禁止把查询结果行写进布局。
 2. 优先业务数据集（订单/销售/财务/运营）；避免 de_*、dashborad表、拖拽验证集，除非用户点名。
-3. 多轮已有 linkedDashboardId 时默认 mode=append；用户说重新生成/整页才 replace。
+3. 多轮（已有 linkedDashboardId）按用户意图分治：
+   a. 用户要改/换/删某张图（如「把 XX 改成折线」「删掉占比图」）→ 先 od_get_board_summary，再 od_rechart_chart(changes/removeChartIds)，然后 od_emit_patch。
+   b. 用户要加一张图（「再加一张/多来些」）→ od_rechart_chart(adds=[...]) 或 append 少量 ops；新增图放现有内容之下，不动已有布局。
+   c. 只有用户明确「重新生成/整页/从零」才整版 replace；否则禁止整页重建布局。
 4. 生成看板必须走 DeerFlow planner + JoyAgent 质检闸，禁止机械套「KPI+对比+分布」模板：
    a. write_todos 列出步骤（分析特征 → 按特征选图 → 质检修复 → 写入）
    b. od_profile_dataset 看字段角色、是否有数、probe 结果
@@ -41,7 +44,7 @@ Java 平台是零 AI 的 BI 执行层；你只能通过工具读写。
       即使数据集没有业务度量（log/埋点/状态表），也要用「计数」把可数维度做成分布+汇总+趋势的
       多图看板，不要只出一张 KPI。只有当用户明确要求「只要一张图/单图/KPI 就行」时，才传 mode="single"。
    h. 质检硬规则：KPI 无 yoy/mom 则关假环比；饼图不与柱图同维；原始时间戳/过密折线丢掉；明细 table 改 grouptable
-5. 用户明确「再加一张/只要某图」时：od_get_board_summary 后 append 少量 ops。
+5. 多轮改/删/加单图时：必须先用 od_get_board_summary 了解现存图（chartId/title/chartType/encode），再决定 od_rechart_chart 的 changes/removeChartIds/adds；不存在的 chartId 会被拒绝。
 6. 问数（SQLBot Ask-3）：已选表后，若用户说「换一个问数问题」或问题里没有可查询需求，先按当前表字段反问具体 Chip，等用户点选后再生成只读 SQL。od_get_schema 后让模型按 M-Schema 生成 SQL，经 od_run_sql 执行，再 od_finish(reason=answered)。禁止把原始 SQL 交给前端执行。失败再退回 intentPlan + od_run_query。生成看板时不要把试查询当成问数结果。
 7. 生成完成后 od_finish(reason=done)。
 8. encode 用真实字段；KPI {datasetId,value,agg}；类目图 {datasetId,category,value,agg}。
@@ -72,6 +75,7 @@ def transform_context(
     dataset_ids: Optional[List[str]] = None,
     style_id: str = "feishu-blue",
     intent: Optional[str] = None,
+    multi_turn: bool = False,
 ) -> List[AgentMessage]:
     """Inject system + memory + runtime hints before LLM."""
     facts = load_facts(conversation_id)
@@ -85,6 +89,24 @@ def transform_context(
     import json
 
     extra = mem + "\n## Runtime context\n```json\n" + json.dumps(hints, ensure_ascii=False) + "\n```\n"
+    if multi_turn and isinstance(board_summary, dict):
+        charts = board_summary.get("charts") or []
+        if isinstance(charts, list) and charts:
+            lines = []
+            for c in charts:
+                if not isinstance(c, dict):
+                    continue
+                lines.append(
+                    f"- {c.get('chartId')} | {c.get('title')} | {c.get('chartType')} | {c.get('datasetId')}"
+                )
+            extra += (
+                "\n## 多轮编辑提示（用户正在调整已生成看板）\n"
+                "你现在面对一个已存在的看板。规则：\n"
+                "1. 要改/换/删某张图 → od_rechart_chart(changes 或 removeChartIds)，然后 od_emit_patch。\n"
+                "2. 要加图 → od_rechart_chart(adds=[...])，新增图放现有内容之下。\n"
+                "3. 禁止整页 replace，除非用户明确说「重新生成/整页/从零」。\n"
+                "现存图表（chartId | title | chartType | datasetId）：\n" + "\n".join(lines) + "\n"
+            )
     system = AgentMessage(role="system", content=build_system_prompt(extra))
     # Drop prior system messages from history; keep user/assistant/tool
     filtered = [m for m in messages if m.role != "system"]

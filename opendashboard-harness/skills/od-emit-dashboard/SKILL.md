@@ -20,8 +20,22 @@ Dashboard write path is only `od_emit_patch` → Java `apply-patch`.
 
 `od_compose_board` **禁止**作为默认构图路径。
 
-## Constrained gen（再加一张 / 只要某图）
+## Multi-turn（改 / 删 / 加单图）· 对话驱动，不整页重排
 
-- Default multi-turn: `mode=append` when `linkedDashboardId` exists
-- Explicit replace only when user asks 重新生成 / 整页 / 从零
-- Always call `od_get_board_summary` before append
+已有 `linkedDashboardId` 时，这是**编辑已有看板**，不是重新生成。规则：
+
+1. **先 `od_get_board_summary(dashboardId)`** —— 了解现存图（chartId / title / chartType / datasetId / encode），这是对话定位的依据。
+2. 按用户意图分治：
+   - **改/换某张**（「把 XX 改成折线」「换个指标」）→ `od_rechart_chart({ changes: [{chartId, chartType?, title?, encode?, datasetId?}] })`，再 `od_emit_patch`。只动该 chartId，其它图位置/encode 不变。
+   - **删某张**（「删掉占比图」）→ `od_rechart_chart({ removeChartIds: [chartId] })`，再 `od_emit_patch`。Java replace 差集删除该图，其余不动。
+   - **加一张**（「再加一张对比图」）→ `od_rechart_chart({ adds: [{chartType, title, datasetId, encode}] })`，再 `od_emit_patch`。新增图放现有内容之下。
+   - 一次可混合 changes + removeChartIds + adds（例如「把 A 改成折线，删掉 B，再加一张 C」）。
+3. **禁止整页 replace**，除非用户明确「重新生成 / 整页 / 从零 / 全部重做」。
+4. chartId 必须来自 `od_get_board_summary`；不存在的 chartId 会被 `od_rechart_chart` 拒绝，先读 summary 再改。
+5. 改图时 encode 字段必须来自该数据集 schema（防幻觉字段）。
+
+## Constrained gen（首次生成 / 整页）
+
+- 首次生成：走 `od_plan_charts → od_layout_board → od_emit_patch`（无 linked 用 replace）。
+- 明确「重新生成 / 整页」：才整版 replace。
+- 默认多轮行为：append/精控 patch（见上），不整页。

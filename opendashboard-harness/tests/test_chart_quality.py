@@ -23,7 +23,8 @@ def test_keeps_explicit_yoy():
     assert "kpi_disable_compare" not in out["fixes"]
 
 
-def test_drop_pie_same_as_bar():
+def test_keep_pie_with_same_dim_bar():
+    """同维 bar+pie 并存是运营模板（柱看量、饼看占比），不去重。"""
     out = _review_and_repair(
         [
             {"type": "bar", "encode": {"category": "Status", "value": "Amount"}},
@@ -32,8 +33,22 @@ def test_drop_pie_same_as_bar():
         {},
         [],
     )
-    assert [c["type"] for c in out["charts"]] == ["bar"]
-    assert "drop_pie_same_as_bar" in out["fixes"]
+    assert [c["type"] for c in out["charts"]] == ["bar", "pie"]
+    assert "drop_pie_same_as_bar" not in out["fixes"]
+
+
+def test_drop_duplicate_pie_same_dim():
+    """同维两张饼图才去重。"""
+    out = _review_and_repair(
+        [
+            {"type": "pie", "encode": {"category": "Status", "value": "Amount"}},
+            {"type": "pie", "encode": {"category": "Status", "value": "Amount"}},
+        ],
+        {},
+        [],
+    )
+    assert [c["type"] for c in out["charts"]] == ["pie"]
+    assert "drop_duplicate_pie" in out["fixes"]
 
 
 def test_drop_granular_line():
