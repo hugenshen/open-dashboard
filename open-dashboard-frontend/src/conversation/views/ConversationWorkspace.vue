@@ -2,10 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { datasetApi, type DatasetMetaVO } from '../../datasource/api'
+import { dashboardApi } from '../../api/dashboard'
 import {
   conversationApi,
   explainConversationError,
   type ConversationMessageVO,
+  type ConversationRevisionVO,
   type ConversationVO,
   type StylePresetVO
 } from '../api'
@@ -113,6 +115,9 @@ const awaitingConfirm = ref(false)
 const canAdopt = ref(false)
 const planPayload = ref<Record<string, unknown> | null>(null)
 const linkedDashboardId = ref<string | null>(null)
+const showRevisions = ref(false)
+const revisions = ref<ConversationRevisionVO[]>([])
+const latestRevId = ref('')
 const assistantBuf = ref('')
 const answerTable = ref<AnswerTable | null>(null)
 const answerChart = ref<AnswerChart | null>(null)
@@ -990,7 +995,41 @@ function newChat() {
 function openEditor() {
   const id = linkedDashboardId.value
   if (!id) return
-  router.push(`/dashboards/${id}/edit?conversationId=${current.value?.id || ''}`)
+  // 新标签页打开编辑器，保留当前对话工作台状态，不中断对话
+  const url = router.resolve(`/dashboards/${id}/edit?conversationId=${current.value?.id || ''}`).href
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function formatTime(ts: number): string {
+  if (!ts) return ''
+  const d = new Date(ts)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getMonth() + 1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+async function toggleRevisions() {
+  showRevisions.value = !showRevisions.value
+  if (!showRevisions.value || !current.value?.id) return
+  try {
+    const list = await conversationApi.revisions(current.value.id)
+    revisions.value = list || []
+    latestRevId.value = revisions.value[0]?.id || ''
+  } catch {
+    revisions.value = []
+  }
+}
+
+async function restoreRevision(rev: ConversationRevisionVO) {
+  if (!current.value?.id) return
+  try {
+    await conversationApi.restore(current.value.id, rev.id)
+    // 回滚成功后刷新预览与对话关联
+    linkedDashboardId.value = rev.dashboardId || linkedDashboardId.value
+    await hydratePreviewFromDashboard(rev.dashboardId)
+    showRevisions.value = false
+  } catch (e) {
+    console.error('restore revision failed', e)
+  }
 }
 
 function toggleDataset(id: string) {
@@ -1427,12 +1466,6 @@ function toggleSide(panel: 'history' | 'explore') {
         </div>
 
         <section class="canvas-col">
-          <div v-if="linkedDashboardId" class="bridge-bar">
-            <span>产物已写入 Dashboard draft</span>
-            <code class="path">/dashboards/{{ linkedDashboardId }}/edit</code>
-            <span class="sp" />
-            <button class="btn primary" type="button" @click="openEditor">在编辑器打开</button>
-          </div>
           <div class="ask-pane">
             <template v-if="!charts.length && answerClarify">
               <div class="ask-toolbar">
@@ -1645,14 +1678,6 @@ function toggleSide(panel: 'history' | 'explore') {
             </template>
 
             <template v-else-if="charts.length || emptyPreview || queryBar">
-              <div class="ask-toolbar">
-                <span class="ttl">看板草稿</span>
-                <span class="muted">已写入 draft · 配置不含结果行</span>
-                <span class="sp" />
-                <button class="btn primary" type="button" :disabled="!linkedDashboardId" @click="openEditor">
-                  在编辑器打开
-                </button>
-              </div>
               <div v-if="emptyPreview" class="dash-warn">
                 预览无有效数据：底层表可能为空，或字段聚合结果为 null。请换「订单表」等有行的业务数据集，或先确认数据源里该表有数据。
               </div>
@@ -1664,9 +1689,38 @@ function toggleSide(panel: 'history' | 'explore') {
                       看板 #{{ linkedDashboardId }} · {{ charts.length }} 个组件 · {{ previewDatasetName }}
                     </div>
                   </div>
-                  <div class="mock" :class="{ bad: emptyPreview }">
-                    {{ emptyPreview ? '无数据预览' : 'Live 预览 · chartQuery' }}
+                  <div class="dash-hd-actions">
+                    <button class="btn" type="button" :disabled="!linkedDashboardId" @click="toggleRevisions">
+                      {{ showRevisions ? '收起版本' : '版本历史' }}
+                    </button>
+                    <button class="btn primary" type="button" :disabled="!linkedDashboardId" @click="openEditor">
+                      在编辑器打开
+                    </button>
                   </div>
+                </div>
+                <div v-if="showRevisions" class="revision-panel">
+                  <div class="revision-hd">
+                    <b>生成版本（{{ revisions.length }}）</b>
+                    <span class="rev-hint">点击「回滚」恢复该版本看板内容</span>
+                  </div>
+                  <div v-if="!revisions.length" class="rev-empty">暂无版本记录</div>
+                  <ul class="revision-list">
+                    <li v-for="rev in revisions" :key="rev.id" class="revision-item">
+                      <span class="rev-label">{{ rev.label || '版本' }}</span>
+                      <span class="rev-meta">
+                        {{ rev.dashboardId ? '#' + rev.dashboardId : '' }}
+                        {{ rev.createTime ? ' · ' + formatTime(rev.createTime) : '' }}
+                      </span>
+                      <button
+                        class="btn ghost"
+                        type="button"
+                        :disabled="rev.dashboardId === linkedDashboardId && rev.id === latestRevId"
+                        @click="restoreRevision(rev)"
+                      >
+                        回滚
+                      </button>
+                    </li>
+                  </ul>
                 </div>
                 <div v-if="queryBar?.items?.length" class="query-bar">
                   <b>{{ queryBar.label || '查询条件' }}</b>
@@ -1865,7 +1919,7 @@ function toggleSide(panel: 'history' | 'explore') {
   justify-content: center;
   align-items: flex-start;
   overflow: auto;
-  padding: min(14vh, 110px) 24px 48px;
+  padding: min(9vh, 72px) 24px 48px;
   background: transparent;
 }
 .landing-stack {
@@ -2222,6 +2276,21 @@ textarea {
   font-size: 12px;
   color: var(--faint);
   flex-shrink: 0;
+  /* 让流程条在所有分辨率/缩放下保持单行，不被压缩换行或裁切 */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.flow-bar::-webkit-scrollbar {
+  display: none;
+}
+.step-dot {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.sep {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .step-dot.on {
   color: var(--brand);
@@ -2368,6 +2437,7 @@ textarea {
 .workspace-dock {
   border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   padding: 10px 12px 14px;
+  margin-bottom: 14px;
   background: transparent;
 }
 .ctx-row-ws {
@@ -2740,9 +2810,12 @@ textarea {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 14px;
-  overflow: hidden;
+  /* 让预览随内容自然增高，由 .ask-pane 统一纵向滚动，避免出现无法滚动的裁切 */
+  overflow: visible;
+  flex-shrink: 0;
+  /* 铺满画布列宽，避免右侧大片留白 */
+  width: 100%;
   box-shadow: var(--shadow);
-  max-width: 920px;
 }
 .dash-hd {
   display: flex;
@@ -2763,20 +2836,76 @@ textarea {
   font-size: 12px;
   color: var(--muted);
 }
-.dash-hd .mock {
+.dash-hd-actions {
   flex-shrink: 0;
-  font-size: 11.5px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid #ffe2ad;
-  background: #fff8eb;
-  color: #9a6700;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.dash-hd .mock.bad {
-  border-color: #ffccc7;
-  background: #fff2f0;
-  color: #cf1322;
+.dash-hd-actions .btn {
+  white-space: nowrap;
+}
+.revision-panel {
+  margin: 10px 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+  padding: 10px 12px;
+}
+.revision-hd {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.revision-hd b {
+  font-size: 13px;
+  color: var(--ink);
+}
+.rev-hint {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.rev-empty {
+  font-size: 12px;
+  color: var(--ink-3);
+  padding: 6px 0;
+}
+.revision-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+.revision-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--line);
+  font-size: 12px;
+}
+.revision-item:first-child {
+  border-top: none;
+}
+.rev-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.rev-meta {
+  flex-shrink: 0;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.revision-item .btn {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  font-size: 12px;
 }
 .query-bar {
   display: flex;

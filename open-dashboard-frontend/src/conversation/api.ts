@@ -223,6 +223,8 @@ export const conversationApi = {
     }
   },
   get: (id: string) => apiFetch<ConversationVO>(`/conversations/${id}`),
+  /** 运行时(harness)是生成看板 linkedDashboardId 的权威来源；后端记录可能未同步该链接。 */
+  getHarness: (id: string) => harnessFetch<ConversationVO>(`/conversations/${id}`),
   update: async (
     id: string,
     data: {
@@ -250,9 +252,8 @@ export const conversationApi = {
     data: { role?: string; content: string; attachments?: Record<string, unknown>[] }
   ) => apiFetch<ConversationMessageVO>(`/conversations/${id}/messages`, { method: 'POST', data }),
   revisions: (id: string) => apiFetch<ConversationRevisionVO[]>(`/conversations/${id}/revisions`),
-  restore: async (_id: string, _rev: string) => {
-    throw new Error('revisions restore is not available on harness yet')
-  },
+  restore: (id: string, rev: string) =>
+    apiFetch<ConversationRevisionVO>(`/conversations/${id}/revisions/${rev}/restore`, { method: 'POST' }),
   cancel: (id: string, runId: string) =>
     harnessFetch(`/conversations/${id}/runs/${runId}/cancel`, { method: 'POST' }),
 
