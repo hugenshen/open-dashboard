@@ -140,7 +140,7 @@ schema（M-Schema）→ LLM 生成 JSON{sql, chart-type}
 |------|------|
 | 2026-08-18 | 编辑器 SQLBot 浮层改为右下角固定高度（约 520px / 400px），对齐 DataEase 小助手，不再通栏拉满 |
 | 2026-08-18 | 对话页去掉内侧栏与「本会话产物」列；新对话 / 历史 / 探索只留对话顶条（对齐 P007 壳） |
-| 2026-08-18 | 确认 adopt 协议闭环：FE 只调 Harness；Harness 从 run artifact 生成 Patch 并调 Java internal BI；Java public adopt 不反调 Harness |
+| 2026-08-18 | 确认 adopt 协议闭环：FE 只调 Harness；Harness 从 run artifact 生成 Patch 并调 Java internal BI；Java public adopt 入口删除 |
 | 2026-08-17 | 换题反问：已选表时「换一个问数问题」按字段给出可点问法，点击后再生成 SQL/图 |
 | 2026-08-17 | 把已编码问数交互与 SQLBot 对照写入 architecture.html#ask |
 | 2026-08-17 | 收敛结果卡为“保存本题图”，整页生成为独立意图；统一 Python Harness 与可问数据权限边界 |
