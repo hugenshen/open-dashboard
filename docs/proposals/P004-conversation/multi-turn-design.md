@@ -12,7 +12,7 @@
 
 | # | 根因 | 证据（文件:行） |
 |---|---|---|
-| R1 | **harness 没有"改/加/删单图"的对话分发**：前端曾传 `selectedChartId/selectedEncode`，harness 从未消费；改走对话后需靠 LLM+board-summary 判断"改哪张/加/删"，目前无此分支 | `api/app.py:78-79,236-237` 收到但 `runtime.py`/`lead_agent.py` 全链路不读 |
+| R1 | **harness 没有"改/加/删单图"的对话分发**：前端曾传 `selectedChartId/selectedEncode`，harness 从未消费；改走对话后需靠 LLM+board-summary 判断"改哪张/加/删"，目前无此分支 | `api/app.py:78-79,236-237` 收到但 `runtime.py` 全链路不读 |
 | R2 | **`layout_board` 写死 `mode="replace"`**，多轮单图/追加永远整页替换 | `tools/od_bi.py:373` `state.last_layout = {"patch":..., "mode":"replace"...}` |
 | R3 | **`resolve_intent` 正则无法区分「整页重生成」还是「改/加/删单图」**，多轮含"再/改/加/换"的表述会被误判成 gen 整页 | `runtime.py:36-46` |
 | R4 | **Lead 多轮上下文太弱**：只有最近 messages，没有强制注入 board-summary 的现存图表结构，模型不知道"现在有哪些图、哪些 chartId" | `runtime.py:747-772` `agent_msgs`；`od_get_board_summary` 存在但非强制 |
@@ -91,7 +91,6 @@ od_get_board_summary(linkedDashboardId)
 |---|---|
 | `agent/runtime.py` | `resolve_intent`（LLM 判定）增多轮分支 rechart/insert；新增 `run_rechart`（对话→board_summary→改/删/换单图精控 patch）；`run_lead`/`run_deterministic` 分发；`_run_gen` 支持 append；多轮注入 board-summary 强上下文 |
 | `agent/context.py` | `SYSTEM_CORE` 增多轮/rechart 硬规则（改图用精控 replace、加图用 append、删图=replace 不含它）；`transform_context` 多轮注入 board-summary |
-| `agent/lead_agent.py` | 同步多轮 intent 分发（rechart/insert/append），对话理解改哪张 |
 | `tools/od_bi.py` | 新增 `od_rechart_chart` 工具（board_summary → 精控 replace patch）；`layout_board` 保留默认全量语义；`emit_patch` 对 rechart 放开精控 patch（不再锁 last_layout） |
 | `tools/registry.py` | 注册 `od_rechart_chart` |
 | `skills/od-emit-dashboard/SKILL.md` | 写多轮/rechart 规则（先 board_summary → 改/删/换=精控 replace、加=append） |
