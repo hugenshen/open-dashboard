@@ -2,6 +2,14 @@ package io.opendashboard.application;
 
 import io.opendashboard.domain.DatasetDtos.DatasetFieldVO;
 
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
+
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamReader;
@@ -20,7 +28,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Parse CSV / TSV / xlsx (first sheet) into a field bank + row grid.
+ * Parse CSV / TSV / xls / xlsx (first sheet) into a field bank + row grid.
  * Aligns with DataEase LOCALFILE: inspect headers, then query a landed table.
  */
 public final class TabularFileParser {
@@ -41,13 +49,20 @@ public final class TabularFileParser {
             throw new IllegalArgumentException("文件超过 8MB");
         }
         String fn = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
-        if (fn.endsWith(".xls") && !fn.endsWith(".xlsx")) {
-            throw new IllegalArgumentException("暂不支持 .xls，请另存为 .xlsx 或 .csv");
-        }
-        if (fn.endsWith(".xlsx") || isZip(bytes)) {
-            return parseXlsx(bytes);
+        // .xls（旧版二进制 OLE2）与 .xlsx（新版 zip）统一走 POI；识别为 zip 的 .xls 兜底也按 excel 解析
+        if (fn.endsWith(".xlsx") || fn.endsWith(".xls") || isZip(bytes) || isOle2(bytes)) {
+            return parseExcel(bytes);
         }
         return parseCsv(bytes, sniffSep(bytes, fn));
+    }
+
+    private static boolean isOle2(byte[] bytes) {
+        // OLE2 复合文档魔数 D0 CF 11 E0 A1 B1 1A E1
+        return bytes.length >= 8
+                && (bytes[0] & 0xFF) == 0xD0 && (bytes[1] & 0xFF) == 0xCF
+                && (bytes[2] & 0xFF) == 0x11 && (bytes[3] & 0xFF) == 0xE0
+                && (bytes[4] & 0xFF) == 0xA1 && (bytes[5] & 0xFF) == 0xB1
+                && (bytes[6] & 0xFF) == 0x1A && (bytes[7] & 0xFF) == 0xE1;
     }
 
     private static boolean isZip(byte[] bytes) {
@@ -232,6 +247,34 @@ public final class TabularFileParser {
         }
         if (sheet == null) throw new IllegalArgumentException("xlsx 中没有工作表");
         List<List<String>> grid = parseSheet(sheet, shared);
+        return fromGrid(grid);
+    }
+
+    /** POI 统一解析 .xls（HSSF）与 .xlsx（XSSF），取第一个工作表，复用 fromGrid 建字段银行。 */
+    static ParsedTable parseExcel(byte[] bytes) {
+        DataFormatter fmt = new DataFormatter();
+        List<List<String>> grid = new ArrayList<>();
+        try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            Sheet sheet = wb.getNumberOfSheets() > 0 ? wb.getSheetAt(0) : null;
+            if (sheet == null) throw new IllegalArgumentException("Excel 中没有工作表");
+            for (Row row : sheet) {
+                if (grid.size() > MAX_ROWS) break;
+                List<String> cells = new ArrayList<>();
+                short last = row.getLastCellNum();
+                int n = last > 0 ? last : 0;
+                for (int c = 0; c < n; c++) {
+                    Cell cell = row.getCell(c);
+                    cells.add(cell == null ? "" : fmt.formatCellValue(cell));
+                }
+                if (cells.stream().anyMatch(s -> s != null && !s.isBlank())) {
+                    grid.add(cells);
+                }
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("无法读取 Excel 文件: " + e.getMessage());
+        }
         return fromGrid(grid);
     }
 
