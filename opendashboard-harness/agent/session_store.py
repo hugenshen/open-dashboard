@@ -229,6 +229,24 @@ def finish_run(cid: str, run_id: str, status: str, detail: Optional[str] = None)
     _save(doc)
 
 
+def set_run_artifact(cid: str, run_id: str, artifact: Dict[str, Any]) -> None:
+    doc = _load(cid)
+    if not doc:
+        return
+    for r in doc.get("runs") or []:
+        if r.get("id") == run_id:
+            r["artifact"] = artifact
+            r["updateTime"] = _now()
+            break
+    _save(doc)
+
+
+def get_run_artifact(cid: str, run_id: str) -> Optional[Dict[str, Any]]:
+    run = get_run(cid, run_id)
+    artifact = (run or {}).get("artifact")
+    return artifact if isinstance(artifact, dict) else None
+
+
 def get_run(cid: str, run_id: str) -> Optional[Dict[str, Any]]:
     doc = _load(cid)
     if not doc:

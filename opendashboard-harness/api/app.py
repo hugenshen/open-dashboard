@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from agent import session_store
-from agent.runtime import harness_mode, run_agent, run_confirm_plan, use_lead
+from agent.runtime import harness_mode, run_adopt, run_agent, run_confirm_plan, use_lead
 from agent.types import sse
 from llm_client import llm_configured, llm_settings
 from tools.od_bi import bi_base, bi_health
@@ -77,6 +77,11 @@ class RunBody(BaseModel):
     datasetIds: Optional[List[str]] = None
     selectedChartId: Optional[str] = None
     selectedEncode: Optional[Dict[str, Any]] = None
+
+
+class AdoptBody(BaseModel):
+    action: Optional[str] = "save"
+    styleId: Optional[str] = None
 
 
 def _owner(x_user_id: Optional[str]) -> str:
@@ -234,6 +239,23 @@ def _build_run_payload(
     }
 
 
+def _parse_sse_data(chunk: str, event: str) -> Optional[Dict[str, Any]]:
+    if not chunk.startswith(f"event: {event}"):
+        return None
+    try:
+        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
+        data = json.loads(data_line)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _ingest_artifact(artifact: Dict[str, Any], event: str, data: Dict[str, Any]) -> None:
+    if event not in ("answer_sql", "answer_table", "answer_chart", "answer_insight"):
+        return
+    artifact[event] = data
+
+
 @app.post("/v1/conversations/{cid}/runs")
 async def conversation_runs(
     cid: str,
@@ -274,12 +296,17 @@ async def conversation_runs(
         )
         finish_reason = "error"
         finish_detail = None
+        artifact: Dict[str, Any] = {}
         try:
             for chunk in run_agent(payload):
+                for ev in ("answer_sql", "answer_table", "answer_chart", "answer_insight"):
+                    data = _parse_sse_data(chunk, ev)
+                    if data is not None:
+                        _ingest_artifact(artifact, ev, data)
+                        break
                 if chunk.startswith("event: finish"):
                     try:
-                        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
-                        data = json.loads(data_line)
+                        data = _parse_sse_data(chunk, "finish") or {}
                         finish_reason = str(data.get("reason") or "done")
                         finish_detail = data.get("detail")
                         if data.get("dashboardId"):
@@ -288,16 +315,14 @@ async def conversation_runs(
                         pass
                 if chunk.startswith("event: board_ready"):
                     try:
-                        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
-                        data = json.loads(data_line)
+                        data = _parse_sse_data(chunk, "board_ready") or {}
                         if data.get("dashboardId"):
                             session_store.link_dashboard(cid, str(data["dashboardId"]))
                     except Exception:
                         pass
                 if chunk.startswith("event: message_delta"):
                     try:
-                        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
-                        data = json.loads(data_line)
+                        data = _parse_sse_data(chunk, "message_delta") or {}
                         if data.get("text"):
                             session_store.append_message(cid, "assistant", str(data["text"]), [])
                     except Exception:
@@ -309,6 +334,11 @@ async def conversation_runs(
             finish_reason = "error"
             finish_detail = "exception"
         status = finish_reason if finish_reason in ("done", "answered", "awaiting_confirm", "error") else "done"
+        if artifact:
+            artifact["message"] = body.message
+            artifact["intent"] = body.intent
+            artifact["styleId"] = body.styleId
+            session_store.set_run_artifact(cid, run["id"], artifact)
         session_store.finish_run(cid, run["id"], status, str(finish_detail) if finish_detail else None)
 
     return StreamingResponse(
@@ -385,8 +415,70 @@ async def confirm_plan(cid: str, run_id: str):
 
 
 @app.post("/v1/conversations/{cid}/runs/{run_id}/adopt")
-async def adopt(cid: str, run_id: str):
-    raise HTTPException(status_code=501, detail="adopt not needed when emit_patch already applied draft")
+async def adopt(cid: str, run_id: str, body: Optional[AdoptBody] = None):
+    conv = session_store.get_conversation(cid)
+    if not conv:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    run = session_store.get_run(cid, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="run not found")
+    artifact = session_store.get_run_artifact(cid, run_id)
+    if not artifact:
+        raise HTTPException(status_code=409, detail="run has no adoptable artifact")
+    body = body or AdoptBody()
+
+    def gen() -> Iterable[str]:
+        finish_reason = "error"
+        finish_detail = None
+        try:
+            for chunk in run_adopt(
+                conv,
+                run,
+                artifact,
+                (body.action or "save").strip().lower(),
+                body.styleId or str(run.get("styleId") or artifact.get("styleId") or "feishu-blue"),
+            ):
+                if chunk.startswith("event: finish"):
+                    try:
+                        data = _parse_sse_data(chunk, "finish") or {}
+                        finish_reason = str(data.get("reason") or "done")
+                        finish_detail = data.get("detail")
+                        if data.get("dashboardId"):
+                            session_store.link_dashboard(cid, str(data["dashboardId"]))
+                    except Exception:
+                        pass
+                if chunk.startswith("event: board_ready"):
+                    try:
+                        data = _parse_sse_data(chunk, "board_ready") or {}
+                        if data.get("dashboardId"):
+                            session_store.link_dashboard(cid, str(data["dashboardId"]))
+                    except Exception:
+                        pass
+                if chunk.startswith("event: message_delta"):
+                    try:
+                        data = _parse_sse_data(chunk, "message_delta") or {}
+                        if data.get("text"):
+                            session_store.append_message(cid, "assistant", str(data["text"]), [])
+                    except Exception:
+                        pass
+                yield chunk
+        except Exception as e:
+            yield sse("error", {"code": "HARNESS", "message": str(e)})
+            yield sse("finish", {"reason": "error", "detail": "exception"})
+            finish_reason = "error"
+            finish_detail = "exception"
+        status = finish_reason if finish_reason in ("done", "answered", "awaiting_confirm", "error") else "done"
+        session_store.finish_run(cid, run_id, status, str(finish_detail) if finish_detail else None)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/v1/runs")

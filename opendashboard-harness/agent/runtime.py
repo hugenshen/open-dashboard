@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.parse
 from typing import Any, Dict, Generator, List, Optional
 
@@ -524,6 +525,133 @@ def run_confirm_plan(pending: Dict[str, Any]) -> Generator[str, None, None]:
     hint = f"已生成「{title}」看板草稿 #{dash_id}，含 {len(charts)} 个组件。"
     yield sse("message_delta", {"text": hint})
     yield sse("finish", {"reason": "done", "detail": f"applied:{dash_id}", "dashboardId": dash_id})
+
+
+def _artifact_chart(artifact: Dict[str, Any]) -> Dict[str, Any]:
+    chart = artifact.get("answer_chart") if isinstance(artifact.get("answer_chart"), dict) else {}
+    table = artifact.get("answer_table") if isinstance(artifact.get("answer_table"), dict) else {}
+    sql = artifact.get("answer_sql") if isinstance(artifact.get("answer_sql"), dict) else {}
+    merged: Dict[str, Any] = {}
+    for src in (table, chart):
+        for k, v in src.items():
+            if v is not None and v != "":
+                merged[k] = v
+    if sql.get("sql"):
+        merged["sql"] = sql.get("sql")
+    return merged
+
+
+def _patch_from_answer(answer: Dict[str, Any], linked: Optional[str], style_id: str) -> Dict[str, Any]:
+    ds = str(answer.get("datasetId") or "")
+    encode = answer.get("encode") if isinstance(answer.get("encode"), dict) else {}
+    chart_type = str(answer.get("chartType") or "bar")
+    title = str(answer.get("title") or "问数结果")
+    if not ds:
+        raise ValueError("answer has no datasetId")
+    if not encode:
+        raise ValueError("answer has no encode")
+    base = int(time.time() * 1000) % 1_000_000_000
+    cid = str(base)
+    ops: List[Dict[str, Any]] = [
+        {"op": "set_layout", "gridCols": 72, "themeRef": "default"},
+        {"op": "set_theme", "styleId": style_id or "feishu-blue"},
+        {
+            "op": "upsert_chart",
+            "chartId": cid,
+            "type": chart_type,
+            "datasetId": ds,
+            "title": title,
+            "encode": encode,
+            "style": {},
+        },
+        {
+            "op": "upsert_component",
+            "id": "c_" + cid,
+            "type": "chart",
+            "chartId": cid,
+            "x": 0,
+            "y": 0,
+            "w": 72,
+            "h": 20 if chart_type != "kpi" else 10,
+        },
+    ]
+    patch: Dict[str, Any] = {"ops": ops}
+    if linked:
+        patch["dashboardId"] = linked
+    return patch
+
+
+def run_adopt(conversation: Dict[str, Any], run: Dict[str, Any], artifact: Dict[str, Any], action: str, style_id: str) -> Generator[str, None, None]:
+    status = str(run.get("status") or "")
+    if status != "answered":
+        yield sse("error", {"code": "RUN_NOT_ANSWERED", "message": "当前 run 没有可采纳的问数结果"})
+        yield sse("finish", {"reason": "error", "detail": "run_not_answered"})
+        return
+    if str(run.get("finishDetail") or "") in ("clarify", "suggest"):
+        yield sse("error", {"code": "CLARIFY_ONLY", "message": "澄清/反问结果不能保存到仪表盘"})
+        yield sse("finish", {"reason": "error", "detail": "clarify"})
+        return
+    answer = _artifact_chart(artifact)
+    if not answer:
+        yield sse("error", {"code": "NO_ANSWER", "message": "无可采纳的问数图表"})
+        yield sse("finish", {"reason": "error", "detail": "no_answer"})
+        return
+    rows = artifact.get("answer_table", {}).get("rows") if isinstance(artifact.get("answer_table"), dict) else None
+    row_count = answer.get("rowCount")
+    if (isinstance(row_count, int) and row_count <= 0) or (isinstance(rows, list) and len(rows) == 0):
+        yield sse("error", {"code": "EMPTY_ANSWER", "message": "查询结果为空，未写入仪表盘"})
+        yield sse("finish", {"reason": "error", "detail": "empty_answer"})
+        return
+
+    action = action if action in ("save", "generate") else "save"
+    linked = conversation.get("linkedDashboardId")
+    mode = "append" if linked else "replace"
+    title = str(answer.get("title") or ("问数结果" if action == "save" else "AI 生成看板"))
+    try:
+        if action == "generate":
+            composed = bi_call(
+                "POST",
+                "/api/internal/bi/compose-board",
+                {
+                    "message": str(artifact.get("message") or title),
+                    "dashboardId": linked if mode == "append" else None,
+                    "styleId": style_id,
+                    "datasetIds": [str(answer.get("datasetId"))],
+                    "mode": mode,
+                },
+            )
+            if not isinstance(composed, dict) or not composed.get("ok"):
+                raise ValueError(str((composed or {}).get("error") or "compose failed"))
+            patch = composed.get("patch") or {}
+            title = str(composed.get("title") or title)
+        else:
+            patch = _patch_from_answer(answer, str(linked) if linked else None, style_id)
+    except ValueError as e:
+        yield sse("error", {"code": "BAD_ANSWER", "message": str(e)})
+        yield sse("finish", {"reason": "error", "detail": "bad_answer"})
+        return
+
+    yield step("adopt", "从问数结果生成 DashboardPatch")
+    try:
+        applied = bi_call(
+            "POST",
+            "/api/internal/bi/apply-patch",
+            {
+                "dashboardId": linked,
+                "title": title,
+                "mode": mode,
+                "patch": patch,
+            },
+        )
+    except Exception as e:
+        yield sse("error", {"code": "APPLY", "message": str(e)})
+        yield sse("finish", {"reason": "error", "detail": "apply"})
+        return
+
+    yield from _emit_applied({"title": title, "mode": mode, "patch": patch, "result": applied})
+    dash_id = applied.get("dashboardId")
+    yield sse("message_delta", {"text": f"已保存「{title}」到仪表盘草稿 #{dash_id}。"})
+    yield sse("finish", {"reason": "done", "detail": f"adopted:{dash_id}", "dashboardId": dash_id})
 
 
 def run_agent(payload: Dict[str, Any]) -> Generator[str, None, None]:

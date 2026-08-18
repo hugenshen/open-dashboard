@@ -178,30 +178,6 @@ paths:
             intent_map 给出短语→字段对齐；unresolved 非空时问数应澄清而非盲查。
             Ask-3（SQLBot）：answer_sql 为校验后的只读 SQL（会话预览，不写画布）。
             step 可带 preview（kind=schema|sql|query|profile）与 parent（如 sqlbot）供思考过程嵌套展示字段/SQL/抽样。
-  /conversations/{id}/runs/{runId}/adopt:
-    post:
-      tags: [conversation]
-      summary: Adopt ask/insight answer into DashboardPatch (save chart or generate board)
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-        - name: runId
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                action: { type: string, enum: [save, generate], default: save }
-                styleId: { type: string }
-      responses:
-        '200':
-          description: SSE stream continuation (patch / chart_ready / finish)
   /conversations/{id}/runs/{runId}/cancel:
     post:
       tags: [conversation]

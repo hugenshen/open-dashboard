@@ -40,7 +40,7 @@ depends: P004
 | 列 | 内容 |
 |----|------|
 | 依赖 | [P004](../P004-conversation/) Harness / Patch |
-| 改动面 | FE 对话流 · Harness ask 路径 · OpenAPI `intent` / adopt |
+| 改动面 | FE 对话流 · Harness ask/adopt 路径 · OpenAPI `intent` / adopt |
 | 不改 | 整页生成主路径（P004）；可问集合算法产品化（P008）；产品壳（P007） |
 | 回归 | PR-ASK-01…09；P004 的 PR-CONV-04；P007 工作台问数框 PR-ASK-06 |
 
@@ -68,7 +68,7 @@ depends: P004
 ### Ask-2（进行中 · 实现）
 
 - OpenAPI：`intent` + `/runs/{runId}/adopt`
-- BE：`AskAnswerPlanner` + Harness ask/insight 路径；采纳 → Patch
+- Harness：ask/insight 产出 run artifact；`/runs/{runId}/adopt` 从 artifact 生成 Patch，再调用 Java internal `apply-patch`
 - FE：`/conversations` 问数优先、结果预览、保存/生成
 - **编辑器 SQLBot**：对齐 DataEase 仪表盘编辑页浮层（`assistant.vue` + 当前数据集选择）。实现迁到 `ConversationAiPanel`：默认 `intent=ask`，不自动写画布；「保存到仪表盘」走 adopt。
 - **意图对齐**：`IntentResolver` 把「近一年 / 商户 / 收入」映射到 schema 字段；缺字段澄清。
@@ -140,6 +140,7 @@ schema（M-Schema）→ LLM 生成 JSON{sql, chart-type}
 |------|------|
 | 2026-08-18 | 编辑器 SQLBot 浮层改为右下角固定高度（约 520px / 400px），对齐 DataEase 小助手，不再通栏拉满 |
 | 2026-08-18 | 对话页去掉内侧栏与「本会话产物」列；新对话 / 历史 / 探索只留对话顶条（对齐 P007 壳） |
+| 2026-08-18 | 确认 adopt 协议闭环：FE 只调 Harness；Harness 从 run artifact 生成 Patch 并调 Java internal BI；Java public adopt 不反调 Harness |
 | 2026-08-17 | 换题反问：已选表时「换一个问数问题」按字段给出可点问法，点击后再生成 SQL/图 |
 | 2026-08-17 | 把已编码问数交互与 SQLBot 对照写入 architecture.html#ask |
 | 2026-08-17 | 收敛结果卡为“保存本题图”，整页生成为独立意图；统一 Python Harness 与可问数据权限边界 |

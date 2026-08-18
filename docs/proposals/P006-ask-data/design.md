@@ -84,6 +84,33 @@ flowchart TB
 - 默认**不**改 linked dashboard。  
 - 结果可在画布临时展示；刷新仍走查询，不落行。
 
+### Adopt 协议闭环（已确认）
+
+结果卡「保存到仪表盘」统一走 Harness，不让前端回调 Java，也不让 Java public conversation 入口再反调 Harness：
+
+```text
+FE
+  → POST /harness/v1/conversations/{conversationId}/runs/{runId}/adopt
+       body: { action: "save", styleId? }
+  → opendashboard-harness
+       读取 run artifact（answer_table / answer_chart / answer_sql / AskPlan）
+       由可信运行时产物生成 DashboardPatch
+       校验 datasetId / encode / chartType / rowCount，不信任前端传图表配置
+  → Java /api/internal/bi/apply-patch
+       最终校验字段、数据集权限、Dashboard draft 写权限并写入 draft
+  → Harness SSE: patch / chart_ready / board_ready / finish
+```
+
+职责边界：
+
+| 层 | 做什么 | 不做什么 |
+|----|--------|----------|
+| FE | 只发 `action=save|generate`、展示 SSE、桥接编辑器 | 不传完整 `DashboardPatch`，不直调 Java adopt |
+| Harness | 保存 run artifact；adopt 时从 artifact 生成 Patch；通过 internal token 调 Java BI | 不持有生产库账号，不把结果行写入布局 |
+| Java internal BI | `schema/query/apply-patch`、权限与字段最终闸门、draft 持久化 | 不承担 Agent run，不反调 Harness |
+
+Java public `/api/conversations/{id}/runs/{runId}/adopt` 从公开契约与 Controller 删除；新实现不得把前端切回 Java public adopt。
+
 ### 意图 B — 直接生成仪表盘（快捷）
 
 ```text
@@ -157,7 +184,7 @@ flowchart TB
 | **契约** | OpenAPI 补 `intent=ask\|gen\|insight`；SSE 增 `answer_table` / `answer_chart` / `answer_insight` | 先于 FE/BE |
 | **Python Harness** | 意图路由：问数 / 洞察 / 生成；确定性 encode + 聚合预览；洞察 = 下钻拆解（可先规则，后 LLM） | `opendashboard-harness/`，Vue 直连 `/harness/v1/*` |
 | **BE 取数** | 问数预览：`query/sql`（SQLBot）或 `chartQuery` encode 回退 | **不**把任意 SQL 暴露给前端 |
-| **BE 采纳** | `adopt` / `generate-from-answer` → 既有 `DashboardPatchApplier` | 与 P004 共用 |
+| **采纳闭环** | Harness `/runs/{runId}/adopt` 从 run artifact 生成 Patch → Java internal `apply-patch` | 与 P004 共用；FE 不调 Java public adopt |
 | **FE `/conversations`** | 对齐高保：默认问数、结果卡、DIAG、保存本题图、桥接编辑器 | 替换/增强现有壳 |
 | **编辑器 SQLBot** | 对齐 DE：浮层问数 + 当前看板数据集；默认不写画布；「保存到仪表盘」才 Patch | `ConversationAiPanel`；对照 `refs/sqlbot` + DE `assistant.vue` |
 | **不做（本期）** | 任意 SQL 入口、沙箱、结果行入库、独立 ChatBI 站、整仓搬 SQLBot | — |

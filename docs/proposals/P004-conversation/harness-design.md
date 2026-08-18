@@ -10,8 +10,8 @@
 | 层 | 做什么 | 不做什么 |
 |----|--------|----------|
 | **OD Vue** | 对话 UI；直连 harness（`/harness/v1/*`） | 不直连模型；不经 Java 跑 Agent |
-| **opendashboard-harness** | Agent loop、工具注册、上下文/记忆、SSE；run 时按 Java 会话 id 补建运行时文件 | 不持有生产库写账号；不把结果行写入布局；不作为问数历史真相 |
-| **Java** | 会话 CRUD + 消息落 `de_conversation*`；`/api/internal/bi/*` 工具实现 + 看板/数据集 CRUD | 不做 Lead/LLM；**不再**作为 conversation runs 入口 |
+| **opendashboard-harness** | Agent loop、工具注册、上下文/记忆、SSE；run 时按 Java 会话 id 补建运行时文件；adopt 时从 run artifact 生成 Patch | 不持有生产库写账号；不把结果行写入布局；不作为问数历史真相 |
+| **Java** | 会话 CRUD + 消息落 `de_conversation*`；`/api/internal/bi/*` 工具实现 + 看板/数据集 CRUD | 不做 Lead/LLM；**不提供** conversation adopt 公开入口 |
 
 ```mermaid
 flowchart TB
@@ -26,7 +26,7 @@ flowchart TB
 - **问数文件源**：`POST /api/dataset/import` 后与 JDBC 数据集同一套工具。  
 - **不整仓搬 SQLBot**；编辑器浮层 + harness `sqlbot/` 管道。任意 SQL 不暴露给 FE。  
 - 看板真相：`DashboardPatch` → draft + live `chartQuery`。  
-- Java `/api/conversations/*/runs` 已废弃（返回明确错误）。
+- Java `/api/conversations/*/runs` 已废弃；Java public adopt 从 Controller 与 OpenAPI 删除。
 
 ## 从 Pi 抄 / 不抄
 
@@ -73,6 +73,32 @@ flowchart TB
 - `GET|PATCH|DELETE /v1/conversations/{id}`
 - `GET /v1/conversations/{id}/messages`
 - `POST /v1/conversations/{id}/runs` — SSE：`run` · `step` · `plan` · `intent_map` · `answer_*` · `patch` · `chart_ready` · `board_ready` · `message_delta` · `error` · `finish`
+- `POST /v1/conversations/{id}/runs/{runId}/adopt` — 从 run artifact 生成 `DashboardPatch`，调用 Java internal `apply-patch`，SSE 返回 `patch` / `chart_ready` / `board_ready` / `finish`
+- `POST /v1/conversations/{id}/runs/{runId}/confirm-plan` — Plan 确认后 apply pending patch
+
+### Adopt 闭环
+
+```mermaid
+sequenceDiagram
+  participant FE as OD_Vue
+  participant H as opendashboard_harness
+  participant BI as Java_internal_BI
+  participant DB as Dashboard_draft
+
+  FE->>H: POST /v1/conversations/{id}/runs/{runId}/adopt {action}
+  H->>H: load run artifact / AskPlan / answer_chart
+  H->>H: build DashboardPatch from trusted artifact
+  H->>BI: POST /api/internal/bi/apply-patch
+  BI->>DB: persist draft
+  H-->>FE: SSE patch / chart_ready / board_ready / finish
+```
+
+约束：
+
+- FE 只能提交 `action=save|generate` 和展示偏好，不能提交完整图表配置或 Patch。
+- Harness 必须从自己的 run artifact 重建 Patch；若 run 不存在、不是 `answered`、没有可采纳图表或是 clarify，则返回 `error + finish`。
+- Java internal BI 是最终写闸门；字段、数据集、dashboard 权限不通过则拒绝写入。
+- 禁止恢复 Java public conversation adopt，避免 `FE → Java → Harness → Java` 的循环。
 
 前端 Vite：`/harness` → `http://127.0.0.1:8091`。
 
@@ -123,4 +149,5 @@ OD_LLM_MODEL=deepseek-v4-pro
 
 - 任意 SQL 不暴露给 FE；受控 query 仅 internal。  
 - 写看板只能 `od_emit_patch`。  
+- 采纳只能由 Harness `/adopt` 根据 run artifact 触发 Java internal `apply-patch`。  
 - `.env` gitignore。

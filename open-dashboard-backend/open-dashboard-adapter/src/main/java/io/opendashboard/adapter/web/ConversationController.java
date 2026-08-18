@@ -3,7 +3,6 @@ package io.opendashboard.adapter.web;
 import io.opendashboard.adapter.security.RequireAuth;
 import io.opendashboard.adapter.security.RequirePermission;
 import io.opendashboard.application.conversation.ConversationAppService;
-import io.opendashboard.domain.ConversationDtos.ConversationAdoptRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationCreateRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationMessageCreateRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationMessageVO;
@@ -131,26 +130,6 @@ public class ConversationController {
     public ResponseEntity<ConversationRunVO> cancel(@PathVariable String id, @PathVariable String runId) {
         if (!service.enabled()) return ResponseEntity.notFound().build();
         return service.cancel(id, runId).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
-    }
-
-    @PostMapping(value = "/{id}/runs/{runId}/adopt", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    @RequirePermission("conversation:use")
-    public ResponseEntity<SseEmitter> adopt(
-            @PathVariable String id,
-            @PathVariable String runId,
-            @RequestBody(required = false) ConversationAdoptRequest request
-    ) {
-        if (!service.enabled()) return ResponseEntity.notFound().build();
-        SseEmitter emitter = new SseEmitter(300_000L);
-        try {
-            service.adoptAsync(id, runId, request, (event, data) -> send(emitter, event, data));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
-        }
-        emitter.onTimeout(emitter::complete);
-        return ResponseEntity.ok(emitter);
     }
 
     @PostMapping(value = "/{id}/runs/{runId}/confirm-plan", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

@@ -73,7 +73,7 @@ Vue 已用 AppShell 替换 ModuleTopbar（P007 产品实现，待 PR-SH-10 验�
 `step` 可带 `preview` 与 `parent`（问数时 `parent=sqlbot`，子步骤嵌在「SQLBot 生成 SQL」下：读 Schema、抽样、模型生成、只读校验、执行、选图）。思考过程在回答气泡外，Kimi 式一级折叠（思考中 / 已思考）：完成后**默认展开**，用户可手动折叠；折叠后步骤区收起，结果卡上移贴住对话，不留中间空白。
 
 - 问数 / 洞察：`finish.reason=answered`（会话预览，不落结果行）
-- 采纳：结果卡调用 `POST .../runs/{runId}/adopt` 保存本题图 → Patch → `chart_ready`；整页生成由独立 `intent=generate` 入口触发
+- 采纳：结果卡调用 Harness `POST /harness/v1/conversations/{id}/runs/{runId}/adopt` 保存本题图；Harness 从 run artifact 生成 Patch → Java internal `apply-patch` → `chart_ready`；整页生成由独立 `intent=gen` 入口触发。FE 不直调 Java public adopt，Java public adopt 不反调 Harness
 - 生成看板：`finish.reason=done` / Plan 模式 `awaiting_confirm`
 
 ## DashboardPatch

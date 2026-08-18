@@ -125,3 +125,4 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | 2026-08-17 | 补波及表；验收细节只保留在 yaml |
 | 2026-08-17 | 本月不交付 PR-CONV-08（可问集合）；等 P008 契约与 askable API |
 | 2026-08-18 | 对话画布对齐工作台 `--od-bg`，落地页加轻靛蓝光晕（对照 ChatGPT / Kimi 居中输入） |
+| 2026-08-18 | 确认 run / confirm-plan / adopt 均由 Harness 承担；Java 只提供 `/api/internal/bi/*`，避免 FE → Java → Harness → Java 循环 |
