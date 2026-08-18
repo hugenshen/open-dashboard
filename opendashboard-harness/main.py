@@ -14,6 +14,7 @@ load_dotenv()
 from api.app import app  # noqa: E402
 
 HARNESS_PORT = int(os.environ.get("OD_HARNESS_PORT", "8091"))
+HARNESS_HOST = os.environ.get("OD_HARNESS_HOST", "0.0.0.0")
 
 __all__ = ["app"]
 
@@ -21,4 +22,4 @@ __all__ = ["app"]
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="127.0.0.1", port=HARNESS_PORT, reload=False)
+    uvicorn.run("main:app", host=HARNESS_HOST, port=HARNESS_PORT, reload=False)

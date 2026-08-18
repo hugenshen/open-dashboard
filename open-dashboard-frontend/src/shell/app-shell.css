@@ -21,7 +21,7 @@
   --od-top: var(--od-bg);
   --od-rail-w: 240px;
   --od-rail-slim: 72px;
-  --od-top-h: 64px;
+  --od-top-h: 48px;
   --od-font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
 }

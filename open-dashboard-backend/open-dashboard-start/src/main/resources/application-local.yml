@@ -3,10 +3,10 @@ server:
 
 spring:
   datasource:
-    # Homebrew postgresql@16 via scripts/setup-pg-local.sh (port 5433)
-    url: jdbc:postgresql://localhost:5433/opendashboard
-    username: opendashboard
-    password: opendashboard
+    # Test Greenplum (GP) metadata DB
+    url: jdbc:postgresql://10.54.154.152:36789/opendashboard
+    username: postgres
+    password: Post_vectory@1031
 
 opendashboard:
   stub-query: false

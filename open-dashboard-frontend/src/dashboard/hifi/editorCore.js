@@ -6800,10 +6800,11 @@ function queryItemControlHtml(it) {
   const label = it.label || it.field || '筛选项';
   const qid = it.id;
   if (it.kind === 'dateRange') {
+    const ph = it.placeholder || '全部日期';
     return `<label class="q-item"><span>${esc(label)}</span>
-      <input type="date" data-qkind="dateFrom" data-qfield="${esc(it.field || 'date')}" data-qitem="${esc(qid)}" value="${esc(state.filter.dateFrom || '')}" />
+      <input type="date" data-qkind="dateFrom" data-qfield="${esc(it.field || 'date')}" data-qitem="${esc(qid)}" value="${esc(state.filter.dateFrom || it.fromDefault || '')}" placeholder="${esc(ph)}" />
       <span>~</span>
-      <input type="date" data-qkind="dateTo" data-qfield="${esc(it.field || 'date')}" data-qitem="${esc(qid)}" value="${esc(state.filter.dateTo || '')}" />
+      <input type="date" data-qkind="dateTo" data-qfield="${esc(it.field || 'date')}" data-qitem="${esc(qid)}" value="${esc(state.filter.dateTo || it.toDefault || '')}" placeholder="${esc(ph)}" />
     </label>`;
   }
   const field = it.field || '';

@@ -95,10 +95,10 @@ defineProps<{
 
 <style scoped>
 .cover {
-  height: 120px;
+  height: 100px;
   position: relative;
   overflow: hidden;
-  padding: 14px 16px;
+  padding: 12px 14px;
 }
 .cover-tag {
   position: relative;

@@ -89,7 +89,7 @@ const showCreateCard = computed(() => {
   return n > 0 && n < DESKTOP_RECENT
 })
 
-const DESKTOP_RECENT_REPORTS = 4
+const DESKTOP_RECENT_REPORTS = 8
 
 const recentReports = computed(() => {
   if (emptyMode.value) return []
@@ -398,65 +398,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
             </div>
           </div>
 
-          <section class="wb-block wb-common">
-            <div class="wb-block-hd"><h3>常用</h3></div>
-            <div class="wb-apps">
-              <router-link class="wb-app" to="/conversations">
-                <div class="icon c1">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-                  </svg>
-                </div>
-                <div class="label">对话问数</div>
-              </router-link>
-              <button class="wb-app" type="button" :disabled="creating" @click="createDash">
-                <div class="icon c2">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                </div>
-                <div class="label">{{ creating ? '创建中…' : '新建看板' }}</div>
-              </button>
-              <router-link class="wb-app" to="/datasources">
-                <div class="icon c3">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <ellipse cx="12" cy="6" rx="8" ry="3" />
-                    <path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
-                  </svg>
-                </div>
-                <div class="label">数据源</div>
-              </router-link>
-              <router-link class="wb-app" to="/datasets">
-                <div class="icon c4">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M4 6h16M4 12h16M4 18h10" />
-                  </svg>
-                </div>
-                <div class="label">数据集</div>
-              </router-link>
-              <router-link class="wb-app" to="/dashboards">
-                <div class="icon c5">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="7" height="9" rx="1.5" />
-                    <rect x="14" y="3" width="7" height="5" rx="1.5" />
-                    <rect x="14" y="12" width="7" height="9" rx="1.5" />
-                    <rect x="3" y="16" width="7" height="5" rx="1.5" />
-                  </svg>
-                </div>
-                <div class="label">仪表盘</div>
-              </router-link>
-              <router-link class="wb-app" to="/reports">
-                <div class="icon c6">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
-                    <path d="M14 3v5h5" />
-                  </svg>
-                </div>
-                <div class="label">在线报告</div>
-              </router-link>
-            </div>
-          </section>
-
           <section class="wb-block" id="wbRecentSection">
             <div class="wb-block-hd">
               <h3>{{ emptyMode ? '开始搭建工作区' : '最近打开' }}</h3>
@@ -508,7 +449,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
               </button>
               <div v-if="!recentDashboards.length" class="wb-empty-note">
                 <b>还没有仪表盘</b>
-                可以从常用入口新建，或先问数再保存本题图
+                可以先问数，满意后再保存生成仪表盘
               </div>
             </div>
           </section>
@@ -598,7 +539,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
             <template v-else-if="emptyMode || !recentReports.length">
               <div class="wb-empty-note">
                 <b>还没有报告</b>
-                从常用入口新建，近期编辑会出现在这里
+                从「在线报告」模块新建，近期编辑会出现在这里
               </div>
             </template>
             <router-link
@@ -630,20 +571,25 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   overflow: auto;
   background: var(--od-bg, #f6f7fb);
   color: var(--od-ink, #111827);
+  /* 常规电脑直接铺满一屏，尽量不出现右侧滚动条；少数据时用滚轮/触控仍可滚动 */
+  scrollbar-width: none;
+}
+.wb-stage::-webkit-scrollbar {
+  display: none;
 }
 .wb-home {
   max-width: none;
-  padding: 32px 40px 72px;
+  padding: 24px 40px 40px;
 }
 .wb-layout {
   display: grid;
   grid-template-columns: minmax(680px, 1.65fr) minmax(320px, 0.72fr);
   grid-template-areas:
     'hero overview'
-    'common todo'
+    'recent todo'
     'recent reports';
   column-gap: 24px;
-  row-gap: 22px;
+  row-gap: 18px;
   align-items: start;
 }
 .wb-main,
@@ -654,7 +600,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   grid-area: hero;
   max-width: none;
   margin: 0;
-  padding: 24px 28px 22px;
+  padding: 18px 24px 16px;
   border: 1px solid #dfe4f2;
   border-radius: 20px;
   background:
@@ -663,7 +609,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   box-shadow: 0 1px 2px rgba(17, 24, 39, 0.03);
 }
 .wb-greet {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .hello {
   margin: 0;
@@ -673,7 +619,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   line-height: 1.2;
 }
 .sub {
-  margin-top: 10px;
+  margin-top: 8px;
   font-size: 15px;
   color: var(--od-muted, #4b5563);
   line-height: 1.6;
@@ -682,7 +628,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 10px;
   font-size: 13px;
   color: var(--od-muted, #4b5563);
 }
@@ -800,9 +746,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 .wb-block {
   margin: 0;
 }
-.wb-common {
-  grid-area: common;
-}
 #wbRecentSection {
   grid-area: recent;
 }
@@ -822,7 +765,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .wb-block-hd h3 {
   margin: 0;
@@ -848,69 +791,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 .phd .link:hover {
   color: var(--od-ink, #111827);
 }
-.wb-apps {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(160px, 1fr));
-  gap: 12px;
-}
-.wb-app {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  min-height: 66px;
-  padding: 10px 12px;
-  border: 1px solid var(--od-line, #dfe3ea);
-  background: var(--od-card, #fff);
-  border-radius: 12px;
-  cursor: pointer;
-  color: inherit;
-  text-decoration: none;
-  font: inherit;
-  text-align: left;
-}
-.wb-app:hover {
-  border-color: #c7d2fe;
-  transform: translateY(-2px);
-}
-.wb-app .icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  background: #eef2ff;
-  color: #4f46e5;
-  flex-shrink: 0;
-}
-.wb-app .icon svg {
-  width: 16px;
-  height: 16px;
-}
-.wb-app .icon.c2 {
-  background: #ecfdf5;
-  color: #047857;
-}
-.wb-app .icon.c3 {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-.wb-app .icon.c4 {
-  background: #fff7ed;
-  color: #c2410c;
-}
-.wb-app .icon.c5 {
-  background: #f5f3ff;
-  color: #7c3aed;
-}
-.wb-app .icon.c6 {
-  background: #fdf2f8;
-  color: #be185d;
-}
-.wb-app .label {
-  font-size: 14px;
-  font-weight: 650;
-}
 .wb-dash-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -931,7 +811,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   transform: translateY(-3px);
 }
 .wb-dash .meta {
-  padding: 14px 16px 16px;
+  padding: 12px 14px 14px;
 }
 .wb-dash .name {
   font-size: 15px;
@@ -1326,8 +1206,7 @@ html[data-od-theme='dark'] .wb-examples button {
   background: rgba(24, 27, 34, 0.72);
 }
 html[data-od-theme='dark'] .wb-row:hover,
-html[data-od-theme='dark'] .wb-todo:hover,
-html[data-od-theme='dark'] .wb-app:hover {
+html[data-od-theme='dark'] .wb-todo:hover {
   background: #27272a;
 }
 html[data-od-theme='dark'] .wb-kpi {
@@ -1340,16 +1219,12 @@ html[data-od-theme='dark'] .wb-kpi {
     grid-template-areas:
       'hero'
       'overview'
-      'common'
       'todo'
       'recent'
       'reports';
   }
 }
 @media (max-width: 960px) {
-  .wb-apps {
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
-  }
   .wb-dash-grid {
     grid-template-columns: repeat(2, minmax(190px, 1fr));
   }
@@ -1373,7 +1248,6 @@ html[data-od-theme='dark'] .wb-kpi {
     width: 100%;
     margin-top: 4px;
   }
-  .wb-apps,
   .wb-dash-grid,
   .wb-kpis {
     grid-template-columns: 1fr;

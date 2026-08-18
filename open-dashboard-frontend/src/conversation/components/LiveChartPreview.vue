@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import { chartQueryApi } from '../../api/dashboard'
 import type { ChartQueryResult, FilterContextItem } from '../../types/dashboard'
@@ -31,6 +31,25 @@ const loading = ref(false)
 const error = ref('')
 const empty = ref(false)
 let chart: echarts.ECharts | null = null
+let resizeTid: number | null = null
+
+/** 容器在挂载瞬间可能为 0 宽（父级刚显示），等布局稳定后再 resize，否则 echarts 不画 canvas */
+function resizeWhenReady() {
+  if (resizeTid != null) cancelAnimationFrame(resizeTid)
+  let attempt = 0
+  const tick = () => {
+    resizeTid = null
+    if (!chart || !el.value) return
+    const w = el.value.clientWidth
+    if (w > 0 && el.value.clientHeight > 0) {
+      chart.resize()
+    }
+    if (attempt++ < 8) {
+      resizeTid = window.setTimeout(tick, 60)
+    }
+  }
+  resizeTid = window.setTimeout(tick, 0)
+}
 
 function hasInline() {
   return !!(props.datasetId && (props.encode.category || props.encode.value || props.chartType === 'kpi'))
@@ -119,8 +138,11 @@ function render(result: ChartQueryResult) {
   if (chartType === 'kpi') {
     chart?.dispose()
     chart = null
-    const kpi = Number((result.series as { kpi?: number })?.kpi ?? rows[0]?.[0] ?? rows[0]?.[1] ?? 0)
-    const label = String((result.series as { label?: string })?.label || props.title || '指标')
+    const s = result.series as { kpi?: number; label?: string }
+    // data 行是权威值（如 [[610]]），series.kpi 在某些后端路径为占位(1.0)，优先用 data
+    const kpi = Number(rows[0]?.[0] ?? rows[0]?.[1] ?? s.kpi ?? 0)
+    // 标题即人读的指标名（如「记录数」），优先于 SQL 别名（如 call_status）
+    const label = String(props.title || s.label || '指标')
     el.value.innerHTML = `<div class="kpi"><div class="l">${escapeHtml(label)}</div><div class="v">${formatKpi(kpi)}</div></div>`
     return
   }
@@ -142,7 +164,14 @@ function render(result: ChartQueryResult) {
     return
   }
   el.value.innerHTML = ''
-  if (!chart) chart = echarts.init(el.value)
+  // 每次重建全新容器再 init：避免 v-for 复用节点时残留/失效实例导致 echarts 不画 canvas
+  if (chart && chart.isDisposed()) chart = null
+  chart = null
+  const host = document.createElement('div')
+  host.style.width = '100%'
+  host.style.height = '100%'
+  el.value.appendChild(host)
+  chart = echarts.init(host)
   const categories = (result.series?.categories as string[]) || rows.map((r) => String(r[0] ?? ''))
   const seriesArr =
     (result.series?.series as Array<{ name: string; data: number[] }>) ||
@@ -166,6 +195,7 @@ function render(result: ChartQueryResult) {
       },
       true
     )
+    resizeWhenReady()
     return
   }
   const isHbar = chartType === 'hbar'
@@ -185,7 +215,7 @@ function render(result: ChartQueryResult) {
     },
     true
   )
-  chart.resize()
+  resizeWhenReady()
 }
 
 function formatKpi(n: number) {
@@ -205,6 +235,10 @@ function escapeHtml(v: unknown) {
 
 onMounted(load)
 onBeforeUnmount(() => {
+  if (resizeTid != null) {
+    clearTimeout(resizeTid)
+    resizeTid = null
+  }
   chart?.dispose()
   chart = null
 })
