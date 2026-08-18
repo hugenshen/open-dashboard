@@ -58,10 +58,10 @@ items:
   - id: PR-CONV-06
     title: Harness 进程边界
     gate: code
-    criterion: Vue 直连 Python Harness；Java public conversation runs/adopt 不承担 Agent 编排，也不反向调用 Harness。
+    criterion: Vue 直连 Python Harness；Java public conversation runs 不承担 Agent 编排，Java public adopt 入口不存在。
     method: api
     command_or_path: opendashboard-harness/
-    expected: LLM、Agent loop、confirm-plan 与 adopt 运行时状态只存在于 Harness；Java 仅暴露 internal BI 工具。
+    expected: LLM、Agent loop、confirm-plan 与 adopt 运行时状态只存在于 Harness；Java 仅暴露 internal BI 工具和已废弃 runs 错误入口。
     evidence: ""
     status: todo
     blocker_of_done: true

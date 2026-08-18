@@ -17,7 +17,7 @@ items:
     criterion: 点击保存到仪表盘只调用 Harness /runs/{runId}/adopt；Harness 从 run artifact 生成 DashboardPatch 并调用 Java internal apply-patch，不持久化结果行。
     method: ui
     command_or_path: /harness/v1/conversations/{id}/runs/{runId}/adopt
-    expected: 前端不直调 Java public adopt，不提交完整 Patch；draft 增加图表且可在编辑器重新取数。
+    expected: Java public adopt 入口不存在；前端不提交完整 Patch；draft 增加图表且可在编辑器重新取数。
     evidence: ""
     status: todo
     blocker_of_done: true

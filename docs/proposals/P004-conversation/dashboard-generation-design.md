@@ -43,7 +43,7 @@ sequenceDiagram
 | `POST /harness/v1/conversations/{id}/runs` | 直接生成整页看板，`intent=gen` | 规划、质检、生成 `DashboardPatch`；Auto 直接 apply，Plan 等 `confirm-plan` | `/api/internal/bi/apply-patch` 写 draft，`chartQuery` 预览 |
 | `POST /harness/v1/conversations/{id}/runs/{runId}/adopt` | 问数结果卡「保存到仪表盘」 | 从 run artifact / AskPlan / answer_chart 重建本题图 Patch；拒绝无可采纳产物 | 同上 |
 
-不采用 `FE → Java public adopt → Harness → Java internal BI`。Java public conversation run/adopt 只保留废弃兼容或明确错误；新前端只连 Harness。
+不采用 `FE → Java public adopt → Harness → Java internal BI`。Java public conversation adopt 从 Controller 与 OpenAPI 删除；新前端只连 Harness。
 
 ### 步骤说明
 
