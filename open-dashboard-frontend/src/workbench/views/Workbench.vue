@@ -48,8 +48,7 @@ const emptyMode = computed(
 const srcOk = computed(() => datasources.value.filter((s) => s.status === 'ok').length)
 const srcPending = computed(() => datasources.value.length - srcOk.value)
 const dirty = computed(() => dashBars.value.filter((d) => d.status === 'publishedWithDraft').length)
-const draftCount = computed(() => dashBars.value.filter((d) => d.status === 'draft').length)
-const todoCount = computed(() => dirty.value + srcPending.value + draftCount.value)
+const todoCount = computed(() => dirty.value + srcPending.value)
 
 const hello = computed(() => {
   const h = new Date().getHours()
@@ -106,7 +105,7 @@ const recentAsks = computed(() => {
       return t && t !== '新对话'
     })
     .sort((a, b) => (b.updateTime || 0) - (a.updateTime || 0))
-    .slice(0, 8)
+    .slice(0, 5)
 })
 
 const briefs = computed(() => {
@@ -499,30 +498,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
               </template>
               <router-link v-else to="/conversations">还没有可跟进的事项，先问一个数据问题</router-link>
             </div>
-          </section>
-
-          <section class="wb-panel" id="wbTodoPanel">
-            <div class="phd"><h4>待处理</h4></div>
-            <template v-if="emptyMode || (!dirty && !srcPending && !draftCount)">
-              <div class="wb-empty-note">
-                <b>目前没有待处理事项</b>
-                完成数据连接后，异常和提醒会出现在这里
-              </div>
-            </template>
-            <template v-else>
-              <router-link v-if="dirty" class="wb-todo" to="/dashboards">
-                <span class="mark warn" />
-                <span class="txt"><b>{{ dirty }} 个看板</b> 有未发布改动</span>
-              </router-link>
-              <router-link v-if="draftCount" class="wb-todo" to="/dashboards">
-                <span class="mark info" />
-                <span class="txt"><b>{{ draftCount }} 个草稿</b> 尚未发布</span>
-              </router-link>
-              <router-link v-if="srcPending" class="wb-todo" to="/datasources">
-                <span class="mark warn" />
-                <span class="txt"><b>{{ srcPending }} 个数据源</b> 待处理</span>
-              </router-link>
-            </template>
           </section>
 
           <section class="wb-panel" id="wbRecentReportPanel">
