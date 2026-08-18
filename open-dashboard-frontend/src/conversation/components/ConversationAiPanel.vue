@@ -570,6 +570,8 @@ async function onPickFile(ev: Event) {
                 :chart-type="line.chartType || 'bar'"
                 :encode="line.encode || {}"
                 :title="line.text"
+                :rows="line.rows"
+                :columns="line.columns"
                 :height="160"
               />
               <div v-if="line.columns?.length" class="mini-tbl">

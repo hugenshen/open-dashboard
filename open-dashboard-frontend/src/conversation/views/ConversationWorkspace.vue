@@ -1205,12 +1205,17 @@ function toggleSide(panel: 'history' | 'explore') {
                 <div v-if="answerChart?.insightHtml" class="insight" v-html="answerChart.insightHtml" />
                 <div class="ask-body">
                   <div v-if="answerChart" class="viz">
-                    <div class="vl">临时图 · {{ answerChart.chartType }} · chartQuery</div>
+                    <div class="vl">
+                      临时图 · {{ answerChart.chartType }} ·
+                      {{ answerTable?.rows?.length ? '问数结果' : 'chartQuery' }}
+                    </div>
                     <LiveChartPreview
                       :dataset-id="answerChart.datasetId"
                       :chart-type="answerChart.chartType || 'bar'"
                       :encode="answerChart.encode || {}"
                       :title="answerChart.title"
+                      :rows="answerTable?.rows"
+                      :columns="answerTable?.columns"
                       :height="220"
                     />
                   </div>
@@ -1477,12 +1482,17 @@ function toggleSide(panel: 'history' | 'explore') {
                 />
                 <div class="ask-body">
                   <div v-if="answerChart" class="viz">
-                    <div class="vl">临时图 · {{ answerChart.chartType }} · chartQuery</div>
+                    <div class="vl">
+                      临时图 · {{ answerChart.chartType }} ·
+                      {{ answerTable?.rows?.length ? '问数结果' : 'chartQuery' }}
+                    </div>
                     <LiveChartPreview
                       :dataset-id="answerChart.datasetId"
                       :chart-type="answerChart.chartType || 'bar'"
                       :encode="answerChart.encode || {}"
                       :title="answerChart.title"
+                      :rows="answerTable?.rows"
+                      :columns="answerTable?.columns"
                       :height="220"
                     />
                   </div>

@@ -563,38 +563,87 @@
             <figcaption><em>图 6-1</em> · 对话落地页：先选数据集，再选「问数」或「生成看板」，下方是最近对话</figcaption>
           </figure>
 
-          <h3>6.1 问数</h3>
+          <h3 id="conversation-flow">6.1 端到端流程（推荐路径）</h3>
+          <p>顶部的进度条固定为四步：<strong>① 提问 → ② 问数 / 规划 → ③ 结果 → ④ 保存到仪表盘</strong>。下面按实际操作顺序走一遍。</p>
           <ol class="steps">
             <li>
-              <strong>勾选数据集</strong>
-              <span>未选表时不能发送。可多选；问数只在你勾选的表范围内取数。</span>
+              <strong>选数据集</strong>
+              <span>点「＋ 数据集 ▾」勾选一张或多张表；未选表时发送按钮不可用。上下文 Chip 会显示当前表名（如「订单表」）。</span>
             </li>
             <li>
-              <strong>保持「问数」意图</strong>
-              <span>输入框上方默认是问数。结果只出现在会话里（表 / 图 / 结论），<strong>不会自动改仪表盘</strong>。</span>
+              <strong>问数（会话预览）</strong>
+              <span>保持「问数」意图，输入业务问题或点示例 Chip，再点「↑」发送。AI 会出 SQL 步骤、明细表或临时图；<strong>结果只在会话里预览，不会自动改已有看板</strong>。</span>
             </li>
             <li>
-              <strong>发送问题</strong>
-              <span>例如「近一年各商户收入」。可点示例 Chip，或「换一个问数问题」按当前表字段给出可点问法。</span>
+              <strong>生成看板（整页 draft）</strong>
+              <span>若要整页分析页，切到「生成看板」意图（或点「直接生成仪表盘」Chip），可选「▦ 默认飞书蓝」等风格后发送。生成过程中可确认 Plan；右侧画布会预览整页布局与查询条。</span>
             </li>
             <li>
-              <strong>看结果再保存</strong>
-              <span>结果卡提供「保存到仪表盘」：把本题图写入看板草稿。还想要整页，用追问 Chip「生成经营分析看板」或切到「生成看板」意图。</span>
+              <strong>保存到仪表盘</strong>
+              <span>问数结果卡底部点「保存到仪表盘」，把本题图表写入关联看板草稿；整页生成完成后也会提示「产物已写入 Dashboard draft」。</span>
+            </li>
+            <li>
+              <strong>编辑与发布</strong>
+              <span>点「在编辑器打开」进入 <code>/dashboards/:id/edit</code>，继续拖组件、绑字段；改完点顶栏「发布」。单题保存与整页生成最终都落到同一张可编辑看板。</span>
             </li>
           </ol>
 
-          <h3>6.2 生成看板</h3>
-          <p>切换意图为「生成看板」后发送，会按当前数据集生成整页 draft（含查询条）。生成过程中可确认 Plan；查询条里的筛选会进入图表查询条件。</p>
+          <figure class="shot">
+            <img src="screenshots/21-conversation-datasets.png" alt="勾选数据集" loading="lazy" />
+            <figcaption><em>图 6-2</em> · 勾选数据集：多选后上下文 Chip 显示表名，才能发送</figcaption>
+          </figure>
 
-          <h3>6.3 会话管理</h3>
+          <figure class="shot">
+            <img src="screenshots/22-conversation-ask-result.png" alt="问数结果" loading="lazy" />
+            <figcaption><em>图 6-3</em> · 问数结果：SQL 步骤 + 明细表 / 临时图；满意后点「保存到仪表盘」</figcaption>
+          </figure>
+
+          <figure class="shot">
+            <img src="screenshots/23-conversation-gen-intent.png" alt="生成看板意图" loading="lazy" />
+            <figcaption><em>图 6-4</em> · 切换「生成看板」意图：提示将写入 Dashboard draft，可附带风格 Chip</figcaption>
+          </figure>
+
+          <figure class="shot">
+            <img src="screenshots/24-conversation-gen-board.png" alt="生成看板预览" loading="lazy" />
+            <figcaption><em>图 6-5</em> · 整页生成完成后：右侧提示 draft 路径，可「在编辑器打开」</figcaption>
+          </figure>
+
+          <figure class="shot">
+            <img src="screenshots/25-conversation-save-edit.png" alt="编辑器继续修改" loading="lazy" />
+            <figcaption><em>图 6-6</em> · 从对话进入编辑器：调整布局与图表绑定，顶栏「发布」对外可见</figcaption>
+          </figure>
+
+          <h3 id="conversation-ask">6.2 问数（单题预览）</h3>
           <ul>
-            <li>顶条：新对话、历史（即落地页「最近对话」）、探索示例</li>
-            <li>从工作台问数框进来会自动打开会话并跑你刚提的问题</li>
+            <li>默认意图为「问数 · 结果仅会话预览」；底部输入区可随时继续追问。</li>
+            <li>若字段与问题不匹配，会出现 CLARIFY 卡与「点一个问题开始查」建议 Chip，点选即可重试。</li>
+            <li>「换一个问数问题」按当前表 Schema 刷新可点问法；也可从工作台问数框带题进入并自动开跑。</li>
+            <li>结果卡提供「复制结论」与「保存到仪表盘」——前者复制文本，后者写入看板草稿（对应进度条第 ④ 步）。</li>
           </ul>
+
+          <h3 id="conversation-gen">6.3 生成看板（整页 draft）</h3>
+          <ul>
+            <li>意图切换为「生成看板 · 将写入 Dashboard draft」后，同一输入框发送整页需求（如「根据当前数据集生成分析看板」）。</li>
+            <li>生成过程中左侧展示 Plan / 工具步骤，需人工确认时点「确认并写入」。</li>
+            <li>右侧画布预览整页布局；查询条筛选会进入图表查询条件（与编辑器内查询控件一致）。</li>
+            <li>完成后顶栏或右侧面板出现 draft 链接与「在编辑器打开」；也可在结果区点「保存到仪表盘」完成 adopt。</li>
+          </ul>
+
+          <h3 id="conversation-session">6.4 会话管理</h3>
+          <ul>
+            <li>顶条：新对话、历史（落地页「最近对话」）、探索示例</li>
+            <li>最近对话 Chip 标注「可打开 / 已生成」，便于回到未完成的问数或已落 draft 的生成会话</li>
+            <li>支持「上传 CSV / Excel」作为临时上下文（内测能力，以界面为准）</li>
+          </ul>
+
+          <div class="callout note">
+            <div class="icon">i</div>
+            <div class="body"><strong>内测说明：</strong>问数结果为会话预览，写入看板前<strong>不落查询结果行</strong>到持久存储；保存 / adopt 后才关联到具体 <code>dashboardId</code> 并在编辑器可见。</div>
+          </div>
 
           <div class="callout warn">
             <div class="icon">!</div>
-            <div class="body"><strong>和 SQLBot 的区别：</strong>对话是独立模块，适合从零问数或生成整页；SQLBot 只在编辑某一张看板时打开，默认改的是当前看板上下文，且默认不写画布。</div>
+            <div class="body"><strong>和 SQLBot 的区别：</strong>对话是一级模块，适合从零问数或生成整页；SQLBot 只在编辑某一张看板时打开（右下角浮层），默认改当前看板上下文，且默认不写画布。详见 <a href="#editor">§9 仪表盘编辑器</a>。</div>
           </div>
         </section>
 

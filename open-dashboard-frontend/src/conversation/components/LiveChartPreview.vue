@@ -13,6 +13,9 @@ const props = withDefaults(
     encode?: Record<string, unknown>
     title?: string
     filters?: FilterContextItem[]
+    /** Ask/SQLBot rows already fetched — skip chartQuery (encode may use SQL aliases). */
+    rows?: unknown[][]
+    columns?: string[]
     height?: number
   }>(),
   {
@@ -37,7 +40,39 @@ function hasBoard() {
   return !!(props.dashboardId && props.chartId)
 }
 
+function hasPreviewRows() {
+  return Array.isArray(props.rows) && props.rows.length > 0
+}
+
+function previewFromRows(): ChartQueryResult | null {
+  const rows = props.rows
+  if (!rows?.length) return null
+  const fields = (props.columns || []).map((name) => ({ name, type: 'string' }))
+  const valueName = String(props.encode?.value || props.columns?.[1] || 'value')
+  const categories = rows.map((r) => String((r as unknown[])?.[0] ?? ''))
+  const seriesData = rows.map((r) => {
+    const row = r as unknown[]
+    const raw = row?.[1] ?? row?.[0]
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : 0
+  })
+  return {
+    fields,
+    data: rows,
+    series: {
+      categories,
+      series: [{ name: valueName, data: seriesData }]
+    },
+    extra: { chartType: props.chartType }
+  }
+}
+
 async function load() {
+  const preview = previewFromRows()
+  if (preview) {
+    render(preview)
+    return
+  }
   if (!hasBoard() && !hasInline()) {
     error.value = '未绑定数据集'
     empty.value = true
@@ -181,7 +216,9 @@ watch(
     props.datasetId,
     props.chartType,
     JSON.stringify(props.encode || {}),
-    JSON.stringify(props.filters || [])
+    JSON.stringify(props.filters || []),
+    JSON.stringify(props.rows || []),
+    JSON.stringify(props.columns || [])
   ],
   () => load()
 )
