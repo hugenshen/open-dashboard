@@ -158,5 +158,88 @@ export const datasetApi = {
     const form = new FormData()
     form.append('file', file)
     return apiFetchForm<DatasetDetailVO>('/dataset/import', form)
-  }
+  },
+  /** 字段自学习画像（角色/统计/采样） */
+  profile: (id: string) =>
+    http<{
+      fields: Array<{
+        name: string
+        label?: string
+        role?: string
+        roleSource?: string
+        dataType?: string
+        distinctCount?: number
+        nullRate?: number
+        distinctValues?: unknown[]
+      }>
+      sample?: unknown[][]
+      measures?: Array<{ name: string }>
+      dims?: Array<{ name: string }>
+    }>('GET', `/dataset/${id}/profile`),
+  /** 手动触发字段自学习 */
+  learn: (id: string) => http<{ ok: boolean; error?: string }>('POST', `/dataset/${id}/learn`)
+}
+
+export type GlossaryItemVO = {
+  id: number
+  term: string
+  type: string
+  datasetId?: string
+  canonicalField?: string
+  aliases?: string[]
+  values?: unknown[]
+  status: string
+  source?: string
+  confidence?: number
+  createdAt?: number
+  updatedAt?: number
+}
+
+export const glossaryApi = {
+  list: (type?: string, status?: string) =>
+    http<GlossaryItemVO[]>(
+      'GET',
+      `/glossary${type || status ? `?${type ? `type=${type}` : ''}${type && status ? '&' : ''}${status ? `status=${status}` : ''}` : ''}`
+    ),
+  confirm: (id: number) => http<GlossaryItemVO>('POST', `/glossary/${id}/confirm`),
+  rename: (id: number, term: string, aliases?: string[]) =>
+    http<GlossaryItemVO>('PUT', `/glossary/${id}/rename`, { term, aliases: aliases || [] }),
+  remove: (id: number) => http<void>('DELETE', `/glossary/${id}`)
+}
+
+/** 指标注册表（阶段2「指标确认」：draft → confirmed，agg/unit 权威口径） */
+export type IndicatorVO = {
+  id: number
+  datasetId: string
+  fieldName: string
+  name: string
+  agg?: string
+  unit?: string
+  formula?: string
+  description?: string
+  status: 'draft' | 'confirmed' | 'deprecated'
+  source?: string
+  confidence?: number
+  createdAt?: number
+  updatedAt?: number
+}
+
+export type IndicatorUpsertBody = {
+  datasetId: string
+  fieldName: string
+  name: string
+  agg?: string
+  unit?: string
+  formula?: string
+  description?: string
+  status?: string
+  confidence?: number
+}
+
+export const indicatorApi = {
+  byDataset: (datasetId: string) => http<IndicatorVO[]>('GET', `/indicators/dataset/${datasetId}`),
+  create: (body: IndicatorUpsertBody) => http<IndicatorVO>('POST', '/indicators', body),
+  confirm: (id: number) => http<IndicatorVO>('POST', `/indicators/${id}/confirm`),
+  deprecate: (id: number) => http<IndicatorVO>('POST', `/indicators/${id}/deprecate`),
+  remove: (id: number) => http<void>('DELETE', `/indicators/${id}`)
 }

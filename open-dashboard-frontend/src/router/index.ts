@@ -97,6 +97,12 @@ export const router = createRouter({
       name: 'report-preview',
       component: () => import('../views/reports/preview.vue'),
       meta: { title: '预览报告', fullBleed: true }
+    },
+    {
+      path: '/dimensions',
+      name: 'dimensions',
+      component: () => import('../dimension/views/DimensionManage.vue'),
+      meta: { title: '维度管理', fullBleed: true }
     }
   ]
 })
