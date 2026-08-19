@@ -35,10 +35,29 @@ public class DatasetController {
 
     private final DatasetService service;
     private final AskableDatasetService askable;
+    private final io.opendashboard.application.conversation.BiPlatformService bi;
 
-    public DatasetController(DatasetService service, AskableDatasetService askable) {
+    public DatasetController(
+            DatasetService service,
+            AskableDatasetService askable,
+            io.opendashboard.application.conversation.BiPlatformService bi
+    ) {
         this.service = service;
         this.askable = askable;
+        this.bi = bi;
+    }
+
+    /** 字段自学习画像（角色/统计/采样），供数据集详情页展示学习成果。 */
+    @GetMapping("/{id}/profile")
+    public java.util.Map<String, Object> profile(@PathVariable String id) {
+        return bi.profileDataset(id);
+    }
+
+    /** 手动触发字段自学习（对已有数据集补学/重学；录入时已自动触发）。 */
+    @PostMapping("/{id}/learn")
+    @RequirePermission("dataset:manage")
+    public java.util.Map<String, Object> learn(@PathVariable String id) {
+        return bi.learnDataset(id);
     }
 
     @GetMapping

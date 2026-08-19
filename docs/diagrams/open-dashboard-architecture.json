@@ -1,0 +1,409 @@
+{
+  "schema_version": 1,
+  "mode": "architecture",
+  "template_type": "architecture",
+  "style": 3,
+  "quality_profile": "standard",
+  "width": 960,
+  "height": 940,
+  "title": "Open Dashboard — 4A 现行架构",
+  "subtitle": "BI 看板 / 对话问数 / 生成看板 · 业务 · 应用 · 数据 · 技术",
+  "containers": [
+    {
+      "id": "frontend",
+      "x": 40,
+      "y": 150,
+      "width": 880,
+      "height": 180,
+      "label": "Vue 3 Web 前端",
+      "sublabel": ":8088 · Vite / TS / Pinia / ECharts",
+      "header_prefix": "01"
+    },
+    {
+      "id": "harness",
+      "x": 40,
+      "y": 385,
+      "width": 880,
+      "height": 170,
+      "label": "AI Harness",
+      "sublabel": "Python FastAPI :8091 · 编排与 SSE",
+      "header_prefix": "02"
+    },
+    {
+      "id": "backend",
+      "x": 40,
+      "y": 610,
+      "width": 880,
+      "height": 140,
+      "label": "Backend API",
+      "sublabel": "Spring Boot COLA :8080 · JDK 21",
+      "header_prefix": "03"
+    },
+    {
+      "id": "data",
+      "x": 40,
+      "y": 805,
+      "width": 880,
+      "height": 110,
+      "label": "持久化与数据",
+      "sublabel": "配置库 + 外部业务库 + Query 链路",
+      "header_prefix": "04"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "browser",
+      "kind": "rect",
+      "x": 60,
+      "y": 76,
+      "width": 210,
+      "height": 56,
+      "label": "浏览器 / 用户",
+      "sublabel": "分析 · 报告 · 分享读者",
+      "fill": "#0b3b5e",
+      "stroke": "#94a3b8",
+      "flat": true
+    },
+    {
+      "id": "appshell",
+      "kind": "double_rect",
+      "x": 60,
+      "y": 200,
+      "width": 190,
+      "height": 56,
+      "label": "AppShell 壳 / 路由",
+      "sublabel": "App.vue · router · 工作台",
+      "fill": "#0a4b78",
+      "stroke": "#38bdf8",
+      "flat": true
+    },
+    {
+      "id": "biz-modules",
+      "kind": "rect",
+      "x": 285,
+      "y": 200,
+      "width": 280,
+      "height": 56,
+      "label": "业务模块",
+      "sublabel": "workbench · datasource · dataset · dashboard · report · conversation",
+      "fill": "#0a4b78",
+      "stroke": "#38bdf8",
+      "flat": true
+    },
+    {
+      "id": "editor-host",
+      "kind": "hexagon",
+      "x": 600,
+      "y": 200,
+      "width": 190,
+      "height": 56,
+      "label": "仪表盘编辑器",
+      "sublabel": "HiFi Host + Adapter",
+      "fill": "#0b3b5e",
+      "stroke": "#38bdf8",
+      "flat": true
+    },
+    {
+      "id": "base-cap",
+      "kind": "rect",
+      "x": 830,
+      "y": 200,
+      "width": 90,
+      "height": 56,
+      "label": "基础能力",
+      "sublabel": "ECharts·Umo",
+      "fill": "#0b3b5e",
+      "stroke": "#94a3b8",
+      "flat": true
+    },
+    {
+      "id": "sse",
+      "kind": "rect",
+      "x": 730,
+      "y": 425,
+      "width": 170,
+      "height": 52,
+      "label": "SSE 会话",
+      "sublabel": "conversations/{id}/runs",
+      "fill": "#123c5a",
+      "stroke": "#a855f7",
+      "flat": true
+    },
+    {
+      "id": "sqlbot",
+      "kind": "rect",
+      "x": 60,
+      "y": 425,
+      "width": 210,
+      "height": 52,
+      "label": "SQLBot 管道",
+      "sublabel": "schema→抽样→SQL→校验",
+      "fill": "#123c5a",
+      "stroke": "#a855f7",
+      "flat": true
+    },
+    {
+      "id": "lead-loop",
+      "kind": "hexagon",
+      "x": 340,
+      "y": 425,
+      "width": 210,
+      "height": 52,
+      "label": "Lead 生成环",
+      "sublabel": "write_todos · 质检闸",
+      "fill": "#0a4b78",
+      "stroke": "#a855f7",
+      "flat": true
+    },
+    {
+      "id": "tools",
+      "kind": "rect",
+      "x": 320,
+      "y": 505,
+      "width": 320,
+      "height": 46,
+      "label": "工具面",
+      "sublabel": "od_bi · guard.py · memory · knowledge",
+      "fill": "#123c5a",
+      "stroke": "#a855f7",
+      "flat": true
+    },
+    {
+      "id": "adapter",
+      "kind": "rect",
+      "x": 60,
+      "y": 650,
+      "width": 160,
+      "height": 52,
+      "label": "Adapter",
+      "sublabel": "Controller/Security",
+      "fill": "#0a4b78",
+      "stroke": "#38bdf8",
+      "flat": true
+    },
+    {
+      "id": "application",
+      "kind": "rect",
+      "x": 260,
+      "y": 650,
+      "width": 180,
+      "height": 52,
+      "label": "Application",
+      "sublabel": "AppService/Query",
+      "fill": "#0a4b78",
+      "stroke": "#38bdf8",
+      "flat": true
+    },
+    {
+      "id": "domain",
+      "kind": "rect",
+      "x": 480,
+      "y": 650,
+      "width": 160,
+      "height": 52,
+      "label": "Domain",
+      "sublabel": "模型/Port/AuthContext",
+      "fill": "#0a4b78",
+      "stroke": "#38bdf8",
+      "flat": true
+    },
+    {
+      "id": "infra",
+      "kind": "rect",
+      "x": 680,
+      "y": 650,
+      "width": 220,
+      "height": 52,
+      "label": "Infrastructure",
+      "sublabel": "JDBC/Repo/Gateway/Flyway",
+      "fill": "#0a4b78",
+      "stroke": "#38bdf8",
+      "flat": true
+    },
+    {
+      "id": "pg",
+      "kind": "cylinder",
+      "x": 80,
+      "y": 850,
+      "width": 200,
+      "height": 46,
+      "label": "PostgreSQL",
+      "sublabel": ":5434 · de_* · Flyway",
+      "fill": "#082f49",
+      "stroke": "#38bdf8"
+    },
+    {
+      "id": "bizdb",
+      "kind": "cylinder",
+      "x": 350,
+      "y": 850,
+      "width": 200,
+      "height": 46,
+      "label": "外部业务库",
+      "sublabel": "MySQL/PG · 仅后端 JDBC",
+      "fill": "#082f49",
+      "stroke": "#06d6a0"
+    },
+    {
+      "id": "query",
+      "kind": "rect",
+      "x": 620,
+      "y": 850,
+      "width": 265,
+      "height": 46,
+      "label": "Query 链路",
+      "sublabel": "encode→chartQuery/datasetQuery",
+      "fill": "#0a4b78",
+      "stroke": "#38bdf8",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "id": "user-web",
+      "source": "browser",
+      "target": "appshell",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "read"
+    },
+    {
+      "id": "shell-modules",
+      "source": "appshell",
+      "target": "biz-modules",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control"
+    },
+    {
+      "id": "modules-editor",
+      "source": "biz-modules",
+      "target": "editor-host",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control"
+    },
+    {
+      "id": "editor-base",
+      "source": "editor-host",
+      "target": "base-cap",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "read"
+    },
+    {
+      "id": "web-harness-sse",
+      "source": "biz-modules",
+      "target": "sse",
+      "source_port": "right",
+      "target_port": "top",
+      "flow": "control",
+      "label": "POST runs/SSE",
+      "label_style": "offset"
+    },
+    {
+      "id": "web-harness-sqlbot",
+      "source": "appshell",
+      "target": "sqlbot",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "read",
+      "label": "问数/生成"
+    },
+    {
+      "id": "adapter-application",
+      "source": "adapter",
+      "target": "application",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "read"
+    },
+    {
+      "id": "application-domain",
+      "source": "application",
+      "target": "domain",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "read"
+    },
+    {
+      "id": "domain-infra",
+      "source": "domain",
+      "target": "infra",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "control"
+    },
+    {
+      "id": "infra-pg",
+      "source": "infra",
+      "target": "pg",
+      "source_port": "left",
+      "target_port": "top",
+      "flow": "data",
+      "label": "JDBC"
+    },
+    {
+      "id": "infra-bizdb",
+      "source": "infra",
+      "target": "bizdb",
+      "source_port": "bottom",
+      "target_port": "top",
+      "flow": "data",
+      "label": "JDBC 业务"
+    },
+    {
+      "id": "pg-query",
+      "source": "pg",
+      "target": "query",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "read",
+      "label": "QuerySpec"
+    },
+    {
+      "id": "bizdb-query",
+      "source": "bizdb",
+      "target": "query",
+      "source_port": "right",
+      "target_port": "left",
+      "flow": "read",
+      "label": "ResultTable"
+    }
+  ],
+  "legend_orientation": "horizontal",
+  "legend_x": 48,
+  "legend_y": 928,
+  "legend": [
+    {
+      "flow": "read",
+      "label": "request/read"
+    },
+    {
+      "flow": "control",
+      "label": "trigger"
+    },
+    {
+      "flow": "data",
+      "label": "data write"
+    },
+    {
+      "flow": "feedback",
+      "label": "async/SSE"
+    }
+  ],
+  "blueprint_title_block": {
+    "title": "OPEN DASHBOARD 4A",
+    "subtitle": "CURRENT ARCHITECTURE",
+    "center_caption": "STYLE 3",
+    "left_caption": "REV: v0.4",
+    "right_caption": "DWG: OD-ARCH-001",
+    "width": 230,
+    "height": 76,
+    "x": 690,
+    "y": 848
+  },
+  "footer": "Open Dashboard · Vue 3 + Spring Boot COLA + Python Harness + PostgreSQL",
+  "footer_x": 48,
+  "footer_y": 900
+}

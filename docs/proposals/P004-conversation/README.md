@@ -12,6 +12,7 @@ design:
   - docs/proposals/P004-conversation/multi-turn-design.md
   - docs/proposals/P004-conversation/harness-comparison.md
   - docs/proposals/P004-conversation/harness-evaluation.md
+  - docs/proposals/P004-conversation/memory-knowledge-design.md
 acceptance: docs/proposals/P004-conversation/acceptance.yaml
 gates:
   proposal: accepted
@@ -42,6 +43,7 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | 多轮 / 单图改造 / 删图（对话驱动） | [multi-turn-design.md](./multi-turn-design.md) |
 | Harness 业界对标（dsh / DeerFlow / 问数 对比） | [harness-comparison.md](./harness-comparison.md) |
 | Harness 质量评测（指标 / 案例 / 分层） | [harness-evaluation.md](./harness-evaluation.md) |
+| 记忆 / 知识体系 / 指标语义 / 数据集自学习（端到端 POC 方案） | [memory-knowledge-design.md](./memory-knowledge-design.md) |
 | 原型 | 当前增量 [`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html)；**尚未冻结快照** |
 | 代码落点 | `open-dashboard-frontend/src/conversation/` · `opendashboard-harness/` · Java `/api/internal/bi/*` |
 | 不要做 | 问数结果卡双按钮（归 P006）；权限消费面（归 P008）；记忆/知识库（归 P010）；SQLBot 出现在非编辑器页（归 P007） |
@@ -139,3 +141,4 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | 2026-08-18 | 新增 [multi-turn-design.md](./multi-turn-design.md)（对话驱动多轮/单图改造/删图）与 [harness-comparison.md](./harness-comparison.md)（dsh / DeerFlow / 问数栈对比），并登记文首设计清单与开发入口 |
 | 2026-08-18 | 新增 [harness-evaluation.md](./harness-evaluation.md)：问数/看板生成的 Harness 质量评测体系（分层评测 + golden case 集 + 量化指标 + 快照回归），登记文首清单 |
 | 2026-08-18 | 落地 eval runner / 事件日志 / Lead 多轮硬路由；记忆与术语知识库划到 [P010](../P010-user-memory-ask-knowledge/) |
+| 2026-08-19 | 按 [memory-knowledge-design.md](./memory-knowledge-design.md) 落地阶段 2 知识体系（de_indicator/de_glossary + `<knowledge>` 注入 + SKILL.md）、阶段 3 Agent 语义（od_interpret_fields/意图规划/emit 探活/confirmed 指标 KPI）、阶段 4 用户记忆（deermem 风格 memory_store + memory_add/search + flush）；新增验收 PR-KB-01..04 / PR-SA-01..05 / PR-UM-01..04 |

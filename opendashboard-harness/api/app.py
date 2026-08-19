@@ -413,6 +413,7 @@ def _build_run_payload(
     run_id: str,
     body: RunBody,
     conv: Dict[str, Any],
+    x_user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     dataset_ids = body.datasetIds if body.datasetIds is not None else (conv.get("datasetIds") or [])
     hist = [
@@ -431,6 +432,7 @@ def _build_run_payload(
         "linkedDashboardId": conv.get("linkedDashboardId"),
         "selectedChartId": body.selectedChartId,
         "selectedEncode": body.selectedEncode,
+        "userId": _owner(x_user_id),
         "history": hist[:-1] if hist and hist[-1].get("role") == "user" else hist,
     }
 
@@ -527,7 +529,14 @@ async def conversation_runs(
             controller.observe_chunk(finish_chunk)
             yield finish_chunk
             controller.fail("exception")
+            return
         controller.complete()
+        try:
+            from agent.memory_store import flush_session_to_memory
+
+            flush_session_to_memory(owner, cid, session_store.list_messages(cid))
+        except Exception:
+            pass
 
     return StreamingResponse(
         gen(),

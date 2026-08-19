@@ -26,18 +26,27 @@ public class DatasetService {
     private final ObjectProvider<DatasourceService> datasourceService;
     private final StubQueryService stubQueryService;
     private final FileTableStore fileTables;
+    private final ObjectProvider<io.opendashboard.application.conversation.DatasetProfileLearner> learner;
     private final ConcurrentHashMap<String, DatasetDetailVO> mem = new ConcurrentHashMap<>();
+    private final java.util.concurrent.ExecutorService learnExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "dataset-learn");
+                t.setDaemon(true);
+                return t;
+            });
 
     public DatasetService(
             ObjectProvider<DatasetGateway> repository,
             ObjectProvider<DatasourceService> datasourceService,
             StubQueryService stubQueryService,
-            FileTableStore fileTables
+            FileTableStore fileTables,
+            ObjectProvider<io.opendashboard.application.conversation.DatasetProfileLearner> learner
     ) {
         this.repository = repository;
         this.datasourceService = datasourceService;
         this.stubQueryService = stubQueryService;
         this.fileTables = fileTables;
+        this.learner = learner;
         seedTemplateDemoDatasets();
     }
 
@@ -99,22 +108,34 @@ public class DatasetService {
 
     public DatasetDetailVO create(DatasetCreateRequest req) {
         DatasetGateway repo = repository.getIfAvailable();
-        if (repo != null) return repo.create(req);
-        String id = "ds_" + System.currentTimeMillis();
-        DatasetDetailVO detail = new DatasetDetailVO(
-                new DatasetMetaVO(
-                        id,
-                        req.name() == null || req.name().isBlank() ? "未命名数据集" : req.name(),
-                        req.folder() == null ? "未分组" : req.folder(),
-                        req.datasourceId(),
-                        req.tableName(),
-                        "ready",
-                        System.currentTimeMillis()
-                ),
-                req.fields() == null ? List.of() : req.fields()
-        );
-        mem.put(id, detail);
+        DatasetDetailVO detail;
+        if (repo != null) {
+            detail = repo.create(req);
+        } else {
+            String id = "ds_" + System.currentTimeMillis();
+            detail = new DatasetDetailVO(
+                    new DatasetMetaVO(
+                            id,
+                            req.name() == null || req.name().isBlank() ? "未命名数据集" : req.name(),
+                            req.folder() == null ? "未分组" : req.folder(),
+                            req.datasourceId(),
+                            req.tableName(),
+                            "ready",
+                            System.currentTimeMillis()
+                    ),
+                    req.fields() == null ? List.of() : req.fields()
+            );
+            mem.put(id, detail);
+        }
+        triggerLearn(detail.meta().id());
         return detail;
+    }
+
+    /** 数据集录入后异步触发自学习（不阻塞录入返回；采样失败只记日志不阻断）。 */
+    private void triggerLearn(String datasetId) {
+        io.opendashboard.application.conversation.DatasetProfileLearner l = learner.getIfAvailable();
+        if (l == null) return;
+        learnExecutor.submit(() -> l.learn(datasetId));
     }
 
     public DatasetDetailVO importFile(String filename, byte[] bytes) {

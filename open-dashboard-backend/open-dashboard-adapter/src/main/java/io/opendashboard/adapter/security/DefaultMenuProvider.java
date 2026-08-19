@@ -27,6 +27,7 @@ public class DefaultMenuProvider implements MenuProvider {
         }
         items.add(new MenuItem("datasources", "数据源", "/datasources"));
         items.add(new MenuItem("datasets", "数据集", "/datasets"));
+        items.add(new MenuItem("dimensions", "维度管理", "/dimensions"));
         items.add(new MenuItem("dashboards", "仪表盘", "/dashboards"));
         items.add(new MenuItem("reports", "报告", "/reports"));
         return List.copyOf(items);

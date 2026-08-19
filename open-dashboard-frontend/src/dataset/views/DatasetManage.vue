@@ -4,10 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   datasetApi,
   datasourceApi,
+  indicatorApi,
   type DatasetDetailVO,
   type DatasetFieldVO,
   type DatasetMetaVO,
   type DatasourceVO,
+  type IndicatorVO,
   type TableItem
 } from '../api'
 
@@ -30,11 +32,23 @@ const sources = ref<DatasourceVO[]>([])
 const selectedId = ref<string | null>(null)
 const detail = ref<DatasetDetailVO | null>(null)
 const preview = ref<{ columns: Array<{ name: string; type: string }>; rows: unknown[][] } | null>(null)
+const fieldProfile = ref<Awaited<ReturnType<typeof datasetApi.profile>> | null>(null)
+const indicators = ref<IndicatorVO[]>([])
+const indLoading = ref(false)
+const showIndForm = ref(false)
+const indForm = ref({
+  fieldName: '',
+  name: '',
+  agg: 'SUM',
+  unit: '',
+  formula: ''
+})
 const search = ref('')
 const folderFilter = ref('全部')
-const tab = ref<'fields' | 'preview' | 'lineage'>('fields')
+const tab = ref<'fields' | 'preview' | 'indicators' | 'lineage'>('fields')
 const error = ref('')
 const loading = ref(false)
+const learning = ref(false)
 const showStudio = ref(false)
 const saving = ref(false)
 const studioEditing = ref(false)
@@ -118,6 +132,34 @@ const filteredPool = computed(() => {
 const dimFields = computed(() => studio.value.fields.filter((f) => f.group === 'dim'))
 const quotaFields = computed(() => studio.value.fields.filter((f) => f.group === 'quota'))
 
+/** 字段的自动识别角色（learned role），供字段表展示"系统识别"列 */
+function learnedRoleOf(fieldName: string): { role: string; src: string } | null {
+  const f = fieldProfile.value?.fields.find((x) => x.name === fieldName)
+  if (!f || !f.role || f.roleSource !== 'learned') return null
+  return { role: f.role, src: f.roleSource }
+}
+const learnedRoles = computed(() => {
+  const m = new Map<string, string>()
+  for (const f of fieldProfile.value?.fields || []) {
+    if (f.role && f.roleSource === 'learned') m.set(f.name, f.role)
+  }
+  return m
+})
+const hasLearned = computed(() => learnedRoles.value.size > 0)
+
+function roleLabel(role: string): string {
+  const map: Record<string, string> = {
+    dim: '维度',
+    measure: '指标',
+    time: '时间',
+    flag: '标志位',
+    id: 'ID',
+    junk: '忽略',
+    text: '文本'
+  }
+  return map[role] || role
+}
+
 function isNumericType(t?: string) {
   const u = (t || '').toUpperCase()
   return (
@@ -171,6 +213,13 @@ async function selectDs(id: string, { keepQuery = false }: { keepQuery?: boolean
   preview.value = null
   try {
     detail.value = await datasetApi.get(id)
+    // 加载字段自学习画像（角色/统计/采样），展示"系统自动识别"成果
+    try {
+      fieldProfile.value = await datasetApi.profile(id)
+    } catch {
+      fieldProfile.value = null // 学习未完成或失败时仅展示基础字段表
+    }
+    loadIndicators()
     if (keepQuery) {
       router.replace({ path: `/datasets/${id}`, query: { ...route.query } })
     } else {
@@ -188,6 +237,117 @@ async function loadPreview() {
   if (!selectedId.value) return
   try {
     preview.value = await datasetApi.preview(selectedId.value)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+/** 手动触发字段自学习：重算角色/统计/采样，刷新字段画像 */
+const learnConfirm = ref(false)
+const learnResult = ref<{ fieldCount?: number; dimensionCount?: number; roleCounts?: Record<string, number> } | null>(null)
+
+function askLearn() {
+  learnConfirm.value = true
+}
+function cancelLearn() {
+  learnConfirm.value = false
+}
+async function confirmLearn() {
+  learnConfirm.value = false
+  if (!selectedId.value) return
+  learning.value = true
+  error.value = ''
+  try {
+    const r = await datasetApi.learn(selectedId.value)
+    if (r && r.ok === false) {
+      error.value = r.error || '学习失败'
+    } else {
+      fieldProfile.value = await datasetApi.profile(selectedId.value)
+      if (tab.value === 'indicators') await loadIndicators()
+      learnResult.value = {
+        fieldCount: (r as { fieldCount?: number })?.fieldCount,
+        dimensionCount: (r as { dimensionCount?: number })?.dimensionCount,
+        roleCounts: (r as { roleCounts?: Record<string, number> })?.roleCounts
+      }
+    }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    learning.value = false
+  }
+}
+function goDimensions() {
+  learnResult.value = null
+  void router.push('/dimensions')
+}
+function roleLabel2(r: string): string {
+  const map: Record<string, string> = { dim: '维度', measure: '指标', time: '时间', flag: '标志位', id: 'ID', junk: '忽略' }
+  return map[r] || r
+}
+
+/** 指标注册表（阶段2「指标确认」）：自学习 draft 候选 + 人工确认 confirmed */
+async function loadIndicators() {
+  if (!selectedId.value) return
+  indLoading.value = true
+  try {
+    indicators.value = await indicatorApi.byDataset(selectedId.value)
+  } catch {
+    indicators.value = []
+  } finally {
+    indLoading.value = false
+  }
+}
+
+async function confirmIndicator(ind: IndicatorVO) {
+  try {
+    const updated = await indicatorApi.confirm(ind.id)
+    const i = indicators.value.findIndex((x) => x.id === ind.id)
+    if (i >= 0) indicators.value[i] = updated
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function deprecateIndicator(ind: IndicatorVO) {
+  try {
+    const updated = await indicatorApi.deprecate(ind.id)
+    const i = indicators.value.findIndex((x) => x.id === ind.id)
+    if (i >= 0) indicators.value[i] = updated
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function removeIndicator(ind: IndicatorVO) {
+  try {
+    await indicatorApi.remove(ind.id)
+    indicators.value = indicators.value.filter((x) => x.id !== ind.id)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function addIndicator() {
+  if (!selectedId.value) return
+  const name = indForm.value.name.trim()
+  const field = indForm.value.fieldName.trim()
+  if (!name || !field) {
+    error.value = '指标名与字段必填'
+    return
+  }
+  try {
+    const created = await indicatorApi.create({
+      datasetId: selectedId.value,
+      fieldName: field,
+      name,
+      agg: indForm.value.agg || 'SUM',
+      unit: indForm.value.unit.trim() || undefined,
+      formula: indForm.value.formula.trim() || undefined,
+      status: 'draft'
+    })
+    indicators.value.unshift(created)
+    showIndForm.value = false
+    indForm.value = { fieldName: '', name: '', agg: 'SUM', unit: '', formula: '' }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -644,6 +804,9 @@ watch(tab, (t) => {
             </p>
           </div>
           <div class="head-acts">
+            <button type="button" class="btn sm" :disabled="learning" @click="askLearn">
+              {{ learning ? '学习中…' : '重新学习' }}
+            </button>
             <button type="button" class="btn sm" @click="openStudio('edit')">编辑</button>
           </div>
         </header>
@@ -651,17 +814,23 @@ watch(tab, (t) => {
         <div class="work">
           <div class="tabs">
             <button type="button" :class="{ on: tab === 'fields' }" @click="tab = 'fields'">字段</button>
+            <button type="button" :class="{ on: tab === 'indicators' }" @click="tab = 'indicators'">指标确认</button>
             <button type="button" :class="{ on: tab === 'preview' }" @click="tab = 'preview'">预览</button>
             <button type="button" :class="{ on: tab === 'lineage' }" @click="tab = 'lineage'">血缘</button>
           </div>
 
           <div v-if="tab === 'fields'" class="panel">
+            <div v-if="hasLearned" class="learn-banner">
+              <b>系统已自动识别字段角色</b>
+              <span>基于真实采样统计：ID/标志位/时间/维度/指标。可在问数与生成看板时直接使用。</span>
+            </div>
             <table class="tbl">
               <thead>
                 <tr>
                   <th>字段</th>
                   <th>显示名</th>
                   <th>角色</th>
+                  <th>自动识别</th>
                   <th>类型</th>
                   <th>来源</th>
                 </tr>
@@ -673,6 +842,14 @@ watch(tab, (t) => {
                   <td>
                     <span class="tag" :class="f.group">{{ f.group === 'dim' ? '维度' : '指标' }}</span>
                   </td>
+                  <td>
+                    <template v-if="learnedRoles.get(f.name)">
+                      <span class="tag lrn" :class="learnedRoles.get(f.name)">
+                        {{ roleLabel(learnedRoles.get(f.name)!) }}
+                      </span>
+                    </template>
+                    <span v-else class="muted">—</span>
+                  </td>
                   <td class="muted">{{ f.dataType || '—' }}</td>
                   <td>
                     <template v-if="f.origin === 'calc'">
@@ -683,7 +860,81 @@ watch(tab, (t) => {
                   </td>
                 </tr>
                 <tr v-if="!detail.fields.length">
-                  <td colspan="5" class="muted center">暂无字段，点「编辑」配置</td>
+                  <td colspan="6" class="muted center">暂无字段，点「编辑」配置</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-else-if="tab === 'indicators'" class="panel">
+            <div class="ind-head">
+              <div class="ind-title">
+                <b>指标注册表</b>
+                <span class="muted tiny">自学习产出候选（draft），确认后成为权威口径（agg/unit），问数与生成看板优先使用。</span>
+              </div>
+              <button type="button" class="btn sm" @click="showIndForm = !showIndForm">
+                {{ showIndForm ? '收起' : '手动新增' }}
+              </button>
+            </div>
+
+            <div v-if="showIndForm" class="ind-form">
+              <input v-model="indForm.fieldName" placeholder="字段名（如 spending_amount）" class="ipt sm" />
+              <input v-model="indForm.name" placeholder="业务名（如 消费金额）" class="ipt sm" />
+              <select v-model="indForm.agg" class="ipt sm">
+                <option value="SUM">SUM</option>
+                <option value="AVG">AVG</option>
+                <option value="COUNT">COUNT</option>
+                <option value="MIN">MIN</option>
+                <option value="MAX">MAX</option>
+              </select>
+              <input v-model="indForm.unit" placeholder="单位（元/万元/%/件）" class="ipt sm" />
+              <input v-model="indForm.formula" placeholder="口径说明（可选）" class="ipt sm grow" />
+              <button type="button" class="btn sm primary" @click="addIndicator">新增</button>
+            </div>
+
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>业务名</th>
+                  <th>字段</th>
+                  <th>聚合</th>
+                  <th>单位</th>
+                  <th>口径</th>
+                  <th>状态</th>
+                  <th>可信度</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="ind in indicators" :key="ind.id">
+                  <td>{{ ind.name }}</td>
+                  <td><code>{{ ind.fieldName }}</code></td>
+                  <td>{{ ind.agg || '—' }}</td>
+                  <td>{{ ind.unit || '—' }}</td>
+                  <td class="muted" :title="ind.formula">{{ ind.formula || '—' }}</td>
+                  <td>
+                    <span class="tag" :class="ind.status">
+                      {{ ind.status === 'confirmed' ? '已确认' : ind.status === 'deprecated' ? '已作废' : '候选' }}
+                    </span>
+                  </td>
+                  <td class="muted">{{ Math.round((ind.confidence || 0) * 100) }}%</td>
+                  <td class="ind-ops">
+                    <template v-if="ind.status === 'draft'">
+                      <button type="button" class="link" @click="confirmIndicator(ind)">确认</button>
+                      <button type="button" class="link danger" @click="removeIndicator(ind)">删除</button>
+                    </template>
+                    <template v-else-if="ind.status === 'confirmed'">
+                      <button type="button" class="link" @click="deprecateIndicator(ind)">作废</button>
+                    </template>
+                    <template v-else>
+                      <button type="button" class="link" @click="confirmIndicator(ind)">恢复</button>
+                    </template>
+                  </td>
+                </tr>
+                <tr v-if="!indLoading && !indicators.length">
+                  <td colspan="8" class="muted center">
+                    暂无候选指标。可在「字段」tab 看自动识别结果，或点「手动新增」录入。
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -966,6 +1217,47 @@ watch(tab, (t) => {
         <div class="actions">
           <button type="button" class="btn ghost sm" @click="showCalc = false">取消</button>
           <button type="button" class="btn primary sm" @click="saveCalcField">加入</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 重新学习：确认弹窗（说明学习逻辑） -->
+    <div v-if="learnConfirm" class="modal-mask" @click.self="cancelLearn">
+      <div class="learn-dlg" role="dialog" aria-label="确认重新学习">
+        <div class="learn-ico">🧠</div>
+        <h3>重新学习字段</h3>
+        <p class="learn-lead">系统将重新分析「{{ detail?.meta.name }}」的字段，自动识别角色并抽取公共维度。</p>
+        <div class="learn-steps">
+          <div class="step"><i>1</i><span><b>采样</b>读取表内最多 30 行真实数据</span></div>
+          <div class="step"><i>2</i><span><b>统计</b>逐字段计算取值分布 / 唯一值数 / 空值率</span></div>
+          <div class="step"><i>3</i><span><b>识别</b>按统计判定：维度 / 指标 / 时间 / ID / 标志位</span></div>
+          <div class="step"><i>4</i><span><b>抽取</b>低基数维度连同取值，沉淀为公共维度</span></div>
+        </div>
+        <p class="learn-note">学习结果会立即生效：字段角色用于问数与看板生成，公共维度可在「维度管理」确认后使用。</p>
+        <div class="learn-ft">
+          <button type="button" class="btn ghost" @click="cancelLearn">取消</button>
+          <button type="button" class="btn primary" :disabled="learning" @click="confirmLearn">
+            {{ learning ? '学习中…' : '开始学习' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 学习结果：确认弹窗（展示结果 + 引导去维度管理） -->
+    <div v-if="learnResult" class="modal-mask" @click.self="learnResult = null">
+      <div class="learn-dlg" role="dialog" aria-label="学习完成">
+        <div class="learn-ico ok">✅</div>
+        <h3>学习完成</h3>
+        <p class="learn-lead">已识别 {{ learnResult.fieldCount ?? '—' }} 个字段角色，抽取 {{ learnResult.dimensionCount ?? 0 }} 个公共维度。</p>
+        <div v-if="learnResult.roleCounts" class="learn-roles">
+          <span v-for="(n, r) in learnResult.roleCounts" :key="r" class="role-chip">
+            {{ roleLabel2(r) }} <b>{{ n }}</b>
+          </span>
+        </div>
+        <p class="learn-note">公共维度可在「维度管理」中查看值、确认或改名，确认后用于查询条预填与问数意图对齐。</p>
+        <div class="learn-ft">
+          <button type="button" class="btn ghost" @click="learnResult = null">留在本页</button>
+          <button type="button" class="btn primary" @click="goDimensions">去维度管理 →</button>
         </div>
       </div>
     </div>
@@ -1366,6 +1658,118 @@ watch(tab, (t) => {
   background: #fff7e6;
   color: #d46b08;
   margin-right: 0.35rem;
+}
+.tag.lrn {
+  border: 1px solid #d9d9d9;
+  background: #fafafa;
+  color: #595959;
+}
+.tag.lrn.dim {
+  background: #e6f4ff;
+  border-color: #91caff;
+  color: #1677ff;
+}
+.tag.lrn.measure {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+  color: #389e0d;
+}
+.tag.lrn.time {
+  background: #fff0f6;
+  border-color: #ffadd2;
+  color: #c41d7f;
+}
+.tag.lrn.flag {
+  background: #f9f0ff;
+  border-color: #d3adf7;
+  color: #722ed1;
+}
+.tag.lrn.id {
+  background: #f5f5f5;
+  border-color: #d9d9d9;
+  color: #8c8c8c;
+}
+.tag.lrn.junk {
+  background: #fff1f0;
+  border-color: #ffa39e;
+  color: #cf1322;
+}
+.learn-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #f0f7ff;
+  border: 1px solid #b7d7f5;
+  font-size: 0.72rem;
+  color: #555;
+}
+.learn-banner b {
+  color: #1677ff;
+  font-weight: 600;
+}
+.ind-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ind-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ind-title b {
+  font-size: 0.85rem;
+}
+.ind-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: #f7f8fa;
+  border: 1px solid #e8eaef;
+  flex-wrap: wrap;
+}
+.ind-form .ipt.grow {
+  flex: 1;
+  min-width: 160px;
+}
+.ind-ops {
+  display: flex;
+  gap: 10px;
+  white-space: nowrap;
+}
+.link {
+  border: none;
+  background: none;
+  color: #1677ff;
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 0;
+}
+.link.danger {
+  color: #cf1322;
+}
+.tag.draft {
+  background: #fffbe6;
+  border-color: #ffe58f;
+  color: #d48806;
+}
+.tag.confirmed {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+  color: #389e0d;
+}
+.tag.deprecated {
+  background: #f5f5f5;
+  border-color: #d9d9d9;
+  color: #8c8c8c;
 }
 .expr {
   font-size: 0.72rem;
@@ -1858,5 +2262,96 @@ watch(tab, (t) => {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
+}
+.learn-dlg {
+  width: min(440px, 92vw);
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+}
+.learn-ico {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--brand-soft, #eef2ff);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  margin-bottom: 14px;
+}
+.learn-ico.ok {
+  background: #f0fdf4;
+}
+.learn-dlg h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+.learn-lead {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted, #4b5563);
+  line-height: 1.55;
+}
+.learn-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.learn-steps .step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--ink, #111827);
+  line-height: 1.45;
+}
+.learn-steps .step i {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--brand-soft, #eef2ff);
+  color: var(--brand, #4f46e5);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+.learn-steps .step b {
+  font-weight: 650;
+}
+.learn-note {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--faint, #6b7280);
+  line-height: 1.5;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.learn-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.role-chip {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f5f7fa;
+  border: 1px solid var(--line, #dfe3ea);
+  color: var(--muted, #4b5563);
+}
+.role-chip b {
+  color: var(--ink, #111827);
+}
+.learn-ft {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>

@@ -3,6 +3,14 @@ export type {
   TableItem,
   DatasetFieldVO,
   DatasetMetaVO,
-  DatasetDetailVO
+  DatasetDetailVO,
+  GlossaryItemVO,
+  IndicatorVO,
+  IndicatorUpsertBody
 } from '../datasource/api'
-export { datasourceApi, datasetApi } from '../datasource/api'
+export {
+  datasourceApi,
+  datasetApi,
+  glossaryApi,
+  indicatorApi
+} from '../datasource/api'

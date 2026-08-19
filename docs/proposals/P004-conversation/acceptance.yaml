@@ -132,3 +132,190 @@ items:
     status: pass
     blocker_of_done: false
     requirements_target: PR-CONV-12
+  - id: PR-SL-01
+    title: 字段统计画像落库
+    gate: code
+    criterion: 数据集录入/手动触发后，de_dataset_field_profile 有每字段统计特征（distinct/null/数值范围/采样）。
+    method: api
+    command_or_path: POST /api/internal/bi/learn-dataset
+    expected: 返回 ok:true；schema 接口 fields 的 roleSource=learned。
+    evidence: "CSV 导入 ds_74ef3b81 自动触发；ds_1ea87e50 手动 learn-dataset 后 schema 返回 20 行采样，全部 src=learned。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SL-01
+  - id: PR-SL-02
+    title: 角色判定正确（统计判定，非关键词）
+    gate: acceptance
+    criterion: 字段角色由统计特征判定：ID 类（config_id/scene_id/tenant_id）→id，标志位（status/enable_flag/forward_auth_enabled）→flag，时间→time，名称→dim，正文→junk。
+    method: api
+    command_or_path: GET /api/internal/bi/datasets/{id}/schema
+    expected: 期望角色与 learned role 一致。
+    evidence: "ds_1ea87e50 全部关键字段通过：config_id/scene_id/tenant_id→id、status/enable_flag/forward_auth_enabled→flag、created_date→time、report_name→dim、report_summary→junk。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SL-02
+  - id: PR-SL-03
+    title: 采样进 schema
+    gate: code
+    criterion: od_get_schema 返回体含 ≥10 行真实采样，供 LLM 语义解释。
+    method: api
+    command_or_path: GET /api/internal/bi/datasets/{id}/schema
+    expected: sample 字段存在且 ≥10 行。
+    evidence: "ds_1ea87e50 schema sample=20 行（含真实 SQL 配置/状态值）。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SL-03
+  - id: PR-SL-04
+    title: 生成回归（无 ID/标志位聚合）
+    gate: acceptance
+    criterion: 无业务度量的数据集生成看板时，不产出「平均配置ID」「均值标志位」类无意义图。
+    method: ui
+    command_or_path: /conversations
+    expected: 看板图表全基于计数/合法度量维度，无 ID/标志位作为 value 聚合。
+    evidence: "ds_1ea87e50 确定性生成看板 #62：记录数 KPI + 产品标识汇总，value 均为 product（dim 计数），无 ID/标志位聚合。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SL-04
+  - id: PR-KB-01
+    title: 指标注册表 CRUD
+    gate: code
+    criterion: de_indicator 可 CRUD，含 agg/unit/口径/status/confidence；Learner 录入时写 draft 候选。
+    method: api
+    command_or_path: GET /api/indicators/dataset/{id} · POST /api/indicators/{id}/confirm
+    expected: 自学习产出 draft 候选（agg/unit 启发式）；确认后 status=confirmed。
+    evidence: "ds_77daa311 learn 后产出 amount(SUM,元)/qty(SUM,件) draft；确认 id=1 → confirmed。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-KB-01
+  - id: PR-KB-02
+    title: 词表对齐（别名命中）
+    gate: acceptance
+    criterion: 用户自然语言词（如「销售额」「门店」）经 de_glossary 别名命中 canonical 字段。
+    method: api
+    command_or_path: POST /api/internal/bi/resolve-intent
+    expected: glossary term/alias 命中字段，mapping 含该词，unresolved 为空。
+    evidence: "词表加「门店→channel」后问「各门店销售额对比」：mapping=[('商户','channel'),('收入','amount')]，unresolved=[]；无词表时该词无法命中。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-KB-02
+  - id: PR-KB-03
+    title: 知识注入（<knowledge> 冻结快照）
+    gate: code
+    criterion: harness transform_context 生成的 system 含 <knowledge> 块（confirmed 指标+词表），静态 prompt 不含知识。
+    method: api
+    command_or_path: opendashboard-harness/agent/context.py
+    expected: <knowledge> 作为独立块注入；同数据集集合走 120s 冻结缓存。
+    evidence: "context.transform_context 注入 format_knowledge_block 产物；lead 生成 run 正常消费（ds_77daa311 含 amount(SUM) confirmed 指标）。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-KB-03
+  - id: PR-KB-04
+    title: skills 指标字典
+    gate: code
+    criterion: skills/od-metrics/SKILL.md 存在，含已确认指标与词表，模型可读取。
+    method: api
+    command_or_path: opendashboard-harness/skills/od-metrics/SKILL.md
+    expected: frontmatter(name/description)+正文；confirmed 指标行含 agg/unit。
+    evidence: "SKILL.md 含「- amount → amount（SUM，元）」与「- 门店 → channel」。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-KB-04
+  - id: PR-SA-01
+    title: LLM 见采样
+    gate: code
+    criterion: od_get_schema 返回体含真实采样行（阶段1 sample 聚合列），供 LLM 语义解释。
+    method: api
+    command_or_path: GET /api/internal/bi/datasets/{id}/schema
+    expected: sample 字段存在且 ≥10 行。
+    evidence: "ds_1ea87e50 schema sample=20 行；od_interpret_fields 返回体带字段采样（config_id 采样为 JSON 长文本，可判 id/junk）。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-01
+  - id: PR-SA-02
+    title: 字段解释回写（自学习闭环）
+    gate: code
+    criterion: od_interpret_fields 对字段输出合理 role/含义，并回写 de_indicator.confidence 提升 + 别名进词表。
+    method: api
+    command_or_path: POST /api/internal/bi/interpret-fields
+    expected: measure 字段解释后 confidence 提升；别名写 de_glossary。
+    evidence: "interpret-fields amount(measure,aliases=[销售额,GMV])：amount confidence 0.5→0.77，glossary 新增 销售额/GMV→amount。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-02
+  - id: PR-SA-03
+    title: 意图→图表（趋势/对比/占比）
+    gate: acceptance
+    criterion: 「趋势/走势」→line；「对比/排行」→hbar；「占比/构成」→pie。
+    method: ui
+    command_or_path: /conversations
+    expected: 生成看板含对应图型。
+    evidence: "ds_77daa311「各区域对比」→region hbar；「渠道占比」→channel pie；ds_1ea87e50「按月份看趋势」→created_date line（enrich 补 line probe）。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-03
+  - id: PR-SA-04
+    title: emit 前数据探活
+    gate: code
+    criterion: rowCount=0 / 全 null / 查询失败 的图在 emit 前被剔除，不进看板。
+    method: api
+    command_or_path: opendashboard-harness/tools/od_bi.py _probe_patch
+    expected: 空图不进 apply-patch；全空则返回错误不生成看板。
+    evidence: "od_emit_patch 走 _probe_patch：每图先 query/chart 探活，空图剔除 chart+component ops；全部为空返回「所有图表数据为空」。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-04
+  - id: PR-SA-05
+    title: confirmed 指标进生成（KPI agg/unit 权威）
+    gate: acceptance
+    criterion: 数据集有 confirmed 指标时，生成看板 KPI 从 de_indicator 取 agg/unit，title 含指标名与单位。
+    method: ui
+    command_or_path: /conversations
+    expected: KPI title/encode 含 confirmed 指标名与单位。
+    evidence: "ds_77daa311 confirmed amount(SUM,元) → 生成 KPI「amount（元）」agg=SUM；用户记忆含万元偏好时 →「amount（万元）」。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-05
+  - id: PR-UM-01
+    title: 记忆写入
+    gate: code
+    criterion: memory_add 工具可写「用户偏好 X」，落盘 user 维度（deermem document）。
+    method: api
+    command_or_path: opendashboard-harness/agent/memory_store.py
+    expected: {user}/memory/{user}.json facts[] 含该偏好；revision 递增。
+    evidence: "remember_user_choice/add_fact 写入 u_e2e.json：facts[0].content=「金额统一用万元展示」category=preference。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-UM-01
+  - id: PR-UM-02
+    title: 记忆检索与注入
+    gate: code
+    criterion: memory_search 可召回（大小写不敏感子串），<memory> 块注入 system。
+    method: api
+    command_or_path: opendashboard-harness/agent/memory_store.py
+    expected: search 命中相关 fact；format_memory_block 输出 <system-reminder><memory>。
+    evidence: "search(u,'万元') 命中「以后金额用万元展示」；format_memory_block 输出 <memory> 块。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-UM-02
+  - id: PR-UM-03
+    title: 跨会话生效（偏好单位）
+    gate: acceptance
+    criterion: 会话 A 确认「金额用万元」→ 会话 B 生成默认万元单位。
+    method: ui
+    command_or_path: /conversations
+    expected: 会话 B 生成 KPI title 含「万元」。
+    evidence: "u_e2e 会话 A 说「以后金额统一用万元展示」→ 记忆落盘；会话 B 生成 KPI「amount（万元）」（无偏好用户为「amount（元）」。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-UM-03
+  - id: PR-UM-04
+    title: 压缩沉淀（run 结束 flush）
+    gate: code
+    criterion: 会话/run 结束关键结论自动进记忆（无手动操作）。
+    method: api
+    command_or_path: opendashboard-harness/api/app.py
+    expected: run 结束后 flush_session_to_memory 抽取偏好/纠正/决策进 user 记忆。
+    evidence: "conversation_runs gen() 末尾 flush；u_e2e 首轮对话自动沉淀「金额统一用万元展示」（LLM 抽取，category=preference）。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-UM-04

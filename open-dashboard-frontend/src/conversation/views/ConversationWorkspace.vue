@@ -112,7 +112,6 @@ const selectedDatasets = ref<string[]>([])
 const streaming = ref(false)
 const runId = ref('')
 const awaitingConfirm = ref(false)
-const canAdopt = ref(false)
 const planPayload = ref<Record<string, unknown> | null>(null)
 const linkedDashboardId = ref<string | null>(null)
 const showRevisions = ref(false)
@@ -176,7 +175,6 @@ const canSend = computed(
 const hasAnswer = computed(
   () => !!(answerChart.value || answerInsight.value || answerTable.value || answerClarify.value)
 )
-const canSave = computed(() => canAdopt.value && !answerClarify.value && !!(answerChart.value || answerInsight.value))
 const askChatMode = computed(
   () =>
     intent.value !== 'gen' &&
@@ -255,6 +253,13 @@ function barHeightsFromRows(rows: unknown[][]): number[] {
   })
   const max = Math.max(1, ...nums)
   return nums.map((n) => Math.round(Math.max(8, (n / max) * 100)))
+}
+
+function publicFollows(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((x) => String(x || '').trim())
+    .filter((f) => f && !/保存到仪表盘|保存证据图|保存本题/.test(f))
 }
 
 function ingestLiveTool(
@@ -602,7 +607,6 @@ function resetAnswer() {
   answerChart.value = null
   answerInsight.value = null
   answerClarify.value = null
-  canAdopt.value = false
   lastIntent.value = ''
   lastQuestion.value = ''
 }
@@ -813,7 +817,6 @@ function handleEvent(event: string, data: Record<string, unknown>) {
       follows: Array.isArray(data.follows) ? (data.follows as string[]) : [],
       question: data.question ? String(data.question) : lastQuestion.value
     }
-    canAdopt.value = false
   } else if (event === 'chart_ready') {
     charts.value.push({
       chartId: String(data.chartId || ''),
@@ -1111,7 +1114,7 @@ function toggleSide(panel: 'history' | 'explore') {
         <div class="landing-stack">
           <div class="hero-zone">
             <div class="brand-mark">先<em>问数</em></div>
-            <div class="brand-sub">看清结论后再决定是否保存到仪表盘。整页看板请用下方「生成看板」或示例 Chip。</div>
+            <div class="brand-sub">先把数字问清楚。整页看板请用下方「生成看板」或示例 Chip。</div>
           </div>
 
           <div class="dock">
@@ -1269,8 +1272,10 @@ function toggleSide(panel: 'history' | 'explore') {
             </span>
             <span class="sep">→</span>
             <span class="step-dot" :class="{ on: hasAnswer || charts.length }">③ 结果</span>
-            <span class="sep">→</span>
-            <span class="step-dot" :class="{ done: !!linkedDashboardId }">④ 保存到仪表盘</span>
+            <template v-if="!askChatMode">
+              <span class="sep">→</span>
+              <span class="step-dot" :class="{ done: !!linkedDashboardId }">④ 写入看板</span>
+            </template>
           </div>
 
           <div class="chat-scroll">
@@ -1344,16 +1349,6 @@ function toggleSide(panel: 'history' | 'explore') {
                     {{ f }}
                   </button>
                 </div>
-                <div class="ask-foot">
-                  <button class="btn" type="button" :disabled="streaming" @click="copyConclusion">复制结论</button>
-                  <span class="sp" />
-                  <button class="btn" type="button" :disabled="!canSave || streaming" @click="adopt('generate')">
-                    生成诊断看板
-                  </button>
-                  <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
-                    保存到仪表盘
-                  </button>
-                </div>
               </div>
             </template>
             <template v-else-if="answerChart || answerTable">
@@ -1407,13 +1402,6 @@ function toggleSide(panel: 'history' | 'explore') {
                     {{ f }}
                   </button>
                 </div>
-                <div class="ask-foot">
-                  <button class="btn" type="button" :disabled="streaming" @click="copyConclusion">复制结论</button>
-                  <span class="sp" />
-                  <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
-                    保存到仪表盘
-                  </button>
-                </div>
               </div>
             </template>
           </div>
@@ -1432,11 +1420,6 @@ function toggleSide(panel: 'history' | 'explore') {
                 确认并写入
               </button>
             </div>
-          </div>
-          <div v-if="canSave && !askChatMode" class="adopt-box">
-            <button class="btn primary" type="button" :disabled="streaming" @click="adopt('save')">
-              保存到仪表盘
-            </button>
           </div>
           </div>
 
@@ -1551,10 +1534,6 @@ function toggleSide(panel: 'history' | 'explore') {
               <div class="ask-toolbar">
                 <span class="ttl">洞察诊断</span>
                 <span class="muted">归因结论 · 证据表 · 不是普通问数图</span>
-                <span class="sp" />
-                <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
-                  保存证据图
-                </button>
               </div>
               <div class="ask-result">
                 <div class="ask-hd">
@@ -1610,27 +1589,13 @@ function toggleSide(panel: 'history' | 'explore') {
                     {{ f }}
                   </button>
                 </div>
-                <div class="ask-foot">
-                  <span class="muted">洞察 ≠ 再画一张普通对比图；证据可采纳为看板组件</span>
-                  <span class="sp" />
-                  <button class="btn" type="button" :disabled="!canSave || streaming" @click="adopt('generate')">
-                    生成诊断看板
-                  </button>
-                  <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
-                    保存证据图
-                  </button>
-                </div>
               </div>
             </template>
 
             <template v-else-if="!charts.length && (answerChart || answerTable)">
               <div class="ask-toolbar">
                 <span class="ttl">问数结果</span>
-                <span class="muted">会话预览 · 不落结果行</span>
-                <span class="sp" />
-                <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
-                  保存到仪表盘
-                </button>
+                <span class="muted">会话预览 · 不写入看板</span>
               </div>
               <div class="ask-result">
                 <div class="ask-hd">
@@ -1707,13 +1672,6 @@ function toggleSide(panel: 'history' | 'explore') {
                     @click="followAsk(f)"
                   >
                     {{ f }}
-                  </button>
-                </div>
-                <div class="ask-foot">
-                  <span class="muted">下一步：写入 DashboardPatch（仅配置，不含结果行）</span>
-                  <span class="sp" />
-                  <button class="btn primary" type="button" :disabled="!canSave || streaming" @click="adopt('save')">
-                    保存到仪表盘
                   </button>
                 </div>
               </div>
@@ -1841,8 +1799,8 @@ function toggleSide(panel: 'history' | 'explore') {
             </template>
 
             <div v-else class="empty">
-              <div class="empty-t">从问数开始，再落到可编辑看板</div>
-              <div class="muted">左侧提问即可出表/图预览；满意后再保存到仪表盘。整页生成请切换「生成看板」意图。</div>
+              <div class="empty-t">从问数开始</div>
+              <div class="muted">提问后会在会话里出表或图。整页看板请切换「生成看板」。</div>
             </div>
           </div>
         </section>

@@ -18,8 +18,16 @@ class ToolGateway:
     by_name: Dict[str, AgentTool]
 
     @classmethod
-    def create(cls, linked_dashboard_id: Optional[str] = None, *, defer_apply: bool = False) -> "ToolGateway":
-        tools, state, by_name = create_registry(linked_dashboard_id, defer_apply=defer_apply)
+    def create(
+        cls,
+        linked_dashboard_id: Optional[str] = None,
+        *,
+        defer_apply: bool = False,
+        user_id: str = "demo",
+    ) -> "ToolGateway":
+        tools, state, by_name = create_registry(
+            linked_dashboard_id, defer_apply=defer_apply, user_id=user_id
+        )
         return cls(tools=tools, state=state, by_name=by_name)
 
     def openai_specs(self) -> List[Dict[str, Any]]:
