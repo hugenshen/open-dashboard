@@ -33,6 +33,10 @@ public class BiPlatformService {
     private final DashboardPatchApplier applier;
     private final DatasetProfiler profiler;
     private final FileTableStore fileTables;
+    private final org.springframework.beans.factory.ObjectProvider<io.opendashboard.domain.gateway.FieldProfileGateway> profileStore;
+    private final org.springframework.beans.factory.ObjectProvider<DatasetProfileLearner> learner;
+    private final KnowledgeService knowledge;
+    private final QuestionService questions;
 
     public BiPlatformService(
             DatasetService datasets,
@@ -41,7 +45,11 @@ public class BiPlatformService {
             DashboardAppService dashboards,
             DashboardPatchApplier applier,
             DatasetProfiler profiler,
-            FileTableStore fileTables
+            FileTableStore fileTables,
+            org.springframework.beans.factory.ObjectProvider<io.opendashboard.domain.gateway.FieldProfileGateway> profileStore,
+            org.springframework.beans.factory.ObjectProvider<DatasetProfileLearner> learner,
+            KnowledgeService knowledge,
+            QuestionService questions
     ) {
         this.datasets = datasets;
         this.datasources = datasources;
@@ -50,6 +58,10 @@ public class BiPlatformService {
         this.applier = applier;
         this.profiler = profiler;
         this.fileTables = fileTables;
+        this.profileStore = profileStore;
+        this.learner = learner;
+        this.knowledge = knowledge;
+        this.questions = questions;
     }
 
     public List<Map<String, Object>> listDatasets() {
@@ -74,6 +86,29 @@ public class BiPlatformService {
             m.put("name", d.meta().name());
             m.put("tableName", d.meta().tableName());
             m.put("folder", d.meta().folder());
+            // 已学习的字段角色 + 真实采样（阶段1 自学习产物，LLM 语义解释用）
+            java.util.Map<String, io.opendashboard.domain.DatasetDtos.FieldProfileVO> learned =
+                    new java.util.HashMap<>();
+            io.opendashboard.domain.gateway.FieldProfileGateway store = profileStore.getIfAvailable();
+            if (store != null) {
+                try {
+                    for (io.opendashboard.domain.DatasetDtos.FieldProfileVO p : store.listByDataset(datasetId)) {
+                        learned.put(p.fieldName(), p);
+                    }
+                } catch (Exception ignored) {
+                    // 无表/查询失败时回退关键词判定
+                }
+            }
+            // 维度值：de_glossary dimension 条目 canonical_field → values
+            java.util.Map<String, List<Object>> glossaryValuesByField = new java.util.HashMap<>();
+            try {
+                for (io.opendashboard.domain.DatasetDtos.GlossaryItemVO g : knowledge.listGlossary(datasetId)) {
+                    if ("dimension".equals(g.type()) && g.canonicalField() != null && g.values() != null && !g.values().isEmpty()) {
+                        glossaryValuesByField.put(g.canonicalField(), g.values());
+                    }
+                }
+            } catch (Exception ignored) {
+            }
             List<Map<String, Object>> fields = new ArrayList<>();
             if (d.fields() != null) {
                 d.fields().forEach(f -> {
@@ -83,11 +118,38 @@ public class BiPlatformService {
                     ff.put("group", f.group());
                     ff.put("dataType", f.dataType());
                     ff.put("origin", f.origin());
-                    ff.put("role", DatasetProfiler.roleOf(f));
+                    io.opendashboard.domain.DatasetDtos.FieldProfileVO lp = learned.get(f.name());
+                    if (lp != null && lp.roleLearned() != null && !lp.roleLearned().isBlank()) {
+                        ff.put("role", lp.roleLearned());
+                        ff.put("roleSource", "learned");
+                    } else {
+                        ff.put("role", DatasetProfiler.roleOf(f));
+                        ff.put("roleSource", "naming");
+                    }
+                    // 维度值配置（阶段5）：de_glossary dimension 条目的人工/自学习枚举值，增强模型理解
+                    List<Object> fieldValues = glossaryValuesByField.get(f.name());
+                    if (fieldValues != null && !fieldValues.isEmpty()) {
+                        ff.put("values", fieldValues);
+                    }
                     fields.add(ff);
                 });
             }
             m.put("fields", fields);
+            // 采样：聚合各字段 profile 的 sample 成一列（≤20 行），供 LLM 理解字段含义
+            if (!learned.isEmpty()) {
+                List<List<Object>> sampleRows = new ArrayList<>();
+                io.opendashboard.domain.DatasetDtos.FieldProfileVO any = learned.values().iterator().next();
+                int rows = Math.min(20, any.sample() == null ? 0 : any.sample().size());
+                for (int r = 0; r < rows; r++) {
+                    List<Object> row = new ArrayList<>();
+                    for (io.opendashboard.domain.DatasetDtos.FieldProfileVO p : learned.values()) {
+                        List<List<Object>> s = p.sample();
+                        row.add(s != null && r < s.size() && !s.get(r).isEmpty() ? s.get(r).getFirst() : null);
+                    }
+                    sampleRows.add(row);
+                }
+                if (!sampleRows.isEmpty()) m.put("sample", sampleRows);
+            }
             if (fileTables.has(d.meta().id()) || (d.meta().tableName() != null && d.meta().tableName().startsWith("od_file_"))) {
                 m.put("engine", "file");
             }
@@ -140,6 +202,53 @@ public class BiPlatformService {
         return profiler.profile(datasetId);
     }
 
+    /** 手动触发数据集自学习（对已存在数据集补学；录入时已自动触发）。 */
+    public Map<String, Object> learnDataset(String datasetId) {
+        try {
+            learner.getIfAvailable().learn(datasetId);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("ok", true);
+            out.put("datasetId", datasetId);
+            // 学习结果统计：字段角色分布 + 抽取的公共维度数（供前端结果弹窗）
+            try {
+                Map<String, Object> p = profiler.profile(datasetId);
+                List<?> fields = (List<?>) p.get("fields");
+                java.util.Map<String, Integer> roleCount = new java.util.LinkedHashMap<>();
+                int total = 0;
+                if (fields != null) {
+                    for (Object o : fields) {
+                        if (o instanceof Map<?, ?> m) {
+                            Object r = m.get("role");
+                            String k = r == null ? "junk" : String.valueOf(r);
+                            roleCount.merge(k, 1, Integer::sum);
+                            total++;
+                        }
+                    }
+                }
+                out.put("fieldCount", total);
+                out.put("roleCounts", roleCount);
+                // 公共维度数（type=dimension 且属于该数据集）
+                int dimN = 0;
+                try {
+                    for (io.opendashboard.domain.DatasetDtos.GlossaryItemVO it : knowledge.listGlossary(datasetId)) {
+                        if ("dimension".equals(it.type())) dimN++;
+                    }
+                } catch (Exception ignored) {
+                    // 统计失败不影响学习
+                }
+                out.put("dimensionCount", dimN);
+            } catch (Exception ignored) {
+                // 统计失败不影响学习本身
+            }
+            return out;
+        } catch (Exception e) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("ok", false);
+            out.put("error", String.valueOf(e.getMessage()));
+            return out;
+        }
+    }
+
     public Map<String, Object> resolveIntent(Map<String, Object> body) {
         String message = body == null || body.get("message") == null ? "" : String.valueOf(body.get("message"));
         List<String> datasetIds = new ArrayList<>();
@@ -162,7 +271,62 @@ public class BiPlatformService {
             }
         }
         SchemaGuard.SchemaBundle schema = SchemaGuard.load(datasetIds, loaded);
+        // 词表对齐（阶段2）：glossary 命中「销售额」→ spending_amount 时补进 schema 字段名
+        schema = GlossaryAwareSchema.enrich(schema, knowledge, datasetIds);
         return IntentResolver.resolve(message, schema).toMap();
+    }
+
+    /** 知识注入载荷（confirmed 指标 + 词表），harness transform_context 冻结快照用。 */
+    public Map<String, Object> knowledgeFor(List<String> datasetIds) {
+        List<String> ids = datasetIds == null ? List.of() : datasetIds;
+        if (ids.isEmpty()) return knowledge.knowledgeFor(List.of());
+        return knowledge.knowledgeFor(ids);
+    }
+
+    /** od_interpret_fields 回写：指标 confidence 提升 + 别名进词表（自学习闭环）。 */
+    public Map<String, Object> interpretFields(Map<String, Object> body) {
+        String datasetId = body == null || body.get("datasetId") == null ? "" : String.valueOf(body.get("datasetId"));
+        List<io.opendashboard.domain.DatasetDtos.FieldInterpretVO> fields = new ArrayList<>();
+        if (body != null && body.get("fields") instanceof List<?> raw) {
+            for (Object o : raw) {
+                if (!(o instanceof Map<?, ?> m)) continue;
+                fields.add(new io.opendashboard.domain.DatasetDtos.FieldInterpretVO(
+                        str(m.get("field")),
+                        str(m.get("role")),
+                        str(m.get("businessMeaning")),
+                        m.get("aggregatable") instanceof Boolean b ? b : null,
+                        m.get("aliases") instanceof List<?> aliases
+                                ? aliases.stream().map(String::valueOf).toList() : List.of(),
+                        str(m.get("suggestedAgg")),
+                        m.get("confidence") instanceof Number n ? n.doubleValue() : null
+                ));
+            }
+        }
+        return knowledge.interpretFields(datasetId, fields);
+    }
+
+    /** 高频问题（few-shot 示例）：SQLBot 生成 SQL 时注入。 */
+    public List<Map<String, Object>> questionsFor(String datasetId, int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (io.opendashboard.domain.DatasetDtos.DatasetQuestionVO q : questions.listActive(datasetId, limit <= 0 ? 8 : limit)) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", q.id());
+            row.put("question", q.question());
+            row.put("sql", q.sql());
+            row.put("chartType", q.chartType());
+            row.put("brief", q.brief());
+            out.add(row);
+        }
+        return out;
+    }
+
+    /** few-shot 命中计数 +1。 */
+    public boolean bumpQuestionHit(Long id) {
+        return questions.bumpHit(id).isPresent();
+    }
+
+    private static String str(Object o) {
+        return o == null ? null : String.valueOf(o);
     }
 
     public Map<String, Object> boardSummary(String dashboardId) {

@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -118,6 +119,16 @@ public class BiInternalController {
         return ResponseEntity.ok(bi.profileDataset(datasetId));
     }
 
+    @PostMapping("/learn-dataset")
+    public ResponseEntity<?> learnDataset(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String datasetId = body == null || body.get("datasetId") == null ? "" : String.valueOf(body.get("datasetId"));
+        return ResponseEntity.ok(bi.learnDataset(datasetId));
+    }
+
     @PostMapping("/resolve-intent")
     public ResponseEntity<?> resolveIntent(
             @RequestBody Map<String, Object> body,
@@ -125,6 +136,24 @@ public class BiInternalController {
     ) {
         if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(bi.resolveIntent(body == null ? Map.of() : body));
+    }
+
+    @GetMapping("/knowledge")
+    public ResponseEntity<?> knowledge(
+            @RequestParam(required = false) List<String> datasetIds,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(bi.knowledgeFor(datasetIds == null ? List.of() : datasetIds));
+    }
+
+    @PostMapping("/interpret-fields")
+    public ResponseEntity<?> interpretFields(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(bi.interpretFields(body == null ? Map.of() : body));
     }
 
     @PostMapping("/compose-board")
