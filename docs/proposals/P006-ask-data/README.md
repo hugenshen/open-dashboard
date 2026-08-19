@@ -108,7 +108,9 @@ schema（M-Schema）→ LLM 生成 JSON{sql, chart-type}
 - 把查询结果行持久化进布局或 HTML  
 - DeerFlow 式沙箱任意 SQL  
 - 用 SQLBot SQL 替代 chartQuery 作为看板运行时取数  
-- 前端任意 SQL 入口  
+- 前端任意 SQL 入口
+- 术语库 / SQL 示例知识库与跨会话用户记忆（→ [P010](../P010-user-memory-ask-knowledge/)）
+- 可问集合算法产品化与资源 ACL 表（→ [P008](../P008-permission-aware-workbench/)；三入口已接 `GET /api/dataset/askable`）  
 
 ## 验收 ID
 
@@ -147,3 +149,4 @@ schema（M-Schema）→ LLM 生成 JSON{sql, chart-type}
 | 2026-08-17 | 补波及表；验收细节只保留在 yaml |
 | 2026-08-17 | 本月不交付 PR-ASK-07（可问集合一致）；等 P008。工作台问数框与结果卡保存本题图已按现有设计对齐产品 |
 | 2026-08-17 | 问数临时图改走 chartQuery + ECharts，不再用 CSS 条形图冒充图表 |
+| 2026-08-18 | 术语/SQL 示例与跨会话记忆划到 [P010](../P010-user-memory-ask-knowledge/)；三入口接 `GET /api/dataset/askable`

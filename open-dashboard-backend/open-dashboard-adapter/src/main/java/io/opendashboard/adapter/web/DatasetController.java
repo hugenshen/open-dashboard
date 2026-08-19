@@ -1,5 +1,6 @@
 package io.opendashboard.adapter.web;
 
+import io.opendashboard.application.AskableDatasetService;
 import io.opendashboard.application.DatasetService;
 import io.opendashboard.domain.DatasetDtos.DatasetCreateRequest;
 import io.opendashboard.domain.DatasetDtos.DatasetDetailVO;
@@ -33,14 +34,22 @@ import java.util.List;
 public class DatasetController {
 
     private final DatasetService service;
+    private final AskableDatasetService askable;
 
-    public DatasetController(DatasetService service) {
+    public DatasetController(DatasetService service, AskableDatasetService askable) {
         this.service = service;
+        this.askable = askable;
     }
 
     @GetMapping
     public List<DatasetMetaVO> list() {
         return service.list();
+    }
+
+    @GetMapping("/askable")
+    @RequirePermission("conversation:use")
+    public List<DatasetMetaVO> askable() {
+        return askable.listAskable();
     }
 
     @PostMapping

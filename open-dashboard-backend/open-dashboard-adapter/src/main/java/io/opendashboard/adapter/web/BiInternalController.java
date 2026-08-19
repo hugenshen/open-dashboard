@@ -19,8 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * Internal BI APIs for DeerFlow / opendashboard-harness. No LLM here.
- * Auth: header X-OD-Internal-Token (no @RequireAuth — service-to-service).
+ * Internal BI APIs for opendashboard-harness. No LLM here.
+ * Auth: {@code X-OD-Internal-Token} (service-to-service) plus Auth SPI headers
+ * {@code X-User-Id} / {@code X-User-Perms} so askable gates cannot be skipped
+ * with the internal token alone. No {@code @RequireAuth} — the interceptor still
+ * binds {@code AuthContext} from those headers.
  */
 @RestController
 @RequestMapping("/api/internal/bi")
@@ -45,6 +48,14 @@ public class BiInternalController {
         return expected != null && !expected.isBlank() && expected.equals(token);
     }
 
+    private ResponseEntity<?> deny(IllegalArgumentException e) {
+        String msg = e.getMessage() == null ? "forbidden" : e.getMessage();
+        if (msg.startsWith("DATASET_UNAVAILABLE")) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", msg));
+        }
+        return ResponseEntity.badRequest().body(Map.of("error", msg));
+    }
+
     @GetMapping("/health")
     public Map<String, Object> health() {
         return Map.of("ok", true, "role", "bi-platform");
@@ -62,8 +73,12 @@ public class BiInternalController {
             @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
     ) {
         if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        return bi.schema(id).<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        try {
+            return bi.schema(id).<ResponseEntity<?>>map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        } catch (IllegalArgumentException e) {
+            return deny(e);
+        }
     }
 
     @PostMapping("/query/dataset")
@@ -72,7 +87,11 @@ public class BiInternalController {
             @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
     ) {
         if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        return ResponseEntity.ok(bi.datasetQuery(request));
+        try {
+            return ResponseEntity.ok(bi.datasetQuery(request));
+        } catch (IllegalArgumentException e) {
+            return deny(e);
+        }
     }
 
     @PostMapping("/query/chart")
@@ -81,7 +100,11 @@ public class BiInternalController {
             @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
     ) {
         if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        return ResponseEntity.ok(bi.chartQuery(request));
+        try {
+            return ResponseEntity.ok(bi.chartQuery(request));
+        } catch (IllegalArgumentException e) {
+            return deny(e);
+        }
     }
 
     @PostMapping("/query/sql")
@@ -93,7 +116,7 @@ public class BiInternalController {
         try {
             return ResponseEntity.ok(bi.executeReadSql(body == null ? Map.of() : body));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage() == null ? "bad sql" : e.getMessage()));
+            return deny(e);
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage() == null ? "sql failed" : e.getMessage()));
         }
@@ -115,7 +138,11 @@ public class BiInternalController {
     ) {
         if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         String datasetId = body == null || body.get("datasetId") == null ? "" : String.valueOf(body.get("datasetId"));
-        return ResponseEntity.ok(bi.profileDataset(datasetId));
+        try {
+            return ResponseEntity.ok(bi.profileDataset(datasetId));
+        } catch (IllegalArgumentException e) {
+            return deny(e);
+        }
     }
 
     @PostMapping("/resolve-intent")

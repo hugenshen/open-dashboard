@@ -41,18 +41,33 @@ def _save(doc: Dict[str, Any]) -> Dict[str, Any]:
     return doc
 
 
-def list_conversations(owner_id: str = "demo") -> List[Dict[str, Any]]:
+def _workspace(doc: Dict[str, Any]) -> str:
+    return str(doc.get("workspaceId") or "default")
+
+
+def list_conversations(owner_id: str = "demo", workspace_id: Optional[str] = None) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
+    want = (owner_id or "").strip()
+    want_workspace = (workspace_id or "").strip()
     for f in sorted((data_dir() / "conversations").glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))
         except Exception:
             continue
-        if owner_id and doc.get("ownerId") not in (None, owner_id, "demo"):
-            # still show all in local/dev
-            pass
+        owner = str(doc.get("ownerId") or "demo")
+        if want and owner != want:
+            continue
+        if want_workspace and _workspace(doc) != want_workspace:
+            continue
         out.append(_public_conv(doc))
     return out
+
+
+def owned_by(cid: str, owner_id: str) -> bool:
+    doc = _load(cid)
+    if not doc:
+        return False
+    return str(doc.get("ownerId") or "demo") == (owner_id or "").strip()
 
 
 def _public_conv(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -60,6 +75,7 @@ def _public_conv(doc: Dict[str, Any]) -> Dict[str, Any]:
         "id": doc["id"],
         "title": doc.get("title") or "新对话",
         "ownerId": doc.get("ownerId") or "demo",
+        "workspaceId": _workspace(doc),
         "layoutPrefs": doc.get("layoutPrefs") or {},
         "datasetIds": doc.get("datasetIds") or [],
         "linkedDashboardId": doc.get("linkedDashboardId"),
@@ -70,6 +86,7 @@ def _public_conv(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 def create_conversation(
     owner_id: str = "demo",
+    workspace_id: str = "default",
     title: Optional[str] = None,
     dataset_ids: Optional[List[str]] = None,
     linked_dashboard_id: Optional[str] = None,
@@ -79,12 +96,14 @@ def create_conversation(
         "id": cid,
         "title": title or "新对话",
         "ownerId": owner_id or "demo",
+        "workspaceId": workspace_id or "default",
         "layoutPrefs": {},
         "datasetIds": dataset_ids or [],
         "linkedDashboardId": linked_dashboard_id,
         "messages": [],
         "memory": [],
         "runs": [],
+        "events": [],
         "createTime": _now(),
         "updateTime": _now(),
     }
@@ -95,6 +114,7 @@ def create_conversation(
 def ensure_conversation(
     cid: str,
     owner_id: str = "demo",
+    workspace_id: str = "default",
     title: Optional[str] = None,
     dataset_ids: Optional[List[str]] = None,
     linked_dashboard_id: Optional[str] = None,
@@ -102,6 +122,9 @@ def ensure_conversation(
     """Create a runtime session for a Java conversation id if missing."""
     existing = _load(cid)
     if existing:
+        if not existing.get("workspaceId"):
+            existing["workspaceId"] = workspace_id or "default"
+            _save(existing)
         return _public_conv(existing)
     safe = (cid or "").strip()
     if not safe or "/" in safe or "\\" in safe or safe in (".", ".."):
@@ -110,12 +133,14 @@ def ensure_conversation(
         "id": safe,
         "title": title or "新对话",
         "ownerId": owner_id or "demo",
+        "workspaceId": workspace_id or "default",
         "layoutPrefs": {},
         "datasetIds": dataset_ids or [],
         "linkedDashboardId": linked_dashboard_id,
         "messages": [],
         "memory": [],
         "runs": [],
+        "events": [],
         "createTime": _now(),
         "updateTime": _now(),
     }
@@ -123,9 +148,19 @@ def ensure_conversation(
     return _public_conv(doc)
 
 
-def get_conversation(cid: str) -> Optional[Dict[str, Any]]:
+def get_conversation(
+    cid: str,
+    owner_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     doc = _load(cid)
-    return _public_conv(doc) if doc else None
+    if not doc:
+        return None
+    if owner_id is not None and str(doc.get("ownerId") or "demo") != owner_id:
+        return None
+    if workspace_id is not None and _workspace(doc) != (workspace_id or "default"):
+        return None
+    return _public_conv(doc)
 
 
 def get_raw(cid: str) -> Optional[Dict[str, Any]]:
@@ -143,7 +178,12 @@ def update_conversation(cid: str, patch: Dict[str, Any]) -> Optional[Dict[str, A
     return _public_conv(doc)
 
 
-def delete_conversation(cid: str) -> bool:
+def delete_conversation(cid: str, owner_id: Optional[str] = None) -> bool:
+    doc = _load(cid)
+    if not doc:
+        return False
+    if owner_id is not None and str(doc.get("ownerId") or "demo") != owner_id:
+        return False
     path = _conv_path(cid)
     if not path.is_file():
         return False
@@ -264,6 +304,27 @@ def set_run_artifact(cid: str, run_id: str, artifact: Dict[str, Any]) -> None:
     _save(doc)
 
 
+def set_run_refs(
+    cid: str,
+    run_id: str,
+    *,
+    knowledge_refs: Optional[List[Dict[str, Any]]] = None,
+    memory_refs: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    doc = _load(cid)
+    if not doc:
+        return
+    for r in doc.get("runs") or []:
+        if r.get("id") == run_id:
+            if knowledge_refs is not None:
+                r["knowledgeRefs"] = knowledge_refs
+            if memory_refs is not None:
+                r["memoryRefs"] = memory_refs
+            r["updateTime"] = _now()
+            break
+    _save(doc)
+
+
 def get_run_artifact(cid: str, run_id: str) -> Optional[Dict[str, Any]]:
     run = get_run(cid, run_id)
     artifact = (run or {}).get("artifact")
@@ -309,3 +370,49 @@ def clear_run_pending(cid: str, run_id: str) -> None:
             r["updateTime"] = _now()
             break
     _save(doc)
+
+
+def append_event(cid: str, event_type: str, data: Optional[Dict[str, Any]] = None, run_id: Optional[str] = None) -> None:
+    doc = _load(cid)
+    if not doc:
+        return
+    events = doc.setdefault("events", [])
+    seq = int(doc.get("eventSeq") or 0) + 1
+    doc["eventSeq"] = seq
+    events.append(
+        {
+            "seq": seq,
+            "ts": _now(),
+            "runId": run_id,
+            "type": event_type,
+            "data": data or {},
+        }
+    )
+    if len(events) > 2000:
+        doc["events"] = events[-2000:]
+    _save(doc)
+
+
+def append_event_from_sse(cid: str, run_id: str, chunk: str) -> None:
+    if not cid or not chunk.startswith("event:"):
+        return
+    try:
+        first, _, rest = chunk.partition("\n")
+        event_type = first.replace("event:", "", 1).strip()
+        data_line = rest.split("data:", 1)[1].strip().split("\n")[0] if "data:" in rest else "{}"
+        payload = json.loads(data_line) if data_line else {}
+        if not isinstance(payload, dict):
+            payload = {"value": payload}
+        append_event(cid, event_type, payload, run_id=run_id)
+    except Exception:
+        return
+
+
+def list_events(cid: str, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    doc = _load(cid)
+    if not doc:
+        return []
+    rows = list(doc.get("events") or [])
+    if run_id:
+        rows = [e for e in rows if e.get("runId") == run_id]
+    return rows

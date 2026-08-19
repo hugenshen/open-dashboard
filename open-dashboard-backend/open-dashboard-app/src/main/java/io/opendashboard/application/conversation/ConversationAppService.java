@@ -1,6 +1,5 @@
 package io.opendashboard.application.conversation;
 
-import io.opendashboard.domain.ConversationDtos.ConversationAdoptRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationCreateRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationMessageCreateRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationMessageVO;
@@ -172,42 +171,6 @@ public class ConversationAppService {
                         "intent", intent
                 ));
                 harness.startRun(convFinal, run, req, emitter);
-            } catch (Exception e) {
-                emitter.emit("error", Map.of("message", e.getMessage() == null ? e.toString() : e.getMessage()));
-                emitter.emit("finish", Map.of("reason", "error", "detail", "exception"));
-            }
-        }));
-    }
-
-    public void adoptAsync(
-            String conversationId,
-            String runId,
-            ConversationAdoptRequest request,
-            ConversationHarness.Emitter emitter
-    ) {
-        ConversationVO conversation = store.find(conversationId)
-                .orElseThrow(() -> new IllegalArgumentException("conversation not found"));
-        ConversationRunVO run = store.findRun(runId)
-                .orElseThrow(() -> new IllegalArgumentException("run not found"));
-        if (!conversationId.equals(run.conversationId())) {
-            throw new IllegalArgumentException("run mismatch");
-        }
-        if (!"answered".equals(run.status())) {
-            throw new IllegalStateException("run has no answer to adopt");
-        }
-        if (run.plan() != null && "clarify".equals(String.valueOf(run.plan().get("intent")))) {
-            throw new IllegalStateException("clarify answer cannot be adopted");
-        }
-        AuthPrincipal principal = AuthContext.get();
-        executor.execute(() -> runWithPrincipal(principal, () -> {
-            try {
-                emitter.emit("run", Map.of(
-                        "runId", run.id(),
-                        "conversationId", conversationId,
-                        "mode", "adopt",
-                        "intent", "gen"
-                ));
-                harness.adoptAnswer(conversation, run, request, emitter);
             } catch (Exception e) {
                 emitter.emit("error", Map.of("message", e.getMessage() == null ? e.toString() : e.getMessage()));
                 emitter.emit("finish", Map.of("reason", "error", "detail", "exception"));

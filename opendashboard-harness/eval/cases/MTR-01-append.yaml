@@ -1,0 +1,11 @@
+id: MTR-01-append
+layer: L2
+message: 再加一张各地区对比图
+intent: gen
+datasetIds: [ds_1]
+linkedDashboardId: dash-1
+expected:
+  finish_reason: done
+  no_full_regenerate: true
+  keep_chart_ids: [c-sales, c-kpi]
+  events: [patch, finish]

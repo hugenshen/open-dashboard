@@ -60,7 +60,11 @@ def iter_sqlbot(question: str, dataset_id: str) -> Generator[Dict[str, Any], Non
     model = str(llm_settings().get("model") or "")
     yield {"stage": "llm_start", "model": model}
     schema_text = m_schema(schema)
-    sql_payload, raw_sql_text = _generate_sql(question, engine, schema_text, sample)
+    from agent.knowledge import prompt_block
+    from agent.user_context import current_workspace_id
+
+    knowledge = prompt_block(question, dataset_id, workspace_id=current_workspace_id())
+    sql_payload, raw_sql_text = _generate_sql(question, engine, schema_text, sample, knowledge=knowledge)
     if not sql_payload.get("success"):
         yield {
             "stage": "llm",
@@ -101,7 +105,7 @@ def iter_sqlbot(question: str, dataset_id: str) -> Generator[Dict[str, Any], Non
         )
     except Exception as e:
         yield {"stage": "llm_start", "model": model, "retry": True}
-        retry = _generate_sql(question, engine, schema_text, sample, error_msg=str(e)[:800])
+        retry = _generate_sql(question, engine, schema_text, sample, error_msg=str(e)[:800], knowledge=knowledge)
         payload2, _ = retry
         if payload2.get("success") and payload2.get("sql"):
             sql = str(payload2["sql"]).strip()
@@ -174,9 +178,10 @@ def _generate_sql(
     schema_text: str,
     sample: str,
     error_msg: str = "",
+    knowledge: str = "",
 ) -> tuple[Dict[str, Any], str]:
     messages = [
-        {"role": "system", "content": sql_system(engine, schema_text, sample)},
+        {"role": "system", "content": sql_system(engine, schema_text, sample, knowledge=knowledge)},
         {"role": "user", "content": sql_user(question, error_msg=error_msg)},
     ]
     resp = chat_completions(messages, temperature=0)

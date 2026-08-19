@@ -43,8 +43,10 @@ flowchart TB
 | insight | 问数 + 叙事 | 同上 + skill od-ask-board |
 | gen | DeerFlow planner + JoyAgent critic：`write_todos` → `od_profile_dataset` → `od_plan_charts`（探测有数 + 质检）→ `od_review_charts`（可省略，layout 再跑）→ `od_layout_board`（查询条+满铺）→ emit_patch；compose-board 仅双失败兜底 | profile / plan_charts / review / layout / emit |
 | 多轮 append | 有 linkedDashboard 默认 append | board_summary + emit append |
-| 记忆 | transcript + 短事实注入 | session_store + memory |
+| 记忆 | 会话内短事实；跨会话用户 facts 见 [P010](../P010-user-memory-ask-knowledge/) | session_store.memory[] + users/{id}/memory.json |
 | 降级 | 无 LLM key：`OD_HARNESS_MODE` | deterministic compose-board |
+| 事件日志 | append-only `events[]` 为 agent 事实源；产品列表仍以 Java 为准 | GET `/v1/conversations/{id}/events` |
+| 多轮硬路由 | linked + rechart/insert → `_run_rechart`，不靠 Lead 自觉 | `od_rechart_chart` |
 
 ## 工具目录（定义在 harness，实现在 Java）
 
@@ -64,7 +66,7 @@ flowchart TB
 | `od_emit_patch` | `POST /api/internal/bi/apply-patch` |
 | `od_finish` | harness 本地 |
 
-鉴权：工具 → `X-OD-Internal-Token`；FE→harness → `X-User-Id` / `X-User-Perms`。
+鉴权：工具 → `X-OD-Internal-Token` **且**转发 `X-User-Id` / `X-User-Perms`；FE→harness 只从 Auth SPI 头取身份，JSON body 不得声明 `userId`。列表按 `ownerId` 硬过滤。
 
 ## Harness HTTP
 
@@ -72,6 +74,7 @@ flowchart TB
 - `GET|POST /v1/conversations`（运行时会话；产品列表以 Java 为准）
 - `GET|PATCH|DELETE /v1/conversations/{id}`
 - `GET /v1/conversations/{id}/messages`
+- `GET /v1/conversations/{id}/events` — 按 run 可回放的 SSE 事件日志
 - `POST /v1/conversations/{id}/runs` — SSE：`run` · `step` · `plan` · `intent_map` · `answer_*` · `patch` · `chart_ready` · `board_ready` · `message_delta` · `error` · `finish`
 - `POST /v1/conversations/{id}/runs/{runId}/adopt` — 从 run artifact 生成 `DashboardPatch`，调用 Java internal `apply-patch`，SSE 返回 `patch` / `chart_ready` / `board_ready` / `finish`
 - `POST /v1/conversations/{id}/runs/{runId}/confirm-plan` — Plan 确认后 apply pending patch

@@ -1,0 +1,8 @@
+id: GEN-01-board
+layer: L2
+message: 帮我生成一个经营分析看板
+intent: gen
+datasetIds: [ds_1]
+expected:
+  finish_reason: done
+  events: [patch, board_ready, finish]

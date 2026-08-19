@@ -52,8 +52,11 @@ public class StubQueryService {
         String datasetId = request.datasetId() == null ? "" : request.datasetId();
         DatasetQueryResult imported = fileTables.query(request);
         if (imported != null) return imported;
+        DatasetQueryResult live = tryLive(request);
+        if (live != null && !isLiveQueryFailed(live)) {
+            return live;
+        }
         if (!stubQuery) {
-            DatasetQueryResult live = tryLive(request);
             if (live != null) return live;
             // Never invent demo rows when stub-query is off — return empty with honest SQL note.
             long start = System.currentTimeMillis();
@@ -65,7 +68,15 @@ public class StubQueryService {
                     System.currentTimeMillis() - start
             );
         }
-        return stubExecute(request);
+        DatasetQueryResult stub = stubExecute(request);
+        if (live != null && (stub.rows() == null || stub.rows().isEmpty()) && !hasStubRows(datasetId)) {
+            return live;
+        }
+        return stub;
+    }
+
+    private static boolean isLiveQueryFailed(DatasetQueryResult result) {
+        return result != null && result.sql() != null && result.sql().startsWith("-- live query failed:");
     }
 
     private DatasetQueryResult tryLive(DatasetQueryRequest request) {
@@ -329,6 +340,10 @@ public class StubQueryService {
         }
         // Unknown / user datasets: do NOT silently reuse sales demo rows.
         return List.of();
+    }
+
+    private static boolean hasStubRows(String datasetId) {
+        return !stubTable(datasetId).isEmpty();
     }
 
     private static Map<String, Object> row(Object... kv) {

@@ -11,15 +11,17 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Generator, List, Optional
 
 from agent.context import convert_to_llm, history_to_agent_messages, transform_context
+from agent.knowledge_retriever import retrieve_dataset_knowledge
 from agent.memory import maybe_extract_fact, remember
+from agent.memory_runtime import recall_user_memory
 from agent.types import AgentMessage, sse, step
 from agent import session_store
+from agent.user_context import set_principal, set_workspace
 from llm_client import chat_completions, llm_configured, llm_settings
 from sqlbot.pipeline import bar_heights, iter_sqlbot
 from sqlbot.suggest import is_suggest_request, suggest_follows
 from tools.od_bi import ToolState, _plan_charts_from_profile, bi_call, dumps_result
-from tools.registry import create_registry
-from tools.guard import execute_guarded
+from tools.gateway import ToolGateway
 
 # 记录在途 run 的 conversation/run/dashboard 上下文，供 _emit_applied 落盘 revision。
 # 每个 SSE gen 是单线程串行执行的，run_lead/run_agent 开头写入、结尾清除。
@@ -109,12 +111,21 @@ def _chart_type_hint(message: str) -> Optional[str]:
     return None
 
 
-def _match_target_chart(message: str, charts: List[Any]) -> tuple[Optional[str], str]:
+def _match_target_chart(
+    message: str,
+    charts: List[Any],
+    selected_chart_id: Optional[str] = None,
+) -> tuple[Optional[str], str]:
     """Deterministically pick the chart the user wants to edit from board-summary charts.
 
-    Match by: exact title substring in message → keyword in both message and title →
-    chart-type hint → first non-KPI chart. Returns (chartId, matched_title).
+    Match by: selectedChartId → exact title substring in message → keyword in both
+    message and title → chart-type hint → first non-KPI chart.
     """
+    if selected_chart_id:
+        want = str(selected_chart_id)
+        for c in charts or []:
+            if str(c.get("chartId") or "") == want:
+                return want, str(c.get("title") or "")
     q = message or ""
     if not charts:
         return None, ""
@@ -750,9 +761,31 @@ def run_adopt(conversation: Dict[str, Any], run: Dict[str, Any], artifact: Dict[
 
 def run_agent(payload: Dict[str, Any]) -> Generator[str, None, None]:
     """Entry: lead if LLM configured (per mode), else deterministic. No silent fake success when mode=lead."""
-    _CURRENT_RUN["conversationId"] = str(payload.get("conversationId") or "")
-    _CURRENT_RUN["runId"] = str(payload.get("runId") or "")
+    conversation_id = str(payload.get("conversationId") or "")
+    run_id = str(payload.get("runId") or "")
+    runtime_context = payload.get("runtimeContext") if isinstance(payload.get("runtimeContext"), dict) else {}
+    user_id = str(runtime_context.get("userId") or "")
+    workspace_id = str(runtime_context.get("workspaceId") or "default")
+    permissions = runtime_context.get("permissions") if isinstance(runtime_context.get("permissions"), list) else []
+    if user_id:
+        set_principal(user_id, ",".join(str(p) for p in permissions))
+    set_workspace(workspace_id)
+    _CURRENT_RUN["conversationId"] = conversation_id
+    _CURRENT_RUN["runId"] = run_id
     _CURRENT_RUN["styleId"] = payload.get("styleId") or "feishu-blue"
+    for chunk in _run_agent_inner(payload):
+        yield chunk
+
+
+def _run_agent_inner(payload: Dict[str, Any]) -> Generator[str, None, None]:
+    refs = _record_runtime_refs(payload)
+    if refs.get("knowledgeRefs") or refs.get("memoryRefs"):
+        yield step(
+            "runtime_refs",
+            f"上下文引用：知识 {len(refs.get('knowledgeRefs') or [])} 条，记忆 {len(refs.get('memoryRefs') or [])} 条",
+            knowledgeRefs=refs.get("knowledgeRefs") or [],
+            memoryRefs=refs.get("memoryRefs") or [],
+        )
     mode = harness_mode()
     if use_lead():
         try:
@@ -785,6 +818,28 @@ def run_agent(payload: Dict[str, Any]) -> Generator[str, None, None]:
     yield from run_deterministic(payload)
 
 
+def _record_runtime_refs(payload: Dict[str, Any]) -> Dict[str, Any]:
+    runtime_context = payload.get("runtimeContext") if isinstance(payload.get("runtimeContext"), dict) else {}
+    conversation_id = str(payload.get("conversationId") or "")
+    run_id = str(payload.get("runId") or "")
+    user_id = str(runtime_context.get("userId") or "")
+    workspace_id = str(runtime_context.get("workspaceId") or "default")
+    message = str(payload.get("message") or "")
+    dataset_ids = [str(x) for x in (payload.get("datasetIds") or [])]
+
+    memory_refs = recall_user_memory(user_id, workspace_id=workspace_id) if user_id else []
+    knowledge_refs: List[Dict[str, Any]] = []
+    for dataset_id in dataset_ids:
+        try:
+            got = retrieve_dataset_knowledge(message, dataset_id, workspace_id=workspace_id)
+            knowledge_refs.extend(got.get("knowledgeRefs") or [])
+        except Exception:
+            continue
+    if conversation_id and run_id:
+        session_store.set_run_refs(conversation_id, run_id, knowledge_refs=knowledge_refs, memory_refs=memory_refs)
+    return {"knowledgeRefs": knowledge_refs, "memoryRefs": memory_refs}
+
+
 def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str, None, None]:
     if not llm_configured():
         raise RuntimeError("LLM_NOT_CONFIGURED")
@@ -813,7 +868,35 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
     if intent in ("ask", "insight"):
         yield from _run_ask(message, intent, dataset_ids)
         return
-    yield step("context", "transformContext + skills + memory")
+    if linked:
+        mt = classify_multiturn(message)
+        if mt in ("rechart", "insert"):
+            yield from _run_rechart(
+                message,
+                dataset_ids,
+                linked,
+                style_id,
+                run_mode,
+                conversation_id,
+                run_id,
+                selected_chart_id=payload.get("selectedChartId"),
+            )
+            return
+    runtime_context = payload.get("runtimeContext") if isinstance(payload.get("runtimeContext"), dict) else {}
+    if runtime_context:
+        yield step(
+            "context",
+            "装配授权上下文、skills 与 memory",
+            runtimeContext={
+                "workspaceId": runtime_context.get("workspaceId"),
+                "userId": runtime_context.get("userId"),
+                "permissions": runtime_context.get("permissions") or [],
+                "knowledgeRefs": runtime_context.get("knowledgeRefs") or [],
+                "memoryRefs": runtime_context.get("memoryRefs") or [],
+            },
+        )
+    else:
+        yield step("context", "transformContext + skills + memory")
 
     fact = maybe_extract_fact(message, dataset_ids)
     if conversation_id and fact:
@@ -829,8 +912,9 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
         except Exception:
             board_summary = None
 
-    tools, state, by_name = create_registry(linked, defer_apply=(run_mode == "plan"))
-    openai_tools = [t.openai_spec() for t in tools]
+    gateway = ToolGateway.create(linked, defer_apply=(run_mode == "plan"))
+    state = gateway.state
+    openai_tools = gateway.openai_specs()
 
     intent_plan = _load_intent_plan(message, dataset_ids)
     if intent_plan:
@@ -963,15 +1047,8 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
                 tool=name,
                 preview=_tool_preview(name, None, args),
             )
-            tool = by_name.get(name)
-            try:
-                if not tool:
-                    result: Any = {"ok": False, "error": f"unknown tool: {name}"}
-                else:
-                    # 统一治理管线：guard → 超时 → 重试退避 → 归一化
-                    result = execute_guarded(tool, args)
-            except Exception as e:
-                result = {"ok": False, "error": str(e)}
+            # 统一治理管线：registry → guard → 超时 → 重试退避 → 归一化
+            result = gateway.execute(name, args)
             preview = _tool_preview(name, result, args)
             hint = preview.get("hint") if isinstance(preview, dict) else None
             yield step("tool_execution_end", f"{name} 完成", kind="tool_end", tool=name, preview=preview, hint=hint)
@@ -1121,6 +1198,7 @@ def _run_rechart(
     run_mode: str,
     conversation_id: str = "",
     run_id: str = "",
+    selected_chart_id: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """Deterministic multi-turn surgical edit of an existing dashboard (no LLM).
 
@@ -1150,9 +1228,8 @@ def _run_rechart(
         yield from _run_gen(message, dataset_ids, linked, style_id, run_mode, conversation_id, run_id)
         return
 
-    tools, _state, by_name = create_registry(linked)
-    tool = by_name.get("od_rechart_chart")
-    if tool is None:
+    gateway = ToolGateway.create(linked)
+    if "od_rechart_chart" not in gateway.by_name:
         yield sse("error", {"code": "NO_RECHART_TOOL", "message": "harness 未注册 od_rechart_chart"})
         yield sse("finish", {"reason": "error", "detail": "no_rechart_tool"})
         return
@@ -1197,7 +1274,7 @@ def _run_rechart(
         action = "追加一张图"
     else:
         # rechart: edit or delete the matched chart
-        target_id, target_title = _match_target_chart(message, charts)
+        target_id, target_title = _match_target_chart(message, charts, selected_chart_id)
         if not target_id:
             yield sse("error", {"code": "NO_TARGET", "message": "未定位到要改的图表，请说清楚（如：把「销售额分布」改成折线）"})
             yield sse("finish", {"reason": "error", "detail": "no_target"})
@@ -1221,10 +1298,7 @@ def _run_rechart(
             action = f"重做「{target_title}」" + (f" → {hint}" if hint else "")
 
     yield step("rechart", action)
-    try:
-        result = tool.execute(args)
-    except Exception as e:
-        result = {"ok": False, "error": str(e)}
+    result = gateway.execute("od_rechart_chart", args)
     if not isinstance(result, dict) or not result.get("ok"):
         yield sse("error", {"code": "RECHART", "message": (result or {}).get("error") or "rechart failed"})
         yield sse("finish", {"reason": "error", "detail": "rechart"})
@@ -1301,6 +1375,7 @@ def run_deterministic(payload: Dict[str, Any]) -> Generator[str, None, None]:
                 mode,
                 conversation_id,
                 str(payload.get("runId") or ""),
+                selected_chart_id=payload.get("selectedChartId"),
             )
             return
 
@@ -1746,8 +1821,8 @@ def _run_ask(message: str, intent: str, dataset_ids: List[str]) -> Generator[str
 def _plan_one_dataset(linked: Optional[str], ds_id: str) -> Dict[str, Any]:
     """单数据集规划（独立 ToolState/registry，供多数据集并行调用，互不串扰）。"""
     try:
-        tools, _state, by_name = create_registry(linked)
-        planned = execute_guarded(by_name["od_plan_charts"], {"datasetId": ds_id}) or {}
+        gateway = ToolGateway.create(linked)
+        planned = gateway.execute("od_plan_charts", {"datasetId": ds_id}) or {}
         return {"datasetId": ds_id, "planned": planned}
     except Exception as e:  # noqa: BLE001
         return {"datasetId": ds_id, "planned": {"ok": False, "error": str(e)}}
@@ -1823,7 +1898,7 @@ def _run_gen(
         except Exception:
             yield step("board", "无可用看板摘要，按新建处理")
 
-    tools, _state, by_name = create_registry(linked)
+    gateway = ToolGateway.create(linked)
     planned: Dict[str, Any] = {}
     composed: Dict[str, Any] = {}
     patch: Dict[str, Any] = {}
@@ -1885,8 +1960,8 @@ def _run_gen(
             title = composed.get("title") or title
         else:
             # 合并后的图表直接走 layout（A 层确定性布局，统一分配 chartId）
-            laid = execute_guarded(
-                by_name["od_layout_board"],
+            laid = gateway.execute(
+                "od_layout_board",
                 {
                     "title": planned.get("title") or title,
                     "styleId": style_id,
@@ -1905,7 +1980,7 @@ def _run_gen(
         ds_id = dataset_ids[0]
         yield step("planner", "分析数据特征 → 按特征选图 → 质检修复")
         try:
-            planned = execute_guarded(by_name["od_plan_charts"], {"datasetId": ds_id}) or {}
+            planned = gateway.execute("od_plan_charts", {"datasetId": ds_id}) or {}
         except Exception as e:
             yield step("fallback", f"plan_charts 失败，降级 compose：{e}")
             planned = {"ok": False}
@@ -1914,8 +1989,8 @@ def _run_gen(
             n = len(planned.get("charts") or [])
             yield step("planner", f"按特征规划 {n} 张图")
             yield step("planner", _quality_label(planned))
-            laid = execute_guarded(
-                by_name["od_layout_board"],
+            laid = gateway.execute(
+                "od_layout_board",
                 {
                     "title": planned.get("title") or title,
                     "styleId": style_id,

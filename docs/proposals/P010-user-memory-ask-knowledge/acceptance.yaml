@@ -1,0 +1,68 @@
+proposal: P010
+items:
+  - id: PR-MEM-01
+    title: 用户记忆按 userId 隔离
+    gate: code
+    criterion: 用户 A 写入的 facts 不能被用户 B 的 GET /harness/v1/memory 或 load(userId) 读到。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_knowledge.py
+    expected: alice 与 bob 的 facts 列表不相等且互不包含对方数据集偏好。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-MEM-01
+  - id: PR-MEM-02
+    title: 新对话可注入已有用户事实
+    gate: code
+    criterion: 同一 userId 新 conversation 的 transformContext 包含 User memory 段。
+    method: script
+    command_or_path: opendashboard-harness/agent/memory.py
+    expected: format_memory_block 在用户 facts 非空时包含 "## User memory"。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-MEM-02
+  - id: PR-MEM-03
+    title: 记忆只存描述性 facts
+    gate: code
+    criterion: 置信度低于 0.7 的事实不落盘；不把查询结果行写入 memory.json。
+    method: script
+    command_or_path: opendashboard-harness/agent/user_memory.py
+    expected: add_fact(..., confidence=0.6) 后 facts 仍为空。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-MEM-03
+  - id: PR-MEM-04
+    title: 术语召回映射到真实字段
+    gate: code
+    criterion: 问题含 GMV / 成交金额 时 prompt_block 含 schema 字段 pay_amount，不含编造字段。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_knowledge.py
+    expected: prompt_block 含 pay_amount 与 GMV。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-MEM-04
+  - id: PR-MEM-05
+    title: SQL 示例不能突破表白名单
+    gate: code
+    criterion: 知识库示例若引用未授权表，sqlglot 表白名单仍拒绝执行。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_sqlbot_guard.py
+    expected: assert_allowed_tables 对非白名单表抛 unauthorized。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-MEM-05
+  - id: PR-MEM-06
+    title: eval runner 覆盖知识/记忆
+    gate: code
+    criterion: pytest 含 test_knowledge 与 eval L1；记忆/知识改动必须能在 runner 中回归。
+    method: script
+    command_or_path: python -m pytest opendashboard-harness/tests/test_knowledge.py opendashboard-harness/tests/test_eval_l1.py
+    expected: 全绿。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-MEM-06

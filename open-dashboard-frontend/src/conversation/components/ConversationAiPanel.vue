@@ -148,7 +148,7 @@ watch(
 async function loadDatasets() {
   try {
     const [list, detail] = await Promise.all([
-      datasetApi.list(),
+      datasetApi.listAskable(),
       dashboardApi.get(props.dashboardId, 'draft').catch(() => null)
     ])
     datasets.value = list
@@ -479,7 +479,7 @@ async function onPickFile(ev: Event) {
   importing.value = true
   try {
     const detail = await datasetApi.importFile(file)
-    datasets.value = await datasetApi.list()
+    datasets.value = await datasetApi.listAskable()
     if (detail.meta?.id) selectedDatasetId.value = detail.meta.id
     chat.value.push({
       role: 'system',

@@ -1,0 +1,98 @@
+{
+  "id": "ASK-04-clarify",
+  "events": [
+    {
+      "type": "step",
+      "data": {
+        "id": "context",
+        "label": "确定性工具环（无 Lead/LLM）",
+        "name": "context",
+        "detail": "确定性工具环（无 Lead/LLM）"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "intent",
+        "label": "意图: ask",
+        "name": "intent",
+        "detail": "意图: ask"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "schema",
+        "label": "读取 1 个数据集的字段",
+        "name": "schema",
+        "detail": "读取 1 个数据集的字段"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "suggest",
+        "label": "根据当前表反问可问问题",
+        "name": "suggest",
+        "detail": "根据当前表反问可问问题",
+        "kind": "tool_start",
+        "tool": "od_get_schema"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "suggest",
+        "label": "根据「订单表」字段反问可问问题",
+        "name": "suggest",
+        "detail": "根据「订单表」字段反问可问问题",
+        "kind": "tool_end",
+        "tool": "od_get_schema",
+        "preview": {
+          "kind": "schema",
+          "hint": "2 个字段 · t_pay_order",
+          "fields": [
+            {
+              "name": "Status",
+              "label": "支付状态",
+              "dataType": "",
+              "group": "d"
+            },
+            {
+              "name": "Amount",
+              "label": "支付金额",
+              "dataType": "",
+              "group": "q"
+            }
+          ],
+          "tableName": "t_pay_order"
+        },
+        "hint": "2 个字段 · t_pay_order"
+      }
+    },
+    {
+      "type": "answer_clarify",
+      "data": {
+        "title": "先选一个问数问题",
+        "headlineHtml": "当前表是「订单表」。点一个具体问题，我会生成 SQL 并出图。",
+        "insightHtml": "下面是根据这张表字段生成的可问问题，也可以自己输入。",
+        "follows": [
+          "各支付状态的支付金额合计",
+          "支付金额最高的前10个支付状态",
+          "各支付状态的记录数",
+          "支付金额合计是多少"
+        ],
+        "question": "换一个问数问题",
+        "datasetId": "ds_1",
+        "datasetName": "订单表"
+      }
+    },
+    {
+      "type": "finish",
+      "data": {
+        "reason": "answered",
+        "detail": "suggest"
+      }
+    }
+  ]
+}

@@ -9,18 +9,18 @@ design: [docs/proposals/P008-permission-aware-workbench/design.md]
 gates:
   proposal: accepted
   hi-fi: none
-  code: none
+  code: wip
   acceptance: none
 depends: [P003, P006, P007]
 ---
 
 # P008 · 权限感知工作台与资源消费边界
 
-> **状态** `accepted` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 none · 代码 none · 验收 none
+> **状态** `accepted` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 none · 代码 wip · 验收 none
 
 ## 开发入口
 
-权限边界已确认，高保和代码都还没有。实现前先补原型与 OpenAPI，不要把 P007 工作台快照当成已有「我的资源 / 可问数据」。
+权限边界已确认。身份贯穿与 `GET /api/dataset/askable` 已编码；工作台「我的资源」高保仍没有。不要把 P007 工作台快照当成已有「我的 / 共享」IA。
 
 | 你要 | 去看 |
 |------|------|
@@ -30,7 +30,7 @@ depends: [P003, P006, P007]
 | 工作台壳层 | [P007 冻结快照](../../prototypes/snapshots/2026-08-17-p007-app-shell-final/)（只提供壳，不含本提案 IA） |
 | 契约 | 实现分支先更新 [`openapi.yaml`](../../design/openapi.yaml)；路径见 design §3，现网尚不存在 |
 | 依赖 | P003 报告模型、P006 问数、P007 壳层 |
-| 当前范围 | 列在 [进行中](../../product/roadmap/in-progress/)，尚未开始高保与代码 |
+| 当前范围 | 身份贯穿与 askable API 已编码；工作台「我的资源」高保仍无 |
 
 ## 波及
 
@@ -39,7 +39,7 @@ depends: [P003, P006, P007]
 | 依赖 | P003 报告发布模型、P006 问数、P007 壳层 |
 | 改动面 | 实现时先改 OpenAPI，再 FE/BE；高保尚未开始 |
 | 不改 | 把本提案 IA 写进 P007 快照或 requirements；P003 当前 live 图语义在本提案交付前保持 |
-| 回归 | PR-ACL-01…07；P006 的 PR-ASK-07；P004 的 PR-CONV-08；P003 报告查看 |
+| 回归 | PR-ACL-01…08；P006 的 PR-ASK-07；P004 的 PR-CONV-08；P003 报告查看 |
 
 ## 1. 背景与目标
 
@@ -147,10 +147,11 @@ depends: [P003, P006, P007]
 | PR-ACL-05 | 我的 / 共享资源分组 |
 | PR-ACL-06 | 待办与失效资源不泄露数据 |
 | PR-ACL-07 | 无权限空状态 |
+| PR-ACL-08 | 客户端不能声明 user_id |
 
 ## 8. 实现与交付映射
 
-- 当前状态：权限边界与详细设计已确认，高保和代码尚未开始。
+- 当前状态：权限边界已确认；**身份贯穿与 askable API 已编码（wip）**；工作台「我的/共享」高保和资源 ACL 表尚未开始。
 - 依赖：P003 报告发布模型、P006 问数、P007 工作台壳层。
 - 实现后必须同步：OpenAPI → FE/BE → `architecture.html` → 验收 → `requirements.md`。
 - 在 `gates.acceptance: passed` 前不得把本提案能力写入已交付基线。
@@ -162,3 +163,4 @@ depends: [P003, P006, P007]
 | 2026-08-17 | 补录历史多轮对话已确认的仪表盘、报告与可问数据权限边界 |
 | 2026-08-17 | 明确不进 2026-08 月包；补波及表；验收细节只保留在 yaml |
 | 2026-08-17 | 写入 design.md（有效权限、工作台 IA、建议契约、静态稿迁移、分期）；仍不实现 |
+| 2026-08-18 | 身份贯穿：askable API + Harness/internal BI 使用 Auth SPI principal；禁止客户端声明 user_id。工作台「我的资源」高保仍未做 |

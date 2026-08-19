@@ -1,0 +1,6 @@
+id: L1-MTR-replace
+layer: L1
+kind: multiturn
+message: 重新生成一版
+expected:
+  multiturn: replace

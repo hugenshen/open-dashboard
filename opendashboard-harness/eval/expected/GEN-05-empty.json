@@ -1,0 +1,63 @@
+{
+  "id": "GEN-05-empty",
+  "events": [
+    {
+      "type": "step",
+      "data": {
+        "id": "context",
+        "label": "确定性工具环（无 Lead/LLM）",
+        "name": "context",
+        "detail": "确定性工具环（无 Lead/LLM）"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "intent",
+        "label": "意图: gen",
+        "name": "intent",
+        "detail": "意图: gen"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "schema",
+        "label": "读取 1 个数据集的字段",
+        "name": "schema",
+        "detail": "读取 1 个数据集的字段"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "planner",
+        "label": "分析数据特征 → 按特征选图 → 质检修复",
+        "name": "planner",
+        "detail": "分析数据特征 → 按特征选图 → 质检修复"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "planner",
+        "label": "探测查询无有效行，不要写空看板。",
+        "name": "planner",
+        "detail": "探测查询无有效行，不要写空看板。"
+      }
+    },
+    {
+      "type": "message_delta",
+      "data": {
+        "text": "探测查询无有效行，不要写空看板。"
+      }
+    },
+    {
+      "type": "finish",
+      "data": {
+        "reason": "answered",
+        "detail": "empty_dataset"
+      }
+    }
+  ]
+}

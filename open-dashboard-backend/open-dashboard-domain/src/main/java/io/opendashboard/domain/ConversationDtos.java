@@ -84,12 +84,6 @@ public final class ConversationDtos {
             Map<String, Object> selectedEncode
     ) {}
 
-    /** Adopt ask/insight answer into a dashboard patch. */
-    public record ConversationAdoptRequest(
-            String action,
-            String styleId
-    ) {}
-
     public record StylePresetVO(
             String id,
             String name,

@@ -198,7 +198,7 @@ async function load(opts?: { quiet?: boolean }) {
   try {
     const [srcsR, dtsR, treeR, rptsR, convR] = await Promise.allSettled([
       datasourceApi.list(),
-      datasetApi.list(),
+      datasetApi.listAskable(),
       dashboardTreeApi.tree({}),
       reportApi.list(DESKTOP_RECENT_REPORTS),
       conversationApi.list(8)

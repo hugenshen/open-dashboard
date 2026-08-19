@@ -2,7 +2,6 @@ package io.opendashboard.application.conversation;
 
 import io.opendashboard.application.DatasetService;
 import io.opendashboard.application.StubQueryService;
-import io.opendashboard.domain.ConversationDtos.ConversationAdoptRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationRunRequest;
 import io.opendashboard.domain.ConversationDtos.ConversationRunVO;
 import io.opendashboard.domain.ConversationDtos.ConversationUpdateRequest;
@@ -197,57 +196,6 @@ public class ConversationHarness {
             }
 
             applyAndPreview(conversation, run, request.message(), patch, emitter);
-        } catch (Exception e) {
-            emitter.emit("error", Map.of("code", "HARNESS", "message", e.getMessage() == null ? e.toString() : e.getMessage()));
-            finish(run.id(), "error", "exception", emitter);
-        }
-    }
-
-    public void adoptAnswer(
-            ConversationVO conversation,
-            ConversationRunVO run,
-            ConversationAdoptRequest request,
-            Emitter emitter
-    ) {
-        try {
-            Map<String, Object> plan = run.plan();
-            if (plan == null || !(plan.get("answer") instanceof Map<?, ?>)) {
-                emitter.emit("error", Map.of("code", "NO_ANSWER", "message", "无可采纳的问数/洞察结果"));
-                finish(run.id(), "error", "no_answer", emitter);
-                return;
-            }
-            @SuppressWarnings("unchecked")
-            Map<String, Object> answerMap = (Map<String, Object>) plan.get("answer");
-            AskAnswerPlanner.Answer answer = answerFromMap(answerMap);
-            String action = request == null || request.action() == null || request.action().isBlank()
-                    ? "save"
-                    : request.action().trim().toLowerCase();
-            String styleId = request != null && request.styleId() != null && !request.styleId().isBlank()
-                    ? request.styleId()
-                    : run.styleId();
-
-            step(emitter, "adopt", "save".equals(action) ? "保存本题到仪表盘" : "从本题生成整页看板");
-
-            DashboardPatch.Patch patch;
-            if ("generate".equals(action)) {
-                List<String> datasetIds = List.of(answer.datasetId());
-                Map<String, DatasetDetailVO> loaded = new HashMap<>();
-                for (String id : datasetIds) {
-                    datasets.get(id).ifPresent(d -> loaded.put(id, d));
-                }
-                SchemaGuard.SchemaBundle schema = SchemaGuard.load(datasetIds, loaded);
-                if (!schema.okForPagePatch()) {
-                    emitter.emit("error", Map.of("code", "SCHEMA_GUARD", "message", "数据集不可用，无法生成看板"));
-                    finish(run.id(), "error", "schema_guard", emitter);
-                    return;
-                }
-                String msg = answer.title() + " · " + (plan.get("message") == null ? "" : plan.get("message"));
-                patch = DeterministicPlanner.plan(conversation.linkedDashboardId(), styleId, msg, schema);
-            } else {
-                patch = AskAnswerPlanner.toSavePatch(answer, styleId);
-            }
-
-            applyAndPreview(conversation, run, "adopt:" + action, patch, emitter);
         } catch (Exception e) {
             emitter.emit("error", Map.of("code", "HARNESS", "message", e.getMessage() == null ? e.toString() : e.getMessage()));
             finish(run.id(), "error", "exception", emitter);
@@ -598,42 +546,6 @@ public class ConversationHarness {
             step(emitter, "plan", "LLM 失败，回退确定性规划器");
         }
         return DeterministicPlanner.plan(dashboardId, styleId, message, schema);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static AskAnswerPlanner.Answer answerFromMap(Map<String, Object> m) {
-        List<Map<String, Object>> drivers = List.of();
-        if (m.get("drivers") instanceof List<?> list) {
-            List<Map<String, Object>> tmp = new ArrayList<>();
-            for (Object o : list) {
-                if (o instanceof Map<?, ?> dm) {
-                    tmp.add((Map<String, Object>) dm);
-                }
-            }
-            drivers = tmp;
-        }
-        List<String> follows = List.of();
-        if (m.get("follows") instanceof List<?> fl) {
-            follows = fl.stream().map(String::valueOf).toList();
-        }
-        Map<String, Object> encode = m.get("encode") instanceof Map<?, ?> em
-                ? (Map<String, Object>) em
-                : Map.of();
-        Map<String, Object> patchHint = m.get("patchHint") instanceof Map<?, ?> pm
-                ? (Map<String, Object>) pm
-                : Map.of();
-        return new AskAnswerPlanner.Answer(
-                String.valueOf(m.getOrDefault("kind", "ask")),
-                String.valueOf(m.getOrDefault("title", "问数结果")),
-                String.valueOf(m.getOrDefault("insightHtml", "")),
-                String.valueOf(m.getOrDefault("headlineHtml", "")),
-                String.valueOf(m.getOrDefault("datasetId", "")),
-                String.valueOf(m.getOrDefault("chartType", "bar")),
-                encode,
-                drivers,
-                follows,
-                patchHint
-        );
     }
 
     private static Map<String, Object> findChartInline(DashboardPatch.Patch patch, String chartId) {

@@ -375,7 +375,7 @@ async function onPickFile(ev: Event) {
   importHint.value = ''
   try {
     const detail = await datasetApi.importFile(file)
-    const list = await datasetApi.list()
+    const list = await datasetApi.listAskable()
     datasets.value = list
     const id = detail.meta?.id
     if (id) selectedDatasets.value = [id]
@@ -407,7 +407,7 @@ onMounted(async () => {
     const [list, styleList, ds] = await Promise.all([
       conversationApi.list(),
       conversationApi.styles(),
-      datasetApi.list()
+      datasetApi.listAskable()
     ])
     conversations.value = list
     styles.value = styleList

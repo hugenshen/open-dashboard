@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Generator, List, Literal, Optional
+from typing import Any, Callable, Dict, Generator, List, Literal, Optional, Tuple
 
 
 Role = Literal["user", "assistant", "tool", "system", "ui"]
@@ -65,9 +66,20 @@ SseGen = Generator[str, None, None]
 
 
 def sse(event: str, data: Dict[str, Any]) -> str:
-    import json
-
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+
+
+def parse_sse_event(chunk: str) -> Optional[tuple[str, Dict[str, Any]]]:
+    if not chunk or not chunk.startswith("event:"):
+        return None
+    try:
+        first, _, rest = chunk.partition("\n")
+        event_type = first.replace("event:", "", 1).strip()
+        data_line = rest.split("data:", 1)[1].strip().split("\n")[0] if "data:" in rest else "{}"
+        payload = json.loads(data_line) if data_line else {}
+        return event_type, payload if isinstance(payload, dict) else {"value": payload}
+    except Exception:
+        return None
 
 
 def step(name: str, detail: str, **extra: Any) -> str:

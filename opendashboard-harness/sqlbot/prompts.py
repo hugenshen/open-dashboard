@@ -33,7 +33,8 @@ def m_schema(schema: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def sql_system(engine: str, schema_text: str, sample: str = "") -> str:
+def sql_system(engine: str, schema_text: str, sample: str = "", knowledge: str = "") -> str:
+    knowledge_block = f"\n{knowledge}\n" if knowledge else ""
     return f"""<Instruction>
 你是智能问数小助手："{SQLBOT_NAME}"。根据给定表结构和用户问题生成 SQL、对话标题、适合展示的图表类型，以及该 SQL 用到的表名。
 <Info> 内有 <db-engine><m-schema>；标识符必须与 <m-schema> 逐字一致（含繁简、大小写、特殊字符），不得转换。
@@ -72,7 +73,7 @@ def sql_system(engine: str, schema_text: str, sample: str = "") -> str:
 <sample-data>
 {sample}
 </sample-data>
-</Info>
+{knowledge_block}</Info>
 """
 
 

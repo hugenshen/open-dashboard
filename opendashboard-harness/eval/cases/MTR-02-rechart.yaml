@@ -1,0 +1,12 @@
+id: MTR-02-rechart
+layer: L2
+message: 把销售额分布改成折线
+intent: gen
+datasetIds: [ds_1]
+linkedDashboardId: dash-1
+selectedChartId: c-sales
+expected:
+  finish_reason: done
+  no_full_regenerate: true
+  keep_chart_ids: [c-sales, c-kpi]
+  events: [patch, finish]

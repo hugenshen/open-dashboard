@@ -1,0 +1,134 @@
+{
+  "id": "ASK-01-agg",
+  "events": [
+    {
+      "type": "step",
+      "data": {
+        "id": "context",
+        "label": "确定性工具环（无 Lead/LLM）",
+        "name": "context",
+        "detail": "确定性工具环（无 Lead/LLM）"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "intent",
+        "label": "意图: ask",
+        "name": "intent",
+        "detail": "意图: ask"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "schema",
+        "label": "读取 1 个数据集的字段",
+        "name": "schema",
+        "detail": "读取 1 个数据集的字段"
+      }
+    },
+    {
+      "type": "intent_map",
+      "data": {
+        "ok": true,
+        "unresolved": [],
+        "mappings": [],
+        "cards": []
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "intent_map",
+        "label": "已对齐用户短语到字段",
+        "name": "intent_map",
+        "detail": "已对齐用户短语到字段"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "evidence",
+        "label": "读取 schema: 订单表",
+        "name": "evidence",
+        "detail": "读取 schema: 订单表"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "query",
+        "label": "受控 chartQuery: Status × Amount",
+        "name": "query",
+        "detail": "受控 chartQuery: Status × Amount"
+      }
+    },
+    {
+      "type": "answer_table",
+      "data": {
+        "title": "订单表 · Amount",
+        "datasetId": "ds_1",
+        "fields": [
+          {
+            "name": "Status",
+            "type": "varchar"
+          },
+          {
+            "name": "Amount",
+            "type": "decimal"
+          }
+        ],
+        "rows": [
+          [
+            "成功",
+            10
+          ],
+          [
+            "失败",
+            2
+          ]
+        ],
+        "rowCount": 2,
+        "encode": {
+          "datasetId": "ds_1",
+          "category": "Status",
+          "value": "Amount",
+          "agg": "SUM"
+        }
+      }
+    },
+    {
+      "type": "answer_chart",
+      "data": {
+        "title": "Amount by Status",
+        "chartType": "bar",
+        "datasetId": "ds_1",
+        "encode": {
+          "datasetId": "ds_1",
+          "category": "Status",
+          "value": "Amount",
+          "agg": "SUM"
+        },
+        "labels": [
+          "成功",
+          "失败"
+        ],
+        "rowCount": 2
+      }
+    },
+    {
+      "type": "message_delta",
+      "data": {
+        "text": "问数完成：2 行（会话预览，未写入看板）。"
+      }
+    },
+    {
+      "type": "finish",
+      "data": {
+        "reason": "answered",
+        "detail": "ask"
+      }
+    }
+  ]
+}

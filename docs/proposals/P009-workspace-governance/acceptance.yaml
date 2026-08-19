@@ -1,0 +1,143 @@
+- id: PR-WS-01
+  title: 工作区数据与资源强隔离
+  gate: acceptance
+  criterion: 用户 A 只属于 workspace-a；通过列表、问数、仪表盘生成、直接猜测 workspace-b 的 datasetId/dashboardId/runId 均不能读取 workspace-b 的业务数据、资源元数据或运行结果。
+  method: api
+  command_or_path: "API: workspace/resource/run cross-workspace access matrix"
+  expected: 非本工作区资源返回 403 或 404；审计记录 WORKSPACE_FORBIDDEN；无数据片段泄露。
+  evidence: "partial: opendashboard-harness/tests/test_knowledge.py 覆盖本地 dataset knowledge 跨 workspace 隔离；完整 Java draft/review/publish 尚未实现"
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-01
+- id: PR-WS-02
+  title: 用户接入与工作区切换
+  gate: acceptance
+  criterion: 同一用户加入 workspace-a 和 workspace-b 后，前端只能在已加入工作区之间切换；切换后导航、资源列表、可问数据和后续 run 都绑定新的 workspaceId。
+  method: ui
+  command_or_path: "UI: workspace switcher and run creation"
+  expected: 切换前后资源集合不同；run trace 中 workspaceId 与当前工作区一致。
+  evidence: "partial: opendashboard-harness/tests/test_knowledge.py 与 test_harness_runtime_skeleton.py 覆盖 user memory 跨 workspace 隔离和 memoryRefs 写入 run trace；session/workspace memory 与过期策略尚未实现"
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-02
+- id: PR-WS-03
+  title: 项目组角色和资源 ACL 生效
+  gate: acceptance
+  criterion: 用户通过 group 获得 viewer 角色，通过直接绑定获得 analyst 角色；有效权限应合并两类授权，且撤销 group 后对应资源访问立即失效。
+  method: api
+  command_or_path: "API: effective-permissions and resource access"
+  expected: 权限合并结果可解释；撤销后同一资源访问失败；缓存不继续放行。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-03
+- id: PR-WS-04
+  title: 可问数据集合三入口一致
+  gate: acceptance
+  criterion: 工作台问数框、对话数据上下文、编辑器 SQLBot 使用同一用户同一工作区时，展示的 askable datasets 完全一致。
+  method: api
+  command_or_path: GET /api/workspaces/{id}/askable-datasets
+  expected: 三入口不各自计算权限；不可问数据不会进入 prompt 或工具参数。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-04
+- id: PR-WS-05
+  title: 行列权限进入问数执行
+  gate: acceptance
+  criterion: 用户只有华东区域行权限和手机号脱敏列权限；同一自然语言问题生成查询时必须注入行过滤和列脱敏，答案也不得出现未授权明细。
+  method: api
+  command_or_path: "API: ask run with RLS/CLS policy"
+  expected: 执行 SQL 或查询计划包含策略；结果只含授权行列；run trace 记录策略命中。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-05
+- id: PR-WS-06
+  title: 仪表盘生成写权限闸门
+  gate: acceptance
+  criterion: 用户有 dataset:use 但没有 dashboard:create/edit 时，可以看到生成计划和预览建议，但调用 apply 写入草稿必须失败。
+  method: api
+  command_or_path: "API: dashboard generation run and apply"
+  expected: apply 返回 403 DASHBOARD_WRITE_FORBIDDEN；已有仪表盘不被修改。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-06
+- id: PR-WS-07
+  title: 知识发布后才进入召回
+  gate: acceptance
+  criterion: 新增指标口径草稿但未审核发布时，问数和仪表盘生成不得召回；发布后同一问题的计划引用该知识版本。
+  method: api
+  command_or_path: "API: knowledge draft/review/publish and ask run"
+  expected: draft 不进入 runtime context；active version 进入 trace 的 knowledgeRefs。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-07
+- id: PR-WS-08
+  title: 记忆按会话、用户、工作区隔离
+  gate: acceptance
+  criterion: 用户在 workspace-a 保存的偏好和会话记忆，不会在 workspace-b 的问数或生成中召回；同一工作区的新会话可使用用户偏好但不能使用已过期 session memory。
+  method: api
+  command_or_path: "API: memory write/read and run trace"
+  expected: memoryRefs 按 scope 过滤；跨工作区无召回；过期会话记忆不可见。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-08
+- id: PR-WS-09
+  title: 工具按 workspace 和 role 过滤
+  gate: acceptance
+  criterion: 同一用户在不同工作区有不同角色；Harness 启动后可见工具集合必须不同，模型尝试调用未授权工具时 Tool Gateway 拒绝。
+  method: api
+  command_or_path: "API: runtime-context tools and denied tool call"
+  expected: 未授权工具不出现在 tool registry；强行调用返回 TOOL_FORBIDDEN 并审计。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-09
+- id: PR-WS-10
+  title: 运行审计可追溯
+  gate: acceptance
+  criterion: 每次问数和仪表盘生成都能按 runId 查询到 workspaceId、userId、conversationId、计划、工具调用、权限决策、知识版本、产物 ID 和错误码摘要。
+  method: api
+  command_or_path: GET /api/runs/{runId}/audit
+  expected: 审计不含敏感明文结果；足以复现授权决策和排查失败原因。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-10
+- id: PR-WS-11
+  title: 知识管理、存储和检索闭环
+  gate: acceptance
+  criterion: 在 workspace-a 创建术语、指标、SQL 示例和 SOP 草稿，未发布时不进入 Harness 召回；发布后 Java runtime-context 返回对应 knowledgeRefs，Harness 检索命中并写入 run trace；下线后新 run 不再召回。
+  method: api
+  command_or_path: "API: knowledge CRUD/status/index/runtime-context/run trace"
+  expected: 主库 active version 与索引状态一致；跨 workspace 不召回；dataset 级知识受 dataset:use 过滤。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-11
+- id: PR-WS-12
+  title: 记忆管理、存储和检索闭环
+  gate: acceptance
+  criterion: Harness 保存 session、user、workspace 三类记忆；用户可查看/删除自己的 user memory，管理员可治理 workspace memory；新 run 只召回当前 workspace 和当前用户允许 scope 内的 active memory。
+  method: api
+  command_or_path: "API: harness memory CRUD/policy/run trace"
+  expected: deleted/stale memory 不按 active 权重召回；跨 workspace 不召回；memoryRefs 写入 run trace 且不含敏感明细。
+  evidence: ""
+  status: todo
+  blocker_of_done: true
+  requirements_target: PR-WS-12
+- id: PR-WS-13
+  title: Harness 演进骨架闭环
+  gate: acceptance
+  criterion: 当前 Harness 不 fork ref 项目作为主服务；完成 RunController、EventStream、TraceStore、ContextBuilder、ToolGateway、Planner、MemoryRuntime、KnowledgeRetriever、EvalRunner 的模块边界，并保持 FE 直接调用 Harness public run 入口。
+  method: api
+  command_or_path: "API/code: harness module boundaries and run/event contracts"
+  expected: run/event/tool/result schema 可回放；Harness 从 Java internal 获取授权边界；refs 只作为局部实现来源，不引入第二套用户或权限中心。
+  evidence: "./.venv/bin/python -m pytest tests（opendashboard-harness，44 passed）；./.venv/bin/python -m py_compile api/app.py agent/*.py tools/*.py sqlbot/*.py；python3 解析 docs/design/openapi.yaml OK；open-dashboard-frontend npm run build OK；open-dashboard-backend mvn test OK。覆盖 RunController/EventStream/TraceStore、ToolGateway、runtimeContext、run refs 与 Harness workspace scope"
+  status: pass
+  blocker_of_done: true
+  requirements_target: PR-WS-13

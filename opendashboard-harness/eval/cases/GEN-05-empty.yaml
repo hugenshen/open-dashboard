@@ -1,0 +1,9 @@
+id: GEN-05-empty
+layer: L2
+message: 帮我生成一个经营分析看板
+intent: gen
+datasetIds: [ds_empty]
+expected:
+  finish_reason: answered
+  no_patch: true
+  events: [finish]

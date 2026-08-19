@@ -25,15 +25,27 @@ def internal_token() -> str:
 def bi_call(method: str, path: str, body: Any = None) -> Any:
     url = f"{bi_base()}{path}"
     data = None if body is None else json.dumps(body).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-OD-Internal-Token": internal_token(),
+    }
+    try:
+        from agent.user_context import current_perms, current_user_id
+
+        uid = current_user_id()
+        if uid:
+            headers["X-User-Id"] = uid
+            perms = current_perms()
+            if perms:
+                headers["X-User-Perms"] = perms
+    except Exception:
+        pass
     req = urllib.request.Request(
         url,
         data=data,
         method=method,
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "X-OD-Internal-Token": internal_token(),
-        },
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:

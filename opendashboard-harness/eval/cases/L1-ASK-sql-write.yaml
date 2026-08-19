@@ -1,0 +1,6 @@
+id: L1-ASK-sql-write
+layer: L1
+kind: sql_guard
+sql: DELETE FROM orders
+expected:
+  deny: true

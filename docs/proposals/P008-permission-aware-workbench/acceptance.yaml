@@ -77,3 +77,14 @@ items:
     status: todo
     blocker_of_done: true
     requirements_target: PR-ACL-07
+  - id: PR-ACL-08
+    title: 客户端不能声明 user_id
+    gate: code
+    criterion: Harness 与 Java 只从 Auth SPI 头读取身份；JSON body 含 userId 或 ownerId 时拒绝。
+    method: api
+    command_or_path: /harness/v1/conversations
+    expected: 带 userId 的 POST 返回 4xx；会话列表按 owner 隔离。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: null

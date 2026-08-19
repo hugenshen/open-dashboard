@@ -1,9 +1,8 @@
 # P008 · 权限感知工作台详细设计
 
-> 状态：未实现详细设计，不属于现行 4A 架构。实现并验收后只把稳定结果沉淀到 [`architecture.html`](../../design/architecture.html)。  
+> 状态：工作台「我的/共享」IA 尚未实现。**身份贯穿与 `GET /api/dataset/askable` 已编码（code: wip）**。验收前不把本提案写入 [`architecture.html`](../../design/architecture.html)。  
 > 需求与原则：[README](./README.md) §2 · 验收：[acceptance.yaml](./acceptance.yaml)  
-> 壳层对照：[P007 冻结快照](../../prototypes/snapshots/2026-08-17-p007-app-shell-final/)（只提供壳，不含本提案 IA）  
-> 本月不实现、不改 OpenAPI、不改冻结快照。
+> 壳层对照：[P007 冻结快照](../../prototypes/snapshots/2026-08-17-p007-app-shell-final/)（只提供壳，不含本提案 IA）
 
 ## 1. 有效权限
 
@@ -56,9 +55,9 @@ GET /api/workbench/summary
 列表 scope=mine|shared|accessible
 资源项：owner, permission, publishState, accessState, unavailableReason
 
-GET /api/datasets/askable
-  工作台、对话、编辑器 SQLBot 共用
-  服务端拒绝手工 ID 绕过（run / chartQuery / datasetQuery 同样闸门）
+GET /api/dataset/askable
+  工作台、对话、编辑器 SQLBot 共用（已编码）
+  服务端拒绝手工 ID 绕过（internal BI schema / query / sql 同样闸门）
 
 GET /api/report/{id}/published
   只读静态稿，不得触发 chartQuery / datasetQuery
@@ -88,7 +87,7 @@ P003 当前以 live 图为主。P008 不能原地把 view 改成静态。
 ## 5. 分期
 
 1. 高保增量（PR-ACL-05）
-2. OpenAPI + Java ACL / summary / askable + 报告快照读路径
+2. OpenAPI + Java askable + 身份贯穿（PR-ACL-04 / PR-ACL-08）：Auth SPI principal 经 `X-User-Id` / `X-User-Perms` 传到 Harness 与 `/api/internal/bi/*`。请求体不得声明 `userId`/`ownerId`。`GET /api/dataset/askable` 为三入口唯一可问集合。资源级 ACL 表仍归治理立项（P011+）。
 3. Vue 工作台、对话、SQLBot 接同一 askable API（覆盖 PR-ACL-04、PR-CONV-08、PR-ASK-07）
 4. 同步 `architecture.html`；验收后再写 `requirements.md`
 

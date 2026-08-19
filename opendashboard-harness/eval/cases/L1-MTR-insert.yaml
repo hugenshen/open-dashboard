@@ -1,0 +1,6 @@
+id: L1-MTR-insert
+layer: L1
+kind: multiturn
+message: 再加一张各地区对比图
+expected:
+  multiturn: insert

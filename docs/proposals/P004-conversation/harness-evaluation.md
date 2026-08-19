@@ -15,8 +15,8 @@
 |---|---|---|
 | 纯函数单元测试 4 个 | `tests/test_chart_quality.py`（质检闸）、`test_sqlbot_guard.py`（SQL 只读闸）、`test_sqlbot_suggest.py`（反问）、`test_tool_preview.py`（tool preview） | 只测确定性逻辑，**不测 LLM 行为、SSE 事件流、多轮状态机** |
 | 验收清单 | `acceptance.yaml`（PR-CONV-01…08，人工/API gate） | 人工验收不可每日回归；缺少机器可判定的量化指标 |
-| 无评测 runner | — | 无法批量回放案例、无法对比版本间质量变化 |
-| 无 golden set | — | 每次回归靠肉眼，无"预期看板/SQL/事件"基准 |
+| 评测 runner | `opendashboard-harness/eval/runner.py` + `eval/cases/*.yaml` | L1 每次提交；L2 mock BI + `--mode replay` 快照；LLM-judge 仍后置 |
+| golden set | ASK-01/04/06、GEN-01/05、MTR-01/02、ERR-01 | 其余 ASK/GEN/MTR 案例后续补 |
 
 ---
 

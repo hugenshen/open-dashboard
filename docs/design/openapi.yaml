@@ -134,7 +134,7 @@ paths:
                 content: { type: string }
                 attachments:
                   type: array
-                  description: Assistant 消息可携带思考过程 trace（{kind: 'trace', steps: [...]}），历史会话回溯用
+                  description: "Assistant 消息可携带思考过程 trace（{kind: 'trace', steps: [...]}），历史会话回溯用"
                   items:
                     type: object
                     additionalProperties: true
@@ -216,6 +216,320 @@ paths:
       responses:
         '200':
           description: SSE stream continuation
+  /harness/v1/conversations/{id}/runs:
+    post:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: Harness direct run
+      description: |
+        Public Harness AI run entrypoint. Frontend calls it through the `/harness`
+        proxy. Harness owns SSE, run trace, runtime context assembly and tool
+        orchestration; Java public run entry is retired.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-User-Id
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-User-Perms
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+          description: Harness workspace scope; defaults to `default` for existing single-workspace runs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+                intent: { type: string, enum: [ask, insight, gen] }
+                mode: { type: string, enum: [auto, plan], default: auto }
+                styleId: { type: string }
+                datasetIds:
+                  type: array
+                  items: { type: string }
+                selectedChartId: { type: string }
+                selectedEncode: { type: object }
+      responses:
+        '200':
+          description: |
+            SSE stream. Named events: run, step, plan, patch, chart_ready,
+            intent_map, answer_sql, answer_table, answer_chart, answer_insight,
+            answer_clarify, message_delta, error, finish.
+        '400':
+          description: Invalid conversation or workspace id
+        '404':
+          description: Conversation not found in current owner/workspace scope
+  /harness/v1/conversations/{id}/runs/{runId}/cancel:
+    post:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: Harness cancel run
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Conversation not found in current owner/workspace scope
+  /harness/v1/conversations/{id}/runs/{runId}/confirm-plan:
+    post:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: Harness confirm plan mode and continue apply
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+      responses:
+        '200':
+          description: SSE stream continuation
+        '404':
+          description: Conversation not found in current owner/workspace scope
+  /harness/v1/conversations/{id}/runs/{runId}/adopt:
+    post:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: Harness adopt ask result into dashboard draft
+      description: |
+        Saves an answered ask run into a dashboard draft through Java internal
+        apply. The Java public adopt boundary is removed; frontend calls Harness.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action: { type: string, enum: [save, generate], default: save }
+                styleId: { type: string }
+      responses:
+        '200':
+          description: SSE stream. May emit patch, chart_ready, board_ready, message_delta, error, finish.
+        '404':
+          description: Conversation or run not found in current owner/workspace scope
+        '409':
+          description: Run has no adoptable artifact
+  /harness/v1/conversations/{id}/runs/{runId}/trace:
+    get:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: Harness run trace
+      description: |
+        Harness public read model for a run. The endpoint returns recorded SSE
+        events plus run status, artifact, pending plan, knowledgeRefs and memoryRefs.
+        Frontend calls it through the `/harness` proxy; Java internal APIs are not exposed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversationId: { type: string }
+                  runId: { type: string }
+                  status: { type: string }
+                  finishDetail: { type: string, nullable: true }
+                  eventCount: { type: integer }
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  artifact:
+                    type: object
+                    additionalProperties: true
+                  pending:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                  knowledgeRefs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  memoryRefs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '404':
+          description: Conversation or run not found
+  /harness/v1/memory:
+    get:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: Harness user memory status
+      description: |
+        Returns current user's Harness memory in the selected workspace. Memory
+        is owned by Harness and scoped by workspace plus user.
+      parameters:
+        - name: X-User-Id
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-User-Perms
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId: { type: string }
+                  workspaceId: { type: string }
+                  facts:
+                    type: array
+                    items: { type: string }
+  /harness/v1/knowledge/{datasetId}:
+    get:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: Harness local dataset knowledge
+      description: |
+        Reads dataset glossary and SQL examples in the selected workspace. This
+        is the current local Harness store and will later be bounded by Java
+        active knowledgeRefs.
+      parameters:
+        - name: datasetId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-User-Id
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-User-Perms
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Invalid dataset or workspace id
+        '403':
+          description: Missing conversation:use or dataset:use
+    put:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: Update Harness local dataset knowledge
+      parameters:
+        - name: datasetId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-User-Id
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-User-Perms
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                glossary:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                examples:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Invalid dataset or workspace id
+        '403':
+          description: Missing dataset manage permission
   /conversations/{id}/revisions:
     get:
       tags: [conversation]
@@ -335,6 +649,21 @@ paths:
       responses:
         '200':
           description: OK
+  /dataset/askable:
+    get:
+      tags: [dataset]
+      summary: List datasets the current user may ask (conversation:use ∩ dataset:use)
+      description: |
+        Shared by workbench, conversation, and editor SQLBot (P008).
+        Server rejects harness/internal BI queries for IDs outside this set.
+        Identity comes from Auth SPI headers; request bodies must not declare userId.
+      responses:
+        '200':
+          description: DatasetMetaVO list
+        '401':
+          description: Missing principal
+        '403':
+          description: Missing conversation:use
   /dataset/import:
     post:
       tags: [dataset]

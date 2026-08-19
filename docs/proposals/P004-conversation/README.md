@@ -44,7 +44,7 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | Harness 质量评测（指标 / 案例 / 分层） | [harness-evaluation.md](./harness-evaluation.md) |
 | 原型 | 当前增量 [`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html)；**尚未冻结快照** |
 | 代码落点 | `open-dashboard-frontend/src/conversation/` · `opendashboard-harness/` · Java `/api/internal/bi/*` |
-| 不要做 | 问数结果卡双按钮（归 P006）；权限消费面（归 P008）；SQLBot 出现在非编辑器页（归 P007） |
+| 不要做 | 问数结果卡双按钮（归 P006）；权限消费面（归 P008）；记忆/知识库（归 P010）；SQLBot 出现在非编辑器页（归 P007） |
 | 当前范围 | [路线图 · 进行中](../../product/roadmap/in-progress/)：PR-CONV-01…08 |
 
 ## 波及
@@ -68,6 +68,8 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 - 监控告警、定时推送、多模型 Skills/MCP（见 roadmap 二期）
 - 替代仪表盘作为运行时真相
 - 洞察报告（→ [P005](../P005-insight-report/README.md)，v0.6）
+- 跨会话用户记忆、术语/SQL 示例知识库（→ [P010](../P010-user-memory-ask-knowledge/)）
+- 可问集合产品化与工作台 ACL 消费面（→ [P008](../P008-permission-aware-workbench/)；Harness 身份贯穿由 P008 承担）
 
 > **问数默认轨**见 [P006](../P006-ask-data/README.md) · [Ask-data 设计](../P006-ask-data/design.md)；P004 侧重 Patch 闭环与生成/采纳落地。
 
@@ -112,6 +114,8 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | PR-CONV-07 | Harness 只经内部 Token 调 Java BI |
 | PR-CONV-08 | 可问数据集 = conversation:use ∩ dataset:use |
 
+评测 runner（工程，非正式产品验收 ID）：`opendashboard-harness/eval/runner.py`（L1 每次提交；L2 mock BI）。
+
 上表 ID 不得在 design 文件中另定义。
 
 ## 关联
@@ -134,3 +138,4 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | 2026-08-18 | 确认 run / confirm-plan / adopt 均由 Harness 承担；Java 删除 public adopt，只提供 `/api/internal/bi/*`，避免 FE → Java → Harness → Java 循环 |
 | 2026-08-18 | 新增 [multi-turn-design.md](./multi-turn-design.md)（对话驱动多轮/单图改造/删图）与 [harness-comparison.md](./harness-comparison.md)（dsh / DeerFlow / 问数栈对比），并登记文首设计清单与开发入口 |
 | 2026-08-18 | 新增 [harness-evaluation.md](./harness-evaluation.md)：问数/看板生成的 Harness 质量评测体系（分层评测 + golden case 集 + 量化指标 + 快照回归），登记文首清单 |
+| 2026-08-18 | 落地 eval runner / 事件日志 / Lead 多轮硬路由；记忆与术语知识库划到 [P010](../P010-user-memory-ask-knowledge/) |

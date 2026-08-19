@@ -1,0 +1,9 @@
+id: ASK-01-agg
+layer: L2
+message: 各地区的销售额是多少？
+intent: ask
+datasetIds: [ds_1]
+expected:
+  intent: ask
+  finish_reason: answered
+  events: [answer_table, answer_chart, finish]

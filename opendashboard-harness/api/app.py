@@ -12,11 +12,19 @@ _loaded_env = load_dotenv()
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from agent import session_store
+from agent.context_builder import build_run_payload as build_runtime_payload
+from agent.event_stream import EventStreamRecorder
+from agent.knowledge import load as load_knowledge
+from agent.knowledge import save as save_knowledge
+from agent.run_controller import RunController
+from agent.trace_store import get_run_trace
 from agent.runtime import harness_mode, run_adopt, run_agent, run_confirm_plan, use_lead
 from agent.types import sse
+from agent.user_context import has_permission, set_principal, set_workspace
+from agent.memory_runtime import memory_status
 from llm_client import llm_configured, llm_settings
 from tools.od_bi import bi_base, bi_health
 
@@ -60,6 +68,14 @@ class CreateConversationBody(BaseModel):
     title: Optional[str] = None
     datasetIds: Optional[List[str]] = None
     linkedDashboardId: Optional[str] = None
+    userId: Optional[str] = None
+    ownerId: Optional[str] = None
+
+    @model_validator(mode="after")
+    def reject_client_user_id(self):
+        if self.userId or self.ownerId:
+            raise ValueError("client metadata cannot declare user_id")
+        return self
 
 
 class UpdateConversationBody(BaseModel):
@@ -67,6 +83,14 @@ class UpdateConversationBody(BaseModel):
     layoutPrefs: Optional[Dict[str, Any]] = None
     datasetIds: Optional[List[str]] = None
     linkedDashboardId: Optional[str] = None
+    userId: Optional[str] = None
+    ownerId: Optional[str] = None
+
+    @model_validator(mode="after")
+    def reject_client_user_id(self):
+        if self.userId or self.ownerId:
+            raise ValueError("client metadata cannot declare user_id")
+        return self
 
 
 class RunBody(BaseModel):
@@ -77,6 +101,14 @@ class RunBody(BaseModel):
     datasetIds: Optional[List[str]] = None
     selectedChartId: Optional[str] = None
     selectedEncode: Optional[Dict[str, Any]] = None
+    userId: Optional[str] = None
+    ownerId: Optional[str] = None
+
+    @model_validator(mode="after")
+    def reject_client_user_id(self):
+        if self.userId or self.ownerId:
+            raise ValueError("client metadata cannot declare user_id")
+        return self
 
 
 class AdoptBody(BaseModel):
@@ -84,8 +116,26 @@ class AdoptBody(BaseModel):
     styleId: Optional[str] = None
 
 
-def _owner(x_user_id: Optional[str]) -> str:
-    return (x_user_id or "demo").strip() or "demo"
+def _bind_principal(x_user_id: Optional[str], x_user_perms: Optional[str] = None) -> str:
+    try:
+        return set_principal(x_user_id, x_user_perms)
+    except PermissionError:
+        raise HTTPException(status_code=401, detail="principal required")
+
+
+def _owner(x_user_id: Optional[str], x_user_perms: Optional[str] = None) -> str:
+    return _bind_principal(x_user_id, x_user_perms)
+
+
+def _workspace(x_workspace_id: Optional[str] = None) -> str:
+    try:
+        return set_workspace(x_workspace_id)
+    except PermissionError:
+        raise HTTPException(status_code=400, detail="invalid workspace id")
+
+
+def _permission_list(raw: Optional[str]) -> List[str]:
+    return [part.strip() for part in (raw or "").split(",") if part.strip()]
 
 
 @app.get("/health")
@@ -123,18 +173,25 @@ def styles() -> List[Dict[str, Any]]:
 
 
 @app.get("/v1/conversations")
-def list_conversations(x_user_id: Optional[str] = Header(default=None, alias="X-User-Id")):
-    return session_store.list_conversations(_owner(x_user_id))
+def list_conversations(
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    return session_store.list_conversations(_owner(x_user_id, x_user_perms), workspace_id=_workspace(x_workspace_id))
 
 
 @app.post("/v1/conversations")
 def create_conversation(
     body: Optional[CreateConversationBody] = None,
     x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
 ):
     body = body or CreateConversationBody()
     return session_store.create_conversation(
-        owner_id=_owner(x_user_id),
+        owner_id=_owner(x_user_id, x_user_perms),
+        workspace_id=_workspace(x_workspace_id),
         title=body.title,
         dataset_ids=body.datasetIds,
         linked_dashboard_id=body.linkedDashboardId,
@@ -142,15 +199,30 @@ def create_conversation(
 
 
 @app.get("/v1/conversations/{cid}")
-def get_conversation(cid: str):
-    doc = session_store.get_conversation(cid)
+def get_conversation(
+    cid: str,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    doc = session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id))
     if not doc:
         raise HTTPException(status_code=404, detail="conversation not found")
     return doc
 
 
 @app.patch("/v1/conversations/{cid}")
-def patch_conversation(cid: str, body: UpdateConversationBody):
+def patch_conversation(
+    cid: str,
+    body: UpdateConversationBody,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    if not session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id)):
+        raise HTTPException(status_code=404, detail="conversation not found")
     patch = body.model_dump(exclude_none=True)
     mapped = {
         "title": patch.get("title"),
@@ -166,8 +238,17 @@ def patch_conversation(cid: str, body: UpdateConversationBody):
 
 
 @app.delete("/v1/conversations/{cid}")
-def delete_conversation(cid: str):
-    if not session_store.delete_conversation(cid):
+def delete_conversation(
+    cid: str,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    workspace_id = _workspace(x_workspace_id)
+    if not session_store.get_conversation(cid, owner_id=owner, workspace_id=workspace_id):
+        raise HTTPException(status_code=404, detail="conversation not found")
+    if not session_store.delete_conversation(cid, owner_id=owner):
         raise HTTPException(status_code=404, detail="conversation not found")
     return Response(status_code=204)
 
@@ -177,13 +258,23 @@ def ensure_conversation(
     cid: str,
     body: Optional[CreateConversationBody] = None,
     x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
 ):
     """Register a Java conversation id in the harness session store."""
     body = body or CreateConversationBody()
+    owner = _owner(x_user_id, x_user_perms)
+    workspace_id = _workspace(x_workspace_id)
+    existing = session_store.get_raw(cid)
+    if existing and str(existing.get("ownerId") or "demo") != owner:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    if existing and str(existing.get("workspaceId") or "default") != workspace_id:
+        raise HTTPException(status_code=404, detail="conversation not found")
     try:
         return session_store.ensure_conversation(
             cid,
-            owner_id=_owner(x_user_id),
+            owner_id=owner,
+            workspace_id=workspace_id,
             title=body.title,
             dataset_ids=body.datasetIds,
             linked_dashboard_id=body.linkedDashboardId,
@@ -192,24 +283,129 @@ def ensure_conversation(
         raise HTTPException(status_code=400, detail="invalid conversation id")
 
 
+@app.get("/v1/conversations/{cid}/events")
+def conversation_events(
+    cid: str,
+    run_id: Optional[str] = None,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    if not session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id)):
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return session_store.list_events(cid, run_id=run_id)
+
+
+@app.get("/v1/memory")
+def get_memory(
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    uid = _owner(x_user_id, x_user_perms)
+    return memory_status(uid, workspace_id=_workspace(x_workspace_id))
+
+
+class KnowledgeBody(BaseModel):
+    glossary: Optional[List[Dict[str, Any]]] = None
+    examples: Optional[List[Dict[str, Any]]] = None
+
+
+@app.get("/v1/knowledge/{dataset_id}")
+def get_knowledge(
+    dataset_id: str,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    _owner(x_user_id, x_user_perms)
+    workspace_id = _workspace(x_workspace_id)
+    if not has_permission("conversation:use") and not has_permission("dataset:use"):
+        raise HTTPException(status_code=403, detail="missing conversation:use")
+    try:
+        return load_knowledge(dataset_id, workspace_id=workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid dataset id")
+
+
+@app.put("/v1/knowledge/{dataset_id}")
+def put_knowledge(
+    dataset_id: str,
+    body: KnowledgeBody,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    _owner(x_user_id, x_user_perms)
+    workspace_id = _workspace(x_workspace_id)
+    if not has_permission("dataset:manage") and not has_permission("conversation:use"):
+        raise HTTPException(status_code=403, detail="missing permission")
+    try:
+        return save_knowledge(
+            dataset_id,
+            {"glossary": body.glossary or [], "examples": body.examples or []},
+            workspace_id=workspace_id,
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid dataset id")
+
+
 @app.get("/v1/conversations/{cid}/messages")
-def messages(cid: str):
-    if not session_store.get_conversation(cid):
+def messages(
+    cid: str,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    if not session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id)):
         raise HTTPException(status_code=404, detail="conversation not found")
     return session_store.list_messages(cid)
 
 
 @app.get("/v1/conversations/{cid}/revisions")
-def revisions(cid: str):
-    if not session_store.get_conversation(cid):
+def revisions(
+    cid: str,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    if not session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id)):
         raise HTTPException(status_code=404, detail="conversation not found")
     return []
 
 
 @app.post("/v1/conversations/{cid}/runs/{run_id}/cancel")
-def cancel_run(cid: str, run_id: str):
+def cancel_run(
+    cid: str,
+    run_id: str,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    if not session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id)):
+        raise HTTPException(status_code=404, detail="conversation not found")
     session_store.finish_run(cid, run_id, "cancelled")
     return {"ok": True}
+
+
+@app.get("/v1/conversations/{cid}/runs/{run_id}/trace")
+def run_trace(
+    cid: str,
+    run_id: str,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    if not session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id)):
+        raise HTTPException(status_code=404, detail="conversation not found")
+    if not session_store.get_run(cid, run_id):
+        raise HTTPException(status_code=404, detail="run not found")
+    return get_run_trace(cid, run_id)
 
 
 def _build_run_payload(
@@ -261,13 +457,21 @@ async def conversation_runs(
     cid: str,
     body: RunBody,
     x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
 ):
-    conv = session_store.get_conversation(cid)
+    owner = _owner(x_user_id, x_user_perms)
+    workspace_id = _workspace(x_workspace_id)
+    conv = session_store.get_conversation(cid, owner_id=owner, workspace_id=workspace_id)
     if not conv:
+        raw = session_store.get_raw(cid)
+        if raw and str(raw.get("ownerId") or "demo") != owner:
+            raise HTTPException(status_code=404, detail="conversation not found")
         try:
             conv = session_store.ensure_conversation(
                 cid,
-                owner_id=_owner(x_user_id),
+                owner_id=owner,
+                workspace_id=workspace_id,
                 title=(body.message or "新对话")[:40],
                 dataset_ids=body.datasetIds,
             )
@@ -276,17 +480,33 @@ async def conversation_runs(
 
     if body.datasetIds is not None:
         session_store.update_conversation(cid, {"datasetIds": body.datasetIds})
-        conv = session_store.get_conversation(cid) or conv
+        conv = session_store.get_conversation(cid, workspace_id=workspace_id) or conv
 
     session_store.append_message(cid, "user", body.message, [])
     run = session_store.create_run(cid, mode=body.mode or "auto", style_id=body.styleId or "feishu-blue")
     if not run:
         raise HTTPException(status_code=500, detail="failed to create run")
 
-    payload = _build_run_payload(cid, run["id"], body, conv)
+    payload = build_runtime_payload(
+        conversation_id=cid,
+        run_id=run["id"],
+        body=body,
+        conversation=conv,
+        user_id=owner,
+        workspace_id=workspace_id,
+        permissions=_permission_list(x_user_perms),
+    )
 
     def gen() -> Iterable[str]:
-        yield sse(
+        controller = RunController(
+            cid,
+            run["id"],
+            message=body.message,
+            intent=body.intent,
+            style_id=body.styleId,
+        )
+        recorder = EventStreamRecorder(controller)
+        run_chunk = sse(
             "run",
             {
                 "runId": run["id"],
@@ -294,52 +514,20 @@ async def conversation_runs(
                 "lead": use_lead(),
             },
         )
-        finish_reason = "error"
-        finish_detail = None
-        artifact: Dict[str, Any] = {}
+        controller.observe_chunk(run_chunk)
+        yield run_chunk
         try:
-            for chunk in run_agent(payload):
-                for ev in ("answer_sql", "answer_table", "answer_chart", "answer_insight"):
-                    data = _parse_sse_data(chunk, ev)
-                    if data is not None:
-                        _ingest_artifact(artifact, ev, data)
-                        break
-                if chunk.startswith("event: finish"):
-                    try:
-                        data = _parse_sse_data(chunk, "finish") or {}
-                        finish_reason = str(data.get("reason") or "done")
-                        finish_detail = data.get("detail")
-                        if data.get("dashboardId"):
-                            session_store.link_dashboard(cid, str(data["dashboardId"]))
-                    except Exception:
-                        pass
-                if chunk.startswith("event: board_ready"):
-                    try:
-                        data = _parse_sse_data(chunk, "board_ready") or {}
-                        if data.get("dashboardId"):
-                            session_store.link_dashboard(cid, str(data["dashboardId"]))
-                    except Exception:
-                        pass
-                if chunk.startswith("event: message_delta"):
-                    try:
-                        data = _parse_sse_data(chunk, "message_delta") or {}
-                        if data.get("text"):
-                            session_store.append_message(cid, "assistant", str(data["text"]), [])
-                    except Exception:
-                        pass
+            for chunk in recorder.wrap(run_agent(payload)):
                 yield chunk
         except Exception as e:
-            yield sse("error", {"code": "HARNESS", "message": str(e)})
-            yield sse("finish", {"reason": "error", "detail": "exception"})
-            finish_reason = "error"
-            finish_detail = "exception"
-        status = finish_reason if finish_reason in ("done", "answered", "awaiting_confirm", "error") else "done"
-        if artifact:
-            artifact["message"] = body.message
-            artifact["intent"] = body.intent
-            artifact["styleId"] = body.styleId
-            session_store.set_run_artifact(cid, run["id"], artifact)
-        session_store.finish_run(cid, run["id"], status, str(finish_detail) if finish_detail else None)
+            error_chunk = sse("error", {"code": "HARNESS", "message": str(e)})
+            controller.observe_chunk(error_chunk)
+            yield error_chunk
+            finish_chunk = sse("finish", {"reason": "error", "detail": "exception"})
+            controller.observe_chunk(finish_chunk)
+            yield finish_chunk
+            controller.fail("exception")
+        controller.complete()
 
     return StreamingResponse(
         gen(),
@@ -353,8 +541,15 @@ async def conversation_runs(
 
 
 @app.post("/v1/conversations/{cid}/runs/{run_id}/confirm-plan")
-async def confirm_plan(cid: str, run_id: str):
-    conv = session_store.get_conversation(cid)
+async def confirm_plan(
+    cid: str,
+    run_id: str,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    conv = session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id))
     if not conv:
         raise HTTPException(status_code=404, detail="conversation not found")
     pending = session_store.get_run_pending(cid, run_id)
@@ -362,46 +557,22 @@ async def confirm_plan(cid: str, run_id: str):
         raise HTTPException(status_code=400, detail="no pending plan to confirm")
 
     def gen() -> Iterable[str]:
-        finish_reason = "error"
-        finish_detail = None
+        controller = RunController(cid, run_id, capture_artifact=False)
+        recorder = EventStreamRecorder(controller)
         try:
-            for chunk in run_confirm_plan(pending):
-                if chunk.startswith("event: finish"):
-                    try:
-                        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
-                        data = json.loads(data_line)
-                        finish_reason = str(data.get("reason") or "done")
-                        finish_detail = data.get("detail")
-                        if data.get("dashboardId"):
-                            session_store.link_dashboard(cid, str(data["dashboardId"]))
-                    except Exception:
-                        pass
-                if chunk.startswith("event: board_ready"):
-                    try:
-                        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
-                        data = json.loads(data_line)
-                        if data.get("dashboardId"):
-                            session_store.link_dashboard(cid, str(data["dashboardId"]))
-                    except Exception:
-                        pass
-                if chunk.startswith("event: message_delta"):
-                    try:
-                        data_line = chunk.split("data:", 1)[1].strip().split("\n")[0]
-                        data = json.loads(data_line)
-                        if data.get("text"):
-                            session_store.append_message(cid, "assistant", str(data["text"]), [])
-                    except Exception:
-                        pass
+            for chunk in recorder.wrap(run_confirm_plan(pending)):
                 yield chunk
         except Exception as e:
-            yield sse("error", {"code": "HARNESS", "message": str(e)})
-            yield sse("finish", {"reason": "error", "detail": "exception"})
-            finish_reason = "error"
-            finish_detail = "exception"
-        status = finish_reason if finish_reason in ("done", "answered", "awaiting_confirm", "error") else "done"
-        if finish_reason == "done":
+            error_chunk = sse("error", {"code": "HARNESS", "message": str(e)})
+            controller.observe_chunk(error_chunk)
+            yield error_chunk
+            finish_chunk = sse("finish", {"reason": "error", "detail": "exception"})
+            controller.observe_chunk(finish_chunk)
+            yield finish_chunk
+            controller.fail("exception")
+        if controller.finish_reason == "done":
             session_store.clear_run_pending(cid, run_id)
-        session_store.finish_run(cid, run_id, status, str(finish_detail) if finish_detail else None)
+        controller.complete()
 
     return StreamingResponse(
         gen(),
@@ -415,8 +586,16 @@ async def confirm_plan(cid: str, run_id: str):
 
 
 @app.post("/v1/conversations/{cid}/runs/{run_id}/adopt")
-async def adopt(cid: str, run_id: str, body: Optional[AdoptBody] = None):
-    conv = session_store.get_conversation(cid)
+async def adopt(
+    cid: str,
+    run_id: str,
+    body: Optional[AdoptBody] = None,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    conv = session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id))
     if not conv:
         raise HTTPException(status_code=404, detail="conversation not found")
     run = session_store.get_run(cid, run_id)
@@ -428,47 +607,27 @@ async def adopt(cid: str, run_id: str, body: Optional[AdoptBody] = None):
     body = body or AdoptBody()
 
     def gen() -> Iterable[str]:
-        finish_reason = "error"
-        finish_detail = None
+        controller = RunController(cid, run_id, capture_artifact=False)
+        recorder = EventStreamRecorder(controller)
         try:
-            for chunk in run_adopt(
+            chunks = run_adopt(
                 conv,
                 run,
                 artifact,
                 (body.action or "save").strip().lower(),
                 body.styleId or str(run.get("styleId") or artifact.get("styleId") or "feishu-blue"),
-            ):
-                if chunk.startswith("event: finish"):
-                    try:
-                        data = _parse_sse_data(chunk, "finish") or {}
-                        finish_reason = str(data.get("reason") or "done")
-                        finish_detail = data.get("detail")
-                        if data.get("dashboardId"):
-                            session_store.link_dashboard(cid, str(data["dashboardId"]))
-                    except Exception:
-                        pass
-                if chunk.startswith("event: board_ready"):
-                    try:
-                        data = _parse_sse_data(chunk, "board_ready") or {}
-                        if data.get("dashboardId"):
-                            session_store.link_dashboard(cid, str(data["dashboardId"]))
-                    except Exception:
-                        pass
-                if chunk.startswith("event: message_delta"):
-                    try:
-                        data = _parse_sse_data(chunk, "message_delta") or {}
-                        if data.get("text"):
-                            session_store.append_message(cid, "assistant", str(data["text"]), [])
-                    except Exception:
-                        pass
+            )
+            for chunk in recorder.wrap(chunks):
                 yield chunk
         except Exception as e:
-            yield sse("error", {"code": "HARNESS", "message": str(e)})
-            yield sse("finish", {"reason": "error", "detail": "exception"})
-            finish_reason = "error"
-            finish_detail = "exception"
-        status = finish_reason if finish_reason in ("done", "answered", "awaiting_confirm", "error") else "done"
-        session_store.finish_run(cid, run_id, status, str(finish_detail) if finish_detail else None)
+            error_chunk = sse("error", {"code": "HARNESS", "message": str(e)})
+            controller.observe_chunk(error_chunk)
+            yield error_chunk
+            finish_chunk = sse("finish", {"reason": "error", "detail": "exception"})
+            controller.observe_chunk(finish_chunk)
+            yield finish_chunk
+            controller.fail("exception")
+        controller.complete()
 
     return StreamingResponse(
         gen(),

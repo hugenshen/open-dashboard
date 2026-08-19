@@ -1,5 +1,6 @@
 package io.opendashboard.application.conversation;
 
+import io.opendashboard.application.AskableDatasetService;
 import io.opendashboard.application.DashboardAppService;
 import io.opendashboard.application.DatasetService;
 import io.opendashboard.application.DatasourceService;
@@ -33,6 +34,7 @@ public class BiPlatformService {
     private final DashboardPatchApplier applier;
     private final DatasetProfiler profiler;
     private final FileTableStore fileTables;
+    private final AskableDatasetService askable;
 
     public BiPlatformService(
             DatasetService datasets,
@@ -41,7 +43,8 @@ public class BiPlatformService {
             DashboardAppService dashboards,
             DashboardPatchApplier applier,
             DatasetProfiler profiler,
-            FileTableStore fileTables
+            FileTableStore fileTables,
+            AskableDatasetService askable
     ) {
         this.datasets = datasets;
         this.datasources = datasources;
@@ -50,11 +53,12 @@ public class BiPlatformService {
         this.applier = applier;
         this.profiler = profiler;
         this.fileTables = fileTables;
+        this.askable = askable;
     }
 
     public List<Map<String, Object>> listDatasets() {
         List<Map<String, Object>> out = new ArrayList<>();
-        for (DatasetMetaVO m : datasets.list()) {
+        for (DatasetMetaVO m : askable.listAskable()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", m.id());
             row.put("name", m.name());
@@ -68,6 +72,7 @@ public class BiPlatformService {
     }
 
     public Optional<Map<String, Object>> schema(String datasetId) {
+        askable.requireAskable(datasetId);
         return datasets.get(datasetId).map(d -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", d.meta().id());
@@ -104,15 +109,22 @@ public class BiPlatformService {
     }
 
     public DatasetQueryResult datasetQuery(DatasetQueryRequest request) {
+        if (request != null && request.datasetId() != null) {
+            askable.requireAskable(request.datasetId());
+        }
         return queryService.execute(request);
     }
 
     public ChartQueryResult chartQuery(ChartQueryRequest request) {
+        if (request != null && request.inline() != null && request.inline().get("datasetId") != null) {
+            askable.requireAskable(String.valueOf(request.inline().get("datasetId")));
+        }
         return queryService.query(request);
     }
 
     public Map<String, Object> executeReadSql(Map<String, Object> body) {
         String datasetId = body == null || body.get("datasetId") == null ? "" : String.valueOf(body.get("datasetId"));
+        askable.requireAskable(datasetId);
         String sql = body == null || body.get("sql") == null ? "" : String.valueOf(body.get("sql"));
         Integer limit = null;
         if (body != null && body.get("limit") instanceof Number n) limit = n.intValue();
@@ -137,6 +149,7 @@ public class BiPlatformService {
     }
 
     public Map<String, Object> profileDataset(String datasetId) {
+        askable.requireAskable(datasetId);
         return profiler.profile(datasetId);
     }
 
@@ -150,7 +163,7 @@ public class BiPlatformService {
         }
         Map<String, DatasetDetailVO> loaded = new LinkedHashMap<>();
         if (datasetIds.isEmpty()) {
-            for (DatasetMetaVO meta : datasets.list()) {
+            for (DatasetMetaVO meta : askable.listAskable()) {
                 if (meta == null || meta.id() == null) continue;
                 datasets.get(meta.id()).ifPresent(d -> loaded.put(meta.id(), d));
                 if (loaded.size() >= 8) break;
@@ -158,6 +171,7 @@ public class BiPlatformService {
             datasetIds.addAll(loaded.keySet());
         } else {
             for (String id : datasetIds) {
+                if (!askable.isAskable(id)) continue;
                 datasets.get(id).ifPresent(d -> loaded.put(id, d));
             }
         }
@@ -237,6 +251,10 @@ public class BiPlatformService {
         List<Map<String, Object>> preview = new ArrayList<>();
         for (String chartId : applied.chartIds()) {
             Map<String, Object> inline = findChartInline(patch, chartId);
+            Object ds = inline.get("datasetId");
+            if (ds != null && !String.valueOf(ds).isBlank()) {
+                askable.requireAskable(String.valueOf(ds));
+            }
             ChartQueryResult result = queryService.query(new ChartQueryRequest(
                     chartId, applied.dashboardId(), "draft", inline.isEmpty() ? null : inline, Map.of()
             ));
@@ -286,18 +304,19 @@ public class BiPlatformService {
                 : List.of();
         Map<String, DatasetDetailVO> loaded = new LinkedHashMap<>();
         for (String id : datasetIds) {
+            if (!askable.isAskable(id)) continue;
             datasets.get(id).ifPresent(d -> loaded.put(id, d));
         }
         if (loaded.isEmpty() && !datasetIds.isEmpty()) {
             return Map.of("ok", false, "error", "datasets not found");
         }
         if (loaded.isEmpty()) {
-            datasets.list().stream()
+            askable.listAskable().stream()
                     .filter(m -> !DeterministicPlanner.isWeakDataset(new DatasetDetailVO(m, List.of())))
                     .limit(3)
                     .forEach(m -> datasets.get(m.id()).ifPresent(d -> loaded.put(d.meta().id(), d)));
             if (loaded.isEmpty()) {
-                datasets.list().stream().limit(3)
+                askable.listAskable().stream().limit(3)
                         .forEach(m -> datasets.get(m.id()).ifPresent(d -> loaded.put(d.meta().id(), d)));
             }
         }

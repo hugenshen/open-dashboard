@@ -1,0 +1,184 @@
+{
+  "id": "MTR-02-rechart",
+  "events": [
+    {
+      "type": "step",
+      "data": {
+        "id": "context",
+        "label": "确定性工具环（无 Lead/LLM）",
+        "name": "context",
+        "detail": "确定性工具环（无 Lead/LLM）"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "intent",
+        "label": "意图: gen",
+        "name": "intent",
+        "detail": "意图: gen"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "schema",
+        "label": "读取 1 个数据集的字段",
+        "name": "schema",
+        "detail": "读取 1 个数据集的字段"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "rechart",
+        "label": "多轮调整（确定性路径）",
+        "name": "rechart",
+        "detail": "多轮调整（确定性路径）"
+      }
+    },
+    {
+      "type": "step",
+      "data": {
+        "id": "rechart",
+        "label": "重做「销售额分布」 → line",
+        "name": "rechart",
+        "detail": "重做「销售额分布」 → line"
+      }
+    },
+    {
+      "type": "patch",
+      "data": {
+        "dashboardId": "dash-1",
+        "mode": "replace",
+        "ops": [
+          {
+            "op": "set_layout",
+            "gridCols": 72,
+            "themeRef": "default"
+          },
+          {
+            "op": "upsert_chart",
+            "chartId": "c-sales",
+            "type": "line",
+            "datasetId": "ds_1",
+            "title": "销售额分布",
+            "encode": {
+              "category": "Status",
+              "value": "Amount"
+            },
+            "style": {}
+          },
+          {
+            "op": "upsert_component",
+            "id": "c_c-sales",
+            "type": "chart",
+            "chartId": "c-sales",
+            "x": 0,
+            "y": 0,
+            "w": 36,
+            "h": 20
+          },
+          {
+            "op": "upsert_chart",
+            "chartId": "c-kpi",
+            "type": "kpi",
+            "datasetId": "ds_1",
+            "title": "总金额",
+            "encode": {
+              "value": "Amount"
+            },
+            "style": {}
+          },
+          {
+            "op": "upsert_component",
+            "id": "c_c-kpi",
+            "type": "chart",
+            "chartId": "c-kpi",
+            "x": 36,
+            "y": 0,
+            "w": 36,
+            "h": 12
+          }
+        ]
+      }
+    },
+    {
+      "type": "chart_ready",
+      "data": {
+        "chartId": "c-sales",
+        "title": "销售额分布",
+        "chartType": "bar",
+        "datasetId": "ds_1",
+        "encode": {
+          "category": "Status",
+          "value": "Amount"
+        },
+        "rowCount": 4
+      }
+    },
+    {
+      "type": "chart_ready",
+      "data": {
+        "chartId": "c-kpi",
+        "title": "总金额",
+        "chartType": "kpi",
+        "datasetId": "ds_1",
+        "encode": {
+          "value": "Amount"
+        },
+        "rowCount": 1,
+        "kpiValue": 100
+      }
+    },
+    {
+      "type": "board_ready",
+      "data": {
+        "dashboardId": "dash-1",
+        "title": "经营分析",
+        "chartCount": 2,
+        "emptyPreview": false,
+        "mode": "replace",
+        "charts": [
+          {
+            "chartId": "c-sales",
+            "title": "销售额分布",
+            "chartType": "bar",
+            "datasetId": "ds_1",
+            "encode": {
+              "category": "Status",
+              "value": "Amount"
+            },
+            "rowCount": 4
+          },
+          {
+            "chartId": "c-kpi",
+            "title": "总金额",
+            "chartType": "kpi",
+            "datasetId": "ds_1",
+            "encode": {
+              "value": "Amount"
+            },
+            "rowCount": 1,
+            "kpiValue": 100
+          }
+        ],
+        "query": null
+      }
+    },
+    {
+      "type": "message_delta",
+      "data": {
+        "text": "多轮调整完成（重做「销售额分布」 → line）。；修改 1 张"
+      }
+    },
+    {
+      "type": "finish",
+      "data": {
+        "reason": "done",
+        "detail": "rechart:dash-1",
+        "dashboardId": "dash-1"
+      }
+    }
+  ]
+}

@@ -212,7 +212,7 @@
         <h1>Open Dashboard 4A 现行架构</h1>
         <p class="lead">以当前代码为证据，将业务、应用、数据与技术四个架构视图放在同一入口。未实现设计不进入本页，详细方案保留在对应 Pxxx 提案目录。</p>
         <div class="meta">
-          <span class="chip">更新：2026-08-17</span>
+          <span class="chip">更新：2026-08-19</span>
           <span class="chip">代码根：open-dashboard-frontend / open-dashboard-backend / opendashboard-harness</span>
           <a class="chip" href="./openapi.yaml">OpenAPI 硬契约</a>
         </div>
@@ -301,7 +301,7 @@
             </table>
           </div>
         </article>
-        <article class="panel wide"><h3>AI Harness 集成</h3><p>会话元数据与消息写入 Java <code>de_conversation*</code>（<code>GET/POST /api/conversations</code>）。Agent 仍走 <code>/harness/v1/conversations/{id}/runs</code>（SSE）；若 Harness 本地没有该 id，按 Java 会话 id 补建运行时文件。Java 不跑 LLM。</p></article>
+        <article class="panel wide"><h3>AI Harness 集成</h3><p>会话元数据与消息写入 Java <code>de_conversation*</code>（<code>GET/POST /api/conversations</code>）。Agent 走 <code>/harness/v1/conversations/{id}/runs</code>（SSE）；若 Harness 本地没有该 id，按 Java 会话 id 补建运行时文件。Harness 侧已拆出 <code>RunController</code>、<code>EventStreamRecorder</code>、<code>TraceStore</code>、<code>ContextBuilder</code> 与 <code>ToolGateway</code> 骨架，SSE 事件可写入运行 trace 并通过 <code>/harness/v1/conversations/{id}/runs/{runId}/trace</code> 读回；本地会话、知识和用户记忆已按 <code>X-Workspace-Id</code> scope 过滤，默认 <code>default</code> 兼容旧运行。Java 不跑 LLM。</p></article>
         <article class="panel"><h3>问数入口</h3><p>工作台问数框下展示 <code>GET /api/conversations?limit=8</code> 最近问数；无记录时才显示「试试」。右栏最近报告走 <code>GET /api/report?limit=4</code>（<code>de_report.update_time</code> 倒序），条目用文档图标：已发布绿、草稿紫。提交问数后跳转 <code>/conversations</code> 并自动执行本题。</p><span class="status coded">已编码未验收</span></article>
       </div>
       <p class="source">代码：<code>open-dashboard-frontend/src/</code>、<code>open-dashboard-backend/open-dashboard-*/</code>、<code>opendashboard-harness/</code>。</p>
@@ -729,7 +729,7 @@
               <thead><tr><th>点</th><th>现状</th></tr></thead>
               <tbody>
                 <tr><td>Plan 确认</td><td>FE 确认盒 → Harness <code>POST …/confirm-plan</code> 取出 pending patch，再 <code>apply-patch</code>。Plan 模式 <code>od_emit_patch</code> 只存稿不落库。</td></tr>
-                <tr><td>adopt</td><td>生成路径直接 emit_patch；Harness adopt 仍 501。问数「保存本题图」走 Java <code>/runs/{id}/adopt</code> 或会话内二次 gen。</td></tr>
+                <tr><td>adopt</td><td>生成路径直接 emit_patch；问数「保存本题图」走 Harness <code>POST …/adopt</code>，由 Harness 读取 ask 产物后调用 Java internal apply 写入草稿。Java public adopt 边界不再作为前端入口。</td></tr>
                 <tr><td>查询条</td><td>控件写入 draft，并进入 <code>chartQuery.context.filters</code>（eq / between / in / last）。Java 把数组转 Filter AST 后编进 SQL WHERE。</td></tr>
                 <tr><td>单表规划</td><td>单数据集主路径不变；多数据集（>1）时各数据集独立 ToolState 并行 <code>od_plan_charts</code>，<code>_merge_plans</code> 合并 charts/query/标题后统一 layout。跨表关联（JOIN 同库）未做。</td></tr>
               </tbody>
@@ -938,7 +938,7 @@
       <div class="grid">
         <article class="panel"><h3>Web</h3><p>Vue 3、Vite、TypeScript、Pinia、ECharts、Umo Editor。</p><p class="source"><code>open-dashboard-frontend/</code></p></article>
         <article class="panel"><h3>API</h3><p>JDK 21、Spring Boot 3、Spring JDBC、Flyway、COLA 分层。</p><p class="source"><code>open-dashboard-backend/</code></p></article>
-        <article class="panel"><h3>Agent</h3><p>Python FastAPI Harness（默认 :8091），承载问数 SQLBot 管道、Lead 生成环与 SSE。</p><span class="status coded">未纳入标准部署</span></article>
+        <article class="panel"><h3>Agent</h3><p>Python FastAPI Harness（默认 :8091），承载问数 SQLBot 管道、Lead 生成环、SSE、run trace 与工具网关骨架。</p><span class="status coded">未纳入标准部署</span></article>
         <article class="panel wide">
           <h3>部署拓扑</h3>
           <div class="flow">

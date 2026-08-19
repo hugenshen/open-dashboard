@@ -135,6 +135,7 @@ export const datasourceApi = {
 
 export const datasetApi = {
   list: () => http<DatasetMetaVO[]>('GET', '/dataset'),
+  listAskable: () => http<DatasetMetaVO[]>('GET', '/dataset/askable'),
   get: (id: string) => http<DatasetDetailVO>('GET', `/dataset/${id}`),
   create: (data: {
     name: string
