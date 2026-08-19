@@ -384,7 +384,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                 <button v-for="c in recentAsks" :key="c.id" type="button" @click="openAsk(c)">
                   {{ c.title || '未命名对话' }}
                 </button>
-                <router-link class="more" to="/conversations">全部</router-link>
+
               </template>
               <template v-else-if="!emptyMode && convError">
                 <span>最近问数</span>
