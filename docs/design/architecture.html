@@ -756,6 +756,69 @@
       </div>
     </section>
 
+    <section class="section" id="memory-knowledge">
+      <div class="section-head">
+        <div>
+          <h2>记忆 / 知识体系 / 数据集自学习（P004 已编码）</h2>
+          <p>字段角色由真实采样统计判定（不再纯关键词）；confirmed 指标 + 词表以 <code>&lt;knowledge&gt;</code> 冻结快照注入；用户偏好以 <code>&lt;memory&gt;</code> 跨会话生效。机制照搬 DeerFlow deermem 与 Pi skills。</p>
+        </div>
+        <span class="status coded">已编码未验收</span>
+      </div>
+      <div class="grid">
+        <article class="panel wide">
+          <h3>数据集自学习（阶段1）</h3>
+          <div class="vflow">
+            <div class="vnode"><b>录入/手动触发</b><span>DatasetService.create/importFile → DatasetProfileLearner.learn（后台异步，不阻塞录入）</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>采样 30 行 + 逐字段统计</b><span>distinct / null 率 / 数值范围 / 低基数取值集合 / ≤20 行采样</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>确定性角色闸</b><span>时间 → flag（0/1 布尔）→ id（唯一数值/*_id）→ measure → dim → junk；命名仅兜底不裁决</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>写库 + 派生</b><span>de_dataset_field_profile + de_indicator(draft 候选指标) + de_glossary(公共维度/度量词表)</span></div>
+          </div>
+          <p class="source">证据：<code>DatasetProfileLearner.java</code>（四段式：采样→统计→判定→落库）、<code>V11__dataset_field_profile.sql</code>、<code>FieldProfileRepository</code>、<code>DatasetProfiler.loadLearnedRoles</code>、<code>BiPlatformService.schema</code>（sample 聚合列）。</p>
+        </article>
+
+        <article class="panel">
+          <h3>知识体系（阶段2）</h3>
+          <ul>
+            <li><code>de_indicator</code>：Learner 写 draft → 管理页「指标确认」→ confirmed 权威口径（agg/unit/公式）</li>
+            <li><code>de_glossary</code>：term → canonical_field（「销售额」→spending_amount），问数 intent 对齐命中</li>
+            <li>harness <code>transform_context</code> 注入 <code>&lt;knowledge&gt;</code> 冻结快照（confirmed 指标 + 词表，同数据集集合 120s 缓存）</li>
+            <li><code>skills/od-metrics/SKILL.md</code>：confirmed 指标 + 词表生成，Pi skills 模式按需读取</li>
+          </ul>
+          <p class="source">证据：<code>KnowledgeService</code>、<code>IndicatorRepository</code>、<code>GlossaryAwareSchema</code>（label 词表注入）、<code>agent/knowledge.py</code>、<code>agent/context.py</code>。</p>
+        </article>
+
+        <article class="panel">
+          <h3>Agent 语义增强（阶段3）</h3>
+          <ul>
+            <li><code>od_interpret_fields</code>：LLM 按 字段名+label+采样+统计 输出结构化语义，回写 indicator confidence 与词表别名（自学习闭环）</li>
+            <li>意图感知规划：<code>intent=trend/compare/share</code> → line / hbar / pie（<code>_intent_hint</code> + <code>_plan_charts_from_profile</code>）</li>
+            <li>confirmed 指标优先做 KPI（agg/unit 权威）</li>
+            <li>emit 前数据探活：<code>_probe_patch</code> 对每张图先查一次，空/全 null/失败剔除，不进看板</li>
+          </ul>
+          <p class="source">证据：<code>tools/od_bi.py</code> <code>interpret_fields</code> / <code>_apply_confirmed_metrics</code> / <code>_probe_patch</code>、<code>BiPlatformService.interpretFields</code>。</p>
+        </article>
+
+        <article class="panel full">
+          <h3>用户记忆（阶段4，deermem 机制）</h3>
+          <div class="flow" aria-label="用户记忆写读">
+            <div class="node"><b>写</b><span>过滤（用户输入+最终回复）→ 信号检测 → LLM 抽取 + 三标签闸（仅 user+durable+descriptive 入库）</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>存</b><span><code>.od-harness/memory/{user}.json</code> deermem document（revision 乐观锁 / facts[]）</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>工具</b><span>memory_add / memory_search（子串召回）</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>注入</b><span><code>&lt;memory&gt;</code> 块跨会话注入；run 结束 flush 沉淀</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>生效</b><span>单位偏好（万元）→ KPI 标题/口径默认贴合用户习惯</span></div>
+          </div>
+          <p class="source">证据：<code>agent/memory_store.py</code>（create_empty_memory / filter_messages_for_memory / detect_signals / _extract_facts / add_fact / search / unit_preference / flush_session_to_memory）、<code>api/app.py</code> run 结束 flush、<code>tools/od_bi.py</code> memory_add / memory_search / <code>_apply_confirmed_metrics</code> unit_pref。</p>
+        </article>
+      </div>
+    </section>
+
     <section class="section" id="compare">
       <div class="section-head">
         <div>

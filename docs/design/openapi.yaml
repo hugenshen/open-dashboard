@@ -416,6 +416,233 @@ paths:
       responses:
         '200':
           description: OK
+  /dataset/{id}/profile:
+    get:
+      tags: [dataset]
+      summary: 字段自学习画像（角色/统计/采样）——阶段1 数据集自学习产物
+      description: |
+        返回每个字段的学习角色（role_learned）、统计特征（distinct/nullRate/数值范围/取值集合）与采样，
+        供数据集详情页展示「系统自动识别」与 harness od_get_schema 返回体复用。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fields:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        label: { type: string }
+                        role: { type: string }
+                        roleSource: { type: string }
+                        dataType: { type: string }
+                        distinctCount: { type: integer }
+                        nullRate: { type: number }
+                        distinctValues: { type: array }
+                        numericMin: { type: number }
+                        numericMax: { type: number }
+                  sample:
+                    type: array
+                    items: { type: array }
+                  measures: { type: array }
+                  dims: { type: array }
+  /indicators:
+    post:
+      tags: [dataset]
+      summary: 指标注册表手动新增（阶段2「指标确认」）
+      description: |
+        自学习 Learner 录入时自动写 draft 候选；本接口供管理页手动新增/补全指标。
+        字段：datasetId/fieldName/name/agg(SUM|AVG|COUNT|MIN|MAX)/unit/formula/status(draft)。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                datasetId: { type: string }
+                fieldName: { type: string }
+                name: { type: string }
+                agg: { type: string }
+                unit: { type: string }
+                formula: { type: string }
+                description: { type: string }
+                status: { type: string }
+                confidence: { type: number }
+              required: [datasetId, fieldName, name]
+      responses:
+        '200':
+          description: OK
+  /indicators/dataset/{datasetId}:
+    get:
+      tags: [dataset]
+      summary: 某数据集指标列表（draft/confirmed/deprecated）
+      parameters:
+        - name: datasetId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    datasetId: { type: string }
+                    fieldName: { type: string }
+                    name: { type: string }
+                    agg: { type: string }
+                    unit: { type: string }
+                    formula: { type: string }
+                    status: { type: string }
+                    source: { type: string }
+                    confidence: { type: number }
+  /indicators/{id}/confirm:
+    post:
+      tags: [dataset]
+      summary: 指标 draft→confirmed（人工确认，成为权威口径）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+  /indicators/{id}/deprecate:
+    post:
+      tags: [dataset]
+      summary: 指标 confirmed→deprecated（口径作废）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+  /indicators/{id}:
+    delete:
+      tags: [dataset]
+      summary: 删除指标条目
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+  /glossary:
+    get:
+      tags: [dataset]
+      summary: 业务词表/公共维度列表（type/status 过滤）
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema: { type: string }
+        - name: status
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+    post:
+      tags: [dataset]
+      summary: 业务词表/公共维度新增（term→canonicalField 对齐）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                term: { type: string }
+                type: { type: string }
+                datasetId: { type: string }
+                canonicalField: { type: string }
+                aliases: { type: array, items: { type: string } }
+                values: { type: array }
+                status: { type: string }
+                confidence: { type: number }
+                source: { type: string }
+              required: [term, canonicalField]
+      responses:
+        '200':
+          description: OK
+  /glossary/dataset/{datasetId}:
+    get:
+      tags: [dataset]
+      summary: 某数据集词表条目
+      parameters:
+        - name: datasetId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+  /glossary/{id}/confirm:
+    post:
+      tags: [dataset]
+      summary: 词表条目 candidate→confirmed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+  /glossary/{id}/rename:
+    put:
+      tags: [dataset]
+      summary: 词表条目改名/补别名
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                term: { type: string }
+                aliases: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: OK
+  /glossary/{id}:
+    delete:
+      tags: [dataset]
+      summary: 删除词表条目
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
   /catalog:
     get:
       tags: [catalog]
