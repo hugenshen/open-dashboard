@@ -12,9 +12,10 @@ def create_registry(
     linked_dashboard_id: Optional[str] = None,
     *,
     defer_apply: bool = False,
+    user_id: str = "demo",
 ) -> tuple[List[AgentTool], ToolState, Dict[str, AgentTool]]:
     state = ToolState()
     state.defer_apply = defer_apply
-    tools = build_od_tools(linked_dashboard_id, state)
+    tools = build_od_tools(linked_dashboard_id, state, user_id=user_id)
     by_name = {t.name: t for t in tools}
     return tools, state, by_name

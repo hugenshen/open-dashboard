@@ -109,6 +109,18 @@ def _chart_type_hint(message: str) -> Optional[str]:
     return None
 
 
+def _intent_hint(message: str) -> str:
+    """阶段3：从用户问题确定性推导图表意图（PR-SA-03 意图→图型）。"""
+    q = message or ""
+    if re.search(r"(趋势|走势|随时间|按(月|日|天|周)|折线|变化)", q):
+        return "trend"
+    if re.search(r"(占比|构成|比例|份额|饼)", q):
+        return "share"
+    if re.search(r"(对比|排行|排名|top|Top|横向|比较)", q):
+        return "compare"
+    return "none"
+
+
 def _match_target_chart(message: str, charts: List[Any]) -> tuple[Optional[str], str]:
     """Deterministically pick the chart the user wants to edit from board-summary charts.
 
@@ -753,10 +765,11 @@ def run_agent(payload: Dict[str, Any]) -> Generator[str, None, None]:
     _CURRENT_RUN["conversationId"] = str(payload.get("conversationId") or "")
     _CURRENT_RUN["runId"] = str(payload.get("runId") or "")
     _CURRENT_RUN["styleId"] = payload.get("styleId") or "feishu-blue"
+    user_id = str(payload.get("userId") or "demo").strip() or "demo"
     mode = harness_mode()
     if use_lead():
         try:
-            yield from run_lead(payload)
+            yield from run_lead(payload, user_id=user_id)
             return
         except RuntimeError as e:
             if "LLM_NOT_CONFIGURED" in str(e):
@@ -782,10 +795,10 @@ def run_agent(payload: Dict[str, Any]) -> Generator[str, None, None]:
         yield sse("finish", {"reason": "error", "detail": "llm_not_configured"})
         return
 
-    yield from run_deterministic(payload)
+    yield from run_deterministic(payload, user_id=user_id)
 
 
-def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str, None, None]:
+def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14, user_id: str = "demo") -> Generator[str, None, None]:
     if not llm_configured():
         raise RuntimeError("LLM_NOT_CONFIGURED")
 
@@ -829,7 +842,7 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
         except Exception:
             board_summary = None
 
-    tools, state, by_name = create_registry(linked, defer_apply=(run_mode == "plan"))
+    tools, state, by_name = create_registry(linked, defer_apply=(run_mode == "plan"), user_id=user_id)
     openai_tools = [t.openai_spec() for t in tools]
 
     intent_plan = _load_intent_plan(message, dataset_ids)
@@ -870,6 +883,7 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14) -> Generator[str,
         style_id=style_id,
         intent=intent,
         multi_turn=bool(linked),
+        user_id=user_id,
     )
 
     finished = False
@@ -1121,6 +1135,7 @@ def _run_rechart(
     run_mode: str,
     conversation_id: str = "",
     run_id: str = "",
+    user_id: str = "demo",
 ) -> Generator[str, None, None]:
     """Deterministic multi-turn surgical edit of an existing dashboard (no LLM).
 
@@ -1147,10 +1162,10 @@ def _run_rechart(
     charts = summary.get("charts") or []
     if not isinstance(charts, list) or not charts:
         yield step("fallback", "看板为空，走首次生成")
-        yield from _run_gen(message, dataset_ids, linked, style_id, run_mode, conversation_id, run_id)
+        yield from _run_gen(message, dataset_ids, linked, style_id, run_mode, conversation_id, run_id, user_id)
         return
 
-    tools, _state, by_name = create_registry(linked)
+    tools, _state, by_name = create_registry(linked, user_id=user_id)
     tool = by_name.get("od_rechart_chart")
     if tool is None:
         yield sse("error", {"code": "NO_RECHART_TOOL", "message": "harness 未注册 od_rechart_chart"})
@@ -1159,7 +1174,7 @@ def _run_rechart(
 
     if mt == "replace":
         yield step("fallback", "用户要求整页重新生成")
-        yield from _run_gen(message, dataset_ids, linked, style_id, run_mode, conversation_id, run_id)
+        yield from _run_gen(message, dataset_ids, linked, style_id, run_mode, conversation_id, run_id, user_id)
         return
 
     title = str(summary.get("name") or "AI 看板")
@@ -1261,7 +1276,7 @@ def _run_rechart(
     yield sse("finish", {"reason": "done", "detail": f"rechart:{linked}", "dashboardId": linked})
 
 
-def run_deterministic(payload: Dict[str, Any]) -> Generator[str, None, None]:
+def run_deterministic(payload: Dict[str, Any], user_id: str = "demo") -> Generator[str, None, None]:
     message = payload.get("message") or ""
     intent = resolve_intent(payload.get("intent"), message)
     dataset_ids: List[str] = [str(x) for x in (payload.get("datasetIds") or [])]
@@ -1301,6 +1316,7 @@ def run_deterministic(payload: Dict[str, Any]) -> Generator[str, None, None]:
                 mode,
                 conversation_id,
                 str(payload.get("runId") or ""),
+                user_id,
             )
             return
 
@@ -1312,6 +1328,7 @@ def run_deterministic(payload: Dict[str, Any]) -> Generator[str, None, None]:
         mode,
         conversation_id,
         str(payload.get("runId") or ""),
+        user_id,
     )
 
 
@@ -1743,11 +1760,14 @@ def _run_ask(message: str, intent: str, dataset_ids: List[str]) -> Generator[str
     yield sse("finish", {"reason": "answered", "detail": intent})
 
 
-def _plan_one_dataset(linked: Optional[str], ds_id: str) -> Dict[str, Any]:
+def _plan_one_dataset(linked: Optional[str], ds_id: str, user_id: str = "demo", intent_hint: str = "") -> Dict[str, Any]:
     """单数据集规划（独立 ToolState/registry，供多数据集并行调用，互不串扰）。"""
     try:
-        tools, _state, by_name = create_registry(linked)
-        planned = execute_guarded(by_name["od_plan_charts"], {"datasetId": ds_id}) or {}
+        tools, _state, by_name = create_registry(linked, user_id=user_id)
+        args: Dict[str, Any] = {"datasetId": ds_id}
+        if intent_hint:
+            args["intent"] = intent_hint
+        planned = execute_guarded(by_name["od_plan_charts"], args) or {}
         return {"datasetId": ds_id, "planned": planned}
     except Exception as e:  # noqa: BLE001
         return {"datasetId": ds_id, "planned": {"ok": False, "error": str(e)}}
@@ -1806,12 +1826,15 @@ def _run_gen(
     run_mode: str,
     conversation_id: str = "",
     run_id: str = "",
+    user_id: str = "demo",
 ) -> Generator[str, None, None]:
     mode = patch_mode(message, linked)
     if not dataset_ids:
         yield sse("error", {"code": "BI_DATASETS", "message": "未选择数据集"})
         yield sse("finish", {"reason": "error", "detail": "datasets"})
         return
+    # 阶段3：从用户问题确定性推导图表意图（趋势/对比/占比），传给 od_plan_charts
+    intent_hint = _intent_hint(message)
     if linked:
         try:
             summary = bi_call(
@@ -1823,7 +1846,7 @@ def _run_gen(
         except Exception:
             yield step("board", "无可用看板摘要，按新建处理")
 
-    tools, _state, by_name = create_registry(linked)
+    tools, _state, by_name = create_registry(linked, user_id=user_id)
     planned: Dict[str, Any] = {}
     composed: Dict[str, Any] = {}
     patch: Dict[str, Any] = {}
@@ -1835,7 +1858,7 @@ def _run_gen(
         results: List[Dict[str, Any]] = []
         with ThreadPoolExecutor(max_workers=min(4, len(dataset_ids))) as pool:
             futs = {
-                pool.submit(_plan_one_dataset, linked, ds): ds for ds in dataset_ids
+                pool.submit(_plan_one_dataset, linked, ds, user_id, intent_hint): ds for ds in dataset_ids
             }
             for fut in futs:
                 try:
@@ -1905,7 +1928,7 @@ def _run_gen(
         ds_id = dataset_ids[0]
         yield step("planner", "分析数据特征 → 按特征选图 → 质检修复")
         try:
-            planned = execute_guarded(by_name["od_plan_charts"], {"datasetId": ds_id}) or {}
+            planned = execute_guarded(by_name["od_plan_charts"], {"datasetId": ds_id, "intent": intent_hint}) or {}
         except Exception as e:
             yield step("fallback", f"plan_charts 失败，降级 compose：{e}")
             planned = {"ok": False}

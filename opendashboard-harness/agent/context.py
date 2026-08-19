@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from agent import memory_store
+from agent.knowledge import ensure_skill_file, fetch_knowledge, format_knowledge_block
 from agent.memory import format_memory_block, load_facts
 from agent.types import AgentMessage
 
@@ -76,19 +78,44 @@ def transform_context(
     style_id: str = "feishu-blue",
     intent: Optional[str] = None,
     multi_turn: bool = False,
+    user_id: str = "demo",
 ) -> List[AgentMessage]:
-    """Inject system + memory + runtime hints before LLM."""
-    facts = load_facts(conversation_id)
-    mem = format_memory_block(facts)
+    """Inject system + memory + knowledge + runtime hints before LLM.
+
+    阶段2/4（frozen-snapshot）：<knowledge>（confirmed 指标+词表）与 <memory>（用户偏好）
+    作为独立块注入，静态 system prompt（SYSTEM_CORE + skills）不掺动态内容。
+    """
+    ids = [str(x) for x in (dataset_ids or [])]
+    # 用户级记忆（跨会话，deermem document shape）
+    mem = memory_store.format_memory_block(user_id)
+    if not mem:
+        # 兜底：会话级旧事实（不破坏既有行为）
+        mem = format_memory_block(load_facts(conversation_id))
+    # 知识冻结快照：confirmed 指标 + 词表（同数据集集合缓存，不重复拉取）
+    knowledge_payload = fetch_knowledge(ids)
+    knowledge = format_knowledge_block(
+        knowledge_payload.get("metrics") or [],
+        knowledge_payload.get("terms") or [],
+    )
+    try:
+        # skills/od-metrics/SKILL.md 保持最新（Pi skills 模式：模型按需读取完整字典）
+        ensure_skill_file(knowledge_payload.get("metrics") or [], knowledge_payload.get("terms") or [])
+    except Exception:
+        pass
     hints = {
-        "datasetIds": dataset_ids or [],
+        "datasetIds": ids,
         "styleId": style_id,
         "intent": intent,
         "boardSummary": board_summary,
     }
     import json
 
-    extra = mem + "\n## Runtime context\n```json\n" + json.dumps(hints, ensure_ascii=False) + "\n```\n"
+    extra = ""
+    if knowledge:
+        extra += knowledge + "\n"
+    if mem:
+        extra += mem + "\n"
+    extra += "## Runtime context\n```json\n" + json.dumps(hints, ensure_ascii=False) + "\n```\n"
     if multi_turn and isinstance(board_summary, dict):
         charts = board_summary.get("charts") or []
         if isinstance(charts, list) and charts:

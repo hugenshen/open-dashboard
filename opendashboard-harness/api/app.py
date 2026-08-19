@@ -217,6 +217,7 @@ def _build_run_payload(
     run_id: str,
     body: RunBody,
     conv: Dict[str, Any],
+    x_user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     dataset_ids = body.datasetIds if body.datasetIds is not None else (conv.get("datasetIds") or [])
     hist = [
@@ -235,6 +236,7 @@ def _build_run_payload(
         "linkedDashboardId": conv.get("linkedDashboardId"),
         "selectedChartId": body.selectedChartId,
         "selectedEncode": body.selectedEncode,
+        "userId": _owner(x_user_id),
         "history": hist[:-1] if hist and hist[-1].get("role") == "user" else hist,
     }
 
@@ -283,7 +285,7 @@ async def conversation_runs(
     if not run:
         raise HTTPException(status_code=500, detail="failed to create run")
 
-    payload = _build_run_payload(cid, run["id"], body, conv)
+    payload = _build_run_payload(cid, run["id"], body, conv, x_user_id)
 
     def gen() -> Iterable[str]:
         yield sse(
@@ -340,6 +342,13 @@ async def conversation_runs(
             artifact["styleId"] = body.styleId
             session_store.set_run_artifact(cid, run["id"], artifact)
         session_store.finish_run(cid, run["id"], status, str(finish_detail) if finish_detail else None)
+        # 阶段4：run 结束沉淀记忆（summarization flush hook，不阻塞主链）
+        try:
+            from agent.memory_store import flush_session_to_memory
+
+            flush_session_to_memory(_owner(x_user_id), cid, session_store.list_messages(cid))
+        except Exception:
+            pass
 
     return StreamingResponse(
         gen(),
