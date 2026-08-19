@@ -13,6 +13,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from agent.types import AgentTool
 
+# LLM 字段角色校准缓存：dataset_id -> {role map, ts}，避免每次 profile 都调 LLM
+_LLM_ROLE_CACHE: Dict[str, Any] = {}
+
 
 def bi_base() -> str:
     return (os.environ.get("OD_BI_BASE") or "http://127.0.0.1:8082").rstrip("/")
@@ -65,12 +68,16 @@ class ToolState:
         self.defer_apply: bool = False
         self.pending: Optional[Dict[str, Any]] = None
         self.rechart: bool = False
+        # 阶段4：当前 run 的用户标识（memory_add/memory_search 写/读 user 记忆）
+        self.user_id: str = "demo"
 
 
 def build_od_tools(
     linked_dashboard_id: Optional[str],
     state: ToolState,
+    user_id: str = "demo",
 ) -> List[AgentTool]:
+    state.user_id = user_id or "demo"
     def list_datasets(_: Dict[str, Any]) -> Any:
         return bi_call("GET", "/api/internal/bi/datasets")
 
@@ -287,22 +294,173 @@ def build_od_tools(
         }
 
     def profile_dataset(args: Dict[str, Any]) -> Any:
-        ds = args.get("datasetId") or ""
-        return bi_call("POST", "/api/internal/bi/profile-dataset", {"datasetId": ds})
+        ds = str(args.get("datasetId") or "")
+        profile = bi_call("POST", "/api/internal/bi/profile-dataset", {"datasetId": ds}) or {}
+        if isinstance(profile, dict) and profile.get("ok"):
+            profile = _attach_llm_roles(profile, ds)
+        return profile
+
+    def interpret_fields(args: Dict[str, Any]) -> Any:
+        """od_interpret_fields：模型按 字段名+label+采样+统计 输出结构化语义，
+        经 Java 回写 de_indicator.confidence 与 de_glossary 别名（自学习闭环）。
+        只传字段名时返回 learned role 供模型确认（LLM 不可用回退）。
+        """
+        ds = str(args.get("datasetId") or "")
+        if not ds:
+            return {"ok": False, "error": "datasetId required"}
+        interpretations = args.get("interpretations") or []
+        if isinstance(interpretations, list) and interpretations:
+            body = {"datasetId": ds, "fields": interpretations}
+            try:
+                result = bi_call("POST", "/api/internal/bi/interpret-fields", body)
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+            from agent.knowledge import invalidate_knowledge
+
+            invalidate_knowledge([ds])
+            if not isinstance(result, dict):
+                result = {"ok": True}
+            result["ok"] = True
+            return result
+        # 无显式 interpretations：先用 LLM 自动判角色（纠正纯规则误判），成功则回写后端；否则回退 learned role
+        try:
+            schema = bi_call("GET", f"/api/internal/bi/datasets/{urllib.parse.quote(str(ds))}/schema")
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        wanted = [str(f) for f in (args.get("fields") or []) if str(f).strip()]
+        auto = interpret_fields_llm(ds, schema)
+        llm_fields = auto.get("fields") or []
+        if auto.get("source") == "llm" and llm_fields:
+            # 仅回写本次关注的字段（或全部），转成 interpretations 给后端
+            map_llm = {f.get("name"): f for f in llm_fields if f.get("name")}
+            writes = []
+            for f in (schema or {}).get("fields") or []:
+                if not isinstance(f, dict):
+                    continue
+                nm = str(f.get("name") or "")
+                if wanted and nm not in wanted:
+                    continue
+                li = map_llm.get(nm)
+                if not li:
+                    continue
+                writes.append({
+                    "field": nm,
+                    "role": li.get("role") or f.get("role") or "junk",
+                    "businessMeaning": li.get("label") or "",
+                    "aggregatable": bool(li.get("aggregatable")),
+                    "aliases": [li.get("alias")] if li.get("alias") else [],
+                })
+            if writes:
+                try:
+                    bi_call("POST", "/api/internal/bi/interpret-fields", {"datasetId": ds, "fields": writes})
+                    from agent.knowledge import invalidate_knowledge
+                    invalidate_knowledge([ds])
+                except Exception:
+                    pass  # 回写失败不阻断返回
+            return {
+                "ok": True,
+                "datasetId": ds,
+                "source": "llm",
+                "fields": [
+                    {
+                        "field": f.get("name"),
+                        "label": f.get("label"),
+                        "role": f.get("role"),
+                        "roleSource": "llm",
+                        "aggregatable": bool(f.get("aggregatable")),
+                        "alias": f.get("alias"),
+                    }
+                    for f in llm_fields
+                ],
+            }
+        # LLM 未配置/失败 → 回退 learned role（schema 的 role/roleSource/sample）
+        fields = []
+        for f in (schema or {}).get("fields") or []:
+            if not isinstance(f, dict):
+                continue
+            if wanted and str(f.get("name") or "") not in wanted:
+                continue
+            fields.append(
+                {
+                    "field": f.get("name"),
+                    "label": f.get("label"),
+                    "role": f.get("role"),
+                    "roleSource": f.get("roleSource"),
+                    "sample": _field_sample(schema, str(f.get("name") or "")),
+                }
+            )
+        return {
+            "ok": True,
+            "datasetId": ds,
+            "fields": fields,
+            "hint": "这是字段的学习角色与采样。如需回写语义，传 interpretations=[{field,role,businessMeaning,aggregatable,aliases,suggestedAgg,confidence}]",
+        }
+
+    def memory_add(args: Dict[str, Any]) -> Any:
+        """memory_add：显式写入用户记忆（「以后金额用万元」→ preference 入库）。"""
+        content = str(args.get("content") or "").strip()
+        if not content:
+            return {"ok": False, "error": "content required"}
+        from agent import memory_store
+
+        category = str(args.get("category") or "context").strip()
+        memory_store.add_fact(state.user_id, content, category=category, confidence=0.8)
+        return {"ok": True, "user": state.user_id, "content": content, "category": category}
+
+    def memory_search(args: Dict[str, Any]) -> Any:
+        """memory_search：大小写不敏感子串召回用户记忆，按相关度排序。"""
+        query = str(args.get("query") or "").strip()
+        from agent import memory_store
+
+        hits = memory_store.search(state.user_id, query, top_k=int(args.get("topK") or 5))
+        return {
+            "ok": True,
+            "user": state.user_id,
+            "query": query,
+            "facts": [{"content": h.get("content"), "category": h.get("category"), "confidence": h.get("confidence")} for h in hits],
+        }
 
     def plan_charts(args: Dict[str, Any]) -> Any:
         ds = str(args.get("datasetId") or "")
         if not ds:
             return {"ok": False, "error": "datasetId required"}
+        intent = str(args.get("intent") or "").strip().lower()
         profile = bi_call("POST", "/api/internal/bi/profile-dataset", {"datasetId": ds})
         if isinstance(profile, dict) and profile.get("ok") and not profile.get("empty") and not profile.get("measures"):
             # 无业务度量：补探测分布取值/度量/用户维度/日期跨度，支撑丰富多图表
             profile = _enrich_count_profile(ds, profile)
+        # LLM 字段语义复核：纯规则易误判（「平均关联配置ID」「均值标志位」），用模型覆盖角色
+        if isinstance(profile, dict) and profile.get("ok") and not profile.get("empty"):
+            from llm_client import llm_configured
+
+            if llm_configured():
+                schema = None
+                try:
+                    schema = bi_call("GET", f"/api/internal/bi/datasets/{urllib.parse.quote(str(ds))}/schema")
+                except Exception:
+                    schema = None
+                auto = interpret_fields_llm(ds, schema)
+                if auto.get("source") == "llm" and (auto.get("fields") or []):
+                    profile = _apply_llm_roles(profile, auto["fields"])
+                    # 同步回写低置信角色到后端（自学习闭环，但失败不阻断）
+                    try:
+                        writes = [
+                            {"field": f.get("name"), "role": f.get("role") or "junk",
+                             "businessMeaning": f.get("label") or "", "aggregatable": bool(f.get("aggregatable"))}
+                            for f in (auto["fields"] or []) if f.get("name")
+                        ]
+                        bi_call("POST", "/api/internal/bi/interpret-fields", {"datasetId": ds, "fields": writes})
+                    except Exception:
+                        pass
         planned = _plan_charts_from_profile(
             ds,
             profile if isinstance(profile, dict) else {},
             mode=str(args.get("mode") or ""),
+            intent=intent,
         )
+        # 阶段2：confirmed 指标（agg/unit 权威）优先做 KPI（PR-DF-02）
+        if isinstance(planned, dict) and planned.get("ok") and not planned.get("empty"):
+            planned = _apply_confirmed_metrics(planned, ds, user_id=state.user_id)
         filters = args.get("filters") or (state.last_intent or {}).get("filters")
         if isinstance(planned, dict) and filters:
             for c in planned.get("charts") or []:
@@ -533,6 +691,10 @@ def build_od_tools(
             title = state.last_layout.get("title") or title
         else:
             patch = _normalize_patch(args.get("patch") or args)
+        # 阶段3 emit 前数据探活（PR-SA-04）：rowCount=0 / 全 null / 查询失败 → 剔除，不进看板
+        patch = _probe_patch(patch)
+        if not patch.get("ops"):
+            return {"ok": False, "error": "所有图表数据为空（探活后无图可写），未生成看板"}
         dash = args.get("dashboardId") or linked_dashboard_id
         wrap = {"title": title, "mode": mode, "patch": patch, "linkedDashboardId": dash}
         if state.defer_apply:
@@ -613,6 +775,74 @@ def build_od_tools(
             execute=profile_dataset,
         ),
         AgentTool(
+            name="od_interpret_fields",
+            description=(
+                "Interpret field semantics from real sample rows (阶段3). Pass "
+                "interpretations=[{field, role, businessMeaning, aggregatable, aliases, suggestedAgg, confidence}] "
+                "to write back indicator confidence + glossary aliases (self-learning loop). "
+                "Or pass only fields=[...] to get the learned role + sample for confirmation. "
+                "Roles: dim|measure|time|flag|id|junk|text. Do NOT reinterpret already-learned fields unless ambiguous."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "datasetId": {"type": "string"},
+                    "fields": {"type": "array", "items": {"type": "string"}},
+                    "interpretations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "field": {"type": "string"},
+                                "role": {"type": "string"},
+                                "businessMeaning": {"type": "string"},
+                                "aggregatable": {"type": "boolean"},
+                                "aliases": {"type": "array", "items": {"type": "string"}},
+                                "suggestedAgg": {"type": "string"},
+                                "confidence": {"type": "number"},
+                            },
+                            "required": ["field", "role"],
+                        },
+                    },
+                },
+                "required": ["datasetId"],
+            },
+            execute=interpret_fields,
+        ),
+        AgentTool(
+            name="memory_add",
+            description=(
+                "Persist a user preference/fact across sessions (阶段4), e.g. 「以后金额用万元展示」. "
+                "category: preference|knowledge|context|behavior|goal|correction. "
+                "Call ONLY when the user states a durable preference or confirms a metric convention."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"},
+                    "category": {"type": "string"},
+                },
+                "required": ["content"],
+            },
+            execute=memory_add,
+        ),
+        AgentTool(
+            name="memory_search",
+            description=(
+                "Search the user's persisted memory (case-insensitive substring) for preferences/口径/常用维度. "
+                "Use when a user preference might apply (e.g. unit preference, naming habits) before planning."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "topK": {"type": "integer"},
+                },
+                "required": ["query"],
+            },
+            execute=memory_search,
+        ),
+        AgentTool(
             name="od_plan_charts",
             description=(
                 "Plan a multi-chart dashboard from dataset probes. Analyzes field roles "
@@ -633,6 +863,11 @@ def build_od_tools(
                         "type": "string",
                         "enum": ["full", "single"],
                         "description": "default 'full' = multi-chart template board; 'single' = only one KPI when the user explicitly asked",
+                    },
+                    "intent": {
+                        "type": "string",
+                        "enum": ["trend", "compare", "share", "none"],
+                        "description": "user chart intent: trend(走势/趋势→line) | compare(对比/排行→hbar) | share(占比/构成→pie) | none(auto)",
                     },
                 },
                 "required": ["datasetId"],
@@ -863,6 +1098,93 @@ def build_od_tools(
     ]
 
 
+def interpret_fields_llm(dataset_id: str, schema: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """LLM 字段语义解释（od_interpret_fields）：
+    把字段名+label+统计特征+真实采样给 LLM，输出结构化角色/业务含义/别名/可聚合性。
+    纯规则（stats role）易误判（如「平均关联配置ID」），用 LLM 复核纠偏。
+    LLM 未配置/失败时降级返回 stats role（确定性兜底，不阻塞）。
+    """
+    from llm_client import chat_completions, llm_configured
+
+    if schema is None:
+        try:
+            schema = bi_call("GET", f"/api/internal/bi/datasets/{urllib.parse.quote(str(dataset_id))}/schema")
+        except Exception:
+            schema = {}
+    fields = (schema or {}).get("fields") or []
+    if not fields:
+        return {"ok": False, "fields": [], "reason": "no fields"}
+
+    # 降级：LLM 不可用 → 用后端 stats role 兜底
+    if not llm_configured():
+        return {
+            "ok": True,
+            "source": "stats",
+            "fields": [
+                {"name": f.get("name"), "label": f.get("label"), "role": f.get("role") or "junk"} for f in fields
+            ],
+        }
+
+    compact = []
+    sample = (schema or {}).get("sample") or []
+    for f in fields:
+        name = str(f.get("name") or "")
+        compact.append({
+            "name": name,
+            "label": f.get("label"),
+            "dataType": f.get("dataType"),
+            "statsRole": f.get("role"),
+            "sampleValues": _compact_sample(sample, fields, name),
+        })
+
+    try:
+        resp = chat_completions([
+            {"role": "system", "content": (
+                "你是字段语义分析器。给定数据表的字段列表，判断每个字段的业务角色。\n"
+                "角色枚举: dimension(可分组/筛选的维度,如状态/区域/产品/创建人) | measure(可聚合的数值指标,如金额/数量/评分) | "
+                "time(时间) | id(主键/外键/编号,仅关联不聚合) | flag(0/1标志位,不均值) | text(长文本/JSON/正文) | junk(无用字段)\n"
+                "规则：1) 名称/label 含 id/编号/主键/关联 →id；2) 0/1或y/n取值→flag；3) 时间戳/日期类型→time；"
+                "4) 纯文本/JSON/超长→text；5) 数值且更像金额/数量/比率→measure；6) 低基数字符串且可分组→dimension\n"
+                "注意：不要因为字段是数值就判 measure——ID(如 customer_id)、标志位(如 enable_flag)即使数值也不可聚合。\n"
+                "只输出 JSON：{\"fields\":[{\"name\":\"...\",\"businessMeaning\":\"一句话业务含义\",\"role\":\"...\","
+                "\"aggregatable\":bool,\"alias\":\"常用中文别名\"}]}"
+            )},
+            {"role": "user", "content": "字段列表: " + json.dumps(compact, ensure_ascii=False)},
+        ], temperature=0.1)
+        content = (resp.get("choices") or [{}])[0].get("message", {}).get("content") or "{}"
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("```", 2)[1] or ""
+            if content.startswith("json"):
+                content = content[4:].strip()
+        data = json.loads(content)
+        out_fields = []
+        for item in (data.get("fields") or []):
+            if not isinstance(item, dict) or not item.get("name"):
+                continue
+            out_fields.append({
+                "name": item.get("name"),
+                "label": item.get("businessMeaning") or "",  # 用业务含义作新 label
+                "role": str(item.get("role") or "junk"),
+                "aggregatable": bool(item.get("aggregatable")),
+                "alias": item.get("alias"),
+            })
+        if out_fields:
+            return {"ok": True, "source": "llm", "fields": out_fields}
+        raise ValueError("LLM 返回空字段")
+    except Exception as e:
+        # LLM 失败 → 降级 stats role
+        import sys as _sys
+        print(f"[interpret_fields_llm] fallback stats: {type(e).__name__}: {e}", file=_sys.stderr, flush=True)
+        return {
+            "ok": True,
+            "source": "stats",
+            "fields": [
+                {"name": f.get("name"), "label": f.get("label"), "role": f.get("role") or "junk"} for f in fields
+            ],
+        }
+
+
 def _field_name(item: Any) -> str:
     if isinstance(item, dict):
         return str(item.get("name") or "")
@@ -875,17 +1197,414 @@ def _field_label(item: Any) -> str:
     return str(item or "")
 
 
+def _field_sample(schema: Any, field_name: str) -> List[Any]:
+    """从 schema.sample（行列矩阵，列序=fields 序）抽某字段的采样列（≤20）。"""
+    fields = (schema or {}).get("fields") or []
+    sample = (schema or {}).get("sample") or []
+    idx = -1
+    for i, f in enumerate(fields):
+        if isinstance(f, dict) and str(f.get("name") or "") == field_name:
+            idx = i
+            break
+    if idx < 0 or not isinstance(sample, list):
+        return []
+    out: List[Any] = []
+    for row in sample:
+        if isinstance(row, list) and idx < len(row):
+            out.append(row[idx])
+        if len(out) >= 20:
+            break
+    return out
+
+
+def _compact_sample(sample: List[Any], fields: List[Any], field_name: str, max_vals: int = 3) -> List[str]:
+    """取某字段的少量短采样值（截断超长），避免 LLM 输入上下文爆炸。"""
+    idx = -1
+    for i, f in enumerate(fields):
+        if isinstance(f, dict) and str(f.get("name") or "") == field_name:
+            idx = i
+            break
+    if idx < 0 or not isinstance(sample, list):
+        return []
+    out: List[str] = []
+    for row in sample:
+        if not isinstance(row, list) or idx >= len(row) or row[idx] is None:
+            continue
+        s = str(row[idx]).strip()
+        if not s or len(s) > 60:
+            continue  # 跳过空值/超长值（JSON/向量等）
+        out.append(s[:40])
+        if len(out) >= max_vals:
+            break
+    return out
+
+
+def _attach_llm_roles(profile: Dict[str, Any], dataset_id: str, force: bool = False) -> Dict[str, Any]:
+    """把 LLM 判定的字段角色附加到 profile（含缓存）：返回的 fields 里 role 用 LLM 校准值，
+    并在 profile 顶层带 llmRoleMap 供规划/模型参考。LLM 不可用/失败时保持原 stats role 不变化。"""
+    if not isinstance(profile, dict) or not profile.get("ok"):
+        return profile
+    cached = _LLM_ROLE_CACHE.get(dataset_id)
+    import time as _t
+    if cached and not force and _t.time() - cached.get("ts", 0) < 600:
+        role_map = cached.get("map") or {}
+        _merge_role_map_into_profile(profile, role_map)
+        profile["roleSource"] = "llm"
+        return profile
+    from llm_client import llm_configured
+
+    if not llm_configured():
+        return profile
+    auto = interpret_fields_llm(dataset_id)
+    if auto.get("source") == "llm" and (auto.get("fields") or []):
+        role_map = {}
+        for f in auto["fields"]:
+            if f.get("name"):
+                role_map[str(f.get("name"))] = {
+                    "role": f.get("role") or "junk",
+                    "label": f.get("label") or "",
+                    "aggregatable": bool(f.get("aggregatable")),
+                }
+        _LLM_ROLE_CACHE[dataset_id] = {"map": role_map, "ts": _t.time()}
+        _merge_role_map_into_profile(profile, role_map)
+        profile["roleSource"] = "llm"
+    return profile
+
+
+def _merge_role_map_into_profile(profile: Dict[str, Any], role_map: Dict[str, Any]) -> None:
+    """用 LLM role map 覆盖 profile.fields 的 role，并刷新 measures/dims/timeFields。"""
+    flds = []
+    for f in (profile.get("fields") or []):
+        if not isinstance(f, dict):
+            continue
+        nm = str(f.get("name") or "")
+        info = role_map.get(nm)
+        if info:
+            f = dict(f)
+            f["role"] = info.get("role") or f.get("role")
+            f["roleSource"] = "llm"
+            if info.get("label") and str(f.get("label") or "") == str(nm):
+                f["label"] = info["label"]
+        flds.append(f)
+    profile["fields"] = flds
+    profile["llmRoleMap"] = role_map
+    # 重建 measures/dims/timeFields（LLM 为准，排除 id/flag/text 作维度）
+    measures, dims, times = [], [], []
+    for f in flds:
+        r = str(f.get("role") or "")
+        info = role_map.get(str(f.get("name") or ""))
+        agg = bool(info.get("aggregatable")) if info else None
+        entry = {"name": f.get("name"), "label": f.get("label"), "group": f.get("group"),
+                 "dataType": f.get("dataType"), "origin": f.get("origin")}
+        if r == "measure" and agg is not False:
+            measures.append(entry)
+        elif r == "time":
+            times.append(entry)
+        elif r in ("dim", "dimension"):
+            dims.append(entry)
+    old_dims = profile.get("dims") or []
+    for d in old_dims:
+        if len(dims) < 2 and isinstance(d, dict):
+            role = role_map.get(str(d.get("name") or ""), {}).get("role", "")
+            if role not in (None, "", "id", "flag", "text", "time", "measure"):
+                dims.append(d)
+    if measures:
+        profile["measures"] = measures
+    if dims:
+        profile["dims"] = dims
+    if times:
+        profile["timeFields"] = times
+
+
+def _apply_llm_roles(profile: Dict[str, Any], llm_fields: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """用 LLM 判定的字段角色覆盖 profile 的 role，并重建 measures/dims/timeFields，
+    避免纯规则误判（如「平均关联配置ID」）。LLM 判 dimension/measure/time 等优先。"""
+    if not isinstance(profile, dict):
+        return profile
+    role_map = {}
+    for f in llm_fields:
+        if isinstance(f, dict) and f.get("name"):
+            role_map[str(f.get("name"))] = str(f.get("role") or "")
+    flds: List[Dict[str, Any]] = []
+    for f in (profile.get("fields") or []):
+        if not isinstance(f, dict):
+            continue
+        nm = str(f.get("name") or "")
+        if nm in role_map:
+            f = dict(f)
+            f["role"] = role_map[nm]
+            f["roleSource"] = "llm"
+        flds.append(f)
+    profile = dict(profile)
+    profile["fields"] = flds
+    # 重建 measures/dims/timeFields（基于 LLM role）
+    measures, dims, times = [], [], []
+    for f in flds:
+        r = str(f.get("role") or "")
+        entry = {"name": f.get("name"), "label": f.get("label"), "group": f.get("group"),
+                 "dataType": f.get("dataType"), "origin": f.get("origin")}
+        if r == "measure":
+            measures.append(entry)
+        elif r == "time":
+            times.append(entry)
+        elif r in ("dim", "dimension"):
+            # 只把真正的可分组维度放入 dims；id/flag/text 不作计数维度
+            dims.append(entry)
+    # LLM 判的 dimension 不足时，用原 profile 里非 id 的 dims 兜底
+    old_dims = profile.get("dims") or []
+    for d in old_dims:
+        if len(dims) < 2 and isinstance(d, dict):
+            nm = str(d.get("name") or "")
+            r = role_map.get(nm, "")
+            if r not in ("id", "flag", "text", "time", "measure"):
+                dims.append(d)
+    profile["measures"] = measures or profile.get("measures") or []
+    profile["dims"] = dims or []
+    profile["timeFields"] = times or profile.get("timeFields") or []
+    return profile
+
+
+def _apply_confirmed_metrics(planned: Dict[str, Any], dataset_id: str, user_id: str = "") -> Dict[str, Any]:
+    """阶段2：confirmed 指标（agg/unit 权威）优先做 KPI（PR-DF-02）。
+    已确认指标作为 KPI 前置，title 含业务名与单位；不重复同字段已有图。
+    阶段4（PR-UM-03）：用户记忆里有单位偏好（万元/千元…）时，KPI 标题用偏好单位展示。"""
+    try:
+        from agent.knowledge import get_confirmed_metrics
+
+        metrics = get_confirmed_metrics([dataset_id])
+    except Exception:
+        metrics = []
+    if not metrics:
+        return planned
+    # 用户记忆中的单位偏好（跨会话生效，PR-UM-03）
+    unit_pref = ""
+    if user_id:
+        try:
+            from agent.memory_store import unit_preference
+
+            unit_pref = unit_preference(user_id)
+        except Exception:
+            pass
+    by_field: Dict[str, Dict[str, Any]] = {}
+    for m in metrics:
+        if isinstance(m, dict) and m.get("field"):
+            by_field[str(m["field"])] = m
+    if not by_field:
+        return planned
+
+    charts = list(planned.get("charts") or [])
+    rationale = list(planned.get("rationale") or [])
+    changed = False
+    # 1) 已有 KPI 使用 confirmed 指标字段 → 用权威 agg/unit 修正 title（PR-DF-02/PR-UM-03）
+    for c in charts:
+        if not isinstance(c, dict) or str(c.get("type") or "") != "kpi":
+            continue
+        enc = c.get("encode") if isinstance(c.get("encode"), dict) else {}
+        field = str(enc.get("value") or "")
+        m = by_field.get(field)
+        if not m:
+            continue
+        name = str(m.get("name") or field)
+        unit = str(m.get("unit") or "")
+        if unit_pref:
+            unit = unit_pref
+        new_title = name + (f"（{unit}）" if unit else "")
+        if str(c.get("title") or "") != new_title:
+            c["title"] = new_title
+            changed = True
+        if m.get("agg"):
+            enc["agg"] = str(m["agg"])
+            c["encode"] = enc
+            changed = True
+    # 2) confirmed 但尚未成图的指标 → 前置补 KPI
+    existing_values = {
+        str((c.get("encode") or {}).get("value") or "")
+        for c in charts
+        if isinstance(c, dict) and isinstance(c.get("encode"), dict)
+    }
+    existing_titles = {str(c.get("title") or "") for c in charts if isinstance(c, dict)}
+    added = 0
+    for field, m in by_field.items():
+        if field in existing_values:
+            continue
+        if len(charts) >= 12:
+            break
+        name = str(m.get("name") or field)
+        agg = str(m.get("agg") or "SUM")
+        unit = str(m.get("unit") or "")
+        if unit_pref:
+            unit = unit_pref
+        title = name + (f"（{unit}）" if unit else "")
+        if title in existing_titles:
+            continue
+        charts.insert(0, {
+            "type": "kpi",
+            "title": title,
+            "datasetId": dataset_id,
+            "encode": {"datasetId": dataset_id, "value": field, "agg": agg, "calc": "none"},
+            "style": {"showCompare": False, "showTitle": True},
+            "_confirmedMetric": True,
+        })
+        existing_values.add(field)
+        existing_titles.add(title)
+        added += 1
+    if not changed and not added:
+        return planned
+    out = dict(planned)
+    out["charts"] = charts
+    if added:
+        rationale.insert(0, f"优先使用已确认指标做 KPI（{added} 个，agg/unit 权威）")
+        out["rationale"] = rationale
+    return out
+
+
+def _probe_patch(patch: Dict[str, Any]) -> Dict[str, Any]:
+    """emit 前数据探活（PR-SA-04）：对 patch 中每张图先查一次，
+    rowCount=0 / 全 null / 查询失败 → 剔除该图及其组件（不进看板）。"""
+    ops = patch.get("ops") or []
+    if not isinstance(ops, list):
+        return patch
+    chart_ops: Dict[str, Dict[str, Any]] = {}
+    for op in ops:
+        if not isinstance(op, dict):
+            continue
+        if str(op.get("op") or "") == "upsert_chart":
+            chart_ops[str(op.get("chartId") or "")] = op
+    if not chart_ops:
+        return patch
+    keep_ids: set[str] = set()
+    dropped: List[str] = []
+    for cid, op in chart_ops.items():
+        if _chart_probe_ok(op):
+            keep_ids.add(cid)
+        else:
+            dropped.append(str(op.get("title") or cid))
+    if not dropped:
+        return patch
+    kept_ops: List[Dict[str, Any]] = []
+    for op in ops:
+        if not isinstance(op, dict):
+            kept_ops.append(op)
+            continue
+        kind = str(op.get("op") or "")
+        if kind == "upsert_chart":
+            if str(op.get("chartId") or "") in keep_ids:
+                kept_ops.append(op)
+            continue
+        if kind == "upsert_component":
+            # 组件保留：非 chart 组件（query 等）不动；chart 组件随图剔除
+            if str(op.get("type") or "") == "chart" and str(op.get("chartId") or "") not in keep_ids:
+                continue
+        kept_ops.append(op)
+    out = dict(patch)
+    out["ops"] = kept_ops
+    return out
+
+
+def _chart_probe_ok(op: Dict[str, Any]) -> bool:
+    """对单个 upsert_chart op 做真实查询探活（limit 小，只判定非空）。"""
+    dataset_id = op.get("datasetId")
+    chart_type = str(op.get("type") or "bar")
+    encode = op.get("encode") if isinstance(op.get("encode"), dict) else {}
+    if not dataset_id:
+        return False
+    try:
+        r = bi_call(
+            "POST",
+            "/api/internal/bi/query/chart",
+            {
+                "chartId": "probe_emit",
+                "dashboardId": None,
+                "view": "draft",
+                "inline": {
+                    "datasetId": dataset_id,
+                    "chartType": chart_type,
+                    "title": "probe",
+                    "encode": encode,
+                },
+                "context": {"filters": [], "linkages": []},
+            },
+        )
+        data = r.get("data") or [] if isinstance(r, dict) else []
+        if not isinstance(data, list):
+            data = []
+        if not data:
+            return False
+        if chart_type == "kpi":
+            # KPI：首行 value 全 null/空 视为无数据
+            first = data[0]
+            if isinstance(first, list):
+                vals = first[1:] if len(first) > 1 else first
+                if not any(v is not None and str(v).strip() not in ("", "null") for v in vals):
+                    return False
+        return True
+    except Exception:
+        return False
+
+
 def _is_status_like(item: Any) -> bool:
     blob = f"{_field_name(item)} {_field_label(item)}".lower()
     return any(k in blob for k in ("status", "状态", "type", "类型", "channel", "渠道"))
 
 
+def _is_id_field(item: Any) -> bool:
+    """识别主键/外键/编号类字段：这些值只是标识符，聚合（SUM/AVG）无业务意义。
+    覆盖 id / 主键ID / 关联*ID / *编号 / tenant_id / code 等。
+    """
+    name = str(_field_name(item) or "").lower()
+    label = str(_field_label(item) or "").lower()
+    blob = f"{name} {label}"
+    if name in ("id", "key", "code", "no", "num"):
+        return True
+    if re.search(r"(^|_)(id|key|code|no|num)(_|$)", name):
+        return True
+    if re.search(r"\bid\b|主键|编号|关联.*id|外键|标识|id号", blob):
+        return True
+    return False
+
+
+def _flag_probe(probes: List[Any], encode: Dict[str, Any]) -> Dict[str, Any]:
+    """质检用：从已有 probes 推断字段取值分布（不发起新查询）。"""
+    field = str(encode.get("category") or encode.get("value") or "")
+    for p in probes or []:
+        if not isinstance(p, dict):
+            continue
+        if str(p.get("kind") or "") == "count" and str(p.get("field") or p.get("category") or "") == field:
+            return {"data": [[v, 1] for v in (p.get("values") or [])]}
+    return {"data": []}
+
+
+def _is_flag_field(item: Any, probe: Any) -> bool:
+    """0/1 标志位 / 布尔开关：探测 COUNT 分布，去掉 NULL 后若只剩 1-2 个取值（如 0/1）则不是可聚合度量。
+    probe 接收 encode dict 返回 chart 查询结果（data 为 [value, count] 行）。
+    """
+    try:
+        name = _field_name(item)
+        if not name:
+            return False
+        r = probe({"datasetId": "?", "agg": "COUNT", "category": name, "value": name, "chartType": "bar"})
+        data = r.get("data") or []
+        if not data:
+            return False
+        vals = {str(v[0]).strip() for v in data if v[0] is not None and str(v[0]).strip() != ""}
+        if not vals:
+            return False
+        low = {v.lower() for v in vals}
+        if low <= {"0", "1", "true", "false", "y", "n", "yes", "no"}:
+            return True
+        return False
+    except Exception:
+        return False
+
+
 def _pick_measure(measures: List[Any]) -> Optional[Any]:
     for m in measures:
+        if _is_id_field(m):
+            continue
         blob = f"{_field_name(m)} {_field_label(m)}".lower()
         if any(k in blob for k in ("amount", "金额", "销售", "profit", "利润", "qty", "数量")) and "mchincome" not in blob:
             return m
-    return measures[0] if measures else None
+    return next((m for m in measures if not _is_id_field(m)), None)
 
 
 def _probe_live(probes: List[Any], kind: str, field: str) -> bool:
@@ -1008,6 +1727,20 @@ def _review_and_repair(charts: List[Any], query: Any, probes: List[Any]) -> Dict
         style = dict(spec["style"]) if isinstance(spec.get("style"), dict) else {}
 
         if kind == "kpi":
+            # 语义质检（规划/质检分离的确定性兜底）：ID/编号与 0/1 标志位聚合无业务意义
+            val_field = enc.get("value")
+            if val_field:
+                val_item = {"name": val_field, "label": enc.get("valueLabel") or _short_label(str(val_field))}
+                if _is_id_field(val_item):
+                    issues.append("aggregate_id_field")
+                    fixes.append("drop_id_measure")
+                    rationale.append(f"「{_field_label(val_item)}」是 ID/编号类字段，聚合无业务意义，剔除")
+                    continue
+                if _is_flag_field(val_item, lambda e: _flag_probe(probes, e)):
+                    issues.append("aggregate_flag_field")
+                    fixes.append("drop_flag_measure")
+                    rationale.append(f"「{_field_label(val_item)}」是 0/1 标志位，均值/求和无业务意义，剔除")
+                    continue
             calc = str(enc.get("calc") or "none").lower()
             if calc not in ("yoy", "mom"):
                 if calc != "none" or style.get("showCompare") is not False:
@@ -1074,6 +1807,23 @@ def _review_and_repair(charts: List[Any], query: Any, probes: List[Any]) -> Dict
             spec["encode"] = enc
             out.append(spec)
             continue
+
+        # 语义质检（规划/质检 agent 分离的确定性兜底）：聚合字段必须是可加总/求均的业务量，
+        # ID/编号/主键与 0/1 标志位无业务意义（如「平均关联配置ID」「均值有效标识」），剔除。
+        if kind in ("kpi", "bar", "hbar", "line", "area", "column", "pie", "donut", "scatter"):
+            val_field = enc.get("value")
+            if val_field:
+                val_item = {"name": val_field, "label": enc.get("valueLabel") or _short_label(str(val_field))}
+                if _is_id_field(val_item):
+                    issues.append("aggregate_id_field")
+                    fixes.append("drop_id_measure")
+                    rationale.append(f"「{_field_label(val_item)}」是 ID/编号类字段，聚合无业务意义，剔除")
+                    continue
+                if _is_flag_field(val_item, lambda e: _flag_probe(probes, e)):
+                    issues.append("aggregate_flag_field")
+                    fixes.append("drop_flag_measure")
+                    rationale.append(f"「{_field_label(val_item)}」是 0/1 标志位，均值/求和无业务意义，剔除")
+                    continue
 
         spec["encode"] = enc
         if style:
@@ -1164,12 +1914,17 @@ def _enrich_count_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[str,
             )
             have.add(cd)
 
-    # 2) 第一个 DECIMAL 字段作度量（AVG 探测非 null 才用）
+    # 2) 第一个 DECIMAL 字段作度量（AVG 探测非 null 才用）；排除 ID/编号类与 0/1 标志位（聚合无业务意义）
     for f in fields:
         fn = str(f.get("name") or "")
         if str(f.get("dataType") or "") != "DECIMAL" or fn in ("id", cd) or fn in have:
             continue
         if str(f.get("role") or "") not in ("junk", "quota", "measure"):
+            continue
+        if _is_id_field(f):
+            continue
+        # 0/1 标志位（如 enable_flag / *_enabled）：取值只有 0/1，AVG/SUM 是「占比/开关数」不是业务度量
+        if _is_flag_field(f, chart_probe):
             continue
         r = chart_probe({"datasetId": dataset_id, "agg": "AVG", "value": fn, "chartType": "kpi"})
         data = r.get("data") or []
@@ -1232,18 +1987,43 @@ def _enrich_count_profile(dataset_id: str, profile: Dict[str, Any]) -> Dict[str,
                     }
                 )
 
+    # 5) 时间字段 COUNT 趋势 probe（供「趋势/走势」意图出 line 图；无度量数据集计数也能看趋势）
+    time_line_fields = {str(p.get("field") or "") for p in probes if str(p.get("kind") or "") == "line"}
+    for tf in (profile.get("timeFields") or [])[:1]:
+        tfn = _field_name(tf)
+        if not tfn or tfn in time_line_fields:
+            continue
+        r = chart_probe({"datasetId": dataset_id, "agg": "COUNT", "category": tfn, "value": cd or tfn, "chartType": "line"})
+        data = r.get("data") or []
+        if data:
+            probes.append(
+                {
+                    "kind": "line",
+                    "field": tfn,
+                    "rowCount": len(data),
+                    "sample": data[:8],
+                    "emptyValue": False,
+                    "tooGranular": len(data) > 24,
+                }
+            )
+
     out = dict(profile)
     out["probes"] = probes
     return out
 
 
-def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any], mode: str = "") -> Dict[str, Any]:
+def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any], mode: str = "", intent: str = "") -> Dict[str, Any]:
     if not profile.get("ok"):
         return {"ok": False, "error": profile.get("error") or "profile failed"}
 
     # mode 是 LLM 的低风险决策提示（B 层）；非法/缺省一律走 A 默认多图骨架。
     mode = str(mode or "").strip().lower()
     single = mode in ("single", "single_chart", "one", "kpi_only", "1")
+    # intent 是用户的图表意图（阶段3，PR-SA-03）：trend/compare/share → 对应图型优先
+    intent = str(intent or "").strip().lower()
+    want_trend = any(k in intent for k in ("trend", "趋势", "走势", "随时间", "按月", "按日", "时间"))
+    want_compare = any(k in intent for k in ("compare", "对比", "排行", "排名", "top"))
+    want_share = any(k in intent for k in ("share", "占比", "构成", "比例", "分布"))
 
     name = str(profile.get("name") or dataset_id)
     measures = list(profile.get("measures") or [])
@@ -1304,11 +2084,18 @@ def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any], mode: st
         mn, ml = _field_name(m), _field_label(m)
         if not mn:
             continue
+        if _is_id_field(m):
+            continue
         agg = "AVG" if any(k in f"{mn} {ml}".lower() for k in ("rate", "率")) else "SUM"
         if _probe_kpi_live(probes, mn):
             kpi(ml or mn, mn, agg, f"指标「{ml or mn}」做 KPI（{agg}）")
 
-    best = next((m for m in measures if _probe_kpi_live(probes, _field_name(m))), None) or _pick_measure(measures)
+    best = next(
+        (m for m in measures if _probe_kpi_live(probes, _field_name(m)) and not _is_id_field(m)),
+        None,
+    ) or _pick_measure(measures)
+    if best and _is_id_field(best):
+        best = None
     value = _field_name(best) if best else count_key
     value_label = _field_label(best) if best else "记录数"
     agg = "SUM" if best else "COUNT"
@@ -1320,13 +2107,21 @@ def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any], mode: st
         d0 = dims[0]
         d0n, d0l = _field_name(d0), _field_label(d0)
         if d0n and _probe_live(probes, "bar", d0n):
-            plot("bar", f"{d0l} · {value_label}", d0n, value, agg, f"「{d0l}」基数适合对比，配 {value_label}")
+            # 意图感知（PR-SA-03）：对比/排行 → hbar（横向对比）；默认 bar
+            main_kind = "hbar" if want_compare else "bar"
+            plot(main_kind, f"{d0l} · {value_label}", d0n, value, agg, f"「{d0l}」基数适合对比，配 {value_label}")
             used_dims.add(d0n)
         pie_src = next((d for d in dims if _is_status_like(d)), dims[1] if len(dims) > 1 else None)
         if pie_src is not None:
             pn, pl = _field_name(pie_src), _field_label(pie_src)
             if pn and pn not in used_dims and _probe_live(probes, "bar", pn):
                 plot("pie", f"{pl} 构成", pn, value, agg, f"「{pl}」是另一类别字段，用饼图看构成")
+                used_dims.add(pn)
+        # 占比意图：再补一张状态类饼图（若 d0 非状态类且未被占用）
+        if want_share and pie_src is not None:
+            pn, pl = _field_name(pie_src), _field_label(pie_src)
+            if pn and pn not in used_dims and _probe_live(probes, "bar", pn):
+                plot("pie", f"{pl}占比", pn, value, agg, f"用户要求看占比，用「{pl}」饼图")
                 used_dims.add(pn)
         for extra in dims[1:]:
             if len([c for c in charts if c.get("type") not in ("kpi", "table", "grouptable")]) >= 4:
@@ -1346,9 +2141,11 @@ def _plan_charts_from_profile(dataset_id: str, profile: Dict[str, Any], mode: st
             if single:
                 break
             if tn and _probe_live(probes, "line", tn):
-                plot("line", f"{tl}走势 · {value_label}", tn, value, agg, f"有时间字段「{tl}」且探测有行，做趋势")
-                lined = True
-                break
+                # 趋势意图（PR-SA-03）：时间字段折线优先；无时间字段时跳过趋势
+                if want_trend or not want_compare:
+                    plot("line", f"{tl}走势 · {value_label}", tn, value, agg, f"有时间字段「{tl}」且探测有行，做趋势")
+                    lined = True
+                    break
     if not lined and value and len(dims) > 2 and not single:
         for extra in dims:
             en, el = _field_name(extra), _field_label(extra)

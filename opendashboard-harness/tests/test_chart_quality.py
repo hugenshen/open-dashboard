@@ -112,3 +112,40 @@ def test_plan_skips_duplicate_pie():
     kpi = next(c for c in planned["charts"] if c["type"] == "kpi")
     assert kpi["encode"]["calc"] == "none"
     assert kpi["style"]["showCompare"] is False
+
+
+def test_intent_hint_mapping():
+    """阶段3：意图 → 图型提示（trend/compare/share）。"""
+    from agent.runtime import _intent_hint
+
+    assert _intent_hint("按月份看趋势，生成看板") == "trend"
+    assert _intent_hint("生成分析看板，各区域对比") == "compare"
+    assert _intent_hint("生成看板，看渠道占比") == "share"
+    assert _intent_hint("生成分析看板") == "none"
+
+
+def test_intent_planning_chart_types():
+    """意图感知规划：compare→hbar 优先；share→pie 优先；trend 有 time probe 才出 line。"""
+    from tools.od_bi import _plan_charts_from_profile
+
+    base = {
+        "ok": True,
+        "empty": False,
+        "name": "s",
+        "dims": [{"name": "region", "label": "区域"}, {"name": "channel", "label": "渠道"}],
+        "measures": [{"name": "amount", "label": "销售额"}],
+        "timeFields": [{"name": "day", "label": "日期"}],
+        "probes": [
+            {"kind": "bar", "field": "region", "rowCount": 3},
+            {"kind": "bar", "field": "channel", "rowCount": 3},
+            {"kind": "line", "field": "day", "rowCount": 10},
+        ],
+        "queryFields": [],
+    }
+    compare = _plan_charts_from_profile("s", base, intent="compare")
+    types = [c["type"] for c in compare["charts"]]
+    assert "hbar" in types, types
+    share = _plan_charts_from_profile("s", base, intent="share")
+    assert any(c["type"] == "pie" for c in share["charts"])
+    trend = _plan_charts_from_profile("s", base, intent="trend")
+    assert any(c["type"] == "line" for c in trend["charts"])
