@@ -4,11 +4,15 @@ import io.opendashboard.application.DatasetService;
 import io.opendashboard.application.StubQueryService;
 import io.opendashboard.domain.DatasetDtos.DatasetDetailVO;
 import io.opendashboard.domain.DatasetDtos.DatasetFieldVO;
+import io.opendashboard.domain.DatasetDtos.FieldProfileVO;
 import io.opendashboard.domain.QueryDtos.ChartQueryRequest;
 import io.opendashboard.domain.QueryDtos.ChartQueryResult;
+import io.opendashboard.domain.gateway.FieldProfileGateway;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -17,16 +21,24 @@ import java.util.Map;
 /**
  * Compact dataset features for the Lead Agent planner (no LLM).
  * Probes a few encodes so the agent can skip empty charts.
+ * Field roles come from self-learning profile (de_dataset_field_profile) when
+ * present (stats-first deterministic gate); keyword roleOf is the fallback.
  */
 @Component
 public class DatasetProfiler {
 
     private final DatasetService datasets;
     private final StubQueryService queryService;
+    private final ObjectProvider<FieldProfileGateway> profileStore;
 
-    public DatasetProfiler(DatasetService datasets, StubQueryService queryService) {
+    public DatasetProfiler(
+            DatasetService datasets,
+            StubQueryService queryService,
+            ObjectProvider<FieldProfileGateway> profileStore
+    ) {
         this.datasets = datasets;
         this.queryService = queryService;
+        this.profileStore = profileStore;
     }
 
     public Map<String, Object> profile(String datasetId) {
@@ -47,15 +59,28 @@ public class DatasetProfiler {
         List<DatasetFieldVO> measures = new ArrayList<>();
         List<DatasetFieldVO> dims = new ArrayList<>();
         List<DatasetFieldVO> times = new ArrayList<>();
+        // 已学习的角色（统计判定）优先；无则回退现场关键词判定
+        Map<String, String> learned = loadLearnedRoles(datasetId);
+        Map<String, FieldProfileVO> stats = loadFieldStats(datasetId);
         if (detail.fields() != null) {
             for (DatasetFieldVO f : detail.fields()) {
-                String role = roleOf(f);
+                String role = learned.getOrDefault(f.name(), roleOf(f));
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("name", f.name());
                 row.put("label", display(f));
                 row.put("group", f.group());
                 row.put("dataType", f.dataType());
                 row.put("role", role);
+                row.put("roleSource", learned.containsKey(f.name()) ? "learned" : "naming");
+                // 附带统计特征（distinct/取值/null），供"维度管理/公共维度"展示与消费
+                FieldProfileVO p = stats.get(f.name());
+                if (p != null) {
+                    row.put("distinctCount", p.distinctCount());
+                    row.put("nullRate", p.nullRate());
+                    row.put("distinctValues", p.distinctValues());
+                    row.put("numericMin", p.numericMin());
+                    row.put("numericMax", p.numericMax());
+                }
                 fields.add(row);
                 switch (role) {
                     case "measure" -> measures.add(f);
@@ -134,6 +159,36 @@ public class DatasetProfiler {
         out.put("timeFields", names(times, 3));
         out.put("queryFields", queryFields(times, dims));
         out.put("probes", probes);
+        return out;
+    }
+
+    private Map<String, String> loadLearnedRoles(String datasetId) {
+        FieldProfileGateway store = profileStore.getIfAvailable();
+        if (store == null) return Map.of();
+        Map<String, String> out = new HashMap<>();
+        try {
+            for (FieldProfileVO p : store.listByDataset(datasetId)) {
+                if (p.roleLearned() != null && !p.roleLearned().isBlank()) {
+                    out.put(p.fieldName(), p.roleLearned());
+                }
+            }
+        } catch (Exception e) {
+            // 无表/查询失败时回退关键词判定
+        }
+        return out;
+    }
+
+    private Map<String, FieldProfileVO> loadFieldStats(String datasetId) {
+        FieldProfileGateway store = profileStore.getIfAvailable();
+        if (store == null) return Map.of();
+        Map<String, FieldProfileVO> out = new HashMap<>();
+        try {
+            for (FieldProfileVO p : store.listByDataset(datasetId)) {
+                out.put(p.fieldName(), p);
+            }
+        } catch (Exception e) {
+            // 无表时返回空
+        }
         return out;
     }
 
