@@ -5,9 +5,11 @@ import {
   datasetApi,
   datasourceApi,
   indicatorApi,
+  questionApi,
   type DatasetDetailVO,
   type DatasetFieldVO,
   type DatasetMetaVO,
+  type DatasetQuestionVO,
   type DatasourceVO,
   type IndicatorVO,
   type TableItem
@@ -43,9 +45,19 @@ const indForm = ref({
   unit: '',
   formula: ''
 })
+const questions = ref<DatasetQuestionVO[]>([])
+const qLoading = ref(false)
+const showQForm = ref(false)
+const editingQid = ref<number | null>(null)
+const qForm = ref({
+  question: '',
+  sql: '',
+  chartType: 'bar',
+  brief: ''
+})
 const search = ref('')
 const folderFilter = ref('全部')
-const tab = ref<'fields' | 'preview' | 'indicators' | 'lineage'>('fields')
+const tab = ref<'fields' | 'preview' | 'indicators' | 'questions' | 'lineage'>('fields')
 const error = ref('')
 const loading = ref(false)
 const learning = ref(false)
@@ -133,15 +145,18 @@ const dimFields = computed(() => studio.value.fields.filter((f) => f.group === '
 const quotaFields = computed(() => studio.value.fields.filter((f) => f.group === 'quota'))
 
 /** 字段的自动识别角色（learned role），供字段表展示"系统识别"列 */
+function isAutoRole(src?: string) {
+  return src === 'learned' || src === 'llm' || src === 'stats'
+}
 function learnedRoleOf(fieldName: string): { role: string; src: string } | null {
   const f = fieldProfile.value?.fields.find((x) => x.name === fieldName)
-  if (!f || !f.role || f.roleSource !== 'learned') return null
-  return { role: f.role, src: f.roleSource }
+  if (!f || !f.role || !isAutoRole(f.roleSource)) return null
+  return { role: f.role, src: f.roleSource || 'learned' }
 }
 const learnedRoles = computed(() => {
   const m = new Map<string, string>()
   for (const f of fieldProfile.value?.fields || []) {
-    if (f.role && f.roleSource === 'learned') m.set(f.name, f.role)
+    if (f.role && isAutoRole(f.roleSource)) m.set(f.name, f.role)
   }
   return m
 })
@@ -211,15 +226,13 @@ async function selectDs(id: string, { keepQuery = false }: { keepQuery?: boolean
   selectedId.value = id
   loading.value = true
   preview.value = null
+  fieldProfile.value = null
   try {
     detail.value = await datasetApi.get(id)
-    // 加载字段自学习画像（角色/统计/采样），展示"系统自动识别"成果
-    try {
-      fieldProfile.value = await datasetApi.profile(id)
-    } catch {
-      fieldProfile.value = null // 学习未完成或失败时仅展示基础字段表
-    }
+    loading.value = false
     loadIndicators()
+    loadQuestions()
+    void loadFieldProfile(id)
     if (keepQuery) {
       router.replace({ path: `/datasets/${id}`, query: { ...route.query } })
     } else {
@@ -228,8 +241,16 @@ async function selectDs(id: string, { keepQuery = false }: { keepQuery?: boolean
     if (tab.value === 'preview') await loadPreview()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
-  } finally {
     loading.value = false
+  }
+}
+
+async function loadFieldProfile(id: string) {
+  try {
+    const p = await datasetApi.profile(id)
+    if (selectedId.value === id) fieldProfile.value = p
+  } catch {
+    if (selectedId.value === id) fieldProfile.value = null
   }
 }
 
@@ -244,36 +265,127 @@ async function loadPreview() {
 
 /** 手动触发字段自学习：重算角色/统计/采样，刷新字段画像 */
 const learnConfirm = ref(false)
-const learnResult = ref<{ fieldCount?: number; dimensionCount?: number; roleCounts?: Record<string, number> } | null>(null)
+const learnJobId = ref<string | null>(null)
+const learnPhase = ref('queued')
+const learnPhaseLabel = ref('排队中')
+const learnStopping = ref(false)
+const learnStopRequested = ref(false)
+const learnResult = ref<{
+  fieldCount?: number
+  dimensionCount?: number
+  roleCounts?: Record<string, number>
+  llmReviewed?: boolean
+  llmChanged?: number
+  llmSkipReason?: string
+  cancelled?: boolean
+} | null>(null)
+
+const LEARN_STEPS = [
+  { id: 'sample', label: '采样', hint: '读取表内最多 30 行' },
+  { id: 'stats', label: '统计', hint: '取值分布 / 唯一值 / 空值率' },
+  { id: 'extract', label: '抽取', hint: '指标与公共维度候选' },
+  { id: 'llm', label: '复核', hint: '模型校正角色与业务名' }
+]
+
+function learnStepState(id: string): 'wait' | 'on' | 'done' {
+  const order = LEARN_STEPS.map((s) => s.id)
+  const cur = order.indexOf(learnPhase.value)
+  const idx = order.indexOf(id)
+  if (learnPhase.value === 'done') return 'done'
+  if (cur < 0) return idx === 0 && learning.value ? 'on' : 'wait'
+  if (idx < cur) return 'done'
+  if (idx === cur) return 'on'
+  return 'wait'
+}
 
 function askLearn() {
   learnConfirm.value = true
 }
 function cancelLearn() {
+  if (learning.value) return
   learnConfirm.value = false
 }
 async function confirmLearn() {
-  learnConfirm.value = false
   if (!selectedId.value) return
   learning.value = true
+  learnStopping.value = false
+  learnStopRequested.value = false
   error.value = ''
+  learnResult.value = null
+  learnPhase.value = 'queued'
+  learnPhaseLabel.value = '排队中'
   try {
-    const r = await datasetApi.learn(selectedId.value)
-    if (r && r.ok === false) {
-      error.value = r.error || '学习失败'
-    } else {
-      fieldProfile.value = await datasetApi.profile(selectedId.value)
-      if (tab.value === 'indicators') await loadIndicators()
-      learnResult.value = {
-        fieldCount: (r as { fieldCount?: number })?.fieldCount,
-        dimensionCount: (r as { dimensionCount?: number })?.dimensionCount,
-        roleCounts: (r as { roleCounts?: Record<string, number> })?.roleCounts
+    const started = await datasetApi.startLearn(selectedId.value)
+    if (!started.jobId) {
+      throw new Error('后端未返回学习任务，请刷新页面后重试')
+    }
+    learnJobId.value = started.jobId
+    const ds = selectedId.value
+    const jobId = started.jobId
+    if (learnStopRequested.value) {
+      await datasetApi.cancelLearn(ds, jobId).catch(() => undefined)
+    }
+    for (;;) {
+      const snap = await datasetApi.learnJob(ds, jobId)
+      learnPhase.value = snap.phase || snap.status
+      learnPhaseLabel.value = snap.phaseLabel || snap.status
+      if (snap.status === 'cancelling') {
+        learnStopping.value = true
+        learnPhaseLabel.value = snap.phaseLabel || '正在停止…'
       }
+      if (snap.status === 'done') {
+        const r = snap.result || {}
+        learnConfirm.value = false
+        fieldProfile.value = await datasetApi.profile(ds).catch(() => fieldProfile.value)
+        if (tab.value === 'indicators') await loadIndicators()
+        if (tab.value === 'questions') await loadQuestions()
+        learnResult.value = {
+          fieldCount: r.fieldCount,
+          dimensionCount: r.dimensionCount,
+          roleCounts: r.roleCounts,
+          llmReviewed: r.llmReviewed,
+          llmChanged: r.llmChanged,
+          llmSkipReason: r.llmSkipReason
+        }
+        break
+      }
+      if (snap.status === 'cancelled') {
+        learnConfirm.value = false
+        learnResult.value = { cancelled: true }
+        try {
+          fieldProfile.value = await datasetApi.profile(ds)
+        } catch {
+          /* ignore */
+        }
+        break
+      }
+      if (snap.status === 'error') {
+        error.value = snap.error || snap.result?.error || '学习失败'
+        learnConfirm.value = false
+        break
+      }
+      await new Promise((r) => setTimeout(r, 400))
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
+    learnConfirm.value = false
   } finally {
     learning.value = false
+    learnStopping.value = false
+    learnStopRequested.value = false
+    learnJobId.value = null
+  }
+}
+async function stopLearn() {
+  learnStopRequested.value = true
+  learnStopping.value = true
+  learnPhaseLabel.value = '正在停止…'
+  if (!selectedId.value || !learnJobId.value) return
+  try {
+    await datasetApi.cancelLearn(selectedId.value, learnJobId.value)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+    learnStopping.value = false
   }
 }
 function goDimensions() {
@@ -351,6 +463,109 @@ async function addIndicator() {
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
+}
+
+function resetQForm() {
+  editingQid.value = null
+  qForm.value = { question: '', sql: '', chartType: 'bar', brief: '' }
+}
+
+function toggleQForm() {
+  if (showQForm.value) {
+    showQForm.value = false
+    resetQForm()
+    return
+  }
+  showQForm.value = true
+}
+
+async function loadQuestions() {
+  if (!selectedId.value) return
+  qLoading.value = true
+  try {
+    questions.value = await questionApi.byDataset(selectedId.value)
+  } catch {
+    questions.value = []
+  } finally {
+    qLoading.value = false
+  }
+}
+
+async function saveQuestion() {
+  if (!selectedId.value) return
+  const question = qForm.value.question.trim()
+  const sql = qForm.value.sql.trim()
+  if (!question || !sql) {
+    error.value = '问法与 SQL 必填'
+    return
+  }
+  const table = detail.value?.meta.tableName || ''
+  if (table && !sql.toLowerCase().includes(table.toLowerCase())) {
+    error.value = `SQL 必须使用当前物理表 ${table}，表名不可改`
+    return
+  }
+  try {
+    const body = {
+      question,
+      sql,
+      chartType: qForm.value.chartType || undefined,
+      brief: qForm.value.brief.trim() || undefined,
+      status: 'active'
+    }
+    if (editingQid.value != null) {
+      const updated = await questionApi.update(selectedId.value, editingQid.value, body)
+      const i = questions.value.findIndex((x) => x.id === updated.id)
+      if (i >= 0) questions.value[i] = updated
+    } else {
+      const created = await questionApi.create(selectedId.value, body)
+      questions.value.unshift(created)
+    }
+    showQForm.value = false
+    resetQForm()
+    error.value = ''
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+function startEditQuestion(q: DatasetQuestionVO) {
+  editingQid.value = q.id
+  qForm.value = {
+    question: q.question,
+    sql: q.sql,
+    chartType: q.chartType || 'bar',
+    brief: q.brief || ''
+  }
+  showQForm.value = true
+}
+
+async function toggleQuestion(q: DatasetQuestionVO) {
+  if (!selectedId.value) return
+  const next = q.status === 'active' ? 'disabled' : 'active'
+  try {
+    const updated = await questionApi.toggle(selectedId.value, q.id, next)
+    const i = questions.value.findIndex((x) => x.id === q.id)
+    if (i >= 0) questions.value[i] = updated
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function removeQuestion(q: DatasetQuestionVO) {
+  if (!selectedId.value) return
+  try {
+    await questionApi.remove(selectedId.value, q.id)
+    questions.value = questions.value.filter((x) => x.id !== q.id)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+function tryAsk(q: DatasetQuestionVO) {
+  const ds = selectedId.value || ''
+  const params = new URLSearchParams({ q: q.question, autorun: '1' })
+  if (ds) params.set('datasetId', ds)
+  void router.push(`/conversations?${params.toString()}`)
 }
 
 async function openStudio(mode: 'create' | 'edit', seed?: { src?: string; table?: string }) {
@@ -732,6 +947,8 @@ onMounted(async () => {
 
 watch(tab, (t) => {
   if (t === 'preview') loadPreview()
+  if (t === 'questions') loadQuestions()
+  if (t === 'indicators') loadIndicators()
 })
 </script>
 
@@ -815,6 +1032,7 @@ watch(tab, (t) => {
           <div class="tabs">
             <button type="button" :class="{ on: tab === 'fields' }" @click="tab = 'fields'">字段</button>
             <button type="button" :class="{ on: tab === 'indicators' }" @click="tab = 'indicators'">指标确认</button>
+            <button type="button" :class="{ on: tab === 'questions' }" @click="tab = 'questions'">高频问法</button>
             <button type="button" :class="{ on: tab === 'preview' }" @click="tab = 'preview'">预览</button>
             <button type="button" :class="{ on: tab === 'lineage' }" @click="tab = 'lineage'">血缘</button>
           </div>
@@ -934,6 +1152,81 @@ watch(tab, (t) => {
                 <tr v-if="!indLoading && !indicators.length">
                   <td colspan="8" class="muted center">
                     暂无候选指标。可在「字段」tab 看自动识别结果，或点「手动新增」录入。
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-else-if="tab === 'questions'" class="panel">
+            <div class="ind-head">
+              <div class="ind-title">
+                <b>高频问法（few-shot）</b>
+                <span class="muted tiny">
+                  录入自然语言 + 已验证 SQL。问数时按相似度注入最多 3 条，提高过滤与聚合写法的准确度。表名必须是
+                  <code>{{ detail.meta.tableName || '当前物理表' }}</code>，不可改。
+                </span>
+              </div>
+              <button type="button" class="btn sm" @click="toggleQForm">
+                {{ showQForm ? '收起' : editingQid != null ? '继续编辑' : '新增问法' }}
+              </button>
+            </div>
+
+            <div v-if="showQForm" class="q-form">
+              <input v-model="qForm.question" class="ipt sm" placeholder="问法，如：人民币订单有多少" />
+              <textarea
+                v-model="qForm.sql"
+                class="ipt sm q-sql-input"
+                :placeholder="`标准 SQL，表名必须是 ${detail.meta.tableName || '当前物理表'}`"
+              />
+              <div class="q-form-row">
+                <select v-model="qForm.chartType" class="ipt sm">
+                  <option value="bar">柱状图</option>
+                  <option value="line">折线</option>
+                  <option value="pie">饼图</option>
+                  <option value="table">表格</option>
+                </select>
+                <input v-model="qForm.brief" class="ipt sm grow" placeholder="简短标题（可选）" />
+                <button type="button" class="btn sm primary" @click="saveQuestion">
+                  {{ editingQid != null ? '保存修改' : '新增' }}
+                </button>
+              </div>
+            </div>
+
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>问法</th>
+                  <th>SQL</th>
+                  <th>图</th>
+                  <th>状态</th>
+                  <th>命中</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="q in questions" :key="q.id">
+                  <td>{{ q.question }}</td>
+                  <td><code class="q-sql" :title="q.sql">{{ q.sql }}</code></td>
+                  <td class="muted">{{ q.chartType || '—' }}</td>
+                  <td>
+                    <span class="tag" :class="q.status === 'active' ? 'confirmed' : 'draft'">
+                      {{ q.status === 'active' ? '启用' : '停用' }}
+                    </span>
+                  </td>
+                  <td class="muted">{{ q.hitCount || 0 }}</td>
+                  <td class="ind-ops">
+                    <button type="button" class="link" @click="tryAsk(q)">试问</button>
+                    <button type="button" class="link" @click="startEditQuestion(q)">编辑</button>
+                    <button type="button" class="link" @click="toggleQuestion(q)">
+                      {{ q.status === 'active' ? '停用' : '启用' }}
+                    </button>
+                    <button type="button" class="link danger" @click="removeQuestion(q)">删除</button>
+                  </td>
+                </tr>
+                <tr v-if="!qLoading && !questions.length">
+                  <td colspan="6" class="muted center">
+                    暂无高频问法。把业务里最常问、且 SQL 已验证的例子录进来，问数会当作 few-shot。
                   </td>
                 </tr>
               </tbody>
@@ -1221,43 +1514,60 @@ watch(tab, (t) => {
       </div>
     </div>
 
-    <!-- 重新学习：确认弹窗（说明学习逻辑） -->
     <div v-if="learnConfirm" class="modal-mask" @click.self="cancelLearn">
       <div class="learn-dlg" role="dialog" aria-label="确认重新学习">
         <div class="learn-ico">🧠</div>
-        <h3>重新学习字段</h3>
-        <p class="learn-lead">系统将重新分析「{{ detail?.meta.name }}」的字段，自动识别角色并抽取公共维度。</p>
+        <h3>{{ learning ? '正在学习字段' : '重新学习字段' }}</h3>
+        <p class="learn-lead">
+          {{ learning ? learnPhaseLabel : `系统将重新分析「${detail?.meta.name}」的字段，自动识别角色并抽取公共维度。` }}
+        </p>
         <div class="learn-steps">
-          <div class="step"><i>1</i><span><b>采样</b>读取表内最多 30 行真实数据</span></div>
-          <div class="step"><i>2</i><span><b>统计</b>逐字段计算取值分布 / 唯一值数 / 空值率</span></div>
-          <div class="step"><i>3</i><span><b>识别</b>按统计判定：维度 / 指标 / 时间 / ID / 标志位</span></div>
-          <div class="step"><i>4</i><span><b>抽取</b>低基数维度连同取值，沉淀为公共维度</span></div>
+          <div
+            v-for="s in LEARN_STEPS"
+            :key="s.id"
+            class="step"
+            :class="learnStepState(s.id)"
+          >
+            <i>{{ LEARN_STEPS.findIndex((x) => x.id === s.id) + 1 }}</i>
+            <span><b>{{ s.label }}</b>{{ s.hint }}</span>
+          </div>
         </div>
-        <p class="learn-note">学习结果会立即生效：字段角色用于问数与看板生成，公共维度可在「维度管理」确认后使用。</p>
+        <p class="learn-note">字段角色会立刻用于问数规划。指标与公共维度仍是候选，需确认后才注入对话。</p>
         <div class="learn-ft">
-          <button type="button" class="btn ghost" @click="cancelLearn">取消</button>
-          <button type="button" class="btn primary" :disabled="learning" @click="confirmLearn">
-            {{ learning ? '学习中…' : '开始学习' }}
+          <button v-if="!learning" type="button" class="btn ghost" @click="cancelLearn">取消</button>
+          <button v-if="!learning" type="button" class="btn primary" @click="confirmLearn">开始学习</button>
+          <button
+            v-else
+            type="button"
+            class="btn ghost"
+            :disabled="learnStopping"
+            @click="stopLearn"
+          >
+            {{ learnStopping ? '正在停止…' : '停止学习' }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- 学习结果：确认弹窗（展示结果 + 引导去维度管理） -->
     <div v-if="learnResult" class="modal-mask" @click.self="learnResult = null">
-      <div class="learn-dlg" role="dialog" aria-label="学习完成">
-        <div class="learn-ico ok">✅</div>
-        <h3>学习完成</h3>
-        <p class="learn-lead">已识别 {{ learnResult.fieldCount ?? '—' }} 个字段角色，抽取 {{ learnResult.dimensionCount ?? 0 }} 个公共维度。</p>
-        <div v-if="learnResult.roleCounts" class="learn-roles">
-          <span v-for="(n, r) in learnResult.roleCounts" :key="r" class="role-chip">
-            {{ roleLabel2(r) }} <b>{{ n }}</b>
-          </span>
-        </div>
-        <p class="learn-note">公共维度可在「维度管理」中查看值、确认或改名，确认后用于查询条预填与问数意图对齐。</p>
+      <div class="learn-dlg" role="dialog" :aria-label="learnResult.cancelled ? '已停止' : '学习完成'">
+        <div class="learn-ico" :class="{ ok: !learnResult.cancelled }">{{ learnResult.cancelled ? '■' : '✅' }}</div>
+        <h3>{{ learnResult.cancelled ? '已停止学习' : '学习完成' }}</h3>
+        <p v-if="learnResult.cancelled" class="learn-lead">已发出停止。采样若已完成，规则结果会保留；模型复核不会继续写库。</p>
+        <template v-else>
+          <p class="learn-lead">已识别 {{ learnResult.fieldCount ?? '—' }} 个字段角色，抽取 {{ learnResult.dimensionCount ?? 0 }} 个公共维度。</p>
+          <p v-if="learnResult.llmReviewed" class="learn-note">模型复核了 {{ learnResult.llmChanged ?? 0 }} 个字段角色或业务名。</p>
+          <p v-else-if="learnResult.llmSkipReason" class="learn-note">规则结果已保存；模型复核跳过（{{ learnResult.llmSkipReason }}）。</p>
+          <div v-if="learnResult.roleCounts" class="learn-roles">
+            <span v-for="(n, r) in learnResult.roleCounts" :key="r" class="role-chip">
+              {{ roleLabel2(r) }} <b>{{ n }}</b>
+            </span>
+          </div>
+          <p class="learn-note">公共维度可在「维度管理」里确认或手工补充后，才会用于问数。</p>
+        </template>
         <div class="learn-ft">
           <button type="button" class="btn ghost" @click="learnResult = null">留在本页</button>
-          <button type="button" class="btn primary" @click="goDimensions">去维度管理 →</button>
+          <button v-if="!learnResult.cancelled" type="button" class="btn primary" @click="goDimensions">去维度管理确认 →</button>
         </div>
       </div>
     </div>
@@ -1740,10 +2050,60 @@ watch(tab, (t) => {
   flex: 1;
   min-width: 160px;
 }
+.ipt {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  background: #fff;
+}
+textarea.ipt {
+  height: auto;
+  padding: 8px;
+  line-height: 1.4;
+}
+.ipt.sm {
+  font-size: 0.75rem;
+}
 .ind-ops {
   display: flex;
   gap: 10px;
   white-space: nowrap;
+}
+.q-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: #f7f8fa;
+  border: 1px solid #e8eaef;
+}
+.q-form-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.q-form-row .ipt.grow {
+  flex: 1;
+  min-width: 160px;
+}
+.q-sql-input {
+  min-height: 88px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  resize: vertical;
+}
+.q-sql {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: bottom;
 }
 .link {
   border: none;
@@ -2304,8 +2664,30 @@ watch(tab, (t) => {
   align-items: flex-start;
   gap: 10px;
   font-size: 12.5px;
-  color: var(--ink, #111827);
+  color: var(--faint, #6b7280);
   line-height: 1.45;
+}
+.learn-steps .step.on {
+  color: var(--ink, #111827);
+  font-weight: 550;
+}
+.learn-steps .step.on i {
+  animation: learn-pulse 1.2s ease-in-out infinite;
+}
+@keyframes learn-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(79, 70, 229, 0); }
+}
+.learn-steps .step.done {
+  color: #047857;
+}
+.learn-steps .step.on i {
+  background: var(--brand, #4f46e5);
+  color: #fff;
+}
+.learn-steps .step.done i {
+  background: #ecfdf3;
+  color: #047857;
 }
 .learn-steps .step i {
   flex-shrink: 0;

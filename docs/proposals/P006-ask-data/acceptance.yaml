@@ -12,12 +12,12 @@ items:
     blocker_of_done: true
     requirements_target: PR-ASK-01
   - id: PR-ASK-02
-    title: 保存本题图
+    title: 问数结果不写入看板
     gate: acceptance
-    criterion: 点击保存到仪表盘只调用 Harness /runs/{runId}/adopt；Harness 从 run artifact 生成 DashboardPatch 并调用 Java internal apply-patch，不持久化结果行。
+    criterion: 问数结果卡与编辑器 SQLBot 不展示「保存到仪表盘」，不调用 Harness /runs/{runId}/adopt；结果只留在会话预览。
     method: ui
-    command_or_path: /harness/v1/conversations/{id}/runs/{runId}/adopt
-    expected: Java public adopt 入口不存在；前端不提交完整 Patch；draft 增加图表且可在编辑器重新取数。
+    command_or_path: /conversations
+    expected: 问数完成后无保存按钮、无 adopt 请求；看板 draft 不因问数增加图表。
     evidence: ""
     status: todo
     blocker_of_done: true
@@ -45,11 +45,11 @@ items:
     blocker_of_done: true
     requirements_target: PR-ASK-04
   - id: PR-ASK-05
-    title: 结果卡操作收敛
+    title: 结果卡无保存、无整页生成主按钮
     gate: hi-fi
-    criterion: 问数结果卡只展示保存到仪表盘，不展示直接生成仪表盘主按钮。
+    criterion: 问数结果卡不展示保存到仪表盘，也不展示直接生成仪表盘主按钮。
     method: ui
-    command_or_path: docs/prototypes/hi-fi/conversation.html
+    command_or_path: docs/prototypes/hi-fi/conversation-workspace.html
     expected: 整页生成只存在于落地页、Composer 或追问 Chip。
     evidence: ""
     status: todo
@@ -99,3 +99,47 @@ items:
     status: todo
     blocker_of_done: true
     requirements_target: PR-ASK-09
+  - id: PR-ASK-10
+    title: 历史问数回放思考与结果
+    gate: code
+    criterion: 打开已完成的问数历史会话时，展示「已思考」步骤链和结果卡（表/临时图/SQL），不重新 POST /runs。数据来自 Harness replay（run events + artifact），Java 消息 attachments 作降级。
+    method: ui
+    command_or_path: /conversations/{id}
+    expected: 刷新或从历史列表进入后结果卡仍在；网络里没有新的 POST /harness/v1/conversations/{id}/runs；GET replay 200。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-10
+  - id: PR-ASK-11
+    title: 0 行问数说明无数据且不重复思考
+    gate: acceptance
+    criterion: SQL 执行 0 行时结果卡说明无数据（可带样本时间范围），不出空白图；同一用户问题只保留一段「已思考」；打开已完成历史会话不因缺少 Java assistant 气泡而再次 POST /runs。
+    method: ui
+    command_or_path: /conversations/{id}
+    expected: finish detail=empty 或 answer_insight「查询无有效数据」；无空白 ASK 图；网络无新的 POST /harness/v1/conversations/{id}/runs；连续重复「问数完成。」气泡被折叠。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-11
+  - id: PR-ASK-12
+    title: 高频问法 few-shot
+    gate: code
+    criterion: 数据集页可维护 NL→SQL；SQLBot 生成前按问题相似度注入最多 3 条；无重叠时回退 hit_count 排序的前 N 条；表白名单仍拒绝示例里的未授权表。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_sqlbot_ask_context.py
+    expected: pick_few_shots 命中相似问法；compose_ask_knowledge 含 <few-shot-examples>。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-12
+  - id: PR-ASK-13
+    title: 维度值进入 SQL 生成
+    gate: code
+    criterion: confirmed 公共维度 values 挂到 schema 字段；SQLBot prompt 含 <dimension-values> 原文字面量；未确认候选不注入。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_sqlbot_ask_context.py
+    expected: value_hints 在问到 CNY 时带出 Currency 取值；format_knowledge_block 含 值:CNY。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-13

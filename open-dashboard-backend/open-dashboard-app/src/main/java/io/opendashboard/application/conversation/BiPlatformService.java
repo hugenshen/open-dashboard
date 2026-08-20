@@ -39,6 +39,7 @@ public class BiPlatformService {
     private final org.springframework.beans.factory.ObjectProvider<DatasetProfileLearner> learner;
     private final KnowledgeService knowledge;
     private final QuestionService questions;
+    private final org.springframework.beans.factory.ObjectProvider<FieldLearnReviewer> fieldReviewer;
 
     public BiPlatformService(
             DatasetService datasets,
@@ -52,7 +53,8 @@ public class BiPlatformService {
             org.springframework.beans.factory.ObjectProvider<io.opendashboard.domain.gateway.FieldProfileGateway> profileStore,
             org.springframework.beans.factory.ObjectProvider<DatasetProfileLearner> learner,
             KnowledgeService knowledge,
-            QuestionService questions
+            QuestionService questions,
+            org.springframework.beans.factory.ObjectProvider<FieldLearnReviewer> fieldReviewer
     ) {
         this.datasets = datasets;
         this.datasources = datasources;
@@ -66,6 +68,7 @@ public class BiPlatformService {
         this.learner = learner;
         this.knowledge = knowledge;
         this.questions = questions;
+        this.fieldReviewer = fieldReviewer;
     }
 
     public List<Map<String, Object>> listDatasets() {
@@ -108,7 +111,11 @@ public class BiPlatformService {
             java.util.Map<String, List<Object>> glossaryValuesByField = new java.util.HashMap<>();
             try {
                 for (io.opendashboard.domain.DatasetDtos.GlossaryItemVO g : knowledge.listGlossary(datasetId)) {
-                    if ("dimension".equals(g.type()) && g.canonicalField() != null && g.values() != null && !g.values().isEmpty()) {
+                    if ("dimension".equals(g.type())
+                            && "confirmed".equals(g.status())
+                            && g.canonicalField() != null
+                            && g.values() != null
+                            && !g.values().isEmpty()) {
                         glossaryValuesByField.put(g.canonicalField(), g.values());
                     }
                 }
@@ -126,7 +133,7 @@ public class BiPlatformService {
                     io.opendashboard.domain.DatasetDtos.FieldProfileVO lp = learned.get(f.name());
                     if (lp != null && lp.roleLearned() != null && !lp.roleLearned().isBlank()) {
                         ff.put("role", lp.roleLearned());
-                        ff.put("roleSource", "learned");
+                        ff.put("roleSource", lp.roleSource() == null || lp.roleSource().isBlank() ? "learned" : lp.roleSource());
                     } else {
                         ff.put("role", DatasetProfiler.roleOf(f));
                         ff.put("roleSource", "naming");
@@ -134,7 +141,7 @@ public class BiPlatformService {
                     // 维度值配置（阶段5）：de_glossary dimension 条目的人工/自学习枚举值，增强模型理解
                     List<Object> fieldValues = glossaryValuesByField.get(f.name());
                     if (fieldValues != null && !fieldValues.isEmpty()) {
-                        ff.put("values", fieldValues);
+                        ff.put("values", fieldValues.stream().limit(24).toList());
                     }
                     fields.add(ff);
                 });
@@ -215,16 +222,53 @@ public class BiPlatformService {
         return profiler.profile(datasetId);
     }
 
+    /** Dataset manage UI: stored field stats only, no live source probes. */
+    public Map<String, Object> profileDatasetStats(String datasetId) {
+        return profiler.profile(datasetId, false);
+    }
+
     /** 手动触发数据集自学习（对已存在数据集补学；录入时已自动触发）。 */
     public Map<String, Object> learnDataset(String datasetId) {
+        return learnDataset(datasetId, () -> false, phase -> {});
+    }
+
+    public Map<String, Object> learnDataset(
+            String datasetId,
+            java.util.function.BooleanSupplier cancelled,
+            java.util.function.Consumer<String> onPhase
+    ) {
         try {
-            learner.getIfAvailable().learn(datasetId);
+            if (onPhase != null) onPhase.accept("sample");
+            io.opendashboard.application.conversation.DatasetProfileLearner l = learner.getIfAvailable();
+            if (l != null) l.learn(datasetId, cancelled, onPhase);
+            if (cancelled != null && cancelled.getAsBoolean()) {
+                return cancelledLearn(datasetId);
+            }
+            Map<String, Object> review = Map.of();
+            try {
+                if (onPhase != null) onPhase.accept("llm");
+                FieldLearnReviewer r = fieldReviewer.getIfAvailable();
+                if (r != null) review = r.apply(datasetId, io.opendashboard.domain.context.AuthContext.get(), cancelled);
+            } catch (java.util.concurrent.CancellationException e) {
+                return cancelledLearn(datasetId);
+            } catch (Exception ignored) {
+                review = Map.of("llmReviewed", false, "llmSkipReason", "review error");
+            }
+            if (cancelled != null && cancelled.getAsBoolean()) {
+                return cancelledLearn(datasetId);
+            }
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("ok", true);
             out.put("datasetId", datasetId);
+            out.put("llmReviewed", review.getOrDefault("llmReviewed", false));
+            out.put("llmSource", review.getOrDefault("llmSource", "skipped"));
+            out.put("llmChanged", review.getOrDefault("llmChanged", 0));
+            if (review.get("llmSkipReason") != null) {
+                out.put("llmSkipReason", review.get("llmSkipReason"));
+            }
             // 学习结果统计：字段角色分布 + 抽取的公共维度数（供前端结果弹窗）
             try {
-                Map<String, Object> p = profiler.profile(datasetId);
+                Map<String, Object> p = profiler.profile(datasetId, false);
                 List<?> fields = (List<?>) p.get("fields");
                 java.util.Map<String, Integer> roleCount = new java.util.LinkedHashMap<>();
                 int total = 0;
@@ -254,12 +298,22 @@ public class BiPlatformService {
                 // 统计失败不影响学习本身
             }
             return out;
+        } catch (java.util.concurrent.CancellationException e) {
+            return cancelledLearn(datasetId);
         } catch (Exception e) {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("ok", false);
             out.put("error", String.valueOf(e.getMessage()));
             return out;
         }
+    }
+
+    private Map<String, Object> cancelledLearn(String datasetId) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", false);
+        out.put("cancelled", true);
+        out.put("datasetId", datasetId);
+        return out;
     }
 
     public Map<String, Object> resolveIntent(Map<String, Object> body) {

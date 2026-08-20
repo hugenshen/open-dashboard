@@ -174,6 +174,25 @@ public class BiInternalController {
         return ResponseEntity.ok(bi.knowledgeFor(datasetIds == null ? List.of() : datasetIds));
     }
 
+    @GetMapping("/datasets/{id}/questions")
+    public ResponseEntity<?> questions(
+            @PathVariable String id,
+            @RequestParam(required = false) Integer limit,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(bi.questionsFor(id, limit == null ? 8 : limit));
+    }
+
+    @PostMapping("/questions/{qid}/hit")
+    public ResponseEntity<?> bumpQuestionHit(
+            @PathVariable Long qid,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(Map.of("ok", bi.bumpQuestionHit(qid)));
+    }
+
     @PostMapping("/interpret-fields")
     public ResponseEntity<?> interpretFields(
             @RequestBody Map<String, Object> body,

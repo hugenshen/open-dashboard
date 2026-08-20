@@ -177,8 +177,37 @@ export const datasetApi = {
       measures?: Array<{ name: string }>
       dims?: Array<{ name: string }>
     }>('GET', `/dataset/${id}/profile`),
-  /** 手动触发字段自学习 */
-  learn: (id: string) => http<{ ok: boolean; error?: string }>('POST', `/dataset/${id}/learn`)
+  /** 启动字段自学习（异步任务） */
+  startLearn: (id: string) =>
+    apiFetch<{
+      ok: boolean
+      jobId: string
+      status: string
+      phase?: string
+      phaseLabel?: string
+    }>(`/dataset/${id}/learn`, { method: 'POST', timeoutMs: 15_000 }),
+  learnJob: (id: string, jobId: string) =>
+    apiFetch<{
+      ok: boolean
+      jobId: string
+      status: string
+      phase?: string
+      phaseLabel?: string
+      error?: string
+      result?: {
+        ok?: boolean
+        cancelled?: boolean
+        fieldCount?: number
+        dimensionCount?: number
+        roleCounts?: Record<string, number>
+        llmReviewed?: boolean
+        llmChanged?: number
+        llmSkipReason?: string
+        error?: string
+      }
+    }>(`/dataset/${id}/learn/${jobId}`),
+  cancelLearn: (id: string, jobId: string) =>
+    apiFetch<{ ok: boolean; status?: string }>(`/dataset/${id}/learn/${jobId}`, { method: 'DELETE' }),
 }
 
 export type GlossaryItemVO = {
@@ -202,7 +231,20 @@ export const glossaryApi = {
       'GET',
       `/glossary${type || status ? `?${type ? `type=${type}` : ''}${type && status ? '&' : ''}${status ? `status=${status}` : ''}` : ''}`
     ),
+  create: (body: {
+    term: string
+    type: string
+    datasetId: string
+    canonicalField: string
+    aliases?: string[]
+    values?: unknown[]
+    status?: string
+    confidence?: number
+    source?: string
+  }) => http<GlossaryItemVO>('POST', '/glossary', body),
   confirm: (id: number) => http<GlossaryItemVO>('POST', `/glossary/${id}/confirm`),
+  updateValues: (id: number, values: unknown[]) =>
+    http<GlossaryItemVO>('PUT', `/glossary/${id}/values`, { values }),
   rename: (id: number, term: string, aliases?: string[]) =>
     http<GlossaryItemVO>('PUT', `/glossary/${id}/rename`, { term, aliases: aliases || [] }),
   remove: (id: number) => http<void>('DELETE', `/glossary/${id}`)
@@ -243,4 +285,38 @@ export const indicatorApi = {
   confirm: (id: number) => http<IndicatorVO>('POST', `/indicators/${id}/confirm`),
   deprecate: (id: number) => http<IndicatorVO>('POST', `/indicators/${id}/deprecate`),
   remove: (id: number) => http<void>('DELETE', `/indicators/${id}`)
+}
+
+/** 高频问法（few-shot）：自然语言 → 标准 SQL，问数生成时注入 */
+export type DatasetQuestionVO = {
+  id: number
+  datasetId: string
+  question: string
+  sql: string
+  chartType?: string
+  brief?: string
+  status: 'active' | 'disabled'
+  hitCount?: number
+  createdAt?: number
+  updatedAt?: number
+}
+
+export type QuestionUpsertBody = {
+  datasetId?: string
+  question: string
+  sql: string
+  chartType?: string
+  brief?: string
+  status?: string
+}
+
+export const questionApi = {
+  byDataset: (datasetId: string) => http<DatasetQuestionVO[]>('GET', `/dataset/${datasetId}/questions`),
+  create: (datasetId: string, body: QuestionUpsertBody) =>
+    http<DatasetQuestionVO>('POST', `/dataset/${datasetId}/questions`, body),
+  update: (datasetId: string, id: number, body: QuestionUpsertBody) =>
+    http<DatasetQuestionVO>('PUT', `/dataset/${datasetId}/questions/${id}`, body),
+  toggle: (datasetId: string, id: number, status: 'active' | 'disabled') =>
+    http<DatasetQuestionVO>('POST', `/dataset/${datasetId}/questions/${id}/toggle`, { status }),
+  remove: (datasetId: string, id: number) => http<void>('DELETE', `/dataset/${datasetId}/questions/${id}`)
 }

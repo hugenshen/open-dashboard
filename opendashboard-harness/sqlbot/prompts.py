@@ -62,6 +62,9 @@ def sql_system(engine: str, schema_text: str, sample: str = "", knowledge: str =
   柱/条/折线：一个维度字段参与排序；有分类字段时只保留一个指标；饼图一分类一指标。
   分类对比且用户未禁止聚合时，数值字段默认 SUM。
   禁止向用户索要额外信息；条件不完整也要生成可行 SQL。
+  聚合或计算结果必须用 m-schema 的中文 label 做 AS 别名（如 SUM(total_amount) AS 总金额）。表头给用户看，不要用英文字段名。
+  若有 <few-shot-examples>，优先模仿其字段、过滤和聚合写法；表名必须仍是当前数据集物理表，不得换成示例里的其它表。
+  过滤枚举值必须与 <dimension-values> 或词表给出的取值逐字一致（如 CNY），不要翻译或改写。
 </Rules>
 
 ## 数据库与表结构
@@ -81,7 +84,7 @@ def sql_user(question: str, error_msg: str = "", change_title: bool = True) -> s
     err = f"<error-msg>{error_msg}</error-msg>\n" if error_msg else ""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return f"""请使用简体中文回答。不要输出分析过程，直接输出 JSON。
-SQL 中的表名与字段名必须与 m-schema 完全一致。
+SQL 中的表名与字段名必须与 m-schema 完全一致。SELECT 列表的别名用中文 label。
 <background-infos>
   <current-time>{now}</current-time>
 </background-infos>

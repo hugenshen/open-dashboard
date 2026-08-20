@@ -110,6 +110,7 @@ public class KnowledgeService {
         if (gg != null && datasetIds != null) {
             for (String ds : datasetIds) {
                 for (GlossaryItemVO item : gg.listByDataset(ds)) {
+                    if (!"confirmed".equals(item.status())) continue;
                     if (item.canonicalField() == null || item.canonicalField().isBlank()) continue;
                     Map<String, Object> t = new LinkedHashMap<>();
                     t.put("term", item.term());
@@ -121,6 +122,9 @@ public class KnowledgeService {
                     if (!aliases.contains(item.term())) aliases.add(item.term());
                     t.put("aliases", aliases);
                     t.put("status", item.status());
+                    if ("dimension".equals(item.type()) && item.values() != null && !item.values().isEmpty()) {
+                        t.put("values", item.values().stream().limit(16).toList());
+                    }
                     terms.add(t);
                 }
             }

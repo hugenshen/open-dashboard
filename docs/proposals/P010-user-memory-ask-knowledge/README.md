@@ -4,55 +4,60 @@ title: 用户记忆与问数知识库
 status: in-progress
 milestone: v0.5
 date: 2026-08-18
-design: [docs/proposals/P010-user-memory-ask-knowledge/design.md]
+design:
+  - docs/proposals/P010-user-memory-ask-knowledge/design.md
+  - docs/proposals/P010-user-memory-ask-knowledge/management-design.md
+prototype: docs/prototypes/hi-fi/knowledge.html
 acceptance: docs/proposals/P010-user-memory-ask-knowledge/acceptance.yaml
 gates:
   proposal: accepted
-  hi-fi: none
+  hi-fi: wip
   code: wip
   acceptance: none
 architecture: docs/design/architecture.html
 contract: docs/design/openapi.yaml
-implementation: [opendashboard-harness/agent/user_memory.py, opendashboard-harness/agent/knowledge.py, opendashboard-harness/eval/]
+implementation: [opendashboard-harness/agent/user_memory.py, opendashboard-harness/agent/knowledge.py, opendashboard-harness/sqlbot/ask_context.py, opendashboard-harness/eval/, open-dashboard-frontend/src/dataset/views/DatasetManage.vue]
 depends: [P004, P006, P008]
 ---
 
 # P010 · 用户记忆与问数知识库
 
-> **状态** `in-progress` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 none · 代码 wip · 验收 none
+> **状态** `in-progress` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 wip · 代码 wip · 验收 none
 
-[P009](../P009-workspace-governance/) 是工作区/IAM 演进草案。本提案是 **不搬工作空间** 的第一刀：用户级 facts + 数据集术语/SQL 示例。
+[P009](../P009-workspace-governance/) 是完整工作区/IAM/治理方案。本提案是知识与记忆的第一刀：Harness 侧用户 facts 按 `workspaceId + userId` 过滤，数据集术语/SQL 示例按授权数据集过滤；不做完整 IAM 管理面和跨工作区发布流。P004 只保留运行时语义增强，产品化管理面见 [management-design.md](./management-design.md) 与 [`knowledge.html`](../../prototypes/hi-fi/knowledge.html)。
 
 ## 开发入口
 
 | 你要 | 去看 |
 |------|------|
 | 范围与非目标 | 本文 |
-| 详细设计 | [design.md](./design.md) |
+| 详细设计 | [design.md](./design.md)（存储与注入）· [management-design.md](./management-design.md)（管理面与对话消费） |
+| 原型 | 当前增量 [`knowledge.html`](../../prototypes/hi-fi/knowledge.html)；**尚未冻结快照** |
 | 怎么验收 | [acceptance.yaml](./acceptance.yaml) |
 | 评测 | [P004 harness-evaluation.md](../P004-conversation/harness-evaluation.md) · `opendashboard-harness/eval/` |
-| 代码落点 | `opendashboard-harness/agent/user_memory.py` · `knowledge.py` · `GET/PUT /harness/v1/knowledge/{datasetId}` · `GET /harness/v1/memory` |
+| 代码落点 | `opendashboard-harness/agent/user_memory.py` · `knowledge.py` · `sqlbot/ask_context.py` · `GET/PUT /harness/v1/knowledge/{datasetId}` · `GET /harness/v1/memory` · 数据集页 `/datasets/{id}` 高频问法 · `/dimensions` 维度值 |
 | 相邻提案 | 运行时/评测 [P004](../P004-conversation/)；问数轨 [P006](../P006-ask-data/)；身份/askable [P008](../P008-permission-aware-workbench/)；工作区全景 [P009](../P009-workspace-governance/) |
-| 不要做 | 内置登录、工作空间、TableRAG、DGP、把知识写进 architecture.html（验收前） |
+| 不要做 | 内置登录、完整工作空间/IAM 管理、跨工作区发布流、TableRAG、DGP、把未验收管理面写进 architecture.html |
 
 ## 波及
 
 | 列 | 内容 |
 |----|------|
 | 依赖 | P004 事件日志与 eval runner；P008 principal 贯穿 Harness |
-| 改动面 | Harness 记忆/知识文件存储、SQLBot prompt 注入、eval 案例 |
-| 不改 | `architecture.html`（验收前）；SQLBot/DeerFlow 整仓；P005 洞察；P009 工作区模型 |
-| 回归 | PR-MEM-01…06；P006 PR-ASK-04；P004 eval L1 |
+| 改动面 | Harness 记忆/知识、SQLBot few-shot 与维度值注入、数据集页高频问法、维度管理取值 |
+| 不改 | 未上线的一级「知识库」菜单不写进 architecture；SQLBot/DeerFlow 整仓；P005 洞察；P009 发布流 |
+| 回归 | PR-MEM-01…06；PR-KB-UI-01…04；P006 PR-ASK-12 / PR-ASK-13 |
 
 ## 范围
 
-- **用户级记忆**：跨对话 facts（常用数据集、偏好），按 `users/{userId}/` 隔离；注入有上限；不把聊天记录当记忆。
-- **数据集级知识**：术语 glossary + SQL 示例；生成 SQL 前按问题召回注入 prompt（对照 SQLBot terminology / data_training，不搬工作空间）。
+- **用户级记忆**：跨对话 facts（常用数据集、偏好），按 `workspaceId + userId` 隔离；注入有上限；不把聊天记录当记忆。分析师可在知识库「我的记忆」删除。
+- **数据集级知识**：术语 glossary + SQL 示例 + 已确认指标；生成 SQL 前按 `workspaceId + datasetId + 权限` 召回注入 prompt。
+- **管理面**：本切片金标准问法在数据集页「高频问法」维护；维度值在「维度管理」确认后由问数消费。一级「知识库」仍是后续收敛入口（高保 `knowledge.html`），不阻塞本切片注入。
 - **用同一 eval runner 证明**：术语能改字段映射；用户记忆互不可读。
 
 ## 非目标
 
-- 自建登录 / OIDC / 工作空间（→ P009 草案）
+- 自建登录 / OIDC / 完整工作空间管理与跨工作区发布流（→ P009）
 - mem0 / OpenViking / 模型 CRUD `memory_*` 工具
 - JoyAgent TableRAG、DGP、诊断 SOP（P005）
 - 资源级 ACL 表（治理补齐，P011+）
@@ -64,15 +69,24 @@ depends: [P004, P006, P008]
 
 | ID | 标题 |
 |----|------|
-| PR-MEM-01 | 用户记忆按 userId 隔离 |
+| PR-MEM-01 | 用户记忆按 workspaceId + userId 隔离 |
 | PR-MEM-02 | 新对话可注入已有用户事实 |
 | PR-MEM-03 | 记忆只存描述性 facts |
 | PR-MEM-04 | 术语召回映射到真实字段 |
 | PR-MEM-05 | SQL 示例不能突破表白名单 |
 | PR-MEM-06 | eval runner 覆盖知识/记忆 before-after |
+| PR-KB-UI-01 | 管理端一级知识库入口与待确认 Inbox |
+| PR-KB-UI-02 | 未确认不注入；确认后可见预览 |
+| PR-KB-UI-03 | 对话展示命中知识并可跳转管理 |
+| PR-KB-UI-04 | 我的记忆可删、不可手写结果行 |
 
 ## 修订记录
 
 | 日期 | 说明 |
 |------|------|
+| 2026-08-20 | 维度管理布局：默认选表、空态收成一块引导、有条目才出右侧取值详情 |
+| 2026-08-19 | 本切片：数据集页维护高频问法；confirmed 维度值进入 SQLBot。知识库一级入口仍是后续收敛，不阻塞问数准确率 |
+| 2026-08-19 | 管理面确认改为「知识库」：指标、词表、金标准问法和我的记忆统一在管理端入口展示；数据集页保留重新学习入口 |
+| 2026-08-19 | 与 P004/P009 边界收口：P010 承接跨会话记忆和知识库产品化；记忆召回至少按 `workspaceId + userId` 隔离 |
+| 2026-08-19 | 数据集「重新学习」接 Harness LLM 复核；已确认口径仍为人闸 |
 | 2026-08-18 | 立项为 P010（P009 已被工作区治理草案占用）：对照 deer-flow 记忆 / SQLBot 术语+示例 |

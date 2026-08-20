@@ -6,11 +6,14 @@ export type {
   DatasetDetailVO,
   GlossaryItemVO,
   IndicatorVO,
-  IndicatorUpsertBody
+  IndicatorUpsertBody,
+  DatasetQuestionVO,
+  QuestionUpsertBody
 } from '../datasource/api'
 export {
   datasourceApi,
   datasetApi,
   glossaryApi,
-  indicatorApi
+  indicatorApi,
+  questionApi
 } from '../datasource/api'

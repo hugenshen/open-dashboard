@@ -96,7 +96,9 @@ def match_glossary(question: str, glossary: List[Any], *, limit: int = 8) -> Lis
         aliases = item.get("aliases") or []
         if not isinstance(aliases, list):
             aliases = []
-        keys = [term, field, *[str(a) for a in aliases if a]]
+        raw_vals = item.get("values") or []
+        val_keys = [str(v) for v in raw_vals if v] if isinstance(raw_vals, list) else []
+        keys = [term, field, *[str(a) for a in aliases if a], *val_keys]
         if not any(k and str(k).lower() in q for k in keys):
             continue
         hits.append(
@@ -219,7 +221,13 @@ def format_knowledge_block(metrics: List[Any], terms: List[Any]) -> str:
             term = t.get("term") or ""
             field = t.get("field") or ""
             if term and field:
-                lines.append(f"{term}={field}")
+                line = f"{term}={field}"
+                vals = t.get("values") or []
+                if isinstance(vals, list) and vals:
+                    shown = "/".join(str(v).strip() for v in vals[:12] if str(v).strip())
+                    if shown:
+                        line += f" 值:{shown}"
+                lines.append(line)
         lines.append("</terms>")
     if not lines:
         return ""
@@ -271,7 +279,13 @@ def ensure_skill_file(metrics: List[Any], terms: List[Any]) -> Optional[str]:
             term = t.get("term") or ""
             field = t.get("field") or ""
             if term and field:
-                body.append(f"- {term} → {field}")
+                line = f"- {term} → {field}"
+                vals = t.get("values") or []
+                if isinstance(vals, list) and vals:
+                    shown = "/".join(str(v).strip() for v in vals[:12] if str(v).strip())
+                    if shown:
+                        line += f"（值：{shown}）"
+                body.append(line)
     else:
         body.append("（暂无词表条目）")
     text = "\n".join(body) + "\n"
