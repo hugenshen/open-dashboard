@@ -66,6 +66,73 @@ paths:
                 $ref: '#/components/schemas/AuthMeVO'
         '400':
           description: Invalid request or duplicated username
+  /auth/sso/providers:
+    get:
+      tags: [auth]
+      summary: List configured SSO providers
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SsoProvider'
+  /auth/sso/{provider}/start:
+    get:
+      tags: [auth]
+      summary: Start OIDC authorization-code login for Google or enterprise SSO
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string }
+        - name: redirect
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '302':
+          description: Redirect to provider authorization endpoint; sets OD_SSO_STATE HttpOnly cookie
+          headers:
+            Location:
+              schema: { type: string }
+            Set-Cookie:
+              schema: { type: string }
+        '401':
+          description: Provider not configured
+  /auth/sso/{provider}/callback:
+    get:
+      tags: [auth]
+      summary: Complete OIDC callback and create OD_SESSION
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string }
+        - name: code
+          in: query
+          required: false
+          schema: { type: string }
+        - name: state
+          in: query
+          required: false
+          schema: { type: string }
+        - name: error
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '302':
+          description: Redirect back to product route; sets OD_SESSION and clears OD_SSO_STATE
+          headers:
+            Location:
+              schema: { type: string }
+            Set-Cookie:
+              schema: { type: string }
+        '401':
+          description: Invalid state, expired state or provider identity failure
   /auth/me:
     get:
       tags: [auth]
@@ -2205,6 +2272,13 @@ components:
       required: [workspaceId]
       properties:
         workspaceId: { type: string }
+
+    SsoProvider:
+      type: object
+      properties:
+        id: { type: string }
+        label: { type: string }
+        ready: { type: boolean }
 
     AuthMeVO:
       type: object

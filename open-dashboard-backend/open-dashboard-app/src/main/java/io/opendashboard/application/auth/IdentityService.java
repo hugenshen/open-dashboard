@@ -93,6 +93,24 @@ public class IdentityService {
         return createSession(user, workspaceId, userAgent);
     }
 
+    public LoginResult loginWithExternalIdentity(ExternalIdentityRequest req, String userAgent) {
+        if (req.provider() == null || req.provider().isBlank() || req.subject() == null || req.subject().isBlank()) {
+            throw new UnauthorizedException("SSO identity missing");
+        }
+        String provider = req.provider().trim().toLowerCase(Locale.ROOT);
+        String subject = req.subject().trim();
+        IdentityRepository.UserAccount user = repo.findUserByExternalIdentity(provider, subject)
+                .filter(u -> "active".equalsIgnoreCase(u.status()))
+                .or(() -> req.email() == null || req.email().isBlank()
+                        ? Optional.empty()
+                        : repo.findUserByEmail(req.email()).filter(u -> "active".equalsIgnoreCase(u.status())))
+                .orElseGet(() -> createFederatedUser(provider, subject, req));
+        long now = System.currentTimeMillis();
+        repo.upsertExternalIdentity(provider, subject, user.id(), clean(req.email()), clean(req.displayName()), req.rawProfile(), now);
+        String workspaceId = chooseWorkspace(user.id(), req.defaultWorkspaceId());
+        return createSession(user, workspaceId, userAgent);
+    }
+
     public void changePassword(AuthPrincipal principal, ChangePasswordRequest req) {
         IdentityRepository.PasswordCredential credential = repo.passwordByUserId(principal.userId())
                 .orElseThrow(() -> new UnauthorizedException("未找到密码凭证"));
@@ -203,6 +221,38 @@ public class IdentityService {
         repo.ensureSeedUser(username, displayName, AuthPrincipal.DEFAULT_WORKSPACE_ID, roleCode, passwordHasher.hash(password));
     }
 
+    private IdentityRepository.UserAccount createFederatedUser(String provider, String subject, ExternalIdentityRequest req) {
+        String username = federatedUsername(provider, subject);
+        String displayName = clean(req.displayName());
+        if (displayName == null) displayName = clean(req.email());
+        if (displayName == null) displayName = username;
+        IdentityRepository.UserAccount user = new IdentityRepository.UserAccount(
+                "u_" + UUID.randomUUID().toString().replace("-", ""),
+                username,
+                displayName,
+                clean(req.email()),
+                "active"
+        );
+        String workspaceId = clean(req.defaultWorkspaceId());
+        if (workspaceId == null) workspaceId = AuthPrincipal.DEFAULT_WORKSPACE_ID;
+        String roleCode = clean(req.defaultRoleCode());
+        if (roleCode == null) roleCode = "analyst";
+        repo.createFederatedUser(user, workspaceId, roleCode);
+        return user;
+    }
+
+    private String federatedUsername(String provider, String subject) {
+        String raw = (provider + "_" + subject).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_@.-]", "_");
+        if (raw.length() > 80) raw = raw.substring(0, 80);
+        return "sso_" + raw;
+    }
+
+    private String clean(String value) {
+        if (value == null) return null;
+        String out = value.trim();
+        return out.isBlank() ? null : out;
+    }
+
     public record LoginRequest(String username, String password, String workspaceId) {}
 
     public record RegisterRequest(String username, String password, String displayName, String email, String workspaceId) {}
@@ -210,6 +260,16 @@ public class IdentityService {
     public record ChangePasswordRequest(String oldPassword, String newPassword) {}
 
     public record SwitchWorkspaceRequest(String workspaceId) {}
+
+    public record ExternalIdentityRequest(
+            String provider,
+            String subject,
+            String email,
+            String displayName,
+            String rawProfile,
+            String defaultWorkspaceId,
+            String defaultRoleCode
+    ) {}
 
     public record LoginResult(String sessionToken, AuthPrincipal principal, long expiresAt) {}
 }

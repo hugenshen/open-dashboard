@@ -1,6 +1,7 @@
 package io.opendashboard.adapter.security;
 
 import io.opendashboard.application.auth.IdentityService;
+import io.opendashboard.application.auth.SsoProperties;
 import io.opendashboard.application.conversation.ConversationProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,7 +14,7 @@ import org.springframework.context.annotation.Configuration;
  * to replace these without Spring Security.
  */
 @Configuration
-@EnableConfigurationProperties({AuthProperties.class, ConversationProperties.class})
+@EnableConfigurationProperties({AuthProperties.class, ConversationProperties.class, SsoProperties.class})
 public class AuthSpiConfiguration {
 
     @Bean

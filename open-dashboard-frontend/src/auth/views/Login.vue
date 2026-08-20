@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { authApi } from '../../api/auth'
+import { authApi, type SsoProvider } from '../../api/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -11,6 +11,8 @@ const account = ref('demo')
 const password = ref('demo123456')
 const error = ref('')
 const submitting = ref(false)
+const providers = ref<SsoProvider[]>([])
+const loadingProviders = ref(false)
 
 const redirect = computed(() => {
   const raw = route.query.redirect
@@ -19,6 +21,8 @@ const redirect = computed(() => {
 
 const loggedOut = computed(() => route.query.logged_out === '1')
 const expired = computed(() => route.query.expired === '1')
+const ssoError = computed(() => route.query.sso_error === '1')
+const readyProviders = computed(() => providers.value.filter((p) => p.ready))
 
 async function login() {
   error.value = ''
@@ -52,6 +56,22 @@ function useAnalyst() {
   account.value = 'analyst'
   password.value = 'analyst123456'
 }
+
+function startSso(provider: SsoProvider) {
+  if (!provider.ready) return
+  window.location.href = `/api/auth/sso/${encodeURIComponent(provider.id)}/start?redirect=${encodeURIComponent(redirect.value)}`
+}
+
+onMounted(async () => {
+  loadingProviders.value = true
+  try {
+    providers.value = await authApi.ssoProviders()
+  } catch {
+    providers.value = []
+  } finally {
+    loadingProviders.value = false
+  }
+})
 </script>
 
 <template>
@@ -63,8 +83,23 @@ function useAnalyst() {
       </div>
       <p v-if="loggedOut" class="notice">已退出登录</p>
       <p v-if="expired" class="notice warn">登录状态已失效，请重新登录</p>
+      <p v-if="ssoError" class="notice warn">企业 SSO 登录未完成，请重试或改用账号密码登录</p>
       <h1>登录工作区</h1>
       <p class="sub">登录后进入当前工作区；用户使用端与管理端菜单会按权限展示。</p>
+
+      <div class="sso" v-if="readyProviders.length || loadingProviders">
+        <button
+          v-for="provider in readyProviders"
+          :key="provider.id"
+          type="button"
+          class="sso-btn"
+          @click="startSso(provider)"
+        >
+          <span>{{ provider.id === 'google' ? 'G' : provider.label.slice(0, 1).toUpperCase() }}</span>
+          使用 {{ provider.label }} 登录
+        </button>
+        <p v-if="loadingProviders && !readyProviders.length">正在检查企业登录方式...</p>
+      </div>
 
       <div class="segments" role="tablist" aria-label="演示账号类型">
         <button type="button" :class="{ on: mode === 'admin' }" @click="useAdmin">管理员</button>
@@ -173,6 +208,41 @@ h1 {
   padding: 4px;
   border-radius: 10px;
   background: #f3f4f6;
+}
+
+.sso {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0 14px;
+}
+
+.sso p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.sso-btn {
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  border-color: #d8dde7;
+  background: #fff;
+  color: #111827;
+}
+
+.sso-btn span {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #eef2ff;
+  color: #4338ca;
+  font-weight: 800;
+  font-size: 13px;
 }
 
 button,

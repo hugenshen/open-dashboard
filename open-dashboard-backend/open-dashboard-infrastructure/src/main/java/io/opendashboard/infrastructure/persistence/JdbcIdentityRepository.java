@@ -49,6 +49,38 @@ public class JdbcIdentityRepository implements IdentityRepository {
     }
 
     @Override
+    public Optional<UserAccount> findUserByEmail(String email) {
+        return jdbc.query("""
+                SELECT id, username, display_name, email, status
+                FROM od_user_account
+                WHERE lower(email) = lower(?)
+                """, (rs, i) -> new UserAccount(
+                rs.getString("id"),
+                rs.getString("username"),
+                rs.getString("display_name"),
+                rs.getString("email"),
+                rs.getString("status")
+        ), email).stream().findFirst();
+    }
+
+    @Override
+    public Optional<UserAccount> findUserByExternalIdentity(String provider, String subject) {
+        return jdbc.query("""
+                SELECT u.id, u.username, u.display_name, u.email, u.status
+                FROM od_external_identity ei
+                JOIN od_user_account u ON u.id = ei.user_id
+                WHERE ei.provider = ?
+                  AND ei.subject = ?
+                """, (rs, i) -> new UserAccount(
+                rs.getString("id"),
+                rs.getString("username"),
+                rs.getString("display_name"),
+                rs.getString("email"),
+                rs.getString("status")
+        ), provider, subject).stream().findFirst();
+    }
+
+    @Override
     public Optional<PasswordCredential> passwordByUserId(String userId) {
         return jdbc.query("""
                 SELECT user_id, algorithm, iterations, salt, password_hash
@@ -79,6 +111,34 @@ public class JdbcIdentityRepository implements IdentityRepository {
                 VALUES (?, ?, ?, 'active', ?)
                 ON CONFLICT DO NOTHING
                 """, user.id(), workspaceId, roleCode, now);
+    }
+
+    @Override
+    public void createFederatedUser(UserAccount user, String workspaceId, String roleCode) {
+        long now = System.currentTimeMillis();
+        jdbc.update("""
+                INSERT INTO od_user_account (id, username, display_name, email, status, password_changed_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+                """, user.id(), user.username(), user.displayName(), user.email(), user.status(), now, now);
+        jdbc.update("""
+                INSERT INTO od_workspace_member (user_id, workspace_id, role_code, status, created_at)
+                VALUES (?, ?, ?, 'active', ?)
+                ON CONFLICT DO NOTHING
+                """, user.id(), workspaceId, roleCode, now);
+    }
+
+    @Override
+    public void upsertExternalIdentity(String provider, String subject, String userId, String email, String displayName, String rawProfile, long now) {
+        jdbc.update("""
+                INSERT INTO od_external_identity (provider, subject, user_id, email, display_name, raw_profile, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (provider, subject) DO UPDATE
+                SET user_id = EXCLUDED.user_id,
+                    email = EXCLUDED.email,
+                    display_name = EXCLUDED.display_name,
+                    raw_profile = EXCLUDED.raw_profile,
+                    updated_at = EXCLUDED.updated_at
+                """, provider, subject, userId, email, displayName, rawProfile, now, now);
     }
 
     @Override
@@ -161,6 +221,36 @@ public class JdbcIdentityRepository implements IdentityRepository {
                 WHERE id_hash = ?
                   AND revoked_at IS NULL
                 """, workspaceId, now, tokenHash);
+    }
+
+    @Override
+    public void saveSsoState(SsoState state) {
+        jdbc.update("""
+                INSERT INTO od_sso_state (state_hash, provider, nonce, code_verifier, post_login_redirect, created_at, expires_at, consumed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, state.stateHash(), state.provider(), state.nonce(), state.codeVerifier(), state.postLoginRedirect(),
+                state.createdAt(), state.expiresAt(), state.consumedAt());
+    }
+
+    @Override
+    public Optional<SsoState> consumeSsoState(String stateHash, long now) {
+        List<SsoState> states = jdbc.query("""
+                SELECT state_hash, provider, nonce, code_verifier, post_login_redirect, created_at, expires_at, consumed_at
+                FROM od_sso_state
+                WHERE state_hash = ?
+                """, (rs, i) -> new SsoState(
+                rs.getString("state_hash"),
+                rs.getString("provider"),
+                rs.getString("nonce"),
+                rs.getString("code_verifier"),
+                rs.getString("post_login_redirect"),
+                rs.getLong("created_at"),
+                rs.getLong("expires_at"),
+                rs.getObject("consumed_at", Long.class)
+        ), stateHash);
+        if (states.isEmpty() || !states.get(0).activeAt(now)) return Optional.empty();
+        jdbc.update("UPDATE od_sso_state SET consumed_at = ? WHERE state_hash = ? AND consumed_at IS NULL", now, stateHash);
+        return Optional.of(states.get(0));
     }
 
     @Override

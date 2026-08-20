@@ -252,7 +252,7 @@
             <div class="node"><b>消费</b><span>预览 / 分享 / 报告</span></div>
           </div>
         </article>
-        <article class="panel wide"><h3>已交付能力边界</h3><ul><li>JDBC 数据源、数据集建模与预览</li><li>仪表盘树、编辑、移动布局、发布、分享、CSV</li><li>在线报告、引用图表、内联图表与实时取数</li><li>服务端账号密码登录、HttpOnly 会话 Cookie、Auth SPI、权限码、当前用户和菜单权限</li><li>左栏产品壳 AppShell、工作台三行布局与问数框（P007 已编码，PR-SH-10 未验收）</li><li>左栏「维度管理」：自学习候选确认与手工公共维度（P010 未验收）</li></ul></article>
+        <article class="panel wide"><h3>已交付能力边界</h3><ul><li>JDBC 数据源、数据集建模与预览</li><li>仪表盘树、编辑、移动布局、发布、分享、CSV</li><li>在线报告、引用图表、内联图表与实时取数</li><li>服务端账号密码登录、Google / 通用 OIDC SSO、HttpOnly 会话 Cookie、Auth SPI、权限码、当前用户和菜单权限</li><li>左栏产品壳 AppShell、工作台三行布局与问数框（P007 已编码，PR-SH-10 未验收）</li><li>左栏「维度管理」：自学习候选确认与手工公共维度（P010 未验收）</li></ul></article>
         <article class="panel"><h3>未进入已交付基线</h3><ul><li>对话问数 / 生成看板：P004、P006 已编码未验收</li><li>工作区、数据广场、成员权限：接口与页面已编码，提案仍未 done</li><li>可问集合 ACL、RLS/CLS：P008 / roadmap</li><li>术语库、SQL 示例、自定义提示词、行级权限改写：未搬 SQLBot</li></ul></article>
       </div>
       <p class="source">证据：<code>docs/product/requirements.md</code>、<code>open-dashboard-frontend/src/router/index.ts</code>、各 Controller。</p>
@@ -292,7 +292,7 @@
             <table>
               <thead><tr><th>接口域</th><th>入口</th><th>职责</th><th>状态</th></tr></thead>
               <tbody>
-                <tr><td>Auth</td><td><code>/api/auth</code></td><td>登录、注册、会话 Cookie、当前用户、当前工作区、菜单权限、Auth SPI</td><td><span class="status done">已交付</span></td></tr>
+                <tr><td>Auth</td><td><code>/api/auth</code></td><td>账号密码、Google/通用 OIDC SSO、注册、会话 Cookie、当前用户、当前工作区、菜单权限、Auth SPI</td><td><span class="status done">已交付</span></td></tr>
                 <tr><td>Workspace / Data Plaza</td><td><code>/api/workspaces</code></td><td>工作区列表、用户组、成员、角色、有效权限、数据广场资产、加入我的数据与申请消费</td><td><span class="status coded">已编码未验收</span></td></tr>
                 <tr><td>Datasource / Dataset</td><td><code>/api/datasource</code> · <code>/api/dataset</code></td><td>连接、语义字段、预览</td><td><span class="status done">已交付</span></td></tr>
                 <tr><td>Query</td><td><code>/api/datasetQuery</code> · <code>/api/chartQuery</code></td><td>统一 QuerySpec、取数、导出</td><td><span class="status done">已交付</span></td></tr>
@@ -303,7 +303,7 @@
             </table>
           </div>
         </article>
-        <article class="panel wide"><h3>身份与菜单权限存储</h3><p><code>V15__identity_access.sql</code> 新增 <code>od_user_account</code>、<code>od_password_credential</code>、<code>od_auth_session</code>、<code>od_role</code>、<code>od_permission</code>、<code>od_role_permission</code>、<code>od_workspace_member</code>、<code>od_menu_item</code>、<code>od_menu_permission</code>。密码凭证使用 PBKDF2-HMAC-SHA256、随机盐和可调迭代次数；会话只保存 Token 哈希；菜单由 <code>JdbcMenuProvider</code> 根据当前用户 effective permissions 服务端过滤。</p><span class="status done">已交付</span></article>
+        <article class="panel wide"><h3>身份与菜单权限存储</h3><p><code>V15__identity_access.sql</code> 新增 <code>od_user_account</code>、<code>od_password_credential</code>、<code>od_auth_session</code>、<code>od_role</code>、<code>od_permission</code>、<code>od_role_permission</code>、<code>od_workspace_member</code>、<code>od_menu_item</code>、<code>od_menu_permission</code>；<code>V16__sso_identity.sql</code> 新增 <code>od_external_identity</code> 和 <code>od_sso_state</code>。密码凭证使用 PBKDF2-HMAC-SHA256、随机盐和可调迭代次数；会话只保存 Token 哈希；SSO 使用 Authorization Code + PKCE + state，回调后统一创建 <code>OD_SESSION</code>；菜单由 <code>JdbcMenuProvider</code> 根据当前用户 effective permissions 服务端过滤。</p><span class="status done">已交付</span></article>
         <article class="panel wide"><h3>AI Harness 集成</h3><p>会话元数据与消息写入 Java <code>de_conversation*</code>（<code>GET/POST /api/conversations</code>）。Agent 走 <code>/harness/v1/conversations/{id}/runs</code>（SSE）；若 Harness 本地没有该 id，按 Java 会话 id 补建运行时文件。Harness 侧已拆出 <code>RunController</code>、<code>EventStreamRecorder</code>、<code>TraceStore</code>、<code>ContextBuilder</code> 与 <code>ToolGateway</code> 骨架，SSE 事件可写入运行 trace 并通过 <code>/harness/v1/conversations/{id}/runs/{runId}/trace</code> 读回；本地会话、知识和用户记忆已按 <code>X-Workspace-Id</code> scope 过滤，默认 <code>default</code> 兼容旧运行。Java 不跑 LLM。</p></article>
         <article class="panel"><h3>工作区治理入口</h3><p>前端 <code>AppShell</code> 从 <code>/api/auth/me</code> 获取当前工作区和可切换工作区；所有请求通过 <code>src/api/http.ts</code> 附加 <code>X-Workspace-Id</code>。用户端 <code>/data-plaza</code> 展示可见资产、我的数据和申请；管理端 <code>/workspace-admin</code> 展示成员、用户组、角色权限和数据策略入口。</p><span class="status coded">已编码未验收</span></article>
         <article class="panel"><h3>问数入口</h3><p>工作台问数框下展示 <code>GET /api/conversations?limit=8</code> 最近问数；无记录时才显示「试试」。右栏最近报告走 <code>GET /api/report?limit=4</code>（<code>de_report.update_time</code> 倒序），条目用文档图标：已发布绿、草稿紫。提交问数后跳转 <code>/conversations</code> 并自动执行本题。</p><span class="status coded">已编码未验收</span></article>
@@ -1016,7 +1016,7 @@
           </div>
         </article>
         <article class="panel"><h3>外部业务库</h3><p>MySQL / PostgreSQL 经 JDBC 接入；凭证仅在后端使用。</p></article>
-        <article class="panel"><h3>鉴权</h3><p>前端未登录时路由守卫跳转 <code>/login</code>；登录、注册、切换工作区、修改密码与退出均走 <code>/api/auth</code>，后端下发 <code>OD_SESSION</code> HttpOnly Cookie，前端只缓存展示与路由预检用的用户快照。后端 <code>SessionCookieAuthProvider</code> 从会话解析 <code>AuthPrincipal</code>，浏览器请求不能再伪造 <code>X-User-Perms</code>；仅带有效 <code>X-OD-Internal-Token</code> 的 Java/Harness 内部调用可复用 Header SPI。缺会话访问 <code>@RequireAuth</code> 接口返回 401。</p></article>
+        <article class="panel"><h3>鉴权</h3><p>前端未登录时路由守卫跳转 <code>/login</code>；登录、注册、Google/通用 OIDC SSO、切换工作区、修改密码与退出均走 <code>/api/auth</code>，后端下发 <code>OD_SESSION</code> HttpOnly Cookie，前端只缓存展示与路由预检用的用户快照。后端 <code>SessionCookieAuthProvider</code> 从会话解析 <code>AuthPrincipal</code>，浏览器请求不能再伪造 <code>X-User-Perms</code>；仅带有效 <code>X-OD-Internal-Token</code> 的 Java/Harness 内部调用可复用 Header SPI。缺会话访问 <code>@RequireAuth</code> 接口返回 401。</p></article>
         <article class="panel"><h3>公开边界</h3><p><code>/api/share/**</code> 可匿名；Token、启用状态和过期时间形成公开访问边界。</p></article>
         <article class="panel"><h3>启动</h3><p><code>./scripts/up.sh</code> 启动 PostgreSQL、API 与 Web；<code>docs/prototypes/hi-fi/start.sh</code> 仅预览文档原型。</p></article>
         <article class="panel full">
@@ -1025,7 +1025,7 @@
             <table>
               <thead><tr><th>领域</th><th>当前约束</th><th>未完成</th></tr></thead>
               <tbody>
-                <tr><td>安全</td><td>服务端账号密码、PBKDF2-HMAC-SHA256 加盐哈希、HttpOnly SameSite 会话 Cookie、前端路由守卫、Auth SPI、写权限码、菜单权限表、匿名分享隔离</td><td>企业 OIDC/SAML SSO、密码重置、多因子、资源 ACL、RLS/CLS</td></tr>
+                <tr><td>安全</td><td>服务端账号密码、Google/通用 OIDC SSO、PBKDF2-HMAC-SHA256 加盐哈希、HttpOnly SameSite 会话 Cookie、前端路由守卫、Auth SPI、写权限码、菜单权限表、匿名分享隔离</td><td>SAML、密码重置、多因子、资源 ACL、RLS/CLS</td></tr>
                 <tr><td>部署</td><td>Docker Compose 单机开箱</td><td>Harness 标准编排、高可用</td></tr>
                 <tr><td>数据</td><td>QuerySpec、超时/限制、Dataset 边界</td><td>统一权限消费闸门</td></tr>
                 <tr><td>前端</td><td>模块路由、AppShell、三行工作台、编辑器 Host、响应式移动布局</td><td>问数验收 PR-ASK-*、P007 PR-SH-10 手验</td></tr>

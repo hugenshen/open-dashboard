@@ -11,11 +11,16 @@ const loading = ref(false)
 const error = ref('')
 const data = ref<DataPlazaVO | null>(null)
 const keyword = ref('')
+const spaceKeyword = ref('')
 const activeSpace = ref('all')
-const activeType = ref('all')
+const activeType = ref('dataset')
 const activeView = ref<PlazaView>('all')
 const displayMode = ref<'grid' | 'list'>('list')
 const requestAsset = ref<DataAssetVO | null>(null)
+const previewAsset = ref<DataAssetVO | null>(null)
+const addAssetTarget = ref<DataAssetVO | null>(null)
+const addTargetFolder = ref('root')
+const addDialogOpen = ref(false)
 const requestPurpose = ref('用于经营分析、日报追踪和异常复盘。')
 const selectedIds = ref<string[]>([])
 const toast = ref('')
@@ -25,11 +30,6 @@ const workspaceId = computed(() => data.value?.currentWorkspace.id || getAuthBun
 const assets = computed(() => data.value?.assets || [])
 const myData = computed(() => data.value?.myData || [])
 const requests = computed(() => data.value?.requests || [])
-const askableAssets = computed(() => assets.value.filter((asset) => asset.actions.includes('ask')))
-const requestableAssets = computed(() =>
-  assets.value.filter((asset) => asset.authStatus === 'requestable' && asset.actions.includes('request'))
-)
-const pendingAssets = computed(() => assets.value.filter((asset) => asset.authStatus === 'pending'))
 
 const typeTabs = [
   { key: 'all', label: '全部资产' },
@@ -44,9 +44,13 @@ const statusTabs: Array<{ key: PlazaView; label: string }> = [
   { key: 'all', label: '全部' },
   { key: 'askable', label: '已获权' },
   { key: 'requestable', label: '可申请' },
-  { key: 'pending', label: '申请中' },
-  { key: 'added', label: '我的数据' }
+  { key: 'pending', label: '申请中' }
 ]
+
+const filteredSpaces = computed(() => {
+  const q = spaceKeyword.value.trim().toLowerCase()
+  return (data.value?.spaces || []).filter((space) => !q || space.name.toLowerCase().includes(q))
+})
 
 const visibleAssets = computed(() => {
   const q = keyword.value.trim().toLowerCase()
@@ -69,9 +73,20 @@ const selectableAssets = computed(() => visibleAssets.value.filter((asset) => as
 const selectedAddableAssets = computed(() =>
   assets.value.filter((asset) => selectedIds.value.includes(asset.id) && asset.actions.includes('add'))
 )
+const addTargets = computed(() => (addAssetTarget.value ? [addAssetTarget.value] : selectedAddableAssets.value))
+const showFolderRows = computed(
+  () => displayMode.value === 'list' && activeSpace.value === 'all' && activeView.value === 'all' && !keyword.value.trim()
+)
+const visibleFolders = computed(() =>
+  filteredSpaces.value.filter((space) => {
+    if (activeType.value === 'all') return space.assetCount > 0
+    return assets.value.some((asset) => asset.workspaceId === space.id && asset.type === activeType.value)
+  })
+)
 
 function focusView(key: PlazaView) {
   activeView.value = key
+  if (key === 'added' || key === 'pending') activeSpace.value = 'all'
   selectedIds.value = []
 }
 
@@ -87,6 +102,12 @@ function selectVisibleAddable() {
 }
 
 function clearSelected() {
+  selectedIds.value = []
+}
+
+function switchSpace(spaceId: string) {
+  activeSpace.value = spaceId
+  if (activeView.value === 'added' || activeView.value === 'pending') activeView.value = 'all'
   selectedIds.value = []
 }
 
@@ -111,10 +132,6 @@ async function load() {
   }
 }
 
-function typeLabel(type: DataAssetVO['type']) {
-  return typeTabs.find((t) => t.key === type)?.label || type
-}
-
 function statusLabel(asset: DataAssetVO) {
   if (asset.added) return '已添加'
   if (asset.authStatus === 'granted') return '已获权'
@@ -123,8 +140,15 @@ function statusLabel(asset: DataAssetVO) {
   return '不可用'
 }
 
+function statusTone(asset: DataAssetVO) {
+  if (asset.added) return 'ok'
+  if (asset.authStatus === 'pending') return 'wait'
+  if (asset.authStatus === 'requestable') return 'apply'
+  return 'plain'
+}
+
 function rowActionLabel(asset: DataAssetVO) {
-  if (asset.added) return '已添加'
+  if (asset.added) return asset.actions.includes('ask') ? '开始问数' : '打开'
   if (asset.authStatus === 'pending') return '待审批'
   if (asset.actions.includes('add')) return '添加'
   if (asset.actions.includes('request')) return '申请'
@@ -132,32 +156,33 @@ function rowActionLabel(asset: DataAssetVO) {
 }
 
 function dateLabel(ts: number) {
-  const minutes = Math.max(1, Math.round((Date.now() - ts) / 60000))
-  if (minutes < 60) return `${minutes} 分钟前`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} 小时前`
-  return new Date(ts).toLocaleDateString()
+  const d = new Date(ts)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-async function addAsset(asset: DataAssetVO) {
-  try {
-    await workspaceApi.addToMyData(workspaceId.value, asset.id)
-    await load()
-    flash('已加入我的数据')
-  } catch (e) {
-    flash(e instanceof Error ? e.message : '加入失败')
-  }
+function openAddDialog(asset?: DataAssetVO) {
+  addAssetTarget.value = asset || null
+  addTargetFolder.value = 'root'
+  addDialogOpen.value = true
 }
 
-async function bulkAdd() {
-  const targets = selectedAddableAssets.value
+function closeAddDialog() {
+  addAssetTarget.value = null
+  addDialogOpen.value = false
+}
+
+async function confirmAdd() {
+  const targets = addTargets.value
   if (!targets.length) return
   try {
     await Promise.all(targets.map((asset) => workspaceApi.addToMyData(workspaceId.value, asset.id)))
     await load()
-    flash(`已加入 ${targets.length} 个资产`)
+    addAssetTarget.value = null
+    addDialogOpen.value = false
+    flash(targets.length === 1 ? '已添加到我的数据' : `已添加 ${targets.length} 个资产`)
   } catch (e) {
-    flash(e instanceof Error ? e.message : '批量加入失败')
+    flash(e instanceof Error ? e.message : '添加失败')
   }
 }
 
@@ -183,11 +208,13 @@ function startAsk(asset: DataAssetVO) {
 }
 
 function openAsset(asset: DataAssetVO) {
-  if (asset.type === 'dashboard') {
-    router.push('/dashboards')
-  } else {
-    router.push('/datasets')
-  }
+  previewAsset.value = asset
+}
+
+function consumeAsset(asset: DataAssetVO) {
+  if (asset.actions.includes('ask')) startAsk(asset)
+  else if (asset.type === 'dashboard') router.push('/dashboards')
+  else router.push('/datasets')
 }
 
 onMounted(load)
@@ -195,17 +222,18 @@ onMounted(load)
 
 <template>
   <main class="plaza-page">
-    <section class="market-frame">
-      <div class="market-hero">
-        <p>企业资产</p>
-        <h1>优选数据资产</h1>
-        <span>组织内可用的全部数据资产，添加到 <button type="button" @click="focusView('added')">我的数据</button> 后可用于分析</span>
-        <label class="hero-search">
-          <span aria-hidden="true">⌕</span>
-          <input v-model="keyword" type="search" placeholder="您需要什么数据？搜一下" />
-        </label>
+    <header class="plaza-head">
+      <div>
+        <h1>数据广场</h1>
+        <p>
+          组织内可用的全部数据资产，添加到
+          <button type="button" class="text-link" @click="focusView('added')">我的数据</button>
+          后可用于分析
+        </p>
       </div>
+    </header>
 
+    <div class="plaza-toolbar">
       <div class="type-tabs" aria-label="资产分类">
         <button
           v-for="tab in typeTabs.filter((item) => item.key !== 'all')"
@@ -217,78 +245,155 @@ onMounted(load)
           {{ tab.label }}
         </button>
       </div>
+      <form class="asset-search" role="search" @submit.prevent>
+        <span aria-hidden="true">⌕</span>
+        <input v-model="keyword" type="search" placeholder="关键词搜索" />
+      </form>
+      <div class="view-toggle" aria-label="视图切换">
+        <button type="button" :class="{ on: displayMode === 'grid' }" title="卡片视图" @click="displayMode = 'grid'">
+          <span aria-hidden="true">▦</span>
+        </button>
+        <button type="button" :class="{ on: displayMode === 'list' }" title="列表视图" @click="displayMode = 'list'">
+          <span aria-hidden="true">☰</span>
+        </button>
+      </div>
+    </div>
 
-      <section class="asset-workspace">
-        <aside class="space-pane">
-          <div class="space-title">数据空间</div>
-          <label class="space-search">
-            <span aria-hidden="true">⌕</span>
-            <input v-model="keyword" type="search" placeholder="搜索空间" />
-          </label>
-          <button class="space-btn" :class="{ on: activeSpace === 'all' }" type="button" @click="activeSpace = 'all'">
-            <span>全部空间</span><em>{{ assets.length }}</em>
-          </button>
-          <button
-            v-for="space in data?.spaces || []"
-            :key="space.id"
-            class="space-btn"
-            :class="{ on: activeSpace === space.id }"
-            type="button"
-            @click="activeSpace = space.id"
-          >
-            <span>{{ space.name }}</span><em>{{ space.assetCount }}</em>
-          </button>
-          <div class="space-group">快捷筛选</div>
-          <button class="space-btn" :class="{ on: activeView === 'added' }" type="button" @click="focusView('added')">
-            <span>已加入空间</span><em>{{ myData.length }}</em>
-          </button>
-          <button class="space-btn" :class="{ on: activeView === 'pending' }" type="button" @click="focusView('pending')">
-            <span>我的申请</span><em>{{ requests.length }}</em>
-          </button>
-        </aside>
+    <section class="asset-workspace">
+      <aside class="space-pane">
+        <div class="space-title">数据空间</div>
+        <form class="space-search" role="search" @submit.prevent>
+          <span aria-hidden="true">⌕</span>
+          <input v-model="spaceKeyword" type="search" placeholder="搜索空间" />
+        </form>
+        <button class="space-btn" :class="{ on: activeSpace === 'all' && activeView !== 'added' && activeView !== 'pending' }" type="button" @click="switchSpace('all')">
+          <span>全部空间</span><em>{{ assets.length }}</em>
+        </button>
+        <button
+          v-for="space in filteredSpaces"
+          :key="space.id"
+          class="space-btn"
+          :class="{ on: activeSpace === space.id }"
+          type="button"
+          @click="switchSpace(space.id)"
+        >
+          <span>{{ space.name }}</span><em>{{ space.assetCount }}</em>
+        </button>
+        <div class="space-group">我的</div>
+        <button class="space-btn" :class="{ on: activeView === 'added' }" type="button" @click="focusView('added')">
+          <span>我的数据</span><em>{{ myData.length }}</em>
+        </button>
+        <button class="space-btn" :class="{ on: activeView === 'pending' }" type="button" @click="focusView('pending')">
+          <span>我的申请</span><em>{{ requests.length }}</em>
+        </button>
+      </aside>
 
-        <section class="asset-panel">
-          <div class="list-tools">
-            <div class="seg" aria-label="消费状态">
-              <button
-                v-for="tab in statusTabs"
-                :key="tab.key"
-                type="button"
-                :class="{ on: activeView === tab.key }"
-                @click="focusView(tab.key)"
-              >
-                {{ tab.label }}
-              </button>
-            </div>
-            <div class="tool-spacer"></div>
-            <span class="asset-count">{{ visibleAssets.length }} 个资产</span>
-            <div class="view-toggle" aria-label="视图切换">
-              <button type="button" :class="{ on: displayMode === 'grid' }" title="卡片视图" @click="displayMode = 'grid'">
-                <span aria-hidden="true">▦</span>
-              </button>
-              <button type="button" :class="{ on: displayMode === 'list' }" title="列表视图" @click="displayMode = 'list'">
-                <span aria-hidden="true">☰</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="bulk-line" :class="{ show: selectedIds.length }">
-            <span>已选择 {{ selectedIds.length }} 个资产</span>
-            <button type="button" @click="selectVisibleAddable" :disabled="!selectableAssets.length">选择可添加</button>
-            <button type="button" @click="clearSelected">取消</button>
-            <button class="primary" type="button" @click="bulkAdd" :disabled="!selectedAddableAssets.length">
-              批量添加
+      <section class="asset-panel">
+        <div class="list-tools">
+          <div class="seg" aria-label="消费状态">
+            <button
+              v-for="tab in statusTabs"
+              :key="tab.key"
+              type="button"
+              :class="{ on: activeView === tab.key }"
+              @click="focusView(tab.key)"
+            >
+              {{ tab.label }}
             </button>
           </div>
+          <span class="asset-count">{{ visibleAssets.length }} 个资产</span>
+        </div>
 
-          <div v-if="loading" class="empty">正在加载数据广场资产...</div>
-          <div v-else-if="error" class="empty error">{{ error }}</div>
-          <div v-else-if="!visibleAssets.length" class="empty">
-            没有匹配资产，可以切换数据空间、资产类型或搜索关键词。
+        <div v-if="loading" class="empty">正在加载数据广场资产...</div>
+        <div v-else-if="error" class="empty error">{{ error }}</div>
+        <div v-else-if="!visibleAssets.length && !(showFolderRows && visibleFolders.length)" class="empty">
+          没有匹配资产，可以切换数据空间、资产类型或搜索关键词。
+        </div>
+
+        <div v-else-if="displayMode === 'list'" class="asset-list">
+          <div class="list-head-row">
+            <input
+              class="check"
+              type="checkbox"
+              :checked="!!selectedIds.length"
+              @change="selectedIds.length ? clearSelected() : selectVisibleAddable()"
+            />
+            <span>名称</span>
+            <span>所有者</span>
+            <span>最近修改时间</span>
+            <span>状态</span>
+            <span>操作</span>
           </div>
+          <button
+            v-for="space in visibleFolders"
+            v-show="showFolderRows"
+            :key="space.id"
+            class="folder-row"
+            type="button"
+            @click="switchSpace(space.id)"
+          >
+            <span></span>
+            <span class="name-cell folder-cell">
+              <i aria-hidden="true">▸</i>
+              <b aria-hidden="true">▰</b>
+              {{ space.name }}
+            </span>
+            <span class="owner-cell">{{ data?.currentWorkspace.name || '当前工作区' }}</span>
+            <span class="time-cell">—</span>
+            <span></span>
+            <span></span>
+          </button>
+          <article v-for="asset in visibleAssets" :key="asset.id" class="asset-row" :class="{ picked: selectedIds.includes(asset.id) }">
+            <input
+              class="check"
+              type="checkbox"
+              :checked="selectedIds.includes(asset.id)"
+              :disabled="!asset.actions.includes('add')"
+              :aria-label="`选择 ${asset.name}`"
+              @change="toggleAsset(asset)"
+            />
+            <div class="name-cell">
+              <span class="asset-icon" aria-hidden="true">▣</span>
+              <button type="button" class="asset-name" :title="asset.description" @click="openAsset(asset)">
+                {{ asset.name }}
+              </button>
+            </div>
+            <span class="owner-cell" :title="asset.owner">{{ asset.owner }}</span>
+            <span class="time-cell">{{ dateLabel(asset.updatedAt) }}</span>
+            <span :class="['state', statusTone(asset)]">
+              <i aria-hidden="true"></i>{{ statusLabel(asset) }}
+            </span>
+            <div class="row-action">
+              <button
+                v-if="asset.added"
+                class="link-action consume"
+                type="button"
+                @click="consumeAsset(asset)"
+              >
+                {{ rowActionLabel(asset) }}
+              </button>
+              <button v-else-if="asset.authStatus === 'pending'" class="link-action muted" type="button" disabled>
+                {{ rowActionLabel(asset) }}
+              </button>
+              <button v-else-if="asset.actions.includes('add')" class="link-action" type="button" @click="openAddDialog(asset)">
+                {{ rowActionLabel(asset) }}
+              </button>
+              <button
+                v-else-if="asset.actions.includes('request')"
+                class="link-action"
+                type="button"
+                @click="requestAsset = asset"
+              >
+                {{ rowActionLabel(asset) }}
+              </button>
+              <button v-else class="link-action" type="button" @click="openAsset(asset)">查看</button>
+            </div>
+          </article>
+        </div>
 
-          <div v-else-if="displayMode === 'list'" class="asset-list">
-            <article v-for="asset in visibleAssets" :key="asset.id" class="asset-row">
+        <div v-else class="asset-card-grid">
+          <article v-for="asset in visibleAssets" :key="asset.id" class="asset-card">
+            <div class="card-top">
               <input
                 class="check"
                 type="checkbox"
@@ -298,76 +403,93 @@ onMounted(load)
                 @change="toggleAsset(asset)"
               />
               <span class="asset-icon" aria-hidden="true">▣</span>
-              <div class="asset-copy">
-                <button type="button" @click="openAsset(asset)">{{ asset.name }}</button>
-                <p>{{ asset.description }}</p>
-                <div class="asset-meta">
-                  <span>{{ asset.owner }}</span>
-                  <span>{{ dateLabel(asset.updatedAt) }}</span>
-                  <span>{{ asset.workspaceName }}</span>
-                </div>
-              </div>
-              <div class="row-action">
-                <button
-                  v-if="asset.added"
-                  class="state ok"
-                  type="button"
-                  @click="asset.actions.includes('ask') ? startAsk(asset) : openAsset(asset)"
-                >
-                  ✓ {{ rowActionLabel(asset) }}
-                </button>
-                <button
-                  v-else-if="asset.authStatus === 'pending'"
-                  class="state wait"
-                  type="button"
-                  disabled
-                >
-                  ··· {{ rowActionLabel(asset) }}
-                </button>
-                <button v-else-if="asset.actions.includes('add')" class="link-action" type="button" @click="addAsset(asset)">
-                  {{ rowActionLabel(asset) }}
-                </button>
-                <button
-                  v-else-if="asset.actions.includes('request')"
-                  class="link-action"
-                  type="button"
-                  @click="requestAsset = asset"
-                >
-                  {{ rowActionLabel(asset) }}
-                </button>
-                <button v-else class="link-action" type="button" @click="openAsset(asset)">查看</button>
-              </div>
-            </article>
-          </div>
+              <span :class="['state', statusTone(asset)]">
+                <i aria-hidden="true"></i>{{ statusLabel(asset) }}
+              </span>
+            </div>
+            <button class="asset-name" type="button" @click="openAsset(asset)">{{ asset.name }}</button>
+            <p>{{ asset.description }}</p>
+            <div class="asset-meta">
+              <span>{{ asset.owner }}</span>
+              <span>{{ dateLabel(asset.updatedAt) }}</span>
+              <span>{{ asset.workspaceName }}</span>
+            </div>
+            <button v-if="asset.actions.includes('add')" class="link-action" type="button" @click="openAddDialog(asset)">添加</button>
+            <button v-else-if="asset.actions.includes('request')" class="link-action" type="button" @click="requestAsset = asset">申请</button>
+            <button v-else-if="asset.added" class="link-action consume" type="button" @click="consumeAsset(asset)">
+              {{ rowActionLabel(asset) }}
+            </button>
+          </article>
+        </div>
 
-          <div v-else class="asset-card-grid">
-            <article v-for="asset in visibleAssets" :key="asset.id" class="asset-card">
-              <div class="card-top">
-                <input
-                  class="check"
-                  type="checkbox"
-                  :checked="selectedIds.includes(asset.id)"
-                  :disabled="!asset.actions.includes('add')"
-                  :aria-label="`选择 ${asset.name}`"
-                  @change="toggleAsset(asset)"
-                />
-                <span class="asset-icon" aria-hidden="true">▣</span>
-                <span :class="['state', asset.added ? 'ok' : asset.authStatus === 'pending' ? 'wait' : 'plain']">
-                  {{ statusLabel(asset) }}
-                </span>
-              </div>
-              <button class="card-title" type="button" @click="openAsset(asset)">{{ asset.name }}</button>
-              <p>{{ asset.description }}</p>
-              <div class="asset-meta">
-                <span>{{ asset.owner }}</span>
-                <span>{{ dateLabel(asset.updatedAt) }}</span>
-                <span>{{ asset.workspaceName }}</span>
-              </div>
-            </article>
-          </div>
-        </section>
+        <div class="bulk-line" :class="{ show: selectedIds.length }">
+          <label>
+            <input
+              class="check"
+              type="checkbox"
+              :checked="!!selectedIds.length"
+              @change="selectedIds.length ? clearSelected() : selectVisibleAddable()"
+            />
+            全选
+          </label>
+          <span>已选 {{ selectedIds.length }} 项</span>
+          <button type="button" class="text-link" @click="clearSelected">取消选择</button>
+          <button class="primary" type="button" @click="openAddDialog()" :disabled="!selectedAddableAssets.length">
+            添加
+          </button>
+        </div>
       </section>
     </section>
+
+    <div v-if="addDialogOpen" class="modal-mask add-mask" @click.self="closeAddDialog">
+      <section class="request-modal add-modal">
+        <div class="modal-head">
+          <h2>
+            将「{{ addAssetTarget ? addAssetTarget.name : `${selectedAddableAssets.length} 个资产` }}」添加到
+          </h2>
+          <button type="button" title="关闭" @click="closeAddDialog">×</button>
+        </div>
+        <label>
+          <span>目标文件夹</span>
+          <select v-model="addTargetFolder">
+            <option value="root">我的数据 / 根目录</option>
+            <option v-for="space in data?.spaces || []" :key="space.id" :value="space.id">我的数据 / {{ space.name }}</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button type="button" @click="closeAddDialog">取消</button>
+          <button class="primary" type="button" @click="confirmAdd">确定添加</button>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="previewAsset" class="modal-mask preview-mask" @click.self="previewAsset = null">
+      <section class="preview-panel">
+        <div class="preview-head">
+          <div>
+            <span :class="['asset-icon', previewAsset.type]" aria-hidden="true">▣</span>
+            <h2>{{ previewAsset.name }}</h2>
+          </div>
+          <button type="button" title="关闭" @click="previewAsset = null">×</button>
+        </div>
+        <div class="preview-meta">
+          <span>所有者 <b>{{ previewAsset.owner }}</b></span>
+          <span>最近修改于 <b>{{ dateLabel(previewAsset.updatedAt) }}</b></span>
+          <span>数据空间 <b>{{ previewAsset.workspaceName }}</b></span>
+        </div>
+        <p>{{ previewAsset.description }}</p>
+        <div class="preview-tabs">
+          <b>数据预览</b>
+          <span>字段详情</span>
+        </div>
+        <div class="preview-empty">未获权资产不展示字段明细、样例数据或查询结果。</div>
+        <div class="modal-actions">
+          <button v-if="previewAsset.actions.includes('add')" type="button" @click="openAddDialog(previewAsset)">添加</button>
+          <button v-if="previewAsset.actions.includes('request')" class="primary" type="button" @click="requestAsset = previewAsset; previewAsset = null">申请消费</button>
+          <button v-if="previewAsset.actions.includes('ask')" class="primary" type="button" @click="consumeAsset(previewAsset)">开始问数</button>
+        </div>
+      </section>
+    </div>
 
     <div v-if="requestAsset" class="modal-mask" @click.self="requestAsset = null">
       <section class="request-modal">
@@ -398,33 +520,18 @@ onMounted(load)
   --line: var(--od-line, #dfe3ea);
   --bg: var(--od-bg, #f6f7fb);
   --card: var(--od-card, #fff);
-  min-height: 100%;
-  padding: 24px 28px 56px;
-  overflow: auto;
-  background: var(--bg);
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
   color: var(--ink);
+  overflow: hidden;
 }
 
 button {
-  min-height: 34px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
-  padding: 7px 12px;
   font: inherit;
-  font-weight: 650;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-button:hover:not(:disabled) {
-  border-color: var(--brand);
-  color: var(--brand);
 }
 
 button:disabled {
@@ -433,102 +540,196 @@ button:disabled {
 }
 
 .primary {
-  border-color: var(--brand);
+  min-height: 32px;
+  border: 1px solid var(--brand);
+  border-radius: 6px;
   background: var(--brand);
   color: #fff;
+  padding: 0 12px;
+  font-weight: 650;
 }
 
 .primary:hover:not(:disabled) {
   background: var(--od-brand-hover, #4338ca);
-  color: #fff;
 }
 
-.plaza-hero,
-.space-nav,
-.asset-panel,
-.side-card,
-.asset-card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-}
-
-.plaza-hero {
-  padding: 20px 22px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.plaza-hero p {
-  margin: 0;
+.text-link {
+  min-height: 0;
+  border: 0;
+  background: transparent;
   color: var(--brand);
-  font-size: 12px;
-  font-weight: 760;
+  padding: 0;
+  font-weight: 650;
 }
 
-.plaza-hero h1 {
-  margin: 7px 0 0;
-  font-size: 24px;
-  line-height: 1.2;
-  letter-spacing: 0;
+.text-link:hover {
+  text-decoration: underline;
 }
 
-.plaza-hero span {
-  display: block;
-  max-width: 1120px;
-  margin-top: 7px;
+.plaza-head {
+  flex-shrink: 0;
+  padding: 16px 20px 0;
+}
+
+.plaza-head h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 720;
+}
+
+.plaza-head p {
+  margin: 6px 0 0;
   color: var(--muted);
-  font-size: 13.5px;
-  line-height: 1.62;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-.hero-actions {
+.plaza-toolbar {
+  flex-shrink: 0;
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px 10px;
+}
+
+.type-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.type-tabs button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.type-tabs button.on {
+  background: #f2f3f5;
+  color: var(--ink);
+}
+
+.asset-search,
+.space-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.asset-search {
+  width: 220px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0 12px;
   flex-shrink: 0;
 }
 
-.plaza-grid {
-  margin-top: 16px;
+.asset-search span,
+.space-search span {
+  color: var(--faint);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.asset-search input,
+.space-search input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.view-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: #f0f1f3;
+}
+
+.view-toggle button {
+  width: 30px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #727780;
+  padding: 0;
+  font-size: 15px;
+}
+
+.view-toggle button.on {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.08);
+}
+
+.asset-workspace {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: 256px minmax(760px, 1fr) clamp(320px, 18vw, 380px);
-  gap: 16px;
-  align-items: start;
+  grid-template-columns: 220px minmax(0, 1fr);
+  border-top: 1px solid #edf0f2;
 }
 
-.space-nav {
-  padding: 12px;
+.space-pane {
+  min-width: 0;
+  overflow: auto;
+  padding: 16px 8px 20px 12px;
+  border-right: 1px solid #edf0f2;
 }
 
-.nav-title {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+.space-title,
+.space-group {
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.space-title {
+  padding: 0 8px;
   margin-bottom: 10px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 760;
 }
 
-.nav-title button {
-  min-height: 28px;
-  padding: 4px 9px;
-  font-size: 12px;
+.space-search {
+  height: 32px;
+  margin: 0 8px 12px;
+  padding: 0 10px;
 }
 
 .space-btn {
   width: 100%;
-  min-height: 40px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   border: 0;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  justify-content: space-between;
-  padding: 8px 10px;
+  padding: 0 8px;
   text-align: left;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .space-btn:hover {
@@ -539,7 +740,6 @@ button:disabled {
 .space-btn.on {
   background: var(--brand-soft);
   color: var(--brand);
-  font-weight: 720;
 }
 
 .space-btn span {
@@ -552,450 +752,293 @@ button:disabled {
 .space-btn em {
   color: var(--faint);
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
 }
 
-.space-divider {
-  height: 1px;
-  background: var(--line);
-  margin: 10px 0;
-}
-
-.mini-stat {
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.mini-stat button {
-  min-height: 76px;
-  display: grid;
-  justify-items: start;
-  align-content: center;
-  border-color: var(--line);
-  background: var(--bg);
-  white-space: normal;
-}
-
-.mini-stat button.on {
-  border-color: #c7d2fe;
-  background: var(--brand-soft);
-  color: var(--brand);
-}
-
-.mini-stat b {
-  color: var(--ink);
-  font-size: 18px;
-  line-height: 1.1;
-}
-
-.mini-stat span {
-  color: var(--muted);
-  font-size: 11.5px;
+.space-group {
+  margin: 18px 8px 6px;
 }
 
 .asset-panel {
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.toolbar {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) auto;
-  gap: 10px;
-  padding: 14px;
-  border-bottom: 1px solid var(--line);
-  align-items: center;
-}
-
-.search-wrap {
-  height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  min-width: 0;
-}
-
-.search-wrap span {
-  color: var(--faint);
-  font-size: 18px;
-  line-height: 1;
+.list-tools {
   flex-shrink: 0;
-}
-
-.search-wrap input {
-  min-width: 0;
-  width: 100%;
-  height: 32px;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  font-size: 13px;
-}
-
-.head-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.head-actions button {
-  min-height: 32px;
-  padding: 6px 10px;
-  font-size: 13px;
-}
-
-.type-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 12px 14px 0;
-  overflow-x: auto;
-  border-bottom: 1px solid var(--line);
-}
-
-.type-tabs button {
-  min-height: 36px;
-  padding: 0 12px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.type-tabs button.on {
-  color: var(--brand);
-  border-bottom-color: var(--brand);
-}
-
-.filters {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--line);
-  flex-wrap: wrap;
-}
-
-.filters > span {
-  color: var(--faint);
-  font-size: 12px;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 16px;
 }
 
 .seg {
   display: inline-flex;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
+  gap: 2px;
 }
 
 .seg button {
-  height: 30px;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 28px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  font-size: 12.5px;
+  padding: 0 10px;
+  font-size: 13px;
   font-weight: 650;
 }
 
 .seg button.on {
-  background: var(--card);
-  color: var(--brand);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
+  background: #f2f3f5;
+  color: var(--ink);
 }
 
-.asset-grid {
+.asset-count {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.asset-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 8px 16px;
+}
+
+.list-head-row,
+.folder-row,
+.asset-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 28px minmax(180px, 1.5fr) minmax(96px, 0.7fr) 148px 88px 72px;
   gap: 12px;
-  padding: 14px;
+  align-items: center;
+}
+
+.list-head-row {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 40px;
+  border-bottom: 1px solid #edf0f2;
+  background: #fff;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.folder-row {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-bottom: 1px solid #edf0f2;
+  border-radius: 0;
+  background: #fff;
+  color: var(--muted);
+  padding: 0;
+  text-align: left;
+}
+
+.folder-row:hover,
+.asset-row:hover {
+  background: #fafbff;
+}
+
+.asset-row {
+  min-height: 48px;
+  border-bottom: 1px solid #edf0f2;
+}
+
+.asset-row.picked {
+  background: #f5f7ff;
+}
+
+.check {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brand);
+}
+
+.name-cell {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.folder-cell i {
+  color: var(--faint);
+  font-style: normal;
+}
+
+.folder-cell b {
+  color: #f6a500;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.asset-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid #e8ebef;
+  border-radius: 6px;
+  background: #fff;
+  color: #6d63ff;
+  font-size: 14px;
+}
+
+.asset-name {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: left;
+}
+
+.asset-name:hover {
+  color: var(--brand);
+}
+
+.owner-cell,
+.time-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.state.ok {
+  color: #18b96f;
+}
+
+.state.wait {
+  color: #8a58ff;
+}
+
+.state.apply,
+.state.plain {
+  color: var(--brand);
+}
+
+.row-action {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.link-action {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  padding: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.link-action:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.link-action.consume {
+  color: #11a968;
+}
+
+.link-action.muted {
+  color: var(--faint);
+}
+
+.asset-card-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  align-content: start;
+  padding: 8px 16px 16px;
 }
 
 .asset-card {
   min-width: 0;
-  min-height: 244px;
-  padding: 14px;
-  display: grid;
-  grid-template-rows: auto 1fr auto auto;
-  gap: 10px;
-  box-shadow: none;
-}
-
-.asset-card:hover {
-  box-shadow: 0 10px 30px rgba(17, 24, 39, 0.08);
-}
-
-.asset-head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: start;
-}
-
-.check-wrap {
-  display: grid;
-  padding-top: 2px;
-}
-
-.check {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--brand);
-}
-
-.asset-title {
-  min-width: 0;
-}
-
-.asset-title button {
-  display: inline;
-  min-height: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ink);
-  padding: 0;
-  font-weight: 760;
-  font-size: 15px;
-  line-height: 1.35;
-  text-align: left;
-  white-space: normal;
-}
-
-.asset-title button:hover {
-  color: var(--brand);
-}
-
-.asset-title p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.asset-type {
-  min-height: 24px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  font-weight: 760;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  background: var(--bg);
-  white-space: nowrap;
-}
-
-.asset-type.dataset {
-  color: #1d4ed8;
-  background: #eff6ff;
-  border-color: #bfdbfe;
-}
-
-.asset-type.dashboard {
-  color: #047857;
-  background: #ecfdf3;
-  border-color: #bbf7d0;
-}
-
-.asset-type.combo {
-  color: #7c2d12;
-  background: #fff7ed;
-  border-color: #fed7aa;
-}
-
-.asset-type.file {
-  color: #854d0e;
-  background: #fefce8;
-  border-color: #fde68a;
-}
-
-.asset-type.api {
-  color: #6d28d9;
-  background: #f5f3ff;
-  border-color: #ddd6fe;
-}
-
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.meta-grid div {
-  min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid #edf0f2;
   border-radius: 8px;
-  background: var(--bg);
-  padding: 8px;
+  background: #fff;
+  padding: 12px;
 }
 
-.meta-grid span {
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.card-top .state {
+  margin-left: auto;
+}
+
+.asset-card .asset-name {
   display: block;
+  width: 100%;
+}
+
+.asset-card p {
+  margin: 6px 0 0;
   color: var(--faint);
-  font-size: 11px;
-  margin-bottom: 3px;
-}
-
-.meta-grid b {
-  display: block;
-  color: var(--ink);
   font-size: 12px;
-  font-weight: 680;
+  line-height: 1.45;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.chips {
+.asset-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chip,
-.badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 3px 7px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  font-weight: 680;
-  background: var(--card);
-  color: var(--muted);
-  border: 1px solid var(--line);
-}
-
-.badge.granted {
-  color: #047857;
-  border-color: #bbf7d0;
-  background: #ecfdf3;
-}
-
-.badge.mine {
-  color: #4338ca;
-  border-color: #c7d2fe;
-  background: var(--brand-soft);
-}
-
-.badge.requestable {
-  color: #92400e;
-  border-color: #fed7aa;
-  background: #fff7ed;
-}
-
-.badge.pending {
-  color: #b45309;
-  border-color: #fde68a;
-  background: #fffbeb;
-}
-
-.badge.denied {
-  color: var(--muted);
-  background: #eef0f3;
-}
-
-.asset-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.asset-actions button {
-  min-height: 30px;
-  padding: 5px 9px;
-  font-size: 13px;
-}
-
-.side {
-  display: grid;
   gap: 12px;
-}
-
-.side-card {
-  padding: 14px;
-}
-
-.side-card h2 {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 760;
-}
-
-.side-card h2 button {
-  min-height: 30px;
-  padding: 5px 9px;
-  font-size: 12px;
-}
-
-.side-card p {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.my-list,
-.flow {
-  margin-top: 12px;
-  display: grid;
-  gap: 8px;
-}
-
-.my-item,
-.flow div {
-  display: grid;
-  gap: 4px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-}
-
-.my-item b,
-.flow b {
-  color: var(--ink);
-  font-size: 13px;
-}
-
-.my-item span,
-.flow span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.my-item.muted {
+  margin: 10px 0;
   color: var(--faint);
   font-size: 12px;
 }
 
 .empty {
-  margin: 14px;
-  padding: 46px 16px;
+  margin: 16px;
+  padding: 48px 16px;
   text-align: center;
-  border: 1px dashed #cfd5df;
+  border: 1px dashed #d8dadd;
   border-radius: 8px;
   color: var(--muted);
   background: #fafbff;
@@ -1005,6 +1048,36 @@ button:disabled {
 
 .empty.error {
   color: #b42318;
+}
+
+.bulk-line {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-top: 1px solid #edf0f2;
+  background: #fff;
+  color: var(--muted);
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bulk-line.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bulk-line label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-line .primary {
+  margin-left: auto;
 }
 
 .modal-mask {
@@ -1026,9 +1099,11 @@ button:disabled {
   padding: 20px;
 }
 
-.request-modal h2 {
-  margin: 0 0 8px;
-  font-size: 20px;
+.request-modal h2,
+.preview-head h2,
+.modal-head h2 {
+  margin: 0;
+  font-size: 18px;
 }
 
 .request-modal p {
@@ -1046,14 +1121,23 @@ button:disabled {
   font-weight: 700;
 }
 
-.request-modal textarea {
+.request-modal textarea,
+.request-modal select {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid #d8dde7;
   border-radius: 8px;
   padding: 10px;
-  resize: vertical;
   font: inherit;
+}
+
+.request-modal textarea {
+  resize: vertical;
+}
+
+.request-modal select {
+  height: 38px;
+  background: #fff;
 }
 
 .modal-actions {
@@ -1061,6 +1145,95 @@ button:disabled {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 14px;
+}
+
+.modal-actions button:not(.primary) {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0 12px;
+}
+
+.modal-head,
+.preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-head button,
+.preview-head button {
+  min-height: 28px;
+  border: 0;
+  background: transparent;
+  color: #8a8f99;
+  padding: 0 4px;
+  font-size: 24px;
+}
+
+.preview-panel {
+  width: min(960px, calc(100vw - 80px));
+  max-height: min(760px, calc(100vh - 80px));
+  overflow: auto;
+  border: 1px solid #dfe3ea;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(17, 24, 39, 0.22);
+  padding: 22px;
+}
+
+.preview-head > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  margin-top: 22px;
+  color: #8a8f99;
+  font-size: 14px;
+}
+
+.preview-meta b {
+  margin-left: 6px;
+  color: #22252a;
+}
+
+.preview-panel > p {
+  margin: 12px 0 18px;
+  color: #555a62;
+}
+
+.preview-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.preview-tabs b,
+.preview-tabs span {
+  border-radius: 6px;
+  padding: 8px 14px;
+}
+
+.preview-tabs b {
+  background: #f2f3f5;
+}
+
+.preview-empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #d8dadd;
+  border-radius: 8px;
+  color: #8a8f99;
+  background: #fbfcff;
 }
 
 .page-toast {
@@ -1082,87 +1255,42 @@ button:disabled {
   transform: translate(-50%, 0);
 }
 
-@media (max-width: 1700px) {
-  .plaza-grid {
-    grid-template-columns: 248px minmax(0, 1fr) 318px;
+@media (max-width: 920px) {
+  .plaza-toolbar {
+    flex-wrap: wrap;
   }
 
-  .asset-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1400px) {
-  .plaza-grid {
-    grid-template-columns: 248px minmax(0, 1fr);
+  .asset-search {
+    width: 100%;
+    margin-left: 0;
+    order: 3;
   }
 
-  .side {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1180px) {
-  .plaza-grid {
-    grid-template-columns: 220px minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 860px) {
-  .plaza-page {
-    padding: 16px;
-  }
-
-  .plaza-hero {
-    flex-direction: column;
-    padding: 18px;
-  }
-
-  .hero-actions {
-    justify-content: flex-start;
-  }
-
-  .plaza-grid,
-  .side,
-  .toolbar,
-  .asset-grid {
+  .asset-workspace {
     grid-template-columns: 1fr;
   }
 
-  .toolbar {
-    align-items: stretch;
+  .space-pane {
+    max-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid #edf0f2;
   }
 
-  .head-actions {
-    justify-content: flex-start;
+  .list-head-row,
+  .folder-row,
+  .asset-row {
+    grid-template-columns: 28px minmax(0, 1fr) 72px;
   }
 
-  .type-tabs {
-    padding-left: 14px;
-    padding-right: 14px;
+  .list-head-row span:nth-child(n + 3),
+  .owner-cell,
+  .time-cell,
+  .asset-row > .state {
+    display: none;
   }
 
-  .seg {
-    overflow-x: auto;
-    max-width: 100%;
-  }
-
-  .asset-card {
-    min-height: 0;
-  }
-
-  .asset-head {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .asset-type {
-    grid-column: 2;
-    justify-self: start;
-  }
-
-  .asset-actions {
-    justify-content: flex-start;
+  .row-action {
+    grid-column: 3;
   }
 }
 </style>

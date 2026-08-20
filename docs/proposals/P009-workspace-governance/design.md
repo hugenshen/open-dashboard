@@ -258,6 +258,8 @@ FE → Java Public Run API → Harness → Java Internal API
 | `od_workspace_member` | 用户加入工作区 | 当前版本落用户-工作区-角色；后续再拆项目组继承 |
 | `od_role`、`od_permission`、`od_role_permission` | RBAC 权限字典和角色授权 | 用于计算 `AuthPrincipal.effectivePermissions` |
 | `od_menu_item`、`od_menu_permission` | 菜单字典和菜单访问条件 | `JdbcMenuProvider` 服务端过滤用户端 / 管理端菜单 |
+| `od_external_identity` | 外部身份绑定 | Google / OIDC 的 `provider + subject` 绑定本地 user |
+| `od_sso_state` | SSO 一次性 state | 保存 state hash、nonce、PKCE code verifier、登录后 redirect 和消费时间 |
 
 浏览器身份以 `OD_SESSION` HttpOnly Cookie 为准。`X-User-Id`、`X-User-Perms` 等 header 只允许带有效 `X-OD-Internal-Token` 的 Java/Harness 内部调用使用，避免前端直接放大权限。
 
@@ -308,7 +310,8 @@ effective = AuthN 用户身份
 第一阶段可以支持三种来源：
 
 - 本地用户：本阶段已实现，支持登录、注册、修改密码、退出和切换工作区。
-- OIDC / SSO：企业接入推荐路径，后续作为独立 provider 接入，回调后仍由 Java 建立 `OD_SESSION`。
+- Google / OIDC SSO：本阶段已实现通用 OIDC provider，支持 Google、Azure AD、Okta、Keycloak、自建 IdP 等授权码登录；回调后由 Java 绑定/创建本地 user 并建立 `OD_SESSION`。
+- SAML SSO：作为后续企业增强，接入后也必须落到同一 user/session/permission 模型。
 - 外部 header adapter：仅保留给可信内部网关或 Harness 内部调用，必须校验 `X-OD-Internal-Token`。
 
 ### 5.1.1 认证与账号通用功能
@@ -318,7 +321,7 @@ effective = AuthN 用户身份
 | 页面 / 交互 | 入口 | 结果 |
 |-------------|------|------|
 | 登录 | `login.html` | 账号密码登录后进入上次工作区或工作区选择 |
-| 企业 SSO 登录 | `login.html` | 后续跳转身份提供方，回调后由 Java 建立 user session |
+| 企业 SSO 登录 | `login.html` | 跳转 Google 或通用 OIDC 身份提供方，回调后由 Java 建立 user session |
 | 忘记密码 | `login.html#reset` | 发送一次性重置链接，重置成功后注销其它设备 |
 | 注册 | `register.html` | 创建 user；可用邀请码加入工作区，或创建新工作区 |
 | 账号设置 | 账号下拉 → `account-settings.html` | 修改个人资料、语言、通知偏好 |

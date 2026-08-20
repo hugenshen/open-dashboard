@@ -22,6 +22,8 @@ public class InMemoryIdentityRepository implements IdentityRepository {
     private final Map<String, PasswordCredential> credentials = new ConcurrentHashMap<>();
     private final Map<String, AuthSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> workspaceRolesByUser = new ConcurrentHashMap<>();
+    private final Map<String, String> userIdByExternal = new ConcurrentHashMap<>();
+    private final Map<String, SsoState> ssoStates = new ConcurrentHashMap<>();
 
     @Override
     public Optional<UserAccount> findUserByUsername(String username) {
@@ -35,6 +37,20 @@ public class InMemoryIdentityRepository implements IdentityRepository {
     }
 
     @Override
+    public Optional<UserAccount> findUserByEmail(String email) {
+        if (email == null) return Optional.empty();
+        return usersById.values().stream()
+                .filter(u -> u.email() != null && u.email().equalsIgnoreCase(email))
+                .findFirst();
+    }
+
+    @Override
+    public Optional<UserAccount> findUserByExternalIdentity(String provider, String subject) {
+        String id = userIdByExternal.get(provider + "|" + subject);
+        return id == null ? Optional.empty() : findUserById(id);
+    }
+
+    @Override
     public Optional<PasswordCredential> passwordByUserId(String userId) {
         return Optional.ofNullable(credentials.get(userId));
     }
@@ -45,6 +61,18 @@ public class InMemoryIdentityRepository implements IdentityRepository {
         userIdByUsername.put(user.username(), user.id());
         credentials.put(user.id(), credential(user.id(), passwordHash));
         workspaceRolesByUser.computeIfAbsent(user.id(), k -> new LinkedHashSet<>()).add(workspaceId + "|" + roleCode);
+    }
+
+    @Override
+    public void createFederatedUser(UserAccount user, String workspaceId, String roleCode) {
+        usersById.put(user.id(), user);
+        userIdByUsername.put(user.username(), user.id());
+        workspaceRolesByUser.computeIfAbsent(user.id(), k -> new LinkedHashSet<>()).add(workspaceId + "|" + roleCode);
+    }
+
+    @Override
+    public void upsertExternalIdentity(String provider, String subject, String userId, String email, String displayName, String rawProfile, long now) {
+        userIdByExternal.put(provider + "|" + subject, userId);
     }
 
     @Override
@@ -114,6 +142,23 @@ public class InMemoryIdentityRepository implements IdentityRepository {
                     old.expiresAt(), now, old.revokedAt(), old.userAgent()
             ));
         }
+    }
+
+    @Override
+    public void saveSsoState(SsoState state) {
+        ssoStates.put(state.stateHash(), state);
+    }
+
+    @Override
+    public Optional<SsoState> consumeSsoState(String stateHash, long now) {
+        SsoState old = ssoStates.get(stateHash);
+        if (old == null || !old.activeAt(now)) return Optional.empty();
+        SsoState consumed = new SsoState(
+                old.stateHash(), old.provider(), old.nonce(), old.codeVerifier(),
+                old.postLoginRedirect(), old.createdAt(), old.expiresAt(), now
+        );
+        ssoStates.put(stateHash, consumed);
+        return Optional.of(old);
     }
 
     @Override

@@ -68,6 +68,12 @@ export type ChangePasswordRequest = {
   newPassword: string
 }
 
+export type SsoProvider = {
+  id: string
+  label: string
+  ready: boolean
+}
+
 export const authApi = {
   login: async (data: LoginRequest) => {
     const me = await apiFetch<AuthMe>('/auth/login', { method: 'POST', data })
@@ -94,5 +100,6 @@ export const authApi = {
   changePassword: (data: ChangePasswordRequest) =>
     apiFetch<{ ok: boolean }>('/auth/password', { method: 'POST', data }),
   me: () => apiFetch<AuthMe>('/auth/me'),
-  menus: () => apiFetch<MenuItem[]>('/auth/menus')
+  menus: () => apiFetch<MenuItem[]>('/auth/menus'),
+  ssoProviders: () => apiFetch<SsoProvider[]>('/auth/sso/providers')
 }
