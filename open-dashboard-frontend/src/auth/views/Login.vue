@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { DEMO_ADMIN_AUTH, DEMO_ANALYST_AUTH, setAuthHeaders, type AuthHeaderBundle } from '../../api/http'
+import { authApi } from '../../api/auth'
 
 const router = useRouter()
 const route = useRoute()
 
 const mode = ref<'admin' | 'analyst'>('admin')
 const account = ref('demo')
-const password = ref('')
+const password = ref('demo123456')
 const error = ref('')
+const submitting = ref(false)
 
 const redirect = computed(() => {
   const raw = route.query.redirect
@@ -19,41 +20,37 @@ const redirect = computed(() => {
 const loggedOut = computed(() => route.query.logged_out === '1')
 const expired = computed(() => route.query.expired === '1')
 
-function profile(): AuthHeaderBundle {
-  if (mode.value === 'analyst') {
-    return {
-      ...DEMO_ANALYST_AUTH,
-      userId: account.value.trim() || DEMO_ANALYST_AUTH.userId,
-      displayName: account.value.trim() ? '分析师' : DEMO_ANALYST_AUTH.displayName
-    }
-  }
-  return {
-    ...DEMO_ADMIN_AUTH,
-    userId: account.value.trim() || DEMO_ADMIN_AUTH.userId,
-    displayName: account.value.trim() ? '演示管理员' : DEMO_ADMIN_AUTH.displayName
-  }
-}
-
 async function login() {
   error.value = ''
   if (!account.value.trim()) {
     error.value = '请输入账号'
     return
   }
-  setAuthHeaders(profile())
-  await router.replace(redirect.value)
+  if (!password.value) {
+    error.value = '请输入密码'
+    return
+  }
+  submitting.value = true
+  try {
+    await authApi.login({ username: account.value.trim(), password: password.value })
+    await router.replace(redirect.value)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '登录失败'
+  } finally {
+    submitting.value = false
+  }
 }
 
 function useAdmin() {
   mode.value = 'admin'
   account.value = 'demo'
-  password.value = 'demo'
+  password.value = 'demo123456'
 }
 
 function useAnalyst() {
   mode.value = 'analyst'
   account.value = 'analyst'
-  password.value = 'demo'
+  password.value = 'analyst123456'
 }
 </script>
 
@@ -81,10 +78,12 @@ function useAnalyst() {
         </label>
         <label>
           <span>密码</span>
-          <input v-model="password" autocomplete="current-password" placeholder="demo" type="password" />
+          <input v-model="password" autocomplete="current-password" placeholder="demo123456" type="password" />
         </label>
         <p v-if="error" class="error">{{ error }}</p>
-        <button class="primary" type="submit">登录</button>
+        <button class="primary" type="submit" :disabled="submitting">
+          {{ submitting ? '登录中...' : '登录' }}
+        </button>
       </form>
 
       <div class="tips">

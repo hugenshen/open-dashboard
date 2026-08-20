@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { getAuthBundle } from '../../api/http'
 import { workspaceApi, type DataAssetVO, type DataPlazaVO } from '../../workspace/api'
 
+type PlazaView = 'all' | 'askable' | 'requestable' | 'pending' | 'added'
+
 const router = useRouter()
 const loading = ref(false)
 const error = ref('')
@@ -11,10 +13,11 @@ const data = ref<DataPlazaVO | null>(null)
 const keyword = ref('')
 const activeSpace = ref('all')
 const activeType = ref('all')
-type PlazaView = 'all' | 'askable' | 'requestable' | 'pending' | 'added'
 const activeView = ref<PlazaView>('all')
+const displayMode = ref<'grid' | 'list'>('list')
 const requestAsset = ref<DataAssetVO | null>(null)
 const requestPurpose = ref('用于经营分析、日报追踪和异常复盘。')
+const selectedIds = ref<string[]>([])
 const toast = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -26,6 +29,24 @@ const askableAssets = computed(() => assets.value.filter((asset) => asset.action
 const requestableAssets = computed(() =>
   assets.value.filter((asset) => asset.authStatus === 'requestable' && asset.actions.includes('request'))
 )
+const pendingAssets = computed(() => assets.value.filter((asset) => asset.authStatus === 'pending'))
+
+const typeTabs = [
+  { key: 'all', label: '全部资产' },
+  { key: 'dataset', label: '数据集' },
+  { key: 'dashboard', label: '仪表板' },
+  { key: 'combo', label: '数据表组合' },
+  { key: 'file', label: '文件' },
+  { key: 'api', label: 'API 数据' }
+] as const
+
+const statusTabs: Array<{ key: PlazaView; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'askable', label: '已获权' },
+  { key: 'requestable', label: '可申请' },
+  { key: 'pending', label: '申请中' },
+  { key: 'added', label: '我的数据' }
+]
 
 const visibleAssets = computed(() => {
   const q = keyword.value.trim().toLowerCase()
@@ -38,41 +59,35 @@ const visibleAssets = computed(() => {
       (activeView.value === 'requestable' && asset.authStatus === 'requestable') ||
       (activeView.value === 'pending' && asset.authStatus === 'pending') ||
       (activeView.value === 'added' && asset.added)
-    const text = `${asset.name} ${asset.description} ${asset.owner} ${asset.tags.join(' ')}`.toLowerCase()
+    const text = `${asset.name} ${asset.description} ${asset.owner} ${asset.workspaceName} ${asset.tags.join(' ')}`.toLowerCase()
     return matchesSpace && matchesType && matchesView && (!q || text.includes(q))
   })
 })
 
-const statCards = computed<Array<{ key: PlazaView; label: string; value: number; hint: string }>>(() => [
-  { key: 'askable', label: '直接问数', value: askableAssets.value.length, hint: '已授权数据集' },
-  { key: 'requestable', label: '申请消费', value: requestableAssets.value.length, hint: '等审批后可用' },
-  { key: 'added', label: '我的数据', value: myData.value.length, hint: '已加入范围' }
-])
+const selectableAssets = computed(() => visibleAssets.value.filter((asset) => asset.actions.includes('add')))
 
-const typeTabs = [
-  { key: 'all', label: '全部' },
-  { key: 'dataset', label: '数据集' },
-  { key: 'dashboard', label: '仪表板' },
-  { key: 'combo', label: '数据表组合' },
-  { key: 'file', label: '文件' },
-  { key: 'api', label: 'API 数据' }
-]
+const selectedAddableAssets = computed(() =>
+  assets.value.filter((asset) => selectedIds.value.includes(asset.id) && asset.actions.includes('add'))
+)
 
-const statusTabs = [
-  { key: 'all', label: '全部' },
-  { key: 'askable', label: '可问' },
-  { key: 'requestable', label: '可申请' },
-  { key: 'pending', label: '申请中' },
-  { key: 'added', label: '我的数据' }
-] as const
-
-function focusTask(key: PlazaView) {
+function focusView(key: PlazaView) {
   activeView.value = key
-  if (key === 'askable') {
-    activeType.value = 'dataset'
-  } else if (key === 'all') {
-    activeType.value = 'all'
-  }
+  selectedIds.value = []
+}
+
+function toggleAsset(asset: DataAssetVO) {
+  if (!asset.actions.includes('add')) return
+  selectedIds.value = selectedIds.value.includes(asset.id)
+    ? selectedIds.value.filter((id) => id !== asset.id)
+    : [...selectedIds.value, asset.id]
+}
+
+function selectVisibleAddable() {
+  selectedIds.value = selectableAssets.value.map((asset) => asset.id)
+}
+
+function clearSelected() {
+  selectedIds.value = []
 }
 
 function flash(msg: string) {
@@ -88,6 +103,7 @@ async function load() {
   error.value = ''
   try {
     data.value = await workspaceApi.dataPlaza(getAuthBundle().workspaceId)
+    selectedIds.value = []
   } catch (e) {
     error.value = e instanceof Error ? e.message : '数据广场加载失败'
   } finally {
@@ -100,11 +116,19 @@ function typeLabel(type: DataAssetVO['type']) {
 }
 
 function statusLabel(asset: DataAssetVO) {
-  if (asset.added) return '我的数据'
-  if (asset.authStatus === 'granted') return '已授权'
+  if (asset.added) return '已添加'
+  if (asset.authStatus === 'granted') return '已获权'
   if (asset.authStatus === 'requestable') return '可申请'
   if (asset.authStatus === 'pending') return '申请中'
   return '不可用'
+}
+
+function rowActionLabel(asset: DataAssetVO) {
+  if (asset.added) return '已添加'
+  if (asset.authStatus === 'pending') return '待审批'
+  if (asset.actions.includes('add')) return '添加'
+  if (asset.actions.includes('request')) return '申请'
+  return '查看'
 }
 
 function dateLabel(ts: number) {
@@ -122,6 +146,18 @@ async function addAsset(asset: DataAssetVO) {
     flash('已加入我的数据')
   } catch (e) {
     flash(e instanceof Error ? e.message : '加入失败')
+  }
+}
+
+async function bulkAdd() {
+  const targets = selectedAddableAssets.value
+  if (!targets.length) return
+  try {
+    await Promise.all(targets.map((asset) => workspaceApi.addToMyData(workspaceId.value, asset.id)))
+    await load()
+    flash(`已加入 ${targets.length} 个资产`)
+  } catch (e) {
+    flash(e instanceof Error ? e.message : '批量加入失败')
   }
 }
 
@@ -159,158 +195,178 @@ onMounted(load)
 
 <template>
   <main class="plaza-page">
-    <section class="plaza-head">
-      <div class="head-copy">
-        <p>用户使用端 · 企业资产发现</p>
-        <h1>数据广场</h1>
-        <span>
-          先看可直接问数的数据集；没有合适资产时再申请消费，审批通过后会进入我的数据。
-        </span>
+    <section class="market-frame">
+      <div class="market-hero">
+        <p>企业资产</p>
+        <h1>优选数据资产</h1>
+        <span>组织内可用的全部数据资产，添加到 <button type="button" @click="focusView('added')">我的数据</button> 后可用于分析</span>
+        <label class="hero-search">
+          <span aria-hidden="true">⌕</span>
+          <input v-model="keyword" type="search" placeholder="您需要什么数据？搜一下" />
+        </label>
       </div>
-      <div class="task-cards" aria-label="数据广场任务入口">
+
+      <div class="type-tabs" aria-label="资产分类">
         <button
-          v-for="card in statCards"
-          :key="card.key"
+          v-for="tab in typeTabs.filter((item) => item.key !== 'all')"
+          :key="tab.key"
           type="button"
-          class="task-card"
-          :class="{ on: activeView === card.key }"
-          @click="focusTask(card.key)"
+          :class="{ on: activeType === tab.key }"
+          @click="activeType = tab.key"
         >
-          <strong>{{ card.value }}</strong>
-          <span>{{ card.label }}</span>
-          <small>{{ card.hint }}</small>
+          {{ tab.label }}
         </button>
       </div>
-    </section>
 
-    <section class="plaza-grid">
-      <aside class="plaza-side">
-        <div class="side-title">按数据空间看</div>
-        <button class="space-row" :class="{ on: activeSpace === 'all' }" type="button" @click="activeSpace = 'all'">
-          <b>全部资产</b><span>{{ assets.length }}</span>
-        </button>
-        <button
-          v-for="space in data?.spaces || []"
-          :key="space.id"
-          class="space-row"
-          :class="{ on: activeSpace === space.id }"
-          type="button"
-          @click="activeSpace = space.id"
-        >
-          <b>{{ space.name }}</b><span>{{ space.assetCount }}</span>
-        </button>
-        <button class="refresh-row" type="button" @click="load" :disabled="loading">
-          {{ loading ? '刷新中...' : '刷新资产' }}
-        </button>
-      </aside>
-
-      <section class="plaza-main">
-        <div class="plaza-toolbar">
-          <input v-model="keyword" type="search" placeholder="搜索资产、业务域、负责人或标签" />
-          <button type="button" @click="focusTask('askable')">只看可问</button>
-        </div>
-
-        <div class="view-tabs" aria-label="消费状态筛选">
-          <button
-            v-for="tab in statusTabs"
-            :key="tab.key"
-            type="button"
-            :class="{ on: activeView === tab.key }"
-            @click="focusTask(tab.key)"
-          >
-            {{ tab.label }}
+      <section class="asset-workspace">
+        <aside class="space-pane">
+          <div class="space-title">数据空间</div>
+          <label class="space-search">
+            <span aria-hidden="true">⌕</span>
+            <input v-model="keyword" type="search" placeholder="搜索空间" />
+          </label>
+          <button class="space-btn" :class="{ on: activeSpace === 'all' }" type="button" @click="activeSpace = 'all'">
+            <span>全部空间</span><em>{{ assets.length }}</em>
           </button>
-        </div>
-
-        <div class="type-tabs" aria-label="资产类型筛选">
           <button
-            v-for="tab in typeTabs"
-            :key="tab.key"
+            v-for="space in data?.spaces || []"
+            :key="space.id"
+            class="space-btn"
+            :class="{ on: activeSpace === space.id }"
             type="button"
-            :class="{ on: activeType === tab.key }"
-            @click="activeType = tab.key"
+            @click="activeSpace = space.id"
           >
-            {{ tab.label }}
+            <span>{{ space.name }}</span><em>{{ space.assetCount }}</em>
           </button>
-        </div>
+          <div class="space-group">快捷筛选</div>
+          <button class="space-btn" :class="{ on: activeView === 'added' }" type="button" @click="focusView('added')">
+            <span>已加入空间</span><em>{{ myData.length }}</em>
+          </button>
+          <button class="space-btn" :class="{ on: activeView === 'pending' }" type="button" @click="focusView('pending')">
+            <span>我的申请</span><em>{{ requests.length }}</em>
+          </button>
+        </aside>
 
-        <div v-if="loading" class="empty">正在加载数据广场资产...</div>
-        <div v-else-if="error" class="empty error">{{ error }}</div>
-        <div v-else-if="!visibleAssets.length" class="empty">当前筛选条件下没有可见资产</div>
+        <section class="asset-panel">
+          <div class="list-tools">
+            <div class="seg" aria-label="消费状态">
+              <button
+                v-for="tab in statusTabs"
+                :key="tab.key"
+                type="button"
+                :class="{ on: activeView === tab.key }"
+                @click="focusView(tab.key)"
+              >
+                {{ tab.label }}
+              </button>
+            </div>
+            <div class="tool-spacer"></div>
+            <span class="asset-count">{{ visibleAssets.length }} 个资产</span>
+            <div class="view-toggle" aria-label="视图切换">
+              <button type="button" :class="{ on: displayMode === 'grid' }" title="卡片视图" @click="displayMode = 'grid'">
+                <span aria-hidden="true">▦</span>
+              </button>
+              <button type="button" :class="{ on: displayMode === 'list' }" title="列表视图" @click="displayMode = 'list'">
+                <span aria-hidden="true">☰</span>
+              </button>
+            </div>
+          </div>
 
-        <div v-else class="asset-list">
-          <article v-for="asset in visibleAssets" :key="asset.id" class="asset-row">
-            <div class="asset-main">
-              <div class="asset-title">
-                <strong>{{ asset.name }}</strong>
-                <span :class="['asset-type', asset.type]">{{ typeLabel(asset.type) }}</span>
-                <span :class="['status-badge', asset.authStatus, { added: asset.added }]">{{ statusLabel(asset) }}</span>
+          <div class="bulk-line" :class="{ show: selectedIds.length }">
+            <span>已选择 {{ selectedIds.length }} 个资产</span>
+            <button type="button" @click="selectVisibleAddable" :disabled="!selectableAssets.length">选择可添加</button>
+            <button type="button" @click="clearSelected">取消</button>
+            <button class="primary" type="button" @click="bulkAdd" :disabled="!selectedAddableAssets.length">
+              批量添加
+            </button>
+          </div>
+
+          <div v-if="loading" class="empty">正在加载数据广场资产...</div>
+          <div v-else-if="error" class="empty error">{{ error }}</div>
+          <div v-else-if="!visibleAssets.length" class="empty">
+            没有匹配资产，可以切换数据空间、资产类型或搜索关键词。
+          </div>
+
+          <div v-else-if="displayMode === 'list'" class="asset-list">
+            <article v-for="asset in visibleAssets" :key="asset.id" class="asset-row">
+              <input
+                class="check"
+                type="checkbox"
+                :checked="selectedIds.includes(asset.id)"
+                :disabled="!asset.actions.includes('add')"
+                :aria-label="`选择 ${asset.name}`"
+                @change="toggleAsset(asset)"
+              />
+              <span class="asset-icon" aria-hidden="true">▣</span>
+              <div class="asset-copy">
+                <button type="button" @click="openAsset(asset)">{{ asset.name }}</button>
+                <p>{{ asset.description }}</p>
+                <div class="asset-meta">
+                  <span>{{ asset.owner }}</span>
+                  <span>{{ dateLabel(asset.updatedAt) }}</span>
+                  <span>{{ asset.workspaceName }}</span>
+                </div>
               </div>
+              <div class="row-action">
+                <button
+                  v-if="asset.added"
+                  class="state ok"
+                  type="button"
+                  @click="asset.actions.includes('ask') ? startAsk(asset) : openAsset(asset)"
+                >
+                  ✓ {{ rowActionLabel(asset) }}
+                </button>
+                <button
+                  v-else-if="asset.authStatus === 'pending'"
+                  class="state wait"
+                  type="button"
+                  disabled
+                >
+                  ··· {{ rowActionLabel(asset) }}
+                </button>
+                <button v-else-if="asset.actions.includes('add')" class="link-action" type="button" @click="addAsset(asset)">
+                  {{ rowActionLabel(asset) }}
+                </button>
+                <button
+                  v-else-if="asset.actions.includes('request')"
+                  class="link-action"
+                  type="button"
+                  @click="requestAsset = asset"
+                >
+                  {{ rowActionLabel(asset) }}
+                </button>
+                <button v-else class="link-action" type="button" @click="openAsset(asset)">查看</button>
+              </div>
+            </article>
+          </div>
+
+          <div v-else class="asset-card-grid">
+            <article v-for="asset in visibleAssets" :key="asset.id" class="asset-card">
+              <div class="card-top">
+                <input
+                  class="check"
+                  type="checkbox"
+                  :checked="selectedIds.includes(asset.id)"
+                  :disabled="!asset.actions.includes('add')"
+                  :aria-label="`选择 ${asset.name}`"
+                  @change="toggleAsset(asset)"
+                />
+                <span class="asset-icon" aria-hidden="true">▣</span>
+                <span :class="['state', asset.added ? 'ok' : asset.authStatus === 'pending' ? 'wait' : 'plain']">
+                  {{ statusLabel(asset) }}
+                </span>
+              </div>
+              <button class="card-title" type="button" @click="openAsset(asset)">{{ asset.name }}</button>
               <p>{{ asset.description }}</p>
-              <div class="asset-foot">
-                <span>{{ asset.workspaceName }}</span>
+              <div class="asset-meta">
                 <span>{{ asset.owner }}</span>
                 <span>{{ dateLabel(asset.updatedAt) }}</span>
-                <span v-for="tag in asset.tags.slice(0, 3)" :key="tag">{{ tag }}</span>
+                <span>{{ asset.workspaceName }}</span>
               </div>
-            </div>
-            <div class="asset-actions">
-              <button v-if="asset.actions.includes('ask')" class="primary" type="button" @click="startAsk(asset)">
-                开始问数
-              </button>
-              <button v-if="asset.actions.includes('open')" class="primary" type="button" @click="openAsset(asset)">
-                打开
-              </button>
-              <button v-if="asset.actions.includes('add')" type="button" @click="addAsset(asset)">
-                加入我的数据
-              </button>
-              <button
-                v-if="asset.actions.includes('request') && asset.authStatus !== 'pending'"
-                class="primary"
-                type="button"
-                @click="requestAsset = asset"
-              >
-                申请消费
-              </button>
-              <button v-if="asset.authStatus === 'pending'" type="button" disabled>申请中</button>
-              <button type="button" @click="openAsset(asset)">查看说明</button>
-            </div>
-          </article>
-        </div>
+            </article>
+          </div>
+        </section>
       </section>
-
-      <aside class="plaza-right">
-        <section>
-          <div class="side-title">下一步</div>
-          <div class="next-step">
-            <b>先用可问数据集</b>
-            <span>看到“开始问数”就可以直接分析，不需要理解后台数据源。</span>
-            <button type="button" @click="focusTask('askable')">查看可问</button>
-          </div>
-          <div class="next-step muted">
-            <b>没有合适数据</b>
-            <span>申请消费后，资产负责人审批通过才会进入可用范围。</span>
-            <button type="button" @click="focusTask('requestable')">去申请</button>
-          </div>
-        </section>
-
-        <section>
-          <div class="side-title">我的数据</div>
-          <div v-for="asset in myData.slice(0, 4)" :key="asset.id" class="mini-card">
-            <b>{{ asset.name }}</b>
-            <span>{{ typeLabel(asset.type) }} · 可消费</span>
-          </div>
-          <div v-if="!myData.length" class="mini-card muted">暂无已加入资产</div>
-        </section>
-
-        <section v-if="requests.length">
-          <div class="side-title">申请进度</div>
-          <div v-for="req in requests" :key="req.id" class="mini-card">
-            <b>{{ req.assetName }}</b>
-            <span>{{ req.status === 'pending' ? '审批中' : req.status }} · {{ req.approver }}</span>
-          </div>
-        </section>
-      </aside>
     </section>
 
     <div v-if="requestAsset" class="modal-mask" @click.self="requestAsset = null">
@@ -334,101 +390,41 @@ onMounted(load)
 
 <style scoped>
 .plaza-page {
+  --brand: var(--od-brand, #4f46e5);
+  --brand-soft: var(--od-brand-soft, #eef2ff);
+  --ink: var(--od-ink, #111827);
+  --muted: var(--od-muted, #4b5563);
+  --faint: var(--od-faint, #6b7280);
+  --line: var(--od-line, #dfe3ea);
+  --bg: var(--od-bg, #f6f7fb);
+  --card: var(--od-card, #fff);
   min-height: 100%;
-  padding: 22px 28px 40px;
+  padding: 24px 28px 56px;
   overflow: auto;
-  background: #f6f7fb;
-  color: #111827;
-}
-
-.plaza-head {
-  border: 1px solid #dfe3ea;
-  background: #fff;
-  border-radius: 10px;
-  padding: 20px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.head-copy {
-  min-width: 0;
-}
-
-.head-copy > p {
-  margin: 0 0 8px;
-  color: #4f46e5;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.head-copy > h1 {
-  margin: 0 0 8px;
-  font-size: 28px;
-  line-height: 1.1;
-}
-
-.head-copy > span {
-  display: block;
-  max-width: 980px;
-  color: #4b5563;
-  line-height: 1.7;
-}
-
-.task-cards {
-  display: grid;
-  grid-template-columns: repeat(3, 150px);
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.task-card {
-  min-height: 76px;
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  padding: 12px;
-  text-align: left;
-  background: #f8fafc;
-}
-
-.task-card strong {
-  font-size: 22px;
-  line-height: 1;
-}
-
-.task-card span {
-  margin-top: 4px;
-  color: #111827;
-}
-
-.task-card small {
-  margin-top: 2px;
-  color: #6b7280;
-}
-
-.task-card.on {
-  border-color: #c7d2fe;
-  background: #eef2ff;
-  color: #3730a3;
+  background: var(--bg);
+  color: var(--ink);
 }
 
 button {
   min-height: 34px;
-  border: 1px solid #d8dde7;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
-  color: #111827;
-  padding: 0 13px;
+  background: var(--card);
+  color: var(--ink);
+  padding: 7px 12px;
   font: inherit;
   font-weight: 650;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 button:hover:not(:disabled) {
-  border-color: #4f46e5;
-  color: #4338ca;
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
 button:disabled {
@@ -437,290 +433,574 @@ button:disabled {
 }
 
 .primary {
-  border-color: #4f46e5;
-  background: #4f46e5;
+  border-color: var(--brand);
+  background: var(--brand);
   color: #fff;
 }
 
 .primary:hover:not(:disabled) {
-  background: #4338ca;
+  background: var(--od-brand-hover, #4338ca);
   color: #fff;
 }
 
+.plaza-hero,
+.space-nav,
+.asset-panel,
+.side-card,
+.asset-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.plaza-hero {
+  padding: 20px 22px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.plaza-hero p {
+  margin: 0;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.plaza-hero h1 {
+  margin: 7px 0 0;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.plaza-hero span {
+  display: block;
+  max-width: 1120px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.62;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
 .plaza-grid {
-  display: grid;
-  grid-template-columns: 240px minmax(720px, 1fr) 300px;
-  gap: 16px;
   margin-top: 16px;
+  display: grid;
+  grid-template-columns: 256px minmax(760px, 1fr) clamp(320px, 18vw, 380px);
+  gap: 16px;
   align-items: start;
 }
 
-.plaza-side,
-.plaza-main,
-.plaza-right section {
-  border: 1px solid #dfe3ea;
-  background: #fff;
-  border-radius: 10px;
+.space-nav {
+  padding: 12px;
 }
 
-.plaza-side {
-  padding: 14px;
-  position: sticky;
-  top: 0;
-}
-
-.side-title {
-  font-size: 14px;
-  font-weight: 750;
-  margin-bottom: 10px;
-}
-
-.space-row {
-  width: 100%;
-  min-height: 42px;
+.nav-title {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.nav-title button {
+  min-height: 28px;
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+.space-btn {
+  width: 100%;
+  min-height: 40px;
   border: 0;
   background: transparent;
-  padding: 0 10px;
-  color: #4b5563;
+  color: var(--muted);
+  justify-content: space-between;
+  padding: 8px 10px;
+  text-align: left;
 }
 
-.space-row.on {
-  background: #eef2ff;
-  color: #3730a3;
+.space-btn:hover {
+  background: var(--bg);
+  color: var(--ink);
 }
 
-.refresh-row {
-  width: 100%;
-  margin-top: 14px;
-  border-top: 1px solid #e5e7eb;
-  padding-top: 14px;
+.space-btn.on {
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 720;
 }
 
-.plaza-main {
+.space-btn span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-btn em {
+  color: var(--faint);
+  flex-shrink: 0;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.space-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 10px 0;
+}
+
+.mini-stat {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mini-stat button {
+  min-height: 76px;
+  display: grid;
+  justify-items: start;
+  align-content: center;
+  border-color: var(--line);
+  background: var(--bg);
+  white-space: normal;
+}
+
+.mini-stat button.on {
+  border-color: #c7d2fe;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.mini-stat b {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.mini-stat span {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.asset-panel {
   min-width: 0;
   overflow: hidden;
 }
 
-.plaza-toolbar {
-  display: flex;
-  gap: 10px;
-  padding: 14px;
-  border-bottom: 1px solid #dfe3ea;
-}
-
-.plaza-toolbar input {
-  flex: 1;
-  min-width: 0;
-  height: 38px;
-  border: 1px solid #d8dde7;
-  border-radius: 8px;
-  background: #f7f8fc;
-  padding: 0 12px;
-  font: inherit;
-}
-
-.view-tabs,
-.type-tabs {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 11px 14px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.view-tabs button,
-.type-tabs button {
-  min-height: 32px;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.view-tabs button.on,
-.type-tabs button.on {
-  background: #eef2ff;
-  border-color: #c7d2fe;
-  color: #3730a3;
-}
-
-.type-tabs {
-  background: #fbfcff;
-}
-
-.type-tabs button {
-  min-height: 28px;
-  color: #4b5563;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.asset-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-}
-
-.asset-row {
-  border: 1px solid #dfe3ea;
-  border-radius: 10px;
-  background: #fff;
-  padding: 14px 14px 14px 16px;
-  min-width: 0;
+.toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
   align-items: center;
 }
 
-.asset-title,
-.asset-foot,
-.asset-actions {
+.search-wrap {
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  min-width: 0;
+}
+
+.search-wrap span {
+  color: var(--faint);
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.search-wrap input {
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.head-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.head-actions button {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.type-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px 14px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.type-tabs button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.type-tabs button.on {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.filters > span {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.seg button {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.seg button.on {
+  background: var(--card);
+  color: var(--brand);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
+}
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.asset-card {
+  min-width: 0;
+  min-height: 244px;
+  padding: 14px;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 10px;
+  box-shadow: none;
+}
+
+.asset-card:hover {
+  box-shadow: 0 10px 30px rgba(17, 24, 39, 0.08);
+}
+
+.asset-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.check-wrap {
+  display: grid;
+  padding-top: 2px;
+}
+
+.check {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
 }
 
 .asset-title {
   min-width: 0;
 }
 
-.asset-title strong {
-  font-size: 16px;
-}
-
-.asset-type,
-.status-badge,
-.asset-foot span {
-  border: 1px solid #d8dde7;
-  border-radius: 7px;
-  padding: 3px 7px;
-  color: #4b5563;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.asset-foot span {
+.asset-title button {
+  display: inline;
+  min-height: 0;
   border: 0;
-  background: #f3f4f6;
-  color: #4b5563;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  font-weight: 760;
+  font-size: 15px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+}
+
+.asset-title button:hover {
+  color: var(--brand);
+}
+
+.asset-title p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.asset-type {
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 760;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--bg);
+  white-space: nowrap;
 }
 
 .asset-type.dataset {
-  color: #2563eb;
-  border-color: #bfdbfe;
+  color: #1d4ed8;
   background: #eff6ff;
+  border-color: #bfdbfe;
 }
 
 .asset-type.dashboard {
-  color: #16a34a;
+  color: #047857;
+  background: #ecfdf3;
   border-color: #bbf7d0;
-  background: #f0fdf4;
 }
 
 .asset-type.combo {
-  color: #c2410c;
+  color: #7c2d12;
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.asset-type.file {
+  color: #854d0e;
+  background: #fefce8;
+  border-color: #fde68a;
+}
+
+.asset-type.api {
+  color: #6d28d9;
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.meta-grid div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 8px;
+}
+
+.meta-grid span {
+  display: block;
+  color: var(--faint);
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+
+.meta-grid b {
+  display: block;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 680;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 680;
+  background: var(--card);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.badge.granted {
+  color: #047857;
+  border-color: #bbf7d0;
+  background: #ecfdf3;
+}
+
+.badge.mine {
+  color: #4338ca;
+  border-color: #c7d2fe;
+  background: var(--brand-soft);
+}
+
+.badge.requestable {
+  color: #92400e;
   border-color: #fed7aa;
   background: #fff7ed;
 }
 
-.status-badge.granted,
-.status-badge.added {
-  color: #047857;
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-}
-
-.status-badge.requestable {
-  color: #92400e;
-  border-color: #fed7aa;
+.badge.pending {
+  color: #b45309;
+  border-color: #fde68a;
   background: #fffbeb;
 }
 
-.status-badge.pending {
-  color: #4338ca;
-  border-color: #c7d2fe;
-  background: #eef2ff;
-}
-
-.asset-row p {
-  margin: 8px 0 10px;
-  color: #4b5563;
-  line-height: 1.55;
+.badge.denied {
+  color: var(--muted);
+  background: #eef0f3;
 }
 
 .asset-actions {
+  display: flex;
   justify-content: flex-end;
-  min-width: 220px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.plaza-right {
+.asset-actions button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 13px;
+}
+
+.side {
   display: grid;
   gap: 12px;
 }
 
-.plaza-right section {
+.side-card {
   padding: 14px;
 }
 
-.next-step {
-  border: 1px solid #dfe3ea;
-  border-radius: 8px;
-  background: #f8fafc;
-  padding: 12px;
-}
-
-.next-step + .next-step,
-.mini-card {
-  margin-top: 8px;
-}
-
-.next-step b,
-.mini-card b {
-  display: block;
+.side-card h2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
   font-size: 14px;
-  line-height: 1.25;
+  font-weight: 760;
 }
 
-.next-step span,
-.mini-card span {
-  display: block;
-  margin-top: 5px;
-  color: #4b5563;
+.side-card h2 button {
+  min-height: 30px;
+  padding: 5px 9px;
   font-size: 12px;
+}
+
+.side-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
   line-height: 1.55;
 }
 
-.next-step button {
-  margin-top: 10px;
-  width: 100%;
+.my-list,
+.flow {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
 }
 
-.mini-card {
-  min-height: 54px;
-  border: 1px solid #dfe3ea;
-  border-radius: 8px;
-  background: #f8fafc;
+.my-item,
+.flow div {
+  display: grid;
+  gap: 4px;
   padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
 }
 
-.mini-card.muted,
-.next-step.muted {
-  color: #6b7280;
+.my-item b,
+.flow b {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.my-item span,
+.flow span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.my-item.muted {
+  color: var(--faint);
+  font-size: 12px;
 }
 
 .empty {
   margin: 14px;
-  min-height: 220px;
-  display: grid;
-  place-items: center;
+  padding: 46px 16px;
+  text-align: center;
   border: 1px dashed #cfd5df;
-  border-radius: 10px;
-  color: #6b7280;
+  border-radius: 8px;
+  color: var(--muted);
   background: #fafbff;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .empty.error {
@@ -741,7 +1021,7 @@ button:disabled {
   width: min(560px, 100%);
   background: #fff;
   border: 1px solid #dfe3ea;
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: 0 24px 64px rgba(17, 24, 39, 0.22);
   padding: 20px;
 }
@@ -790,7 +1070,7 @@ button:disabled {
   transform: translate(-50%, 12px);
   background: #111827;
   color: #fff;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 9px 14px;
   opacity: 0;
   pointer-events: none;
@@ -802,9 +1082,24 @@ button:disabled {
   transform: translate(-50%, 0);
 }
 
-@media (min-width: 1720px) {
+@media (max-width: 1700px) {
   .plaza-grid {
-    grid-template-columns: 250px minmax(860px, 1fr) 320px;
+    grid-template-columns: 248px minmax(0, 1fr) 318px;
+  }
+
+  .asset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1400px) {
+  .plaza-grid {
+    grid-template-columns: 248px minmax(0, 1fr);
+  }
+
+  .side {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -812,45 +1107,62 @@ button:disabled {
   .plaza-grid {
     grid-template-columns: 220px minmax(0, 1fr);
   }
-
-  .plaza-right {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .task-cards {
-    grid-template-columns: repeat(3, minmax(120px, 1fr));
-  }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 860px) {
   .plaza-page {
     padding: 16px;
   }
 
-  .plaza-head,
-  .plaza-toolbar {
+  .plaza-hero {
     flex-direction: column;
-    align-items: stretch;
+    padding: 18px;
   }
 
-  .plaza-grid,
-  .plaza-right {
-    grid-template-columns: 1fr;
-  }
-
-  .task-cards,
-  .asset-row {
-    grid-template-columns: 1fr;
-  }
-
-  .asset-actions {
-    min-width: 0;
+  .hero-actions {
     justify-content: flex-start;
   }
 
-  .plaza-side {
-    position: static;
+  .plaza-grid,
+  .side,
+  .toolbar,
+  .asset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    align-items: stretch;
+  }
+
+  .head-actions {
+    justify-content: flex-start;
+  }
+
+  .type-tabs {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .seg {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .asset-card {
+    min-height: 0;
+  }
+
+  .asset-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .asset-type {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .asset-actions {
+    justify-content: flex-start;
   }
 }
 </style>

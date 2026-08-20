@@ -248,6 +248,19 @@ FE → Java Public Run API → Harness → Java Internal API
 
 所有业务表和知识表必须带 `workspaceId`。跨工作区共享只能通过显式复制或发布，不允许同一资源在多个工作区隐式可见。
 
+当前已落地的身份与菜单权限薄片使用 `V15__identity_access.sql`：
+
+| 物理表 | 职责 | 当前边界 |
+|--------|------|----------|
+| `od_user_account` | 本地账号、展示名、邮箱和状态 | 服务端生成 `user_id`，前端不能指定 |
+| `od_password_credential` | 密码凭证 | PBKDF2-HMAC-SHA256、随机盐、可调迭代次数；不存明文密码 |
+| `od_auth_session` | 浏览器会话 | 只存 Token 哈希、过期时间、当前 `workspace_id` 和 user-agent 摘要 |
+| `od_workspace_member` | 用户加入工作区 | 当前版本落用户-工作区-角色；后续再拆项目组继承 |
+| `od_role`、`od_permission`、`od_role_permission` | RBAC 权限字典和角色授权 | 用于计算 `AuthPrincipal.effectivePermissions` |
+| `od_menu_item`、`od_menu_permission` | 菜单字典和菜单访问条件 | `JdbcMenuProvider` 服务端过滤用户端 / 管理端菜单 |
+
+浏览器身份以 `OD_SESSION` HttpOnly Cookie 为准。`X-User-Id`、`X-User-Perms` 等 header 只允许带有效 `X-OD-Internal-Token` 的 Java/Harness 内部调用使用，避免前端直接放大权限。
+
 ## 4. 权限模型
 
 权限分四层收敛：
@@ -294,9 +307,9 @@ effective = AuthN 用户身份
 
 第一阶段可以支持三种来源：
 
-- 本地用户：用于开发、私有部署和管理员兜底。
-- OIDC / SSO：企业接入推荐路径。
-- 外部 header adapter：用于被已有平台网关托管时传入 user / org / group。
+- 本地用户：本阶段已实现，支持登录、注册、修改密码、退出和切换工作区。
+- OIDC / SSO：企业接入推荐路径，后续作为独立 provider 接入，回调后仍由 Java 建立 `OD_SESSION`。
+- 外部 header adapter：仅保留给可信内部网关或 Harness 内部调用，必须校验 `X-OD-Internal-Token`。
 
 ### 5.1.1 认证与账号通用功能
 
@@ -305,7 +318,7 @@ effective = AuthN 用户身份
 | 页面 / 交互 | 入口 | 结果 |
 |-------------|------|------|
 | 登录 | `login.html` | 账号密码登录后进入上次工作区或工作区选择 |
-| 企业 SSO 登录 | `login.html` | 跳转身份提供方，回调后由 Java 建立 user session |
+| 企业 SSO 登录 | `login.html` | 后续跳转身份提供方，回调后由 Java 建立 user session |
 | 忘记密码 | `login.html#reset` | 发送一次性重置链接，重置成功后注销其它设备 |
 | 注册 | `register.html` | 创建 user；可用邀请码加入工作区，或创建新工作区 |
 | 账号设置 | 账号下拉 → `account-settings.html` | 修改个人资料、语言、通知偏好 |

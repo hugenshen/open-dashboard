@@ -507,6 +507,81 @@ a.od-ghost {
   transform: translateX(-50%) translateY(0);
 }
 
+.od-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(17, 24, 39, 0.38);
+}
+
+.od-password-modal {
+  width: min(420px, 100%);
+  border: 1px solid var(--od-line);
+  border-radius: 12px;
+  background: var(--od-card);
+  box-shadow: 0 24px 64px rgba(17, 24, 39, 0.22);
+  padding: 22px;
+}
+
+.od-password-modal h2 {
+  margin: 0 0 16px;
+  color: var(--od-ink);
+  font-size: 20px;
+}
+
+.od-password-modal label {
+  display: block;
+  margin-top: 12px;
+}
+
+.od-password-modal label span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--od-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.od-password-modal input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  border: 1px solid var(--od-line);
+  border-radius: 8px;
+  background: var(--od-bg);
+  color: var(--od-ink);
+  padding: 0 11px;
+  font: inherit;
+}
+
+.od-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.od-modal-actions button {
+  min-height: 36px;
+  border: 1px solid var(--od-line);
+  border-radius: 8px;
+  background: var(--od-card);
+  color: var(--od-ink);
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.od-modal-actions button.primary {
+  border-color: var(--od-brand);
+  background: var(--od-brand);
+  color: #fff;
+}
+
 html[data-od-theme='dark'] .page,
 html[data-od-theme='dark'] .conv-root,
 html[data-od-theme='dark'] .rpt-editor,

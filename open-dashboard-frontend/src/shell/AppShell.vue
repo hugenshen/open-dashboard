@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi, type MenuItem } from '../api/auth'
 import type { WorkspaceVO } from '../api/auth'
-import { clearAuthHeaders, setCurrentWorkspaceId } from '../api/http'
+import { setAuthFromMe } from '../api/http'
 import { conversationApi } from '../conversation/api'
 import RailIcon from './RailIcon.vue'
 import {
@@ -30,6 +30,10 @@ const theme = ref<OdTheme>(readTheme())
 const userSlim = ref(readRailSlim())
 const themeOpen = ref(false)
 const accountOpen = ref(false)
+const passwordOpen = ref(false)
+const oldPassword = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
 const toast = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -123,21 +127,44 @@ function onKey(e: KeyboardEvent) {
 
 function openSettings() {
   accountOpen.value = false
-  themeOpen.value = true
+  passwordOpen.value = true
+  oldPassword.value = ''
+  newPassword.value = ''
+  confirmPassword.value = ''
 }
 
 async function logout() {
-  clearAuthHeaders()
+  await authApi.logout()
   accountOpen.value = false
   await router.replace('/login?logged_out=1')
 }
 
-function changeWorkspace(ev: Event) {
+async function changeWorkspace(ev: Event) {
   const id = (ev.target as HTMLSelectElement).value
-  workspaceId.value = id
-  setCurrentWorkspaceId(id)
-  flash('已切换工作区')
-  window.setTimeout(() => window.location.reload(), 180)
+  try {
+    const me = await authApi.switchWorkspace(id)
+    setAuthFromMe(me)
+    workspaceId.value = me.workspaceId
+    workspaces.value = me.workspaces || workspaces.value
+    flash('已切换工作区')
+    window.setTimeout(() => window.location.reload(), 180)
+  } catch (e) {
+    flash(e instanceof Error ? e.message : '切换失败')
+  }
+}
+
+async function submitPassword() {
+  if (newPassword.value !== confirmPassword.value) {
+    flash('两次新密码不一致')
+    return
+  }
+  try {
+    await authApi.changePassword({ oldPassword: oldPassword.value, newPassword: newPassword.value })
+    passwordOpen.value = false
+    flash('密码已更新')
+  } catch (e) {
+    flash(e instanceof Error ? e.message : '修改密码失败')
+  }
 }
 
 onMounted(async () => {
@@ -182,9 +209,10 @@ onUnmounted(() => {
 watch(
   () => route.fullPath,
   () => {
-    themeOpen.value = false
-    accountOpen.value = false
-  }
+  themeOpen.value = false
+  accountOpen.value = false
+  passwordOpen.value = false
+}
 )
 
 watch(
@@ -312,10 +340,10 @@ watch(
                 <b>{{ displayName }}</b>
                 <span>{{ currentWorkspace?.name || '默认工作区' }}</span>
               </div>
-              <button type="button" @click="flash('账号中心已连接身份头')">账号中心</button>
+              <button type="button" @click="flash('账号中心已连接服务端身份')">账号中心</button>
               <button type="button" @click="openSettings">修改密码</button>
               <button type="button" @click="logout">退出登录</button>
-              <div class="hint">身份、工作区和权限来自 Auth SPI</div>
+              <div class="hint">身份、工作区和权限来自服务端会话</div>
             </div>
           </div>
         </div>
@@ -323,6 +351,27 @@ watch(
       <div class="od-stage">
         <slot />
       </div>
+    </div>
+    <div v-if="passwordOpen" class="od-modal-mask" @click.self="passwordOpen = false">
+      <section class="od-password-modal" @click.stop>
+        <h2>修改密码</h2>
+        <label>
+          <span>原密码</span>
+          <input v-model="oldPassword" type="password" autocomplete="current-password" />
+        </label>
+        <label>
+          <span>新密码</span>
+          <input v-model="newPassword" type="password" autocomplete="new-password" />
+        </label>
+        <label>
+          <span>确认新密码</span>
+          <input v-model="confirmPassword" type="password" autocomplete="new-password" />
+        </label>
+        <div class="od-modal-actions">
+          <button type="button" @click="passwordOpen = false">取消</button>
+          <button type="button" class="primary" @click="submitPassword">保存</button>
+        </div>
+      </section>
     </div>
     <div class="od-toast" :class="{ show: !!toast }" role="status" aria-live="polite">{{ toast }}</div>
   </div>

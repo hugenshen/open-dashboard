@@ -22,13 +22,57 @@ tags:
   - name: conversation
 
 paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Password login and create HttpOnly session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK; sets OD_SESSION HttpOnly SameSite=Lax cookie
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthMeVO'
+        '401':
+          description: Invalid username or password
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a local password account and create HttpOnly session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: OK; sets OD_SESSION HttpOnly SameSite=Lax cookie
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthMeVO'
+        '400':
+          description: Invalid request or duplicated username
   /auth/me:
     get:
       tags: [auth]
       summary: Get current principal, workspace and effective governance context
       description: |
-        Identity is resolved by Auth SPI headers. `X-Workspace-Id` selects the active
-        workspace; when omitted the backend falls back to the user's default workspace.
+        Identity is resolved from the OD_SESSION HttpOnly cookie. Service-to-service
+        internal calls may use `X-OD-Internal-Token` plus gateway identity headers.
       responses:
         '200':
           description: OK
@@ -37,11 +81,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthMeVO'
         '401':
-          description: Missing or invalid identity headers
+          description: Missing, expired or revoked session
   /auth/menus:
     get:
       tags: [auth]
-      summary: List navigation menus visible to the current principal
+      summary: List table-governed navigation menus visible to the current principal
       responses:
         '200':
           description: OK
@@ -52,7 +96,63 @@ paths:
                 items:
                   $ref: '#/components/schemas/MenuItem'
         '401':
-          description: Missing or invalid identity headers
+          description: Missing, expired or revoked session
+  /auth/workspace:
+    post:
+      tags: [auth]
+      summary: Switch current session workspace after membership validation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwitchWorkspaceRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthMeVO'
+        '403':
+          description: User is not a member of the requested workspace
+  /auth/password:
+    post:
+      tags: [auth]
+      summary: Change current user's password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        '403':
+          description: Old password does not match
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke current session and clear session cookie
+      responses:
+        '200':
+          description: OK; clears OD_SESSION cookie
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
   /workspaces:
     get:
       tags: [workspace]
@@ -2075,6 +2175,37 @@ components:
         type: string
 
   schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+        workspaceId: { type: string }
+
+    RegisterRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password, minLength: 8, maxLength: 128 }
+        displayName: { type: string }
+        email: { type: string, format: email }
+        workspaceId: { type: string }
+
+    ChangePasswordRequest:
+      type: object
+      required: [oldPassword, newPassword]
+      properties:
+        oldPassword: { type: string, format: password }
+        newPassword: { type: string, format: password, minLength: 8, maxLength: 128 }
+
+    SwitchWorkspaceRequest:
+      type: object
+      required: [workspaceId]
+      properties:
+        workspaceId: { type: string }
+
     AuthMeVO:
       type: object
       properties:

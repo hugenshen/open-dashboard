@@ -1,5 +1,28 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { hasAuthSession, hasStoredPermission } from '../api/http'
+import { authApi, type AuthMe } from '../api/auth'
+import { clearAuthHeaders, hasAuthSession, setAuthFromMe } from '../api/http'
+
+let authCache: AuthMe | null = null
+
+function hasPermission(me: AuthMe, permission: string) {
+  const permissions = me.effectivePermissions?.length ? me.effectivePermissions : me.permissions || []
+  if (permissions.includes('*') || permissions.includes(permission)) return true
+  const colon = permission.indexOf(':')
+  return colon > 0 && permissions.includes(permission.slice(0, colon + 1) + '*')
+}
+
+async function currentAuth(): Promise<AuthMe | null> {
+  if (authCache) return authCache
+  try {
+    authCache = await authApi.me()
+    setAuthFromMe(authCache)
+    return authCache
+  } catch {
+    clearAuthHeaders()
+    authCache = null
+    return null
+  }
+}
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -142,13 +165,17 @@ export const router = createRouter({
   ]
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   if (to.meta.public) return true
   if (!hasAuthSession()) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
+  const me = await currentAuth()
+  if (!me) {
+    return { path: '/login', query: { redirect: to.fullPath, expired: '1' } }
+  }
   const required = to.meta.requiredPermissions || []
-  if (required.length && !required.some((permission) => hasStoredPermission(permission))) {
+  if (required.length && !required.some((permission) => hasPermission(me, permission))) {
     return { path: '/forbidden' }
   }
   return true
