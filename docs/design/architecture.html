@@ -212,7 +212,7 @@
         <h1>Open Dashboard 4A 现行架构</h1>
         <p class="lead">以当前代码为证据，将业务、应用、数据与技术四个架构视图放在同一入口。未实现设计不进入本页，详细方案保留在对应 Pxxx 提案目录。</p>
         <div class="meta">
-          <span class="chip">更新：2026-08-19</span>
+          <span class="chip">更新：2026-08-20</span>
           <span class="chip">代码根：open-dashboard-frontend / open-dashboard-backend / opendashboard-harness</span>
           <a class="chip" href="./openapi.yaml">OpenAPI 硬契约</a>
         </div>
@@ -244,6 +244,7 @@
           <h3>核心价值流</h3>
           <div class="flow" aria-label="核心业务价值流">
             <div class="node"><b>工作台</b><span>左栏壳 · 三行概览 · 问数入口</span></div><div class="arrow">→</div>
+            <div class="node"><b>数据广场</b><span>发现资产 · 加入我的数据 · 申请消费</span></div><div class="arrow">→</div>
             <div class="node"><b>数据源</b><span>JDBC 接入 / 探库</span></div><div class="arrow">→</div>
             <div class="node"><b>数据集</b><span>字段语义 / 计算字段</span></div><div class="arrow">→</div>
             <div class="node"><b>仪表盘</b><span>draft 编辑 / publish</span></div><div class="arrow">→</div>
@@ -251,8 +252,8 @@
             <div class="node"><b>消费</b><span>预览 / 分享 / 报告</span></div>
           </div>
         </article>
-        <article class="panel wide"><h3>已交付能力边界</h3><ul><li>JDBC 数据源、数据集建模与预览</li><li>仪表盘树、编辑、移动布局、发布、分享、CSV</li><li>在线报告、引用图表、内联图表与实时取数</li><li>Auth SPI、权限码、当前用户和菜单</li><li>左栏产品壳 AppShell、工作台三行布局与问数框（P007 已编码，PR-SH-10 未验收）</li></ul></article>
-        <article class="panel"><h3>未进入已交付基线</h3><ul><li>对话问数 / 生成看板：P004、P006 已编码未验收</li><li>可问集合 ACL、RLS/CLS：P008 / roadmap</li><li>术语库、SQL 示例、自定义提示词、行级权限改写：未搬 SQLBot</li></ul></article>
+        <article class="panel wide"><h3>已交付能力边界</h3><ul><li>JDBC 数据源、数据集建模与预览</li><li>仪表盘树、编辑、移动布局、发布、分享、CSV</li><li>在线报告、引用图表、内联图表与实时取数</li><li>Auth SPI、权限码、当前用户和菜单</li><li>左栏产品壳 AppShell、工作台三行布局与问数框（P007 已编码，PR-SH-10 未验收）</li><li>左栏「维度管理」：自学习候选确认与手工公共维度（P010 未验收）</li></ul></article>
+        <article class="panel"><h3>未进入已交付基线</h3><ul><li>对话问数 / 生成看板：P004、P006 已编码未验收</li><li>工作区、数据广场、成员权限：接口与页面已编码，提案仍未 done</li><li>可问集合 ACL、RLS/CLS：P008 / roadmap</li><li>术语库、SQL 示例、自定义提示词、行级权限改写：未搬 SQLBot</li></ul></article>
       </div>
       <p class="source">证据：<code>docs/product/requirements.md</code>、<code>open-dashboard-frontend/src/router/index.ts</code>、各 Controller。</p>
     </section>
@@ -265,8 +266,8 @@
         <article class="panel wide">
           <h3>Vue 3 前端</h3>
           <div class="stack">
-            <div class="layer"><b>壳与路由</b><code>src/App.vue · src/router/index.ts · src/shell/AppShell.vue</code></div>
-            <div class="layer"><b>业务模块</b><code>src/workbench · datasource · dataset · dashboard · report · conversation</code></div>
+            <div class="layer"><b>壳与路由</b><code>src/App.vue · src/router/index.ts · src/shell/AppShell.vue · src/auth/views</code></div>
+            <div class="layer"><b>业务模块</b><code>src/workbench · data-plaza · workspace · datasource · dataset · dashboard · report · conversation</code></div>
             <div class="layer"><b>基础能力</b><code>src/api/http.ts · api/auth.ts · ECharts · Pinia · Umo Editor</code></div>
           </div>
         </article>
@@ -291,7 +292,8 @@
             <table>
               <thead><tr><th>接口域</th><th>入口</th><th>职责</th><th>状态</th></tr></thead>
               <tbody>
-                <tr><td>Auth</td><td><code>/api/auth</code></td><td>当前用户、菜单、Auth SPI</td><td><span class="status done">已交付</span></td></tr>
+                <tr><td>Auth</td><td><code>/api/auth</code></td><td>当前用户、当前工作区、菜单、Auth SPI</td><td><span class="status done">已交付</span></td></tr>
+                <tr><td>Workspace / Data Plaza</td><td><code>/api/workspaces</code></td><td>工作区列表、用户组、成员、角色、有效权限、数据广场资产、加入我的数据与申请消费</td><td><span class="status coded">已编码未验收</span></td></tr>
                 <tr><td>Datasource / Dataset</td><td><code>/api/datasource</code> · <code>/api/dataset</code></td><td>连接、语义字段、预览</td><td><span class="status done">已交付</span></td></tr>
                 <tr><td>Query</td><td><code>/api/datasetQuery</code> · <code>/api/chartQuery</code></td><td>统一 QuerySpec、取数、导出</td><td><span class="status done">已交付</span></td></tr>
                 <tr><td>Dashboard / Share</td><td><code>/api/dashboard*</code> · <code>/api/share</code></td><td>生命周期、发布副本、匿名消费</td><td><span class="status done">已交付</span></td></tr>
@@ -302,6 +304,7 @@
           </div>
         </article>
         <article class="panel wide"><h3>AI Harness 集成</h3><p>会话元数据与消息写入 Java <code>de_conversation*</code>（<code>GET/POST /api/conversations</code>）。Agent 走 <code>/harness/v1/conversations/{id}/runs</code>（SSE）；若 Harness 本地没有该 id，按 Java 会话 id 补建运行时文件。Harness 侧已拆出 <code>RunController</code>、<code>EventStreamRecorder</code>、<code>TraceStore</code>、<code>ContextBuilder</code> 与 <code>ToolGateway</code> 骨架，SSE 事件可写入运行 trace 并通过 <code>/harness/v1/conversations/{id}/runs/{runId}/trace</code> 读回；本地会话、知识和用户记忆已按 <code>X-Workspace-Id</code> scope 过滤，默认 <code>default</code> 兼容旧运行。Java 不跑 LLM。</p></article>
+        <article class="panel"><h3>工作区治理入口</h3><p>前端 <code>AppShell</code> 从 <code>/api/auth/me</code> 获取当前工作区和可切换工作区；所有请求通过 <code>src/api/http.ts</code> 附加 <code>X-Workspace-Id</code>。用户端 <code>/data-plaza</code> 展示可见资产、我的数据和申请；管理端 <code>/workspace-admin</code> 展示成员、用户组、角色权限和数据策略入口。</p><span class="status coded">已编码未验收</span></article>
         <article class="panel"><h3>问数入口</h3><p>工作台问数框下展示 <code>GET /api/conversations?limit=8</code> 最近问数；无记录时才显示「试试」。右栏最近报告走 <code>GET /api/report?limit=4</code>（<code>de_report.update_time</code> 倒序），条目用文档图标：已发布绿、草稿紫。提交问数后跳转 <code>/conversations</code> 并自动执行本题。</p><span class="status coded">已编码未验收</span></article>
       </div>
       <p class="source">代码：<code>open-dashboard-frontend/src/</code>、<code>open-dashboard-backend/open-dashboard-*/</code>、<code>opendashboard-harness/</code>。</p>
@@ -321,15 +324,13 @@
           <div class="flow" aria-label="问数用户交互">
             <div class="node"><b>入口</b><span>/conversations 或编辑器浮层</span></div>
             <div class="arrow">→</div>
-            <div class="node"><b>选数据集</b><span>可上传 CSV/xlsx；未选则拒答，不悄悄挑业务表</span></div>
+            <div class="node"><b>选数据集</b><span>Composer 底部从可问列表选表；对话页不暴露上传；未选则拒答，不悄悄挑业务表</span></div>
             <div class="arrow">→</div>
             <div class="node"><b>提问或换题</b><span>默认 intent=ask；「换一个问数问题」先反问具体 Chip</span></div>
             <div class="arrow">→</div>
             <div class="node"><b>步骤条</b><span>Schema / 抽样 / SQL / 校验 / 执行 / 选图</span></div>
             <div class="arrow">→</div>
-            <div class="node"><b>结果卡</b><span>结论 · 表 · 临时图（chartQuery + ECharts） · 折叠 SQL</span></div>
-            <div class="arrow">→</div>
-            <div class="node"><b>保存本题图</b><span>adopt → DashboardPatch；不落结果行</span></div>
+            <div class="node"><b>结果卡</b><span>结论 · 临时图；表头/轴为中文 label；0 行则说明无数据不出空图；无图才出明细表；SQL 在思考过程；历史会话从 replay 回填且不重跑；本期不写入看板</span></div>
           </div>
         </article>
 
@@ -343,13 +344,13 @@
                   <td>对话工作区</td>
                   <td><code>ConversationWorkspace.vue</code></td>
                   <td>落地页 Chip + Composer；问数与步骤、结果卡同列。无对话内侧栏 / 本会话产物列</td>
-                  <td>仅「保存到仪表盘」或快捷「生成看板」</td>
+                  <td>问数不写；快捷「生成看板」才写 draft</td>
                 </tr>
                 <tr>
                   <td>编辑器浮层</td>
                   <td><code>ConversationAiPanel.vue</code></td>
                   <td>当前看板数据集优先；<code>intent=ask</code></td>
-                  <td>否，直到 adopt</td>
+                  <td>否（本期无保存入口）</td>
                 </tr>
                 <tr>
                   <td>工作台问数框</td>
@@ -409,8 +410,8 @@
                 <tr>
                   <td class="act">4</td>
                   <td>模型生成 SQL</td>
-                  <td>M-Schema + 抽样拼 Prompt</td>
-                  <td></td>
+                  <td>M-Schema + 抽样 + 高频问法 few-shot + 已确认维度值</td>
+                  <td>GET <code>/internal/bi/datasets/{id}/questions</code> · GET <code>/internal/bi/knowledge</code></td>
                   <td>LLM → JSON <code>{sql, chart-type, brief}</code></td>
                 </tr>
                 <tr>
@@ -436,24 +437,17 @@
                 </tr>
                 <tr>
                   <td class="act">8</td>
-                  <td>结果卡：表 / 图 / SQL</td>
-                  <td class="msg">SSE <code>answer_sql</code> · <code>answer_table</code> · <code>answer_chart</code> · <code>finish</code></td>
+                  <td>结果卡：表 / 图 / SQL / 空结果说明</td>
+                  <td class="msg">SSE <code>answer_sql</code> · <code>answer_table</code> · <code>answer_chart</code>；0 行则 <code>answer_insight</code> + <code>finish(empty)</code>，不出空图</td>
                   <td></td>
                   <td></td>
                 </tr>
                 <tr>
                   <td class="act">9</td>
-                  <td>「保存到仪表盘」</td>
-                  <td>adopt / Patch</td>
-                  <td><code>DashboardPatchApplier</code> 写 draft</td>
+                  <td>会话预览结束</td>
+                  <td class="msg">不调用 adopt；写入看板只走独立生成意图</td>
                   <td></td>
-                </tr>
-                <tr>
-                  <td class="act">10</td>
-                  <td>画布刷新本题图</td>
                   <td></td>
-                  <td><code>chartQuery</code>（不再用会话 SQL）</td>
-                  <td>JDBC 实时取数</td>
                 </tr>
               </tbody>
             </table>
@@ -463,9 +457,11 @@
         <article class="panel">
           <h3>SQLBot 管道（Ask-3）</h3>
           <div class="vflow">
-            <div class="vnode"><b>读 Schema</b><span>单数据集物理表 + 字段语义</span></div>
+            <div class="vnode"><b>读 Schema</b><span>单数据集物理表 + 字段语义 + 已确认维度枚举</span></div>
             <div class="varrow">↓</div>
             <div class="vnode"><b>抽样 3 行</b><span>帮助模型理解取值</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>拼 Prompt</b><span>few-shot 金标准 SQL + confirmed 词表/维度值</span></div>
             <div class="varrow">↓</div>
             <div class="vnode"><b>LLM 生成 SQL</b><span>只返回 JSON；标识符必须与 m-schema 一致</span></div>
             <div class="varrow">↓</div>
@@ -482,6 +478,8 @@
             <div class="vnode"><b>LLM 未配置 / 生成失败</b><span>不静默编造 SQL</span></div>
             <div class="varrow">↓</div>
             <div class="vnode"><b>无具体问数 / 换题</b><span>按当前表字段反问 Chip（<code>answer_clarify</code>）</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>SQL 执行 0 行</b><span><code>answer_insight</code> 说明无数据；不出空图；打开已完成会话不重跑</span></div>
             <div class="varrow">↓</div>
             <div class="vnode"><b>点选具体问题</b><span>再走 SQLBot 出 SQL / 表 / 图</span></div>
             <div class="varrow">↓</div>
@@ -554,7 +552,7 @@
                 <tr>
                   <td>写回看板</td>
                   <td>问数旁路，不写 DataEase 画布</td>
-                  <td>同样默认不写；显式 adopt 才 <code>DashboardPatch</code></td>
+                  <td>问数旁路，不写画布；本期结果卡不提供 adopt 入口。整页生成仍走 emit_patch</td>
                 </tr>
                 <tr>
                   <td>会话存储</td>
@@ -586,9 +584,9 @@
           <div class="flow" aria-label="生成看板用户交互">
             <div class="node"><b>入口</b><span>落地页 Chip / Composer「生成看板」</span></div>
             <div class="arrow">→</div>
-            <div class="node"><b>选数据集 + 风格</b><span>intent=gen；可选 Auto / Plan</span></div>
+            <div class="node"><b>选数据集</b><span>intent=gen；固定 Auto + 默认飞书蓝（Composer 不展示 Plan / 风格）</span></div>
             <div class="arrow">→</div>
-            <div class="node"><b>规划</b><span>特征探测 → 选图 → 质检 → 布局；Plan 需确认后才 apply</span></div>
+            <div class="node"><b>规划</b><span>特征探测 → 选图 → 质检 → 布局后直接 apply</span></div>
             <div class="arrow">→</div>
             <div class="node"><b>写入 draft</b><span>DashboardPatch · 不含结果行</span></div>
             <div class="arrow">→</div>
@@ -728,8 +726,8 @@
             <table>
               <thead><tr><th>点</th><th>现状</th></tr></thead>
               <tbody>
-                <tr><td>Plan 确认</td><td>FE 确认盒 → Harness <code>POST …/confirm-plan</code> 取出 pending patch，再 <code>apply-patch</code>。Plan 模式 <code>od_emit_patch</code> 只存稿不落库。</td></tr>
-                <tr><td>adopt</td><td>生成路径直接 emit_patch；问数「保存本题图」走 Harness <code>POST …/adopt</code>，由 Harness 读取 ask 产物后调用 Java internal apply 写入草稿。Java public adopt 边界不再作为前端入口。</td></tr>
+                <tr><td>Plan 确认</td><td>Harness 仍支持 <code>mode=plan</code> + <code>confirm-plan</code>；对话 Composer <strong>不展示</strong> Auto/Plan，一律发 Auto。风格 token 会写入 <code>set_theme</code>，但对话预览与编辑器未消费 accent/bg/density，入口同样隐藏，固定 <code>feishu-blue</code>。</td></tr>
+                <tr><td>adopt</td><td>生成路径直接 emit_patch。问数「保存本题图」契约仍为 Harness <code>POST …/adopt</code>，本期结果卡与 SQLBot <strong>不暴露入口</strong>。Java public adopt 边界不再作为前端入口。</td></tr>
                 <tr><td>查询条</td><td>控件写入 draft，并进入 <code>chartQuery.context.filters</code>（eq / between / in / last）。Java 把数组转 Filter AST 后编进 SQL WHERE。</td></tr>
                 <tr><td>单表规划</td><td>单数据集主路径不变；多数据集（>1）时各数据集独立 ToolState 并行 <code>od_plan_charts</code>，<code>_merge_plans</code> 合并 charts/query/标题后统一 layout。跨表关联（JOIN 同库）未做。</td></tr>
               </tbody>
@@ -746,12 +744,12 @@
               <tbody>
                 <tr><td>工具治理</td><td><code>tools/guard.py::execute_guarded</code> 统一管线：pre guard → 线程软超时 → 可重试错误退避重试 → 异常归一化。查询类工具 60s/1-2 次重试，写类不重试。LLM 环与确定性规划均接入。</td></tr>
                 <tr><td>生成版本回放</td><td>每次落盘 harness 调 Java <code>POST /api/internal/bi/record-revision</code>，后端 <code>snapshotOf</code> 存权威快照到 <code>de_conversation_revision</code>；工作台「版本历史」列版本、可回滚（<code>restoreSnapshot</code> 先删旧组件再替换，避免 upsert 混排）。</td></tr>
-                <tr><td>思考过程持久化</td><td>生成结束前端把 <code>liveTools</code> 步骤链作为 assistant 消息 <code>attachments</code>（<code>kind=trace</code>）写入后端；历史会话打开从 attachments 恢复，在「已思考」区回溯完整推理/执行过程。</td></tr>
+                <tr><td>思考过程持久化</td><td>生成结束前端把 <code>liveTools</code> 步骤链作为 assistant 消息 <code>attachments</code>（<code>kind=trace</code>）写入后端；问数结果以 <code>kind=answer</code> 同条落盘。打开历史会话优先从 Harness <code>GET /harness/v1/conversations/{id}/replay</code> 回放事件与 artifact，恢复「已思考」与结果卡，不重新 <code>POST /runs</code>。</td></tr>
                 <tr><td>重复生成防护</td><td><code>maybeResumeUnanswered</code> 对已有 <code>linkedDashboardId</code> 的会话跳过自动 resume，历史会话打开不再重复触发生成。</td></tr>
               </tbody>
             </table>
           </div>
-          <p class="source">证据：<code>tools/guard.py</code>、<code>ConversationAppService.recordRevision</code> / <code>DashboardPatchApplier.restoreSnapshot</code>、<code>BiInternalController.recordRevision</code>、<code>ConversationWorkspace.vue</code> <code>sanitizeTrace/extractTrace/toggleRevisions/restoreRevision</code>。</p>
+          <p class="source">证据：<code>tools/guard.py</code>、<code>ConversationAppService.recordRevision</code> / <code>DashboardPatchApplier.restoreSnapshot</code>、<code>BiInternalController.recordRevision</code>、<code>ConversationWorkspace.vue</code> <code>sanitizeTrace/extractTrace/hydrateFromReplay/toggleRevisions/restoreRevision</code>、<code>opendashboard-harness/agent/trace_store.py</code> <code>get_conversation_replay</code>。</p>
         </article>
       </div>
     </section>
@@ -759,8 +757,8 @@
     <section class="section" id="memory-knowledge">
       <div class="section-head">
         <div>
-          <h2>记忆 / 知识体系 / 数据集自学习（P004 已编码）</h2>
-          <p>字段角色由真实采样统计判定（不再纯关键词）；confirmed 指标 + 词表以 <code>&lt;knowledge&gt;</code> 冻结快照注入；用户偏好以 <code>&lt;memory&gt;</code> 跨会话生效。机制照搬 DeerFlow deermem 与 Pi skills。</p>
+          <h2>数据集自学习 / 知识 / 记忆隔离（已编码切片）</h2>
+          <p>字段角色由真实采样统计判定（不再纯关键词）；confirmed 指标 + 词表（含维度取值）以 <code>&lt;knowledge&gt;</code> 冻结快照注入；数据集高频问法以 few-shot 注入 SQLBot；用户偏好以 <code>&lt;memory&gt;</code> 跨会话生效。Harness 本地会话、知识和用户记忆均按 <code>X-Workspace-Id</code> scope 过滤，记忆写入使用 <code>workspaceId + userId</code> 边界。</p>
         </div>
         <span class="status coded">已编码未验收</span>
       </div>
@@ -775,19 +773,23 @@
             <div class="vnode"><b>确定性角色闸</b><span>时间 → flag（0/1 布尔）→ id（唯一数值/*_id）→ measure → dim → junk；命名仅兜底不裁决</span></div>
             <div class="varrow">↓</div>
             <div class="vnode"><b>写库 + 派生</b><span>de_dataset_field_profile + de_indicator(draft 候选指标) + de_glossary(公共维度/度量词表)</span></div>
+            <div class="varrow">↓</div>
+            <div class="vnode"><b>Harness LLM 复核</b><span>POST /v1/datasets/{id}/review-fields 改角色/业务名/别名；confirmed 不覆盖；失败保留规则结果</span></div>
           </div>
-          <p class="source">证据：<code>DatasetProfileLearner.java</code>（四段式：采样→统计→判定→落库）、<code>V11__dataset_field_profile.sql</code>、<code>FieldProfileRepository</code>、<code>DatasetProfiler.loadLearnedRoles</code>、<code>BiPlatformService.schema</code>（sample 聚合列）。</p>
+          <p>管理页 <code>GET /api/dataset/{id}/profile</code> 只读已落库统计；实时 KPI/柱/线 probe 仅 harness <code>POST /api/internal/bi/profile-dataset</code>。手动学习 <code>POST /api/dataset/{id}/learn</code> 同步跑规则 + LLM 复核。</p>
+          <p class="source">证据：<code>DatasetProfileLearner.java</code>、<code>FieldLearnReviewer.java</code>、<code>tools/od_bi.py</code> <code>review_dataset_fields</code>、<code>V11__dataset_field_profile.sql</code>、<code>DatasetProfiler.profile(id, includeProbes)</code>、<code>BiPlatformService.profileDatasetStats</code>。</p>
         </article>
 
         <article class="panel">
           <h3>知识体系（阶段2）</h3>
           <ul>
             <li><code>de_indicator</code>：Learner 写 draft → 管理页「指标确认」→ confirmed 权威口径（agg/unit/公式）</li>
-            <li><code>de_glossary</code>：term → canonical_field（「销售额」→spending_amount），问数 intent 对齐命中</li>
-            <li>harness <code>transform_context</code> 注入 <code>&lt;knowledge&gt;</code> 冻结快照（confirmed 指标 + 词表，同数据集集合 120s 缓存）</li>
+            <li><code>de_glossary</code>：term → canonical_field（「销售额」→spending_amount）；confirmed 维度 <code>values</code> 挂到 schema 字段并写入 SQLBot <code>&lt;dimension-values&gt;</code></li>
+            <li><code>de_dataset_question</code>：数据集页「高频问法」维护 NL→SQL；SQLBot 按相似度注入最多 3 条 few-shot</li>
+            <li>harness <code>transform_context</code> 注入 <code>&lt;knowledge&gt;</code> 冻结快照（confirmed 指标 + 词表含取值，同数据集集合 120s 缓存）</li>
             <li><code>skills/od-metrics/SKILL.md</code>：confirmed 指标 + 词表生成，Pi skills 模式按需读取</li>
           </ul>
-          <p class="source">证据：<code>KnowledgeService</code>、<code>IndicatorRepository</code>、<code>GlossaryAwareSchema</code>（label 词表注入）、<code>agent/knowledge.py</code>、<code>agent/context.py</code>。</p>
+          <p class="source">证据：<code>KnowledgeService</code>、<code>QuestionService</code>、<code>IndicatorRepository</code>、<code>GlossaryAwareSchema</code>（label 词表注入）、<code>agent/knowledge.py</code>、<code>sqlbot/ask_context.py</code>、<code>agent/context.py</code>。</p>
         </article>
 
         <article class="panel">
@@ -802,19 +804,19 @@
         </article>
 
         <article class="panel full">
-          <h3>用户记忆（阶段4，deermem 机制）</h3>
+          <h3>用户记忆（P010 / P009 隔离切片）</h3>
           <div class="flow" aria-label="用户记忆写读">
             <div class="node"><b>写</b><span>过滤（用户输入+最终回复）→ 信号检测 → LLM 抽取 + 三标签闸（仅 user+durable+descriptive 入库）</span></div>
             <div class="arrow">→</div>
-            <div class="node"><b>存</b><span><code>.od-harness/memory/{user}.json</code> deermem document（revision 乐观锁 / facts[]）</span></div>
+            <div class="node"><b>存</b><span><code>.od-harness/workspaces/{workspace}/users/{user}/memory.json</code> document（revision 乐观锁 / facts[]）</span></div>
             <div class="arrow">→</div>
-            <div class="node"><b>工具</b><span>memory_add / memory_search（子串召回）</span></div>
+            <div class="node"><b>工具</b><span>memory_add / memory_search 按当前 workspace + user 子串召回</span></div>
             <div class="arrow">→</div>
-            <div class="node"><b>注入</b><span><code>&lt;memory&gt;</code> 块跨会话注入；run 结束 flush 沉淀</span></div>
+            <div class="node"><b>注入</b><span><code>&lt;memory&gt;</code> 块跨会话注入；run 结束 flush 带 <code>workspaceId</code> 沉淀</span></div>
             <div class="arrow">→</div>
             <div class="node"><b>生效</b><span>单位偏好（万元）→ KPI 标题/口径默认贴合用户习惯</span></div>
           </div>
-          <p class="source">证据：<code>agent/memory_store.py</code>（create_empty_memory / filter_messages_for_memory / detect_signals / _extract_facts / add_fact / search / unit_preference / flush_session_to_memory）、<code>api/app.py</code> run 结束 flush、<code>tools/od_bi.py</code> memory_add / memory_search / <code>_apply_confirmed_metrics</code> unit_pref。</p>
+          <p class="source">证据：<code>agent/memory_store.py</code>（workspace/user scoped path、create_empty_memory / filter_messages_for_memory / detect_signals / _extract_facts / add_fact / search / unit_preference / flush_session_to_memory）、<code>agent/user_memory.py</code>、<code>api/app.py</code> run 结束 flush、<code>tools/od_bi.py</code> memory_add / memory_search / <code>_apply_confirmed_metrics</code> unit_pref。</p>
         </article>
       </div>
     </section>
@@ -1013,7 +1015,7 @@
           </div>
         </article>
         <article class="panel"><h3>外部业务库</h3><p>MySQL / PostgreSQL 经 JDBC 接入；凭证仅在后端使用。</p></article>
-        <article class="panel"><h3>鉴权</h3><p>前端附加 <code>X-User-Id</code>、<code>X-User-Name</code>、<code>X-User-Perms</code>；后端 Auth SPI 与拦截器执行登录和权限码校验。</p></article>
+        <article class="panel"><h3>鉴权</h3><p>前端未登录时路由守卫跳转 <code>/login</code>，登录后才写入本地身份头并附加 <code>X-User-Id</code>、<code>X-User-Name</code>、<code>X-User-Perms</code>、<code>X-Workspace-Id</code>；退出清空身份并回到登录页。后端 Auth SPI 默认关闭 dev fallback，缺身份访问 <code>@RequireAuth</code> 接口返回 401；工作区治理由 <code>WorkspaceGovernanceService</code> 下发当前用户的工作区、用户组、角色权限、数据广场资产和申请状态。</p></article>
         <article class="panel"><h3>公开边界</h3><p><code>/api/share/**</code> 可匿名；Token、启用状态和过期时间形成公开访问边界。</p></article>
         <article class="panel"><h3>启动</h3><p><code>./scripts/up.sh</code> 启动 PostgreSQL、API 与 Web；<code>docs/prototypes/hi-fi/start.sh</code> 仅预览文档原型。</p></article>
         <article class="panel full">
@@ -1022,7 +1024,7 @@
             <table>
               <thead><tr><th>领域</th><th>当前约束</th><th>未完成</th></tr></thead>
               <tbody>
-                <tr><td>安全</td><td>Auth SPI、写权限码、匿名分享隔离</td><td>资源 ACL、RLS/CLS、内置登录</td></tr>
+                <tr><td>安全</td><td>显式登录页、前端路由守卫、Auth SPI、写权限码、工作区请求头、匿名分享隔离</td><td>资源 ACL、RLS/CLS、服务端账号密码 / SSO</td></tr>
                 <tr><td>部署</td><td>Docker Compose 单机开箱</td><td>Harness 标准编排、高可用</td></tr>
                 <tr><td>数据</td><td>QuerySpec、超时/限制、Dataset 边界</td><td>统一权限消费闸门</td></tr>
                 <tr><td>前端</td><td>模块路由、AppShell、三行工作台、编辑器 Host、响应式移动布局</td><td>问数验收 PR-ASK-*、P007 PR-SH-10 手验</td></tr>

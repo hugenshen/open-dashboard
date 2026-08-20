@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
  *   <li>{@code X-User-Id} — required for a resolved identity</li>
  *   <li>{@code X-User-Name} — display name (optional)</li>
  *   <li>{@code X-User-Perms} — comma-separated permission codes (optional; empty = none)</li>
+ *   <li>{@code X-Workspace-Id} — active workspace id (optional; default workspace when omitted)</li>
  * </ul>
  */
 public class HeaderAuthProvider implements AuthProvider {
@@ -27,6 +28,7 @@ public class HeaderAuthProvider implements AuthProvider {
     public static final String HEADER_USER_ID = "X-User-Id";
     public static final String HEADER_USER_NAME = "X-User-Name";
     public static final String HEADER_USER_PERMS = "X-User-Perms";
+    public static final String HEADER_WORKSPACE_ID = "X-Workspace-Id";
 
     @Override
     public Optional<AuthPrincipal> resolve(HttpServletRequest request) {
@@ -35,7 +37,8 @@ public class HeaderAuthProvider implements AuthProvider {
         // Frontends may percent-encode non-ASCII names (HTTP headers are Latin-1).
         String name = decodeHeader(trim(request.getHeader(HEADER_USER_NAME)));
         Set<String> perms = parsePerms(request.getHeader(HEADER_USER_PERMS));
-        return Optional.of(new AuthPrincipal(userId, name, perms));
+        String workspaceId = trim(request.getHeader(HEADER_WORKSPACE_ID));
+        return Optional.of(new AuthPrincipal(userId, name, perms, workspaceId));
     }
 
     private static Set<String> parsePerms(String raw) {

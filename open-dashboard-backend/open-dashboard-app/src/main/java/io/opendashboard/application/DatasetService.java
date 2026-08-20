@@ -10,6 +10,8 @@ import io.opendashboard.domain.DatasetDtos.DatasetUpdateRequest;
 import io.opendashboard.domain.QueryDtos.DatasetQueryRequest;
 import io.opendashboard.domain.QueryDtos.DatasetQueryResult;
 import io.opendashboard.domain.gateway.DatasetGateway;
+import io.opendashboard.domain.context.AuthContext;
+import io.opendashboard.domain.context.AuthPrincipal;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +29,7 @@ public class DatasetService {
     private final StubQueryService stubQueryService;
     private final FileTableStore fileTables;
     private final ObjectProvider<io.opendashboard.application.conversation.DatasetProfileLearner> learner;
+    private final ObjectProvider<io.opendashboard.application.conversation.FieldLearnReviewer> fieldReviewer;
     private final ConcurrentHashMap<String, DatasetDetailVO> mem = new ConcurrentHashMap<>();
     private final java.util.concurrent.ExecutorService learnExecutor =
             java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
@@ -40,13 +43,15 @@ public class DatasetService {
             ObjectProvider<DatasourceService> datasourceService,
             StubQueryService stubQueryService,
             FileTableStore fileTables,
-            ObjectProvider<io.opendashboard.application.conversation.DatasetProfileLearner> learner
+            ObjectProvider<io.opendashboard.application.conversation.DatasetProfileLearner> learner,
+            ObjectProvider<io.opendashboard.application.conversation.FieldLearnReviewer> fieldReviewer
     ) {
         this.repository = repository;
         this.datasourceService = datasourceService;
         this.stubQueryService = stubQueryService;
         this.fileTables = fileTables;
         this.learner = learner;
+        this.fieldReviewer = fieldReviewer;
         seedTemplateDemoDatasets();
     }
 
@@ -135,7 +140,18 @@ public class DatasetService {
     private void triggerLearn(String datasetId) {
         io.opendashboard.application.conversation.DatasetProfileLearner l = learner.getIfAvailable();
         if (l == null) return;
-        learnExecutor.submit(() -> l.learn(datasetId));
+        AuthPrincipal principal = AuthContext.get();
+        learnExecutor.submit(() -> {
+            l.learn(datasetId);
+            io.opendashboard.application.conversation.FieldLearnReviewer r = fieldReviewer.getIfAvailable();
+            if (r != null) {
+                try {
+                    r.apply(datasetId, principal);
+                } catch (Exception ignored) {
+                    // LLM 复核失败不影响录入
+                }
+            }
+        });
     }
 
     public DatasetDetailVO importFile(String filename, byte[] bytes) {

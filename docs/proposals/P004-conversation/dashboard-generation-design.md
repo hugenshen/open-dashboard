@@ -41,7 +41,7 @@ sequenceDiagram
 | 入口 | 触发 | Harness 职责 | Java 职责 |
 |------|------|--------------|-----------|
 | `POST /harness/v1/conversations/{id}/runs` | 直接生成整页看板，`intent=gen` | 规划、质检、生成 `DashboardPatch`；Auto 直接 apply，Plan 等 `confirm-plan` | `/api/internal/bi/apply-patch` 写 draft，`chartQuery` 预览 |
-| `POST /harness/v1/conversations/{id}/runs/{runId}/adopt` | 问数结果卡「保存到仪表盘」 | 从 run artifact / AskPlan / answer_chart 重建本题图 Patch；拒绝无可采纳产物 | 同上 |
+| `POST /harness/v1/conversations/{id}/runs/{runId}/adopt` | 契约保留；问数结果卡本期不调用 | 从 run artifact / AskPlan / answer_chart 重建本题图 Patch；拒绝无可采纳产物 | 同上 |
 
 不采用 `FE → Java public adopt → Harness → Java internal BI`。Java public conversation adopt 从 Controller 与 OpenAPI 删除；新前端只连 Harness。
 
@@ -49,12 +49,12 @@ sequenceDiagram
 
 | 步 | 谁 | 做什么 |
 |----|----|--------|
-| 1 | 用户 | 落地页选数据集 + 自然语言；Auto 或 Plan |
+| 1 | 用户 | 落地页选数据集 + 自然语言；固定 Auto |
 | 2 | API | 鉴权 `conversation:use`；写看板仍走 dashboard 写权限 |
 | 3 | Harness | 加载会话上下文（conversationId、linkedDashboardId、styleId、datasetIds） |
 | 4 | Schema Guard | 读字段 schema；无可用 schema → **禁止页面级 Patch** |
 | 5 | 证据链 | 编辑器选中图 encode / 用户指定 dataset / 字段语义（可选） |
-| 6 | 规划 | Auto：直接 PatchBuild；Plan：推 `plan`，等 `confirm-plan` |
+| 6 | 规划 | Auto：直接 PatchBuild（Composer 不提供 Plan） |
 | 7 | PatchBuild | LLM JSON（可选）或确定性模板 → `DashboardPatch` ops |
 | 8 | Validate | 数据集可访问、字段存在、encode 角色合法 |
 | 9 | Apply | 写入 Dashboard **draft** + conversation revision |
@@ -114,7 +114,7 @@ sequenceDiagram
 
 **对话工作台预览布局**：预览卡 `.dash-preview` 以 `width:100%` 铺满画布列、`overflow:visible` + `flex-shrink:0`，内容随 KPI 行/图表网格/汇总表自然增高，由父 `.ask-pane`（`overflow:auto`）统一纵向滚动，避免 `overflow:hidden` 造成的底部图表不可达与右侧留白；`chart-grid`/`table-grid` 用 `1fr 1fr` 两列铺满，不预留空白。
 
-**思考过程持久化与历史回溯**：前端生成结束时，把本次 `liveTools`（工具步骤链，含 `od_profile_dataset/od_plan_charts/od_review_charts/od_layout_board/od_emit_patch` 及 planner 质检说明）经 `sanitizeTrace` 精简后，作为 assistant 消息的 `attachments`（`{kind:'trace', steps:[...]}`）存入后端。后端 `ConversationMessageCreateRequest`/`ConversationAppService` 已透传 attachments 到 `de_conversation_message.attachments_json`。打开历史会话时前端 `extractTrace` 从 attachments 恢复步骤链，在「已思考」折叠区内逐步展示，实现「查看会话记录即可回溯完整推理/执行过程」。同时 `maybeResumeUnanswered` 对已有 `linkedDashboardId`（已生成产物）的会话跳过自动 resume，避免每次进入历史会话重复触发生成、消息越积越多。
+**思考过程持久化与历史回溯**：前端生成结束时，把本次 `liveTools`（工具步骤链）经 `sanitizeTrace` 精简后，作为 assistant 消息的 `attachments`（`{kind:'trace', steps:[...]}`）存入后端；问数结果以 `{kind:'answer', table/chart/insight}` 同条落盘。打开历史会话时前端优先 `GET /harness/v1/conversations/{id}/replay` 按 run 回放 `step` 事件与 artifact，恢复「已思考」与结果卡，不重新 `POST /runs`；attachments 作 Harness 不可达时的降级。同时 `maybeResumeUnanswered` 对已有 `linkedDashboardId` 的会话跳过自动 resume。
 
 **生成版本记录与回滚（patch 版本回放）**：每次看板落盘（`_emit_applied` 触发 `board_ready`）时，Python harness 调用后端新增 internal 端点 `POST /api/internal/bi/record-revision`（`conversationId/runId/dashboardId/patch/label`），后端 `ConversationAppService.recordRevision` 用 `DashboardPatchApplier.snapshotOf(dashboardId)` 生成权威快照（meta/layout/components/charts）写入 `de_conversation_revision`（runId 存原文，非数字 id 落 NULL 但 API 透传）。对话工作台预览卡头部新增「版本历史」入口：`toggleRevisions` 拉取 `GET /conversations/{id}/revisions` 列表，每条展示 label/#dashboardId/时间并可「回滚」；`restoreRevision` 调 `POST /conversations/{id}/revisions/{rev}/restore`（后端 `restoreSnapshot` 先取当前组件 id 全量删除、再按快照替换 layout/components/charts，避免 upsert 语义造成新旧组件混排），成功后 `hydratePreviewFromDashboard` 刷新预览。最新版本的回滚按钮禁用（无意义回滚到自身）。
 
@@ -142,22 +142,22 @@ Plan 模式：`finish.reason=awaiting_confirm`，Harness 把 patch 存在 run.pe
 | 入口 | 路径 | 说明 |
 |------|------|------|
 | 一级对话 | `/conversations` | 两段式：落地 → 工作台（对齐高保） |
-| 编辑器 SQLBot | `/dashboards/:id/edit` | DataEase 式浮层问数；选当前看板数据集；默认不写画布；「保存到仪表盘」才 Patch |
+| 编辑器 SQLBot | `/dashboards/:id/edit` | DataEase 式浮层问数；选当前看板数据集；不写画布；本期无「保存到仪表盘」 |
 | 高保原型 | `docs/prototypes/hi-fi/conversation-workspace.html` | 交互真相源 |
 
 ## 双轨边界（勿混）
 
 > 总架构与排序结论见 [P006 Ask-data 设计](../P006-ask-data/design.md)：**问数默认优先**；本文件描述「直接生成 / 采纳后」的 Patch 路径。
 
-1. **问数轨（默认，P006）** — 会话内表/临时图；**不**自动改看板；结果卡只可「保存到仪表盘」并写入本题图。  
-2. **配置写入轨（生成 / 采纳）** — NL 或问数证据 → `DashboardPatch` → draft → 预览 → 编辑器（本文件）。  
+1. **问数轨（默认，P006）** — 会话内表/临时图；**不**改看板；本期结果卡不提供「保存到仪表盘」。
+2. **配置写入轨（生成）** — NL → `DashboardPatch` → draft → 预览 → 编辑器（本文件）。
 3. **洞察报告轨（v0.6 / P005）** — 统计洞察 + 叙事 → Umo 块（引用 live 图）。
 
 ## 成功标准（生成路径）
 
-- `PR-CONV-03/04`：问数结果可保存本题图；快捷生成意图可直出整页 draft。  
-- 取数仅 `datasetQuery` / `chartQuery`；布局无结果行。  
-- Plan 必须确认后才 apply。  
+- `PR-CONV-03/04`：快捷生成意图可直出整页 draft；问数结果本期不保存本题图。
+- 取数仅 `datasetQuery` / `chartQuery`；布局无结果行。
+- Plan 必须确认后才 apply。
 - 与高保一致：落地 → 工作台 → 桥接编辑器。
 
 ## 实现落点（索引）

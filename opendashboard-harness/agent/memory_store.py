@@ -1,4 +1,4 @@
-"""User-level memory (阶段4) — deermem-style document + deterministic gates.
+"""Workspace/user-scoped memory — deermem-style document + deterministic gates.
 
 照搬 ref/deer-flow deermem 的核心机制，场景词换成 BI：
 - 消息过滤：保留用户输入 + 最终 assistant 回复；丢弃工具调用/系统事件
@@ -19,9 +19,10 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from agent import session_store
+from agent.user_context import current_workspace_id
 from llm_client import chat_completions, llm_configured, llm_settings
 
 # ── 存储 ────────────────────────────────────────────────────────────────
@@ -29,22 +30,39 @@ from llm_client import chat_completions, llm_configured, llm_settings
 DOCUMENT_VERSION = "1.0"
 
 
-def memory_dir() -> Path:
-    d = session_store.data_dir() / "memory"
+def _safe_part(value: str, fallback: str) -> str:
+    raw = (value or "").strip() or fallback
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", raw)
+    if not safe or safe in (".", ".."):
+        raise ValueError("invalid memory scope")
+    return safe
+
+
+def memory_dir(workspace_id: Optional[str] = None, user_id: Optional[str] = None) -> Path:
+    workspace = _safe_part(workspace_id or current_workspace_id(), "default")
+    user = _safe_part(user_id or "demo", "demo")
+    d = session_store.data_dir() / "workspaces" / workspace / "users" / user
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def _memory_path(user_id: str) -> Path:
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", user_id or "demo")
-    return memory_dir() / f"{safe}.json"
+def _memory_path(user_id: str, workspace_id: Optional[str] = None) -> Path:
+    return memory_dir(workspace_id, user_id) / "memory.json"
 
 
-def create_empty_memory() -> Dict[str, Any]:
+def _legacy_memory_path(user_id: str) -> Path:
+    safe = _safe_part(user_id or "demo", "demo")
+    return session_store.data_dir() / "memory" / f"{safe}.json"
+
+
+def create_empty_memory(user_id: str = "demo", workspace_id: Optional[str] = None) -> Dict[str, Any]:
     """照搬 deermem create_empty_memory() document shape。"""
+    workspace = workspace_id or current_workspace_id()
     return {
         "version": DOCUMENT_VERSION,
         "revision": 0,
+        "workspaceId": workspace,
+        "userId": user_id or "demo",
         "lastUpdated": _now_iso(),
         "user": {
             "workContext": {"summary": "", "updatedAt": ""},
@@ -64,26 +82,42 @@ def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def load_document(user_id: str) -> Dict[str, Any]:
-    path = _memory_path(user_id)
+def load_document(user_id: str, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+    workspace = workspace_id or current_workspace_id()
+    path = _memory_path(user_id, workspace)
+    legacy = _legacy_memory_path(user_id)
     if not path.is_file():
-        return create_empty_memory()
+        if legacy.is_file():
+            try:
+                doc = json.loads(legacy.read_text(encoding="utf-8"))
+                if isinstance(doc, dict) and isinstance(doc.get("facts"), list):
+                    doc.setdefault("workspaceId", workspace)
+                    doc.setdefault("userId", user_id or "demo")
+                    return doc
+            except Exception:
+                pass
+        return create_empty_memory(user_id, workspace)
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(doc, dict) or not isinstance(doc.get("facts"), list):
-            return create_empty_memory()
+            return create_empty_memory(user_id, workspace)
+        doc.setdefault("workspaceId", workspace)
+        doc.setdefault("userId", user_id or "demo")
         return doc
     except Exception:
-        return create_empty_memory()
+        return create_empty_memory(user_id, workspace)
 
 
-def save_document(user_id: str, doc: Dict[str, Any]) -> Dict[str, Any]:
+def save_document(user_id: str, doc: Dict[str, Any], workspace_id: Optional[str] = None) -> Dict[str, Any]:
     """带 revision 乐观锁的落盘（照搬 deermem storage revision 冲突检测）。"""
-    path = _memory_path(user_id)
-    current = load_document(user_id)
+    workspace = workspace_id or str(doc.get("workspaceId") or current_workspace_id())
+    path = _memory_path(user_id, workspace)
+    current = load_document(user_id, workspace)
     if doc.get("revision", 0) < current.get("revision", 0):
         # 陈旧写者：以较新版本为准，丢弃本次写入（简单冲突策略）
         return current
+    doc["workspaceId"] = workspace
+    doc["userId"] = user_id or "demo"
     doc["revision"] = int(current.get("revision", 0)) + 1
     doc["lastUpdated"] = _now_iso()
     tmp = path.with_suffix(".json.tmp")
@@ -262,12 +296,19 @@ def _extract_facts(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 # ── 公开操作 ────────────────────────────────────────────────────────────
 
-def add_fact(user_id: str, content: str, category: str = "context", confidence: float = 0.6,
-             source_thread: Optional[str] = None) -> Dict[str, Any]:
+def add_fact(
+    user_id: str,
+    content: str,
+    category: str = "context",
+    confidence: float = 0.6,
+    source_thread: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """memory_add 工具写路径：直接入库（幂等合并同 content）。"""
     if not content or not content.strip():
-        return load_document(user_id)
-    doc = load_document(user_id)
+        return load_document(user_id, workspace_id)
+    workspace = workspace_id or current_workspace_id()
+    doc = load_document(user_id, workspace)
     existing = next((f for f in doc["facts"] if str(f.get("content") or "").strip() == content.strip()), None)
     if existing:
         existing["confirmationCount"] = int(existing.get("confirmationCount") or 0) + 1
@@ -276,12 +317,18 @@ def add_fact(user_id: str, content: str, category: str = "context", confidence: 
     else:
         doc["facts"].append(_new_fact(content, category, confidence, source_thread))
     _cap_facts(doc)
-    return save_document(user_id, doc)
+    return save_document(user_id, doc, workspace)
 
 
-def search(user_id: str, query: str, top_k: int = 5, category: Optional[str] = None) -> List[Dict[str, Any]]:
+def search(
+    user_id: str,
+    query: str,
+    top_k: int = 5,
+    category: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """大小写不敏感子串召回（design 指定轻量检索）。"""
-    doc = load_document(user_id)
+    doc = load_document(user_id, workspace_id)
     q = (query or "").strip().lower()
     scored: List[Dict[str, Any]] = []
     for f in doc.get("facts") or []:
@@ -300,9 +347,9 @@ def search(user_id: str, query: str, top_k: int = 5, category: Optional[str] = N
     return [f for _, f in scored[:top_k]]
 
 
-def get_context(user_id: str, max_injection_chars: int = 1200) -> str:
+def get_context(user_id: str, max_injection_chars: int = 1200, workspace_id: Optional[str] = None) -> str:
     """照搬 format_memory_for_injection：按预算逐条拼，保整条不切半。"""
-    doc = load_document(user_id)
+    doc = load_document(user_id, workspace_id)
     lines: List[str] = []
     total = 0
     # preference / correction / decision 优先
@@ -320,8 +367,8 @@ def get_context(user_id: str, max_injection_chars: int = 1200) -> str:
     return "\n".join(lines)
 
 
-def format_memory_block(user_id: str) -> str:
-    ctx = get_context(user_id)
+def format_memory_block(user_id: str, workspace_id: Optional[str] = None) -> str:
+    ctx = get_context(user_id, workspace_id=workspace_id)
     if not ctx:
         return ""
     return f"<system-reminder>\n<memory>\n{ctx}\n</memory>\n</system-reminder>"
@@ -349,26 +396,27 @@ class MemoryUpdateQueue:
     def __init__(self, debounce_s: float = 1.5) -> None:
         self._debounce_s = debounce_s
         self._lock = threading.Lock()
-        self._pending: Dict[str, List[Dict[str, Any]]] = {}
+        self._pending: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="memory-queue", daemon=True)
         self._thread.start()
 
-    def add(self, user_id: str, messages: List[Dict[str, Any]]) -> None:
+    def add(self, user_id: str, messages: List[Dict[str, Any]], workspace_id: Optional[str] = None) -> None:
         filtered = filter_messages_for_memory(messages)
         if not filtered:
             return
+        workspace = workspace_id or current_workspace_id()
         with self._lock:
-            self._pending.setdefault(user_id or "demo", []).extend(filtered)
+            self._pending.setdefault((workspace, user_id or "demo"), []).extend(filtered)
 
     def flush_now(self) -> None:
         with self._lock:
             pending = self._pending
             self._pending = {}
-        for user_id, messages in pending.items():
+        for (workspace_id, user_id), messages in pending.items():
             try:
                 facts = _extract_facts(messages[-12:])
-                doc = load_document(user_id)
+                doc = load_document(user_id, workspace_id)
                 for f in facts:
                     content = str(f.get("content") or "").strip()
                     if not content:
@@ -381,7 +429,7 @@ class MemoryUpdateQueue:
                     else:
                         doc["facts"].append(f)
                 _cap_facts(doc)
-                save_document(user_id, doc)
+                save_document(user_id, doc, workspace_id)
             except Exception:
                 pass
 
@@ -397,23 +445,29 @@ class MemoryUpdateQueue:
 _queue = MemoryUpdateQueue()
 
 
-def queue_conversation(user_id: str, messages: List[Dict[str, Any]]) -> None:
-    _queue.add(user_id, messages)
+def queue_conversation(user_id: str, messages: List[Dict[str, Any]], workspace_id: Optional[str] = None) -> None:
+    _queue.add(user_id, messages, workspace_id=workspace_id)
 
 
 # ── 会话结束 flush（summarization flush hook） ─────────────────────────
 
-def flush_session_to_memory(user_id: str, conversation_id: str, messages: List[Dict[str, Any]]) -> None:
+def flush_session_to_memory(
+    user_id: str,
+    conversation_id: str,
+    messages: List[Dict[str, Any]],
+    workspace_id: Optional[str] = None,
+) -> None:
     """会话/run 结束时沉淀关键结论：过滤消息 → 抽取 → 三标签闸 → 入库。
 
     同时把「绑定数据集/确认口径」类确定性事实直接写入（如用户在本会话确认的指标单位）。
     """
     if not user_id:
         return
+    workspace = workspace_id or current_workspace_id()
     filtered = filter_messages_for_memory(messages[-16:])
     if filtered:
         facts = _extract_facts(filtered)
-        doc = load_document(user_id)
+        doc = load_document(user_id, workspace)
         for f in facts:
             content = str(f.get("content") or "").strip()
             if not content:
@@ -426,22 +480,27 @@ def flush_session_to_memory(user_id: str, conversation_id: str, messages: List[D
                 f["source"] = {"type": "conversation", "threadId": conversation_id}
                 doc["facts"].append(f)
         _cap_facts(doc)
-        save_document(user_id, doc)
+        save_document(user_id, doc, workspace)
 
 
-def remember_user_choice(user_id: str, content: str, category: str = "preference") -> None:
+def remember_user_choice(
+    user_id: str,
+    content: str,
+    category: str = "preference",
+    workspace_id: Optional[str] = None,
+) -> None:
     """显式记录用户确认的口径/偏好（会话中 memory_add 工具或确认动作触发）。"""
     if not user_id or not content:
         return
-    add_fact(user_id, content, category=category, confidence=0.8)
+    add_fact(user_id, content, category=category, confidence=0.8, workspace_id=workspace_id)
 
 
-def unit_preference(user_id: str) -> str:
+def unit_preference(user_id: str, workspace_id: Optional[str] = None) -> str:
     """从用户记忆事实里识别单位偏好（「金额用万元」「单位用元」…），无则空串。"""
     if not user_id:
         return ""
     try:
-        doc = load_document(user_id)
+        doc = load_document(user_id, workspace_id)
     except Exception:
         return ""
     for f in doc.get("facts") or []:

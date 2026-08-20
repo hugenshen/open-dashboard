@@ -6,15 +6,32 @@ milestone: v0.6
 date: 2026-08-18
 acceptance: docs/proposals/P009-workspace-governance/acceptance.yaml
 design: [docs/proposals/P009-workspace-governance/design.md]
+prototype: docs/prototypes/hi-fi/index.html
 architecture: docs/design/architecture.html
 contract: docs/design/openapi.yaml
 gates:
   proposal: accepted
-  hi-fi: none
+  hi-fi: wip
   code: wip
   acceptance: none
 depends: [P004, P006, P008]
 implementation:
+  - docs/design/openapi.yaml
+  - open-dashboard-backend/open-dashboard-domain/src/main/java/io/opendashboard/domain/context/AuthPrincipal.java
+  - open-dashboard-backend/open-dashboard-adapter/src/main/java/io/opendashboard/adapter/security/HeaderAuthProvider.java
+  - open-dashboard-backend/open-dashboard-adapter/src/main/java/io/opendashboard/adapter/security/MenuProvider.java
+  - open-dashboard-backend/open-dashboard-adapter/src/main/java/io/opendashboard/adapter/security/DefaultMenuProvider.java
+  - open-dashboard-backend/open-dashboard-adapter/src/main/java/io/opendashboard/adapter/web/AuthController.java
+  - open-dashboard-backend/open-dashboard-adapter/src/main/java/io/opendashboard/adapter/web/WorkspaceController.java
+  - open-dashboard-backend/open-dashboard-app/src/main/java/io/opendashboard/application/WorkspaceGovernanceService.java
+  - open-dashboard-frontend/src/api/http.ts
+  - open-dashboard-frontend/src/api/auth.ts
+  - open-dashboard-frontend/src/router/index.ts
+  - open-dashboard-frontend/src/auth/views/Login.vue
+  - open-dashboard-frontend/src/auth/views/Forbidden.vue
+  - open-dashboard-frontend/src/shell/AppShell.vue
+  - open-dashboard-frontend/src/data-plaza/views/DataPlaza.vue
+  - open-dashboard-frontend/src/workspace/views/WorkspaceAdmin.vue
   - opendashboard-harness/agent/run_controller.py
   - opendashboard-harness/agent/event_stream.py
   - opendashboard-harness/agent/trace_store.py
@@ -33,19 +50,19 @@ implementation:
 
 # P009 · 工作区隔离、用户体系与知识治理
 
-> **状态** `in-progress` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 none · 代码 wip · 验收 none
+> **状态** `in-progress` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 wip · 代码 wip · 验收 none
 
 ## 开发入口
 
-本提案已进入第一段实现：先落 Harness runtime 骨架，不直接 fork refs。工作区隔离、用户与项目组、工具治理、知识体系和记忆体系仍按分期推进。
+本提案已进入第一段实现：先落 Harness runtime 骨架、显式登录态、Java/Vue 工作区治理薄片，不直接 fork refs。工作区隔离、用户与项目组、工具治理、知识体系和记忆体系仍按分期推进；本切片未落正式 IAM、数据库迁移、RLS/CLS 和撤权缓存失效。
 
 | 你要 | 去看 |
 |------|------|
 | 核心方案与 refs 对照 | [design.md](./design.md) |
 | 怎么验收 | [acceptance.yaml](./acceptance.yaml) |
 | 依赖 | P004 对话分析、P006 对话问数、P008 权限感知工作台 |
-| 契约 | 本切片已补 Harness run/adopt/trace/memory/knowledge 接口到 [`openapi.yaml`](../../design/openapi.yaml)；后续跨端继续先改契约 |
-| 当前范围 | 只做 Harness H1/H3 骨架与 Harness 侧 workspace scope：run/event/trace/context/tool/knowledge/user-memory 边界；不动 Java、前端或数据库迁移 |
+| 契约 | 本切片已补 Harness run/adopt/trace/memory/knowledge 与 Java workspace/data-plaza 接口到 [`openapi.yaml`](../../design/openapi.yaml)；后续跨端继续先改契约 |
+| 当前范围 | 已确认“同壳双区域”：用户使用端承接工作台/数据广场/对话分析/仪表盘/报告，管理端承接数据发布/知识/成员权限；代码已落 `/login`、路由守卫、退出登录、`X-Workspace-Id`、`/api/workspaces`、数据广场和成员权限 Vue 页面；正式 IAM、注册/忘记密码 API、数据库迁移、RLS/CLS、审批流写库和审计仍后续推进 |
 
 ## 背景与目标
 
@@ -73,7 +90,7 @@ implementation:
 **非目标**
 
 - 不在本提案内改 P006 adopt 协议、问数 SQL 生成细节或 P008 工作台 UI。
-- 不含工作区的用户 facts / 数据集术语第一刀见 [P010](../P010-user-memory-ask-knowledge/)；本草案仍覆盖工作区 IAM。
+- 用户 facts / 数据集术语第一刀见 [P010](../P010-user-memory-ask-knowledge/)；P010 只做 `workspaceId + userId` / 授权数据集的轻量隔离，本草案仍覆盖完整工作区 IAM、资源 ACL、发布流和审计。
 - 不把未实现能力写入 `docs/design/architecture.html` 或 `docs/product/requirements.md`。
 - 不一次性实现完整企业 IAM；优先定义可对接 OIDC / SSO / 企业通讯录的边界。
 - 不允许前端绕过服务端直接调用 Java 内部能力、Harness 内部工具或数据库。
@@ -83,8 +100,8 @@ implementation:
 | 列 | 内容 |
 |----|------|
 | 依赖 | P004 对话运行、P006 问数运行、P008 可问数据与资源消费边界 |
-| 改动面 | 后续会涉及 OpenAPI、Java 鉴权与资源模型、Harness runtime context、Vue 工作区切换与管理页、数据库迁移 |
-| 不改 | 本轮不改代码、不改现行 4A、不改 requirements、不改冻结原型 |
+| 改动面 | OpenAPI、Java 鉴权与工作区治理薄片、Harness runtime context、Vue 工作区切换与数据广场/成员权限页；后续补数据库迁移 |
+| 不改 | 本轮不改 requirements、不改冻结原型、不落正式 IAM/RLS/CLS |
 | 回归 | P006 问数准确性、P004 仪表盘生成稳定性、P008 可问数据一致性、P003 报告访问 |
 
 ## 产品需求与用户流程
@@ -109,12 +126,31 @@ implementation:
 
 ## 交互设计与原型
 
-本提案暂不创建高保。后续高保应覆盖：
+本提案采用一个前端产品壳，不先拆成两个独立应用。导航按权限分成“用户使用端”和“管理端”；普通用户只看使用端，管理员额外看到管理端。
 
-- 工作区切换器：当前工作区、可加入工作区、无权限状态。
-- 工作区管理：成员、项目组、角色、数据集授权、工具授权、知识发布审核。
-- 问数入口：当前工作区与可问数据上下文强提示。
-- 运行详情：计划、工具调用、权限策略、知识命中、审计摘要。
+当前高保入口：
+
+- 产品壳：[`shared/shell.js`](../../prototypes/hi-fi/shared/shell.js) / [`shared/shell.css`](../../prototypes/hi-fi/shared/shell.css) 展示工作区切换器、用户使用端、管理端。
+- 统一入口：[`index.html`](../../prototypes/hi-fi/index.html) 首屏展示登录、用户使用端、管理端和端到端链路。
+- 登录注册：[`login.html`](../../prototypes/hi-fi/login.html) / [`register.html`](../../prototypes/hi-fi/register.html) 覆盖登录、注册、忘记密码和企业 SSO 示意。
+- 账号设置：[`account-settings.html`](../../prototypes/hi-fi/account-settings.html) 覆盖个人资料、修改密码、登录安全和通知偏好。
+- 成员权限：[`workspace-admin.html`](../../prototypes/hi-fi/workspace-admin.html) 覆盖成员、项目组、角色、数据权限、工具权限和审计。
+- 知识库：[`knowledge.html`](../../prototypes/hi-fi/knowledge.html) 作为管理端知识维护入口。
+- 数据广场：[`data-market.html`](../../prototypes/hi-fi/data-market.html) 作为用户端数据发现、添加到我的数据和消费申请入口。
+- 对话分析：[`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html) 只展示当前工作区、可问数据和知识命中，不承载成员/权限管理。
+
+使用端：
+
+- 工作台：搜索、最近对话、我的仪表盘和报告。
+- 数据广场：按数据空间和资产类型查看企业资产、我的数据、可申请和申请中，并发起消费申请。
+- 对话分析：问数、生成看板、查看知识命中和运行解释。
+- 仪表盘 / 报告：浏览、编辑和分享受权限控制的产物。
+
+管理端：
+
+- 数据源 / 数据集：接入、发布可问/可申请数据集、字段角色和数据策略。
+- 知识库：指标、术语、SQL 示例、SOP、候选审核和发布。
+- 成员权限：工作区成员、项目组、角色、资源 ACL、工具策略和审计。
 
 ## 技术设计与数据流
 
@@ -171,6 +207,9 @@ implementation:
 | PR-WS-11 | 知识管理、存储和检索闭环 |
 | PR-WS-12 | 记忆管理、存储和检索闭环 |
 | PR-WS-13 | Harness 演进骨架闭环 |
+| PR-WS-14 | 用户使用端与管理端信息架构清晰 |
+| PR-WS-15 | 登录、注册、退出和账号设置高保闭环 |
+| PR-WS-16 | 用户端数据广场与管理端数据集边界清晰 |
 
 ## 实现与交付映射
 
@@ -183,5 +222,9 @@ implementation:
 | 日期 | 说明 |
 |------|------|
 | 2026-08-18 | 新增工作区隔离、用户体系、工具治理、知识体系和记忆体系演进草案 |
-| 2026-08-18 | 第一刀实现切片见 [P010](../P010-user-memory-ask-knowledge/)（用户 facts + 数据集术语/示例，不含工作区 IAM） |
+| 2026-08-18 | 第一刀实现切片见 [P010](../P010-user-memory-ask-knowledge/)（用户 facts + 数据集术语/示例；只做轻量 workspace scope，不含完整工作区 IAM） |
 | 2026-08-19 | P009 第一段实现：Harness runtime 骨架接入实际 run，ToolGateway 进入 runtime，文件会话/run/trace、知识和用户记忆支持 `X-Workspace-Id` scope |
+| 2026-08-19 | 确认同壳双区域高保：用户使用端展示工作台/对话分析/仪表盘/报告；管理端展示数据源/数据集/知识库/成员权限 |
+| 2026-08-19 | 补登录、注册、忘记密码、账号设置、修改密码和退出登录高保闭环 |
+| 2026-08-19 | `index.html` 改为高保统一入口，首屏区分用户使用端和管理端 |
+| 2026-08-19 | 补用户端数据广场：普通用户查看企业资产、我的数据、已获权/可申请/申请中，管理端数据集只负责发布治理 |

@@ -16,9 +16,204 @@ tags:
   - name: datasource
   - name: dataset
   - name: catalog
+  - name: auth
+  - name: workspace
+  - name: dataPlaza
   - name: conversation
 
 paths:
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get current principal, workspace and effective governance context
+      description: |
+        Identity is resolved by Auth SPI headers. `X-Workspace-Id` selects the active
+        workspace; when omitted the backend falls back to the user's default workspace.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthMeVO'
+        '401':
+          description: Missing or invalid identity headers
+  /auth/menus:
+    get:
+      tags: [auth]
+      summary: List navigation menus visible to the current principal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItem'
+        '401':
+          description: Missing or invalid identity headers
+  /workspaces:
+    get:
+      tags: [workspace]
+      summary: List workspaces visible to current user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkspaceVO'
+  /workspaces/{workspaceId}/summary:
+    get:
+      tags: [workspace]
+      summary: Get workspace governance summary
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceSummaryVO'
+        '403':
+          description: Workspace is not visible to current user
+  /workspaces/{workspaceId}/groups:
+    get:
+      tags: [workspace]
+      summary: List workspace groups
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkspaceGroupVO'
+  /workspaces/{workspaceId}/members:
+    get:
+      tags: [workspace]
+      summary: List workspace members
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkspaceMemberVO'
+  /workspaces/{workspaceId}/roles:
+    get:
+      tags: [workspace]
+      summary: List workspace roles and permission bundles
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkspaceRoleVO'
+  /workspaces/{workspaceId}/effective-permissions:
+    get:
+      tags: [workspace]
+      summary: Get effective permissions in the active workspace
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectivePermissionVO'
+  /workspaces/{workspaceId}/data-plaza:
+    get:
+      tags: [dataPlaza]
+      summary: List visible data assets and user's consumption state
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataPlazaVO'
+  /workspaces/{workspaceId}/data-plaza/{assetId}/add:
+    post:
+      tags: [dataPlaza]
+      summary: Add an authorized asset to "My Data"
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: assetId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataAssetVO'
+        '403':
+          description: Asset is not authorized for consumption
+  /workspaces/{workspaceId}/dataset-requests:
+    post:
+      tags: [dataPlaza]
+      summary: Request permission to consume a data asset
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRequestCreateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRequestVO'
   /conversations/styles:
     get:
       tags: [conversation]
@@ -134,7 +329,7 @@ paths:
                 content: { type: string }
                 attachments:
                   type: array
-                  description: "Assistant 消息可携带思考过程 trace（{kind: 'trace', steps: [...]}），历史会话回溯用"
+                  description: "Assistant 消息可携带思考过程 trace（{kind: 'trace', steps: [...]}）和问数结果（{kind: 'answer', table/chart/insight/clarify}），历史会话回溯用"
                   items:
                     type: object
                     additionalProperties: true
@@ -356,6 +551,42 @@ paths:
           description: Conversation or run not found in current owner/workspace scope
         '409':
           description: Run has no adoptable artifact
+  /harness/v1/conversations/{id}/replay:
+    get:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: Harness conversation replay
+      description: |
+        History hydrate payload. Returns each run's recorded SSE events and ask
+        artifacts so the frontend can restore thinking steps and result cards
+        without re-POSTing /runs.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversationId: { type: string }
+                  linkedDashboardId: { type: string, nullable: true }
+                  runs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '404':
+          description: Conversation not found in current owner/workspace scope
   /harness/v1/conversations/{id}/runs/{runId}/trace:
     get:
       tags: [conversation]
@@ -530,6 +761,41 @@ paths:
           description: Invalid dataset or workspace id
         '403':
           description: Missing dataset manage permission
+  /harness/v1/datasets/{datasetId}/review-fields:
+    post:
+      tags: [dataset]
+      servers:
+        - url: /
+      summary: LLM 复核字段角色（自学习第二段）
+      description: |
+        读取 Java schema（含规则角色与采样），调用 interpret_fields_llm。
+        不改 Java 库；由 POST /api/dataset/{id}/learn 落库。内部令牌 X-OD-Internal-Token。
+      parameters:
+        - name: datasetId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-OD-Internal-Token
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-User-Id
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-User-Perms
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema: { type: string, default: default }
+      responses:
+        '200':
+          description: '{ ok, source: llm|stats, fields: [{ name, role, label, alias }] }'
+        '401':
+          description: bad internal token
   /conversations/{id}/revisions:
     get:
       tags: [conversation]
@@ -748,10 +1014,10 @@ paths:
   /dataset/{id}/profile:
     get:
       tags: [dataset]
-      summary: 字段自学习画像（角色/统计/采样）——阶段1 数据集自学习产物
+      summary: 字段自学习画像（角色/统计）——阶段1 已落库产物
       description: |
-        返回每个字段的学习角色（role_learned）、统计特征（distinct/nullRate/数值范围/取值集合）与采样，
-        供数据集详情页展示「系统自动识别」与 harness od_get_schema 返回体复用。
+        只读 de_dataset_field_profile：每个字段的学习角色、统计特征（distinct/nullRate/数值范围/取值集合）。
+        不向源库发起实时聚合探测。对话规划的 live probes 走内部 POST /api/internal/bi/profile-dataset。
       parameters:
         - name: id
           in: path
@@ -785,6 +1051,196 @@ paths:
                     items: { type: array }
                   measures: { type: array }
                   dims: { type: array }
+  /dataset/{id}/learn:
+    post:
+      tags: [dataset]
+      summary: 启动字段自学习（异步任务）
+      description: |
+        立即返回 jobId。前端轮询 GET /dataset/{id}/learn/{jobId} 看 phase（sample/stats/extract/llm）。
+        DELETE 同一路径可停止：采样后的规则结果保留，模型复核不再写库。
+        已确认（confirmed）的 de_indicator / de_glossary 不覆盖。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: '{ ok, jobId, status, phase, phaseLabel }'
+  /dataset/{id}/learn/{jobId}:
+    get:
+      tags: [dataset]
+      summary: 查询学习任务进度
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: '{ status, phase, phaseLabel, result? }'
+    delete:
+      tags: [dataset]
+      summary: 停止学习任务
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: '{ ok, status }'
+  /dataset/{id}/questions:
+    get:
+      tags: [dataset]
+      summary: 数据集高频问法列表（few-shot）
+      description: |
+        自然语言 + 已验证 SQL。问数 SQLBot 按相似度注入最多 3 条。
+        status=active 才进入生成；disabled 仅管理可见。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DatasetQuestionVO'
+    post:
+      tags: [dataset]
+      summary: 新增高频问法
+      description: 表名必须是当前数据集物理表。默认 status=active。
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionUpsertRequest'
+      responses:
+        '200':
+          description: OK
+  /dataset/{id}/questions/{qid}:
+    put:
+      tags: [dataset]
+      summary: 更新高频问法
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: qid
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionUpsertRequest'
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Not found
+    delete:
+      tags: [dataset]
+      summary: 删除高频问法
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: qid
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Not found
+  /dataset/{id}/questions/{qid}/toggle:
+    post:
+      tags: [dataset]
+      summary: 启用或停用高频问法
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: qid
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [active, disabled] }
+      responses:
+        '200':
+          description: OK
+  /api/internal/bi/datasets/{id}/questions:
+    get:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: SQLBot 拉取 active 高频问法
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 8 }
+        - name: X-OD-Internal-Token
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: '[{ id, question, sql, chartType, brief }]'
+  /api/internal/bi/questions/{qid}/hit:
+    post:
+      tags: [conversation]
+      servers:
+        - url: /
+      summary: few-shot 命中计数 +1
+      parameters:
+        - name: qid
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: X-OD-Internal-Token
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: '{ ok }'
   /indicators:
     post:
       tags: [dataset]
@@ -957,6 +1413,25 @@ paths:
               properties:
                 term: { type: string }
                 aliases: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: OK
+  /glossary/{id}/values:
+    put:
+      tags: [dataset]
+      summary: 更新公共维度枚举值
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                values: { type: array, items: {} }
       responses:
         '200':
           description: OK
@@ -1600,6 +2075,215 @@ components:
         type: string
 
   schemas:
+    AuthMeVO:
+      type: object
+      properties:
+        userId: { type: string }
+        displayName: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+        workspaceId: { type: string }
+        currentWorkspace:
+          $ref: '#/components/schemas/WorkspaceVO'
+        workspaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkspaceVO'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkspaceGroupVO'
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkspaceRoleVO'
+        effectivePermissions:
+          type: array
+          items: { type: string }
+
+    MenuItem:
+      type: object
+      properties:
+        key: { type: string }
+        label: { type: string }
+        path: { type: string }
+        group: { type: string, enum: [use, manage] }
+
+    WorkspaceVO:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        mode: { type: string, enum: [team, shared, personal] }
+        role: { type: string }
+        current: { type: boolean }
+        memberCount: { type: integer }
+        assetCount: { type: integer }
+
+    WorkspaceSummaryVO:
+      type: object
+      properties:
+        workspace:
+          $ref: '#/components/schemas/WorkspaceVO'
+        groupCount: { type: integer }
+        memberCount: { type: integer }
+        roleCount: { type: integer }
+        assetCount: { type: integer }
+        myDataCount: { type: integer }
+        pendingRequestCount: { type: integer }
+        adminTasks:
+          type: array
+          items: { type: string }
+
+    WorkspaceGroupVO:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        memberCount: { type: integer }
+        roles:
+          type: array
+          items: { type: string }
+
+    WorkspaceRoleVO:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        description: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+
+    WorkspaceMemberVO:
+      type: object
+      properties:
+        userId: { type: string }
+        displayName: { type: string }
+        status: { type: string, enum: [active, invited, disabled] }
+        groups:
+          type: array
+          items: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+
+    EffectivePermissionVO:
+      type: object
+      properties:
+        workspaceId: { type: string }
+        userId: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+        datasetScopes:
+          type: array
+          items: { type: string }
+
+    DataPlazaVO:
+      type: object
+      properties:
+        currentWorkspace:
+          $ref: '#/components/schemas/WorkspaceVO'
+        spaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataSpaceVO'
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataAssetVO'
+        myData:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataAssetVO'
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataRequestVO'
+
+    DataSpaceVO:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        assetCount: { type: integer }
+        joined: { type: boolean }
+
+    DataAssetVO:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [dataset, dashboard, combo, file, api] }
+        workspaceId: { type: string }
+        workspaceName: { type: string }
+        owner: { type: string }
+        description: { type: string }
+        source: { type: string }
+        sensitiveLevel: { type: string, enum: [low, medium, high] }
+        authStatus: { type: string, enum: [granted, requestable, pending, denied] }
+        added: { type: boolean }
+        tags:
+          type: array
+          items: { type: string }
+        updatedAt: { type: integer, format: int64 }
+        actions:
+          type: array
+          items: { type: string, enum: [ask, open, add, request, manage] }
+
+    DataRequestCreateRequest:
+      type: object
+      required: [assetId, purpose]
+      properties:
+        assetId: { type: string }
+        purpose: { type: string }
+        expireDays: { type: integer }
+        requestedActions:
+          type: array
+          items: { type: string }
+
+    DataRequestVO:
+      type: object
+      properties:
+        id: { type: string }
+        assetId: { type: string }
+        assetName: { type: string }
+        workspaceId: { type: string }
+        status: { type: string, enum: [pending, approved, rejected] }
+        approver: { type: string }
+        createdAt: { type: integer, format: int64 }
+        purpose: { type: string }
+        requestedActions:
+          type: array
+          items: { type: string }
+
+    DatasetQuestionVO:
+      type: object
+      properties:
+        id: { type: integer }
+        datasetId: { type: string }
+        question: { type: string }
+        sql: { type: string }
+        chartType: { type: string }
+        brief: { type: string }
+        status: { type: string, enum: [active, disabled] }
+        hitCount: { type: integer }
+        createdAt: { type: integer }
+        updatedAt: { type: integer }
+    QuestionUpsertRequest:
+      type: object
+      required: [question, sql]
+      properties:
+        datasetId: { type: string }
+        question: { type: string }
+        sql: { type: string }
+        chartType: { type: string }
+        brief: { type: string }
+        status: { type: string, enum: [active, disabled] }
     BusiNodeRequest:
       type: object
       properties:

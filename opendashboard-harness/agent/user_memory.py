@@ -26,10 +26,7 @@ def _safe_workspace(workspace_id: str) -> str:
 
 def _path(user_id: str, workspace_id: str = "default") -> Path:
     workspace = _safe_workspace(workspace_id)
-    if workspace == "default":
-        root = data_dir() / "users" / _safe_user(user_id)
-    else:
-        root = data_dir() / "workspaces" / workspace / "users" / _safe_user(user_id)
+    root = data_dir() / "workspaces" / workspace / "users" / _safe_user(user_id)
     root.mkdir(parents=True, exist_ok=True)
     return root / "memory.json"
 

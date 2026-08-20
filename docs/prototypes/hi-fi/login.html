@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>登录 · Open Dashboard 高保</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <link rel="stylesheet" href="./shared/shell.css" />
+  <link rel="stylesheet" href="./shared/auth.css" />
+</head>
+<body>
+  <main class="auth-page">
+    <section class="auth-rail">
+      <a class="auth-brand" href="./login.html"><i>OD</i><span>Open Dashboard</span></a>
+      <div class="auth-copy">
+        <h1>用同一个身份进入不同工作区</h1>
+        <p>登录后由 Java 建立 userId、当前 workspaceId 和有效权限；对话分析再把这些上下文交给 Harness 运行。</p>
+      </div>
+      <div class="auth-flow">
+        <div><b>身份</b><br />账号密码、企业 SSO 或外部网关登录。</div>
+        <div><b>工作区</b><br />只展示已加入的项目组空间。</div>
+        <div><b>权限</b><br />菜单、数据集、工具和知识召回都受服务端权限控制。</div>
+      </div>
+    </section>
+
+    <section class="auth-main">
+      <form class="auth-card" id="loginForm">
+        <div class="notice" id="notice">已退出登录，请重新登录。</div>
+        <h2>登录</h2>
+        <p class="sub">进入后默认打开上次使用的工作区，也可以在顶部切换。</p>
+
+        <div class="field">
+          <label for="email">邮箱 / 用户名</label>
+          <input id="email" autocomplete="username" value="demo@opendashboard.local" />
+        </div>
+        <div class="field">
+          <label for="password">
+            密码
+            <a href="#reset" id="forgotLink">忘记密码</a>
+          </label>
+          <input id="password" type="password" autocomplete="current-password" value="demo123456" />
+        </div>
+        <label class="checkline"><input type="checkbox" checked /> 保持登录 7 天</label>
+
+        <button class="auth-btn" type="submit">登录并进入工作区</button>
+        <div class="split">或</div>
+        <button class="ghost-btn" type="button" id="ssoBtn">企业 SSO 登录</button>
+
+        <div class="reset-pane" id="resetPane">
+          <div class="field" style="margin-top:0">
+            <label for="resetEmail">接收重置链接的邮箱</label>
+            <input id="resetEmail" value="demo@opendashboard.local" />
+          </div>
+          <button class="ghost-btn" type="button" id="resetBtn">发送重置链接</button>
+        </div>
+
+        <div class="form-foot">还没有账号？ <a href="./register.html">注册新账号</a></div>
+      </form>
+    </section>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.has('logged_out')) document.getElementById('notice').classList.add('show');
+    if (params.has('switch')) {
+      const n = document.getElementById('notice');
+      n.textContent = '请选择要切换的账号。';
+      n.classList.add('show');
+    }
+    if (location.hash === '#reset') document.getElementById('resetPane').classList.add('open');
+    document.getElementById('loginForm').onsubmit = (e) => {
+      e.preventDefault();
+      location.href = './workbench.html';
+    };
+    document.getElementById('ssoBtn').onclick = () => {
+      const n = document.getElementById('notice');
+      n.textContent = '企业 SSO 回调成功后进入工作区列表。';
+      n.classList.add('show');
+    };
+    document.getElementById('forgotLink').onclick = (e) => {
+      e.preventDefault();
+      document.getElementById('resetPane').classList.toggle('open');
+    };
+    document.getElementById('resetBtn').onclick = () => {
+      const n = document.getElementById('notice');
+      n.textContent = '重置链接已发送，15 分钟内有效。';
+      n.classList.add('show');
+    };
+  </script>
+</body>
+</html>

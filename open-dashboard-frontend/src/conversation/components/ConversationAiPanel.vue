@@ -2,7 +2,7 @@
 /**
  * Dashboard-editor SQLBot.
  * Pipeline from refs/sqlbot: generate SQL → read-only guard → execute → chart.
- * Does not write the canvas unless the user clicks 保存到仪表盘.
+ * Ask results stay as session preview; this panel does not write the canvas.
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -11,6 +11,7 @@ import { datasetApi, type DatasetMetaVO } from '../../datasource/api'
 import { conversationApi } from '../api'
 import ToolStepList, { type ToolPreview, type ToolStep } from './ToolStepList.vue'
 import LiveChartPreview from './LiveChartPreview.vue'
+import { displayFieldNames } from '../../utils/fieldLabel'
 
 const props = defineProps<{
   dashboardId: string
@@ -51,7 +52,6 @@ const prompt = ref('')
 const streaming = ref(false)
 const chat = ref<ChatLine[]>([])
 const runId = ref('')
-const canSave = ref(false)
 const datasets = ref<DatasetMetaVO[]>([])
 const boardDatasetIds = ref<string[]>([])
 const selectedDatasetId = ref('')
@@ -204,7 +204,6 @@ async function newChat() {
   sessionStorage.removeItem(STORAGE_KEY)
   chat.value = []
   runId.value = ''
-  canSave.value = false
   liveTools.value = []
   const q = { ...route.query }
   delete q.conversationId
@@ -326,11 +325,13 @@ function onEvent(event: string, data: Record<string, unknown>) {
   if (event === 'answer_table') {
     const last = chat.value[chat.value.length - 1]
     if (last?.role === 'assistant') {
-      last.columns = Array.isArray(data.columns) ? (data.columns as string[]) : []
+      last.columns = displayFieldNames(
+        Array.isArray(data.columns) ? (data.columns as string[]) : [],
+        Array.isArray(data.columnLabels) ? (data.columnLabels as string[]) : undefined
+      )
       last.rows = Array.isArray(data.rows) ? (data.rows as unknown[][]) : []
       if (!last.text) last.text = String(data.title || '明细表')
     }
-    canSave.value = true
   }
   if (event === 'answer_chart') {
     const last = chat.value[chat.value.length - 1]
@@ -342,7 +343,6 @@ function onEvent(event: string, data: Record<string, unknown>) {
       last.heights = Array.isArray(data.heights) ? (data.heights as number[]) : []
       if (!last.text) last.text = String(data.title || '图表')
     }
-    canSave.value = true
   }
   if (event === 'answer_clarify') {
     const last = chat.value[chat.value.length - 1]
@@ -350,9 +350,10 @@ function onEvent(event: string, data: Record<string, unknown>) {
       last.clarify = true
       last.text = String(data.headlineHtml || data.title || '需要澄清后再问')
         .replace(/<[^>]+>/g, '')
-      last.follows = Array.isArray(data.follows) ? (data.follows as string[]) : []
+      last.follows = Array.isArray(data.follows)
+        ? (data.follows as string[]).filter((f) => f && !/保存到仪表盘|保存证据图/.test(f))
+        : []
     }
-    canSave.value = false
   }
   if (event === 'message_delta') {
     const last = chat.value[chat.value.length - 1]
@@ -363,7 +364,6 @@ function onEvent(event: string, data: Record<string, unknown>) {
     if (last?.role === 'assistant') {
       last.text = `错误: ${data.message || ''}`
     }
-    canSave.value = false
   }
   if (event === 'chart_ready' && String(data.dashboardId || '') === props.dashboardId) {
     emit('applied')
@@ -379,7 +379,6 @@ async function send() {
     return
   }
   streaming.value = true
-  canSave.value = false
   liveTools.value = []
   prompt.value = ''
   chat.value.push({ role: 'user', text })
@@ -410,7 +409,7 @@ async function send() {
     if (last?.role === 'assistant') {
       last.tools = [...liveTools.value]
       if (!last.text && !last.columns?.length && !last.chartType && !last.sql) {
-        last.text = canSave.value ? '已查出结果（未写入画布）。' : '已完成。'
+        last.text = '已查出结果。'
       }
     }
   } catch (e) {
@@ -423,28 +422,6 @@ async function send() {
     liveTools.value = []
     await nextTick()
     scrollMsgs()
-  }
-}
-
-async function saveToBoard() {
-  if (!conversationId.value || !runId.value || streaming.value) return
-  streaming.value = true
-  try {
-    await conversationApi.adopt(
-      conversationId.value,
-      runId.value,
-      { action: 'save' },
-      onEvent
-    )
-    chat.value.push({ role: 'system', text: '已保存到当前仪表盘草稿。' })
-    emit('applied')
-  } catch (e) {
-    chat.value.push({
-      role: 'system',
-      text: e instanceof Error ? e.message : String(e)
-    })
-  } finally {
-    streaming.value = false
   }
 }
 
@@ -597,11 +574,6 @@ async function onPickFile(ev: Event) {
       </div>
 
       <div class="dock">
-        <div v-if="canSave && !streaming" class="adopt">
-          <button class="primary save-btn" type="button" @click="saveToBoard">保存到仪表盘</button>
-          <p class="hint">默认不改画布，与 DataEase SQLBot 一致</p>
-        </div>
-
         <div class="ds-row">
           <span class="ds-lab">当前数据集</span>
           <select v-model="selectedDatasetId" :disabled="streaming">
@@ -951,19 +923,6 @@ async function onPickFile(ev: Event) {
   background: #fff;
   border-top: 1px solid #dee0e3;
 }
-.adopt {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  padding: 10px 12px 8px;
-}
-.hint {
-  margin: 0;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: #8f959e;
-}
 .ds-row {
   display: flex;
   flex-wrap: wrap;
@@ -1039,9 +998,6 @@ textarea {
   white-space: nowrap;
   flex-shrink: 0;
   line-height: 36px;
-}
-.primary.save-btn {
-  width: 100%;
 }
 .primary.send {
   height: 36px;

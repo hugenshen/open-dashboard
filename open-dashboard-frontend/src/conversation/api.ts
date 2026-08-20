@@ -20,6 +20,31 @@ export type ConversationMessageVO = {
   createTime?: number
 }
 
+export type ConversationReplayEvent = {
+  seq?: number
+  ts?: number
+  runId?: string
+  type?: string
+  data?: Record<string, unknown>
+}
+
+export type ConversationReplayRun = {
+  id: string
+  status?: string
+  finishDetail?: string
+  mode?: string
+  createTime?: number
+  eventCount?: number
+  events?: ConversationReplayEvent[]
+  artifact?: Record<string, unknown>
+}
+
+export type ConversationReplayVO = {
+  conversationId: string
+  linkedDashboardId?: string | null
+  runs?: ConversationReplayRun[]
+}
+
 export type StylePresetVO = {
   id: string
   name: string
@@ -225,6 +250,8 @@ export const conversationApi = {
   get: (id: string) => apiFetch<ConversationVO>(`/conversations/${id}`),
   /** 运行时(harness)是生成看板 linkedDashboardId 的权威来源；后端记录可能未同步该链接。 */
   getHarness: (id: string) => harnessFetch<ConversationVO>(`/conversations/${id}`),
+  replay: (id: string) =>
+    harnessFetch<ConversationReplayVO>(`/conversations/${id}/replay`),
   update: async (
     id: string,
     data: {

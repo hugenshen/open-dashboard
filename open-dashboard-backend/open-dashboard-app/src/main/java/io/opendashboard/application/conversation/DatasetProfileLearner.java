@@ -57,34 +57,55 @@ public class DatasetProfileLearner {
 
     /** 学习一个数据集：采样 → 统计 → 角色判定 → 写库。幂等：重复调用覆盖更新。 */
     public void learn(String datasetId) {
+        learn(datasetId, () -> false, phase -> {});
+    }
+
+    public void learn(
+            String datasetId,
+            java.util.function.BooleanSupplier cancelled,
+            java.util.function.Consumer<String> phase
+    ) {
         try {
             DatasetDetailVO detail = datasets.get(datasetId).orElse(null);
             if (detail == null || detail.meta() == null || detail.fields() == null) return;
             String table = detail.meta().tableName();
             if (table == null || table.isBlank()) return;
 
+            checkCancelled(cancelled);
+            if (phase != null) phase.accept("sample");
             List<List<Object>> rows = sampleRows(datasetId, table);
             if (rows == null) return; // 采样失败（表不可达等），跳过学习，profile 接口仍走现场判定
+            checkCancelled(cancelled);
 
             FieldProfileGateway store = profileStore.getIfAvailable();
             if (store == null) return; // stub 模式无 DB
 
+            if (phase != null) phase.accept("stats");
             long now = System.currentTimeMillis();
             List<FieldProfileVO> saved = new ArrayList<>();
             for (DatasetFieldVO f : detail.fields()) {
+                checkCancelled(cancelled);
                 FieldProfileVO p = buildProfile(datasetId, f, rows, now);
                 if (p != null) {
                     store.save(p);
                     saved.add(p);
                 }
             }
-            // 公共维度抽取：低基数 dim 字段连同维度值写入 de_glossary
+            checkCancelled(cancelled);
+            if (phase != null) phase.accept("extract");
             extractCommonDimensions(datasetId, saved);
-            // 候选指标抽取：measure 字段 → de_indicator(draft) + 度量词表（业务名/别名对齐）
             extractIndicators(datasetId, saved);
             log.info("[dataset-learn] dataset={} fields={} sampledRows={}", datasetId, detail.fields().size(), rows.size());
+        } catch (java.util.concurrent.CancellationException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("[dataset-learn] failed dataset={}: {}", datasetId, e.getMessage());
+        }
+    }
+
+    private static void checkCancelled(java.util.function.BooleanSupplier cancelled) {
+        if (cancelled != null && cancelled.getAsBoolean()) {
+            throw new java.util.concurrent.CancellationException("learn cancelled");
         }
     }
 
@@ -94,6 +115,7 @@ public class DatasetProfileLearner {
         if (g == null) return;
         for (FieldProfileVO p : profiles) {
             if (!"dim".equals(p.roleLearned())) continue;
+            if (glossaryConfirmed(datasetId, p.fieldName())) continue;
             // 低基数（值可枚举）且非空值集合；distinct<=1 无区分度跳过
             if (p.distinctCount() == null || p.distinctCount() > 20 || p.distinctCount() <= 1) continue;
             List<Object> values = p.distinctValues();
@@ -152,6 +174,7 @@ public class DatasetProfileLearner {
         if (g == null) return;
         for (FieldProfileVO p : profiles) {
             if (!"measure".equals(p.roleLearned())) continue;
+            if (indicatorConfirmed(datasetId, p.fieldName())) continue;
             String name = p.fieldName() == null ? "" : p.fieldName().toLowerCase(Locale.ROOT);
             String label = p.fieldLabel() == null ? "" : p.fieldLabel();
             String blob = name + " " + label.toLowerCase(Locale.ROOT);
@@ -205,6 +228,32 @@ public class DatasetProfileLearner {
         int paren = s.indexOf('(');
         if (paren > 0) s = s.substring(0, paren);
         return s.trim();
+    }
+
+    private boolean indicatorConfirmed(String datasetId, String fieldName) {
+        io.opendashboard.domain.gateway.IndicatorGateway g = indicatorStore.getIfAvailable();
+        if (g == null) return false;
+        try {
+            return g.findByField(datasetId, fieldName)
+                    .map(it -> "confirmed".equals(it.status()))
+                    .orElse(false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean glossaryConfirmed(String datasetId, String fieldName) {
+        io.opendashboard.domain.gateway.GlossaryGateway g = glossaryStore.getIfAvailable();
+        if (g == null) return false;
+        try {
+            for (io.opendashboard.domain.DatasetDtos.GlossaryItemVO it : g.listByDataset(datasetId)) {
+                if (fieldName.equals(it.canonicalField()) && "confirmed".equals(it.status())) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
     }
 
     private List<List<Object>> sampleRows(String datasetId, String table) {

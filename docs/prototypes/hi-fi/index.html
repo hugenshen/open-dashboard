@@ -1,7 +1,370 @@
 <!DOCTYPE html>
-<meta charset="UTF-8" />
-<title>Open Dashboard 高保</title>
-<meta http-equiv="refresh" content="0; url=./workbench.html" />
-<link rel="canonical" href="./workbench.html" />
-<script>location.replace('./workbench.html');</script>
-<p><a href="./workbench.html">进入工作台</a></p>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Dashboard 高保入口</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <link rel="stylesheet" href="./shared/shell.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100%; }
+    body {
+      font-family: var(--od-font);
+      color: var(--od-ink);
+      background: var(--od-bg);
+    }
+    button, a { font: inherit; }
+    .entry {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .entry-top {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 32px;
+      border-bottom: 1px solid var(--od-line);
+      background: rgba(255, 255, 255, .82);
+      backdrop-filter: blur(12px);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--od-ink);
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 780;
+    }
+    .brand i {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: var(--od-brand);
+      color: #fff;
+      font-style: normal;
+      font-size: 11px;
+      font-weight: 820;
+    }
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .btn {
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-card);
+      color: var(--od-ink);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 680;
+      cursor: pointer;
+    }
+    .btn.primary {
+      background: var(--od-brand);
+      color: #fff;
+      border-color: var(--od-brand);
+    }
+    .btn:hover { filter: brightness(.98); }
+    .entry-main {
+      flex: 1;
+      width: 100%;
+      max-width: none;
+      padding: 34px 32px 56px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) clamp(360px, 22vw, 460px);
+      gap: 24px;
+      align-items: stretch;
+      margin-bottom: 22px;
+    }
+    .hero-copy,
+    .context {
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-card);
+      box-shadow: var(--od-shadow);
+    }
+    .hero-copy {
+      padding: 28px 30px;
+    }
+    .eyebrow {
+      color: var(--od-brand);
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+    h1 {
+      margin-top: 10px;
+      font-size: 34px;
+      line-height: 1.18;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+    .hero-copy p {
+      margin-top: 12px;
+      color: var(--od-muted);
+      font-size: 15px;
+      line-height: 1.65;
+      max-width: 1120px;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 22px;
+    }
+    .context {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .context h2 {
+      font-size: 14px;
+      font-weight: 760;
+    }
+    .ctx-row {
+      padding: 11px 12px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-bg);
+    }
+    .ctx-row span {
+      display: block;
+      color: var(--od-faint);
+      font-size: 12px;
+    }
+    .ctx-row b {
+      display: block;
+      margin-top: 4px;
+      font-size: 14px;
+      font-weight: 720;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 20px;
+    }
+    .zone {
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-card);
+      box-shadow: var(--od-shadow);
+      overflow: hidden;
+    }
+    .zone-hd {
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--od-line);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .zone-hd h2 {
+      font-size: 18px;
+      font-weight: 780;
+    }
+    .zone-hd p {
+      margin-top: 5px;
+      color: var(--od-muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .tag {
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 6px;
+      background: var(--od-brand-soft);
+      color: var(--od-brand);
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 14px;
+    }
+    .card {
+      min-height: 116px;
+      padding: 14px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-bg);
+      color: var(--od-ink);
+      text-decoration: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .card:hover {
+      border-color: #a5b4fc;
+      background: var(--od-card);
+    }
+    .card b {
+      font-size: 15px;
+      font-weight: 760;
+    }
+    .card span {
+      margin-top: 5px;
+      display: block;
+      color: var(--od-muted);
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+    .card em {
+      font-style: normal;
+      color: var(--od-brand);
+      font-size: 12px;
+      font-weight: 720;
+    }
+    .flow {
+      margin-top: 20px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-card);
+      box-shadow: var(--od-shadow);
+      padding: 18px 20px;
+    }
+    .flow h2 {
+      font-size: 17px;
+      font-weight: 780;
+      margin-bottom: 12px;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .step {
+      padding: 11px 10px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-bg);
+      color: var(--od-muted);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .step b {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--od-ink);
+      font-size: 13px;
+    }
+    @media (max-width: 980px) {
+      .entry-top { height: auto; padding: 14px 18px; align-items: flex-start; }
+      .entry-main { padding: 24px 18px 44px; }
+      .hero,
+      .layout { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .steps { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="entry">
+    <header class="entry-top">
+      <a class="brand" href="./index.html"><i>OD</i><span>Open Dashboard 高保入口</span></a>
+      <div class="top-actions">
+        <a class="btn" href="./register.html">注册</a>
+        <a class="btn" href="./login.html">登录</a>
+        <a class="btn primary" href="./workbench.html">进入用户端</a>
+      </div>
+    </header>
+
+    <section class="entry-main">
+      <div class="hero">
+        <section class="hero-copy">
+          <div class="eyebrow">P009 / P010 · 工作区、用户体系、权限和知识记忆治理</div>
+          <h1>一个入口，看清用户端和管理端</h1>
+          <p>用户端负责数据发现、对话分析、仪表盘和报告消费；管理端负责工作区、成员、数据发布、知识、权限和审计。两端共用同一个登录态和当前工作区，AI 运行仍由 Harness 独立承接。</p>
+          <div class="hero-actions">
+            <a class="btn primary" href="./workbench.html">用户端 · 工作台</a>
+            <a class="btn" href="./conversation.html">用户端 · 对话分析</a>
+            <a class="btn" href="./data-market.html">用户端 · 数据广场</a>
+            <a class="btn" href="./workspace-admin.html">管理端 · 成员权限</a>
+            <a class="btn" href="./knowledge.html">管理端 · 知识库</a>
+          </div>
+        </section>
+        <aside class="context">
+          <h2>当前演示上下文</h2>
+          <div class="ctx-row"><span>登录用户</span><b>赵演示 · user-demo</b></div>
+          <div class="ctx-row"><span>当前工作区</span><b>零售经营项目组 · workspace-retail</b></div>
+          <div class="ctx-row"><span>当前角色</span><b>分析师 + 知识管理员</b></div>
+          <div class="ctx-row"><span>运行入口</span><b>FE → Harness Public Run API</b></div>
+        </aside>
+      </div>
+
+      <div class="layout">
+        <section class="zone">
+          <div class="zone-hd">
+            <div>
+              <h2>用户使用端</h2>
+              <p>面向业务用户和分析师，只展示“我有哪些数据、还能申请哪些数据、能问什么、能看到什么”。</p>
+            </div>
+            <span class="tag">消费侧</span>
+          </div>
+          <div class="cards">
+            <a class="card" href="./workbench.html"><div><b>工作台</b><span>最近对话、我的仪表盘、常用入口和可问数据摘要。</span></div><em>打开</em></a>
+            <a class="card" href="./data-market.html"><div><b>数据广场</b><span>按数据空间和资产类型发现、申请、添加到我的数据。</span></div><em>打开</em></a>
+            <a class="card" href="./conversation.html"><div><b>对话分析</b><span>问数、生成看板、查看知识命中和权限解释。</span></div><em>打开</em></a>
+            <a class="card" href="./dashboard.html"><div><b>仪表盘</b><span>浏览、编辑、分享当前工作区内有权限的看板。</span></div><em>打开</em></a>
+            <a class="card" href="./report.html"><div><b>报告</b><span>消费和编辑经营报告，引用已授权图表。</span></div><em>打开</em></a>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone-hd">
+            <div>
+              <h2>管理端</h2>
+              <p>面向管理员和治理角色，维护工作区、用户、数据、知识和权限事实。</p>
+            </div>
+            <span class="tag">治理侧</span>
+          </div>
+          <div class="cards">
+            <a class="card" href="./datasource.html"><div><b>数据源</b><span>接入数据库连接，作为数据集发布的来源。</span></div><em>打开</em></a>
+            <a class="card" href="./dataset.html"><div><b>数据集</b><span>字段角色、重新学习、可问发布和数据策略。</span></div><em>打开</em></a>
+            <a class="card" href="./knowledge.html"><div><b>知识库</b><span>候选确认、指标口径、词表维度、金标准问法和我的记忆。</span></div><em>打开</em></a>
+            <a class="card" href="./workspace-admin.html"><div><b>成员权限</b><span>成员、项目组、角色、资源 ACL、工具权限和审计。</span></div><em>打开</em></a>
+          </div>
+        </section>
+      </div>
+
+      <section class="flow">
+        <h2>端到端链路</h2>
+        <div class="steps">
+          <div class="step"><b>1. 登录</b>Java 建立 userId 和登录态</div>
+          <div class="step"><b>2. 选工作区</b>服务端确认 workspaceId 和角色</div>
+          <div class="step"><b>3. 管理端治理</b>发布可问、可申请数据和权限策略</div>
+          <div class="step"><b>4. 用户端使用</b>数据广场发现，再由对话分析调用 Harness run</div>
+          <div class="step"><b>5. 审计回放</b>记录工具、知识、记忆和权限决策</div>
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

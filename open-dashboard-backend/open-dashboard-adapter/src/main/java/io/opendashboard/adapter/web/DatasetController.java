@@ -36,28 +36,42 @@ public class DatasetController {
     private final DatasetService service;
     private final AskableDatasetService askable;
     private final io.opendashboard.application.conversation.BiPlatformService bi;
+    private final io.opendashboard.application.conversation.DatasetLearnJobs learnJobs;
 
     public DatasetController(
             DatasetService service,
             AskableDatasetService askable,
-            io.opendashboard.application.conversation.BiPlatformService bi
+            io.opendashboard.application.conversation.BiPlatformService bi,
+            io.opendashboard.application.conversation.DatasetLearnJobs learnJobs
     ) {
         this.service = service;
         this.askable = askable;
         this.bi = bi;
+        this.learnJobs = learnJobs;
     }
 
-    /** 字段自学习画像（角色/统计/采样），供数据集详情页展示学习成果。 */
+    /** 字段自学习画像（角色/统计/采样），只读已落库统计，不打源库实时 probe。 */
     @GetMapping("/{id}/profile")
     public java.util.Map<String, Object> profile(@PathVariable String id) {
-        return bi.profileDataset(id);
+        return bi.profileDatasetStats(id);
     }
 
-    /** 手动触发字段自学习（对已有数据集补学/重学；录入时已自动触发）。 */
+    /** 启动字段自学习（异步任务，可查进度 / 停止）。 */
     @PostMapping("/{id}/learn")
     @RequirePermission("dataset:manage")
     public java.util.Map<String, Object> learn(@PathVariable String id) {
-        return bi.learnDataset(id);
+        return learnJobs.start(id);
+    }
+
+    @GetMapping("/{id}/learn/{jobId}")
+    public java.util.Map<String, Object> learnJob(@PathVariable String id, @PathVariable String jobId) {
+        return learnJobs.snapshot(jobId);
+    }
+
+    @DeleteMapping("/{id}/learn/{jobId}")
+    @RequirePermission("dataset:manage")
+    public java.util.Map<String, Object> cancelLearn(@PathVariable String id, @PathVariable String jobId) {
+        return learnJobs.cancel(jobId);
     }
 
     @GetMapping

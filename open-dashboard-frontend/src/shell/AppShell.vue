@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { authApi, type MenuItem } from '../api/auth'
+import type { WorkspaceVO } from '../api/auth'
+import { clearAuthHeaders, setCurrentWorkspaceId } from '../api/http'
 import { conversationApi } from '../conversation/api'
 import RailIcon from './RailIcon.vue'
 import {
@@ -15,10 +17,13 @@ import {
 import './app-shell.css'
 
 const route = useRoute()
+const router = useRouter()
 
 const items = ref<MenuItem[]>([])
 const menuError = ref('')
 const displayName = ref('演示账号')
+const workspaceId = ref('workspace-retail')
+const workspaces = ref<WorkspaceVO[]>([])
 const sqlbotEnabled = ref(false)
 const sqlbotOpen = ref(false)
 const theme = ref<OdTheme>(readTheme())
@@ -42,18 +47,20 @@ const crumb = computed(() => String(route.meta.title || ''))
 const bodyMod = computed(() => {
   const key = active.value
   if (key === 'conversations') return 'conversation'
+  if (key === 'dataPlaza') return 'dataset'
   if (key === 'datasources') return 'datasource'
   if (key === 'datasets') return 'dataset'
   if (key === 'dashboards') return 'dashboard'
   if (key === 'reports') return 'report'
+  if (key === 'workspaceAdmin') return 'dataset'
+  if (key === 'dimensions') return 'dataset'
   return 'workbench'
 })
 
-const startItems = computed(() =>
-  items.value.filter((m) => m.key === 'workbench' || m.key === 'conversations')
-)
-const resourceItems = computed(() =>
-  items.value.filter((m) => m.key !== 'workbench' && m.key !== 'conversations')
+const userItems = computed(() => items.value.filter((m) => (m.group || 'use') === 'use'))
+const adminItems = computed(() => items.value.filter((m) => m.group === 'manage'))
+const currentWorkspace = computed(
+  () => workspaces.value.find((w) => w.id === workspaceId.value) || workspaces.value[0]
 )
 
 const avatarText = computed(() => {
@@ -119,6 +126,20 @@ function openSettings() {
   themeOpen.value = true
 }
 
+async function logout() {
+  clearAuthHeaders()
+  accountOpen.value = false
+  await router.replace('/login?logged_out=1')
+}
+
+function changeWorkspace(ev: Event) {
+  const id = (ev.target as HTMLSelectElement).value
+  workspaceId.value = id
+  setCurrentWorkspaceId(id)
+  flash('已切换工作区')
+  window.setTimeout(() => window.location.reload(), 180)
+}
+
 onMounted(async () => {
   applyTheme(theme.value)
   document.addEventListener('click', onDocClick)
@@ -136,6 +157,8 @@ onMounted(async () => {
   try {
     const me = await authApi.me()
     displayName.value = decodeDisplayName(me.displayName || me.userId) || '演示账号'
+    workspaceId.value = me.workspaceId || me.currentWorkspace?.id || 'workspace-retail'
+    workspaces.value = me.workspaces || (me.currentWorkspace ? [me.currentWorkspace] : [])
   } catch {
     displayName.value = '演示账号'
   }
@@ -182,9 +205,9 @@ watch(
       </router-link>
       <nav class="od-rail-nav">
         <div v-if="menuError" class="od-rail-err" :title="menuError">{{ menuError }}</div>
-        <div v-if="startItems.length" class="od-rail-label">开始</div>
+        <div v-if="userItems.length" class="od-rail-label">用户使用端</div>
         <router-link
-          v-for="item in startItems"
+          v-for="item in userItems"
           :key="item.key"
           :to="item.path"
           class="od-rail-item"
@@ -195,9 +218,9 @@ watch(
           <span class="od-rail-txt">{{ item.label }}</span>
           <span v-if="item.key === 'conversations'" class="od-beta">内测</span>
         </router-link>
-        <div v-if="resourceItems.length" class="od-rail-label">资源</div>
+        <div v-if="adminItems.length" class="od-rail-label">管理端</div>
         <router-link
-          v-for="item in resourceItems"
+          v-for="item in adminItems"
           :key="item.key"
           :to="item.path"
           class="od-rail-item"
@@ -228,6 +251,14 @@ watch(
       <header class="od-top">
         <div v-if="crumb && !isEditor" class="od-crumb">{{ crumb }}</div>
         <div class="od-top-actions">
+          <label v-if="workspaces.length" class="od-workspace-switch" title="当前工作区">
+            <span>{{ currentWorkspace?.role || '成员' }}</span>
+            <select :value="workspaceId" @change="changeWorkspace">
+              <option v-for="ws in workspaces" :key="ws.id" :value="ws.id">
+                {{ ws.name }}
+              </option>
+            </select>
+          </label>
           <!-- 产品不展示 Phase A/B/C；节点留给 editorCore 绑定，能力固定为 C -->
           <div id="phaseTabs" class="od-phase tabs" hidden aria-hidden="true">
             <button type="button" data-phase="a">Phase A</button>
@@ -279,12 +310,12 @@ watch(
             <div class="od-pop" :class="{ open: accountOpen }">
               <div class="who">
                 <b>{{ displayName }}</b>
-                <span>租户 · Open Dashboard 内测</span>
+                <span>{{ currentWorkspace?.name || '默认工作区' }}</span>
               </div>
-              <button type="button" @click="flash('已切换到演示账号')">切换账号</button>
-              <button type="button" @click="openSettings">通用设置</button>
-              <button type="button" @click="flash('退出登录 · 演示')">退出登录</button>
-              <div class="hint">高保演示 · 不接真实 IAM</div>
+              <button type="button" @click="flash('账号中心已连接身份头')">账号中心</button>
+              <button type="button" @click="openSettings">修改密码</button>
+              <button type="button" @click="logout">退出登录</button>
+              <div class="hint">身份、工作区和权限来自 Auth SPI</div>
             </div>
           </div>
         </div>

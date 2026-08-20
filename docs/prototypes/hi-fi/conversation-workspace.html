@@ -679,6 +679,8 @@
     .pill.on-intent { background: var(--brand-soft); color: var(--brand); border-color: #c9d7ff; font-weight: 650; }
     .pill.gen-only { display: none; }
     .stage.intent-gen .pill.gen-only { display: inline-flex; }
+    .stage.intent-ask .flow-gen-only,
+    .stage.ask-chat .flow-gen-only { display: none !important; }
     .intent-hint { font-size: 11.5px; color: var(--faint); margin: 0 0 6px; }
     .ask-pane {
       padding: 16px; overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 12px;
@@ -1045,15 +1047,19 @@
         <a class="logo" href="./workbench.html" id="brand-home" title="产品首页 /workbench"><i>OD</i> Open Dashboard</a>
         <nav class="primary-nav" aria-label="产品主导航">
           <a href="./workbench.html" data-mod="workbench">工作台</a>
-          <span class="on" data-mod="conversations">对话<span class="badge-sec">内测</span></span>
-          <a href="./datasource.html" data-mod="datasources">数据源</a>
-          <a href="./dataset.html" data-mod="datasets">数据集</a>
+          <span class="on" data-mod="conversations">对话分析<span class="badge-sec">内测</span></span>
+          <a href="./data-market.html" data-mod="dataMarket">数据广场</a>
           <a href="./dashboard.html" data-mod="dashboards">仪表盘</a>
           <a href="./report.html" data-mod="reports">报告</a>
+          <a href="./datasource.html" data-mod="datasources">数据源</a>
+          <a href="./dataset.html" data-mod="datasets">数据集</a>
+          <a href="./knowledge.html" data-mod="knowledge">知识库</a>
+          <a href="./workspace-admin.html" data-mod="admin">成员权限</a>
         </nav>
       </div>
       <div class="nav-right">
-        <span class="proto-chip">融合入口 <b>conversation.html</b></span>
+        <span class="proto-chip">当前工作区 <b>零售经营项目组</b></span>
+        <span class="proto-chip">可问数据集 <b>8</b></span>
         <a class="hi-fi-link" href="./dashboard.html">仪表盘编辑器高保</a>
         <button class="ico" type="button" id="btn-layout" title="对话区布局">▦</button>
         <span class="avatar">演</span>
@@ -1117,33 +1123,27 @@
             <span class="step-dot" data-flow="run">② 问数 / 规划</span>
             <span class="sep">→</span>
             <span class="step-dot" data-flow="dash">③ 结果</span>
-            <span class="sep">→</span>
-            <span class="step-dot" data-flow="iterate">④ 保存到仪表盘</span>
+            <span class="sep flow-gen-only">→</span>
+            <span class="step-dot flow-gen-only" data-flow="iterate">④ 写入看板</span>
           </div>
 
           <div class="chat-main" id="chat-main">
             <div class="landing-stack" id="landing-stack">
               <div class="hero-zone" id="hero">
                 <div class="brand-mark">先<em>问数</em></div>
-                <div class="brand-sub">先看清数字，再决定是否保存到仪表盘</div>
+                <div class="brand-sub">当前工作区：零售经营项目组。先把数字问清楚，整页看板请用「直接生成仪表盘」。</div>
               </div>
-              <div class="chat-hint" id="chat-hint">默认<strong>问数</strong>：结论、表、SQL 出现在对话里，不自动改看板。<br/>结果卡上点「保存到仪表盘」写入本题图。整页看板请用落地页「直接生成仪表盘」。</div>
+              <div class="chat-hint" id="chat-hint">默认<strong>问数</strong>：结论、表、SQL 出现在对话里，不写入看板。<br/>整页看板请用落地页「直接生成仪表盘」。</div>
               <div class="msgs hidden" id="msgs"></div>
               <div class="dock">
                 <div class="dock-inner">
                   <div class="intent-hint" id="intent-hint">当前意图：问数 · 结果出现在对话中</div>
                   <div class="composer" id="composer">
-                    <div class="comp-row">
-                      <button class="gbtn" type="button" id="btn-add">＋ 数据集 ▾</button>
-                      <span class="ctx-pill" id="ctx-pill">上下文 <b id="ctx-name">模拟经营</b></span>
-                      <span class="sp"></span>
-                    </div>
                     <textarea id="input" placeholder="问一句业务问题，例如：各区域销售额是多少？"></textarea>
                     <div class="comp-row">
+                      <button class="gbtn" type="button" id="btn-add">＋ 可问数据集 ▾</button>
+                      <span class="ctx-pill" id="ctx-pill">上下文 <b id="ctx-name">模拟经营</b></span>
                       <button class="pill on-intent" type="button" id="btn-intent"><b id="intent-label">问数</b> ▾</button>
-                      <button class="pill" type="button" id="btn-model">⚡ <b>Auto</b> ▾</button>
-                      <button class="pill gen-only" type="button" id="btn-mode">◎ <b id="mode-label">自动模式</b> ▾</button>
-                      <button class="pill gen-only" type="button" id="btn-style">▦ <b id="style-label">智能风格</b> ▾</button>
                       <span class="sp"></span>
                       <button class="send" type="button" id="btn-send">↑</button>
                     </div>
@@ -1164,7 +1164,7 @@
                   <div class="recent" id="recent">
                     <div class="recent-hd">最近对话</div>
                     <button class="recent-item" type="button" data-recent="ask-region">
-                      <span class="dot"></span><span class="t">问数 · 各区域销售额</span><span class="st">可保存</span>
+                      <span class="dot"></span><span class="t">问数 · 各区域销售额</span><span class="st">会话预览</span>
                     </button>
                     <button class="recent-item" type="button" data-recent="经营">
                       <span class="dot"></span><span class="t">模拟经营 · 经营分析仪表盘</span><span class="st">已生成</span>
@@ -1186,17 +1186,22 @@
             <button class="ftab on" type="button" data-filter="all">全部</button>
             <button class="ftab" type="button" data-filter="dataset">数据集</button>
             <button class="ftab" type="button" data-filter="dash">数据看板</button>
-            <button class="ftab soon" type="button">知识库<span class="tag-soon">二期</span></button>
+            <button class="ftab" type="button" data-filter="knowledge">知识库</button>
           </div>
           <div class="tree" id="file-tree">
             <div class="ws" data-sec="session">本会话产物</div>
             <div class="file hidden" id="file-ask" data-kind="dataset" data-id="ask"><span>●</span> <span id="file-ask-name">问数结果（会话预览）</span></div>
             <div class="file" id="file-dash" data-kind="dash" data-id="session"><span>▦</span> <span id="file-dash-name">（写入看板后出现 .dash）</span></div>
-            <div class="ws" data-sec="assets">产品资产 · 数据集 / 看板</div>
+            <div class="ws" data-sec="assets">产品资产 · 数据广场 / 看板</div>
             <div class="file" id="ex-house" data-kind="dash" data-jump="dash"><span>▦</span> 房产交易分析看板.dash</div>
             <div class="file" id="ex-olympic" data-kind="dash" data-jump="dash"><span>▦</span> 奥运会奖牌分析看板.dash</div>
-            <div class="file" data-kind="dataset" data-jump="dataset" id="file-ds-ecom"><span>●</span> 公开数据集 · 电商经营</div>
-            <div class="file" data-kind="dataset" data-jump="dataset" id="file-ds-travel"><span>●</span> 公开数据集 · 出境游</div>
+            <div class="file" data-kind="dataset" data-jump="dataMarket" id="file-ds-ecom"><span>●</span> 已获权数据集 · 电商经营</div>
+            <div class="file" data-kind="dataset" data-jump="dataMarket" id="file-ds-travel"><span>●</span> 可申请数据集 · 出境游</div>
+            <div class="ws" data-sec="knowledge">本会话用到的知识</div>
+            <div class="file" data-kind="knowledge" data-id="term-gmv"><span>▣</span> GMV → spending_amount</div>
+            <div class="file" data-kind="knowledge" data-id="metric-amt"><span>▣</span> 销售额 SUM · 元</div>
+            <div class="file" data-kind="knowledge" data-id="dim-region"><span>▣</span> 区域 · 华东 / 华南 / 华北</div>
+            <div class="file" data-kind="knowledge" data-jump="knowledge"><span>↗</span> 管理知识库</div>
           </div>
         </aside>
 
@@ -1205,7 +1210,7 @@
             <span id="bridge-label">产物已写入现有 Dashboard draft</span>
             <code class="path" id="bridge-path">/dashboards/d_conv_demo/edit</code>
             <span class="sp"></span>
-            <button class="bbtn" type="button" id="btn-goto-ds">去数据集</button>
+            <button class="bbtn" type="button" id="btn-goto-ds">去数据广场</button>
             <button class="bbtn" type="button" id="btn-goto-list">仪表盘列表</button>
             <button class="bbtn primary" type="button" id="btn-open-editor">在编辑器打开</button>
           </div>
@@ -1225,7 +1230,7 @@
           <div class="cbody" id="cbody">
             <div class="explore" id="explore">
               <h2>从问数开始，再落到可编辑看板</h2>
-              <div class="sub">问数结果在对话里；满意后再保存到仪表盘，或直接生成整页 draft（此时才出现画布）。</div>
+              <div class="sub">问数结果只在对话里预览。整页看板请用落地页「直接生成仪表盘」（此时才出现画布）。</div>
               <button class="cta" type="button" id="btn-browse">🔍 浏览公开数据集 / 示例</button>
               <div class="ex-grid">
                 <button class="ex-card" type="button" data-ex="house">
@@ -1368,7 +1373,7 @@
         <p><b>默认：问数</b></p>
         <ul style="padding-left:18px;margin-top:6px">
           <li>结论 / 表 / SQL 写在对话里（对齐 SQLBot）；不自动改看板</li>
-          <li><b>保存到仪表盘</b>：本题图 → DashboardPatch（不落结果行）</li>
+          <li>问数结果本期不提供「保存到仪表盘」；整页写入走「直接生成仪表盘」</li>
         </ul>
         <p style="margin-top:10px"><b>快捷：直接生成仪表盘</b> — 落地页意图，不经单题问数，直出整页 draft</p>
         <p style="margin-top:8px"><b>对照</b>：DataEase 分层 IA + SQLBot 旁路；DeerFlow SSE/Plan；JoyAgent 先问数再报告 — 见 ai-architecture.md</p>
@@ -1480,7 +1485,7 @@
             ? '洞察会话预览 · 归因证据尚未写入看板'
             : '问数会话预览 · 尚未写入看板';
           $('#bridge-path').textContent = insight ? 'answer_insight · ephemeral' : 'answer_chart · ephemeral';
-          $('#btn-open-editor').textContent = insight ? '先保存证据图' : '先保存到仪表盘';
+          $('#btn-open-editor').textContent = '生成看板后可打开编辑器';
         } else if (S.hasDash) {
           $('#bridge-label').textContent = '产物已写入现有 Dashboard draft';
           $('#btn-open-editor').textContent = '在编辑器打开';
@@ -1562,11 +1567,14 @@
     $('#btn-cap').onclick = () => $('#cap-mask').classList.add('open');
     $$('[data-x]').forEach((b) => b.onclick = () => $(`#${b.dataset.x}-mask`).classList.remove('open'));
 
-    $('#btn-model').onclick = (e) => { e.stopPropagation(); closePops(); place($('#model-pop'), e.currentTarget); };
-    $('#btn-mode').onclick = (e) => { e.stopPropagation(); closePops(); place($('#mode-pop'), e.currentTarget); };
+    const btnModel = $('#btn-model');
+    if (btnModel) btnModel.onclick = (e) => { e.stopPropagation(); closePops(); place($('#model-pop'), e.currentTarget); };
+    const btnMode = $('#btn-mode');
+    if (btnMode) btnMode.onclick = (e) => { e.stopPropagation(); closePops(); place($('#mode-pop'), e.currentTarget); };
     $('#btn-intent').onclick = (e) => { e.stopPropagation(); closePops(); place($('#intent-pop'), e.currentTarget); };
     $('#btn-add').onclick = (e) => { e.stopPropagation(); closePops(); place($('#add-pop'), e.currentTarget); };
-    $('#btn-style').onclick = (e) => { e.stopPropagation(); closePops(); $('#style-mask').classList.add('open'); };
+    const btnStyle = $('#btn-style');
+    if (btnStyle) btnStyle.onclick = (e) => { e.stopPropagation(); closePops(); $('#style-mask').classList.add('open'); };
     $('#btn-export').onclick = (e) => { e.stopPropagation(); closePops(); place($('#export-pop'), e.currentTarget); };
     $('#btn-more').onclick = (e) => { e.stopPropagation(); closePops(); place($('#more-pop'), e.currentTarget); };
     document.onclick = closePops;
@@ -1602,7 +1610,8 @@
       e.stopPropagation();
       $$('#mode-pop .pop-item').forEach((x) => x.classList.toggle('on', x === b));
       S.mode = b.dataset.mode;
-      $('#mode-label').textContent = S.mode === 'plan' ? 'Plan 模式' : '自动模式';
+      const modeLabel = $('#mode-label');
+      if (modeLabel) modeLabel.textContent = S.mode === 'plan' ? 'Plan 模式' : '自动模式';
       closePops();
     };
     $('#add-pop').onclick = (e) => {
@@ -1625,7 +1634,12 @@
       $('#st-name').textContent = b.dataset.name;
       $('#st-desc').textContent = b.dataset.desc;
     };
-    $('#btn-use-style').onclick = () => { $('#style-label').textContent = S.styleName; $('#style-mask').classList.remove('open'); toast('风格 · ' + S.styleName); };
+    $('#btn-use-style').onclick = () => {
+      const styleLabel = $('#style-label');
+      if (styleLabel) styleLabel.textContent = S.styleName;
+      $('#style-mask').classList.remove('open');
+      toast('风格 · ' + S.styleName);
+    };
     $('#btn-style-x').onclick = () => $('#style-mask').classList.remove('open');
 
     $('#chips').onclick = (e) => {
@@ -1725,12 +1739,11 @@
 
     function openInEditor() {
       if (S.hasAsk && !S.hasDash) {
-        const shell = $('#msgs .msg.ai:last-child');
-        adoptAskToDash(shell || $('#msgs'), false);
+        toast('问数结果本期不写入看板，请用「直接生成仪表盘」');
         return;
       }
       if (!S.hasDash) {
-        toast('请先问数并保存，或生成看板');
+        toast('请先生成看板');
         return;
       }
       const name = ($('#ctab')?.textContent || '对话生成仪表盘').replace(/\.dash$/, '');
@@ -1753,7 +1766,9 @@
       if (postParent(payload)) return;
       const map = {
         dataset: './dataset.html',
+        dataMarket: './data-market.html',
         dashboard: './dashboard.html' + (screen === 'list' ? '' : '#/editor'),
+        knowledge: './knowledge.html',
         workbench: './workbench.html'
       };
       location.href = map[mod] || './workbench.html';
@@ -1768,6 +1783,7 @@
       $$('#file-tree [data-sec="session"]').forEach((el) => el.classList.toggle('hidden', kind === 'dataset' && !S.hasAsk));
       if (!S.hasDash) $('#file-dash').classList.add('hidden');
       else if (kind === 'all' || kind === 'dash') $('#file-dash').classList.remove('hidden');
+      $$('#file-tree [data-sec="knowledge"]').forEach((el) => el.classList.toggle('hidden', kind !== 'all' && kind !== 'knowledge'));
       if (S.hasAsk && (kind === 'all' || kind === 'dataset')) $('#file-ask').classList.remove('hidden');
       else if (!S.hasAsk) $('#file-ask').classList.add('hidden');
     }
@@ -2082,8 +2098,6 @@
       const isClarify = pack.mode === 'clarify';
       const isInsight = pack.mode === 'insight';
       const isKpi = pack.kind === 'kpi';
-      const saveLab = isInsight ? '保存证据图到仪表盘' : '保存到仪表盘';
-      const genLab = isInsight ? '生成诊断看板' : '直接生成仪表盘';
 
       let body = '';
       if (isClarify) {
@@ -2157,12 +2171,6 @@
             <span class="ask-follow-lab">接着问</span>
             ${pack.follows.map((f) => `<button class="chip" type="button" data-follow="${esc(f)}">${esc(f)}</button>`).join('')}
           </div>
-          <div class="ask-foot">
-            <button class="btn" type="button" data-act="copy">复制结论</button>
-            <span class="sp"></span>
-            ${isInsight ? `<button class="btn" type="button" data-act="gen">${esc(genLab)}</button>` : ''}
-            <button class="btn primary" type="button" data-act="save">${esc(saveLab)}</button>
-          </div>
         </div>`;
     }
 
@@ -2230,7 +2238,7 @@
       S.streaming = false;
       $('#btn-send').classList.remove('stop');
       $('#btn-send').textContent = '↑';
-      setTimeout(() => setFlow('iterate'), 700);
+      setTimeout(() => setFlow('dash'), 700);
       toast(S.lastAsk?.mode === 'insight' ? '③ 洞察结论已写在对话里' : (S.lastAsk?.mode === 'clarify' ? '③ 请点一个具体问题' : '③ 问数结果已写在对话里'));
       sync();
       $('#msgs').scrollTop = $('#msgs').scrollHeight;
@@ -2466,6 +2474,7 @@
           e.preventDefault();
           const map = {
             workbench: 'workbench',
+            dataMarket: 'dataMarket',
             datasources: 'datasource',
             datasets: 'dataset',
             dashboards: 'dashboard',
@@ -2483,12 +2492,20 @@
     };
     $('#btn-open-editor').onclick = openInEditor;
     $('#btn-goto-list').onclick = () => gotoModule('dashboard', 'list');
-    $('#btn-goto-ds').onclick = () => gotoModule('dataset');
-    $$('[data-jump="dataset"]').forEach((el) => el.onclick = () => {
+    $('#btn-goto-ds').onclick = () => gotoModule('dataMarket');
+    $$('[data-jump="dataMarket"]').forEach((el) => el.onclick = () => {
       selectFile(el);
       S.dataset = el.id === 'file-ds-travel' ? 'ds_travel' : 'ds_sales';
       toast('已绑定数据集上下文 · ' + el.textContent.trim());
       filterFiles('dataset');
+    });
+    $$('[data-kind="knowledge"]').forEach((el) => el.onclick = () => {
+      selectFile(el);
+      if (el.dataset.jump === 'knowledge') {
+        gotoModule('knowledge');
+        return;
+      }
+      toast('本会话命中：' + el.textContent.replace('▣', '').trim() + ' · 未确认的候选不会出现在这里');
     });
     $('#nav-history').onclick = () => {
       enterWorkspace({ mode: 'explore', keepToast: true });

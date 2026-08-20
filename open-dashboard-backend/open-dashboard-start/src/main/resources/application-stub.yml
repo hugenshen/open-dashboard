@@ -6,5 +6,7 @@ spring:
 
 opendashboard:
   stub-query: true
+  auth:
+    dev-fallback: false
   conversation:
     enabled: true

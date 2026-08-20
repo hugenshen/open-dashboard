@@ -10,8 +10,15 @@ import java.util.Set;
 public record AuthPrincipal(
         String userId,
         String displayName,
-        Set<String> permissions
+        Set<String> permissions,
+        String workspaceId
 ) {
+    public static final String DEFAULT_WORKSPACE_ID = "workspace-retail";
+
+    public AuthPrincipal(String userId, String displayName, Set<String> permissions) {
+        this(userId, displayName, permissions, DEFAULT_WORKSPACE_ID);
+    }
+
     public AuthPrincipal {
         if (userId == null || userId.isBlank()) {
             throw new IllegalArgumentException("userId required");
@@ -20,6 +27,7 @@ public record AuthPrincipal(
         permissions = permissions == null
                 ? Set.of()
                 : Collections.unmodifiableSet(new LinkedHashSet<>(permissions));
+        workspaceId = workspaceId == null || workspaceId.isBlank() ? DEFAULT_WORKSPACE_ID : workspaceId;
     }
 
     public boolean hasPermission(String permission) {

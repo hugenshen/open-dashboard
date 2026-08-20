@@ -9,7 +9,7 @@ public class AuthProperties {
      * When no AuthProvider identity is found, use a demo principal so local/dev stays usable.
      * Set false in production so missing identity yields 401 on {@code @RequireAuth}.
      */
-    private boolean devFallback = true;
+    private boolean devFallback = false;
 
     private String fallbackUserId = "demo";
     private String fallbackDisplayName = "演示用户";

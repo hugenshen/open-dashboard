@@ -5,6 +5,8 @@ declare module 'vue-router' {
     title?: string
     fullBleed?: boolean
     hideShell?: boolean
+    public?: boolean
+    requiredPermissions?: string[]
     shell?: 'default' | 'editor'
   }
 }

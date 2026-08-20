@@ -18,7 +18,7 @@ from agent.types import AgentMessage, sse, step
 from agent import session_store
 from agent.user_context import set_principal, set_workspace
 from llm_client import chat_completions, llm_configured, llm_settings
-from sqlbot.pipeline import bar_heights, iter_sqlbot
+from sqlbot.pipeline import bar_heights, display_columns, is_empty_query, iter_sqlbot
 from sqlbot.suggest import is_suggest_request, suggest_follows
 from tools.od_bi import ToolState, _plan_charts_from_profile, bi_call, dumps_result
 from tools.gateway import ToolGateway
@@ -869,6 +869,8 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14, user_id: str = "d
     intent = payload.get("intent")
     run_mode = (payload.get("mode") or "auto").lower()
     history = payload.get("history") or []
+    runtime_context = payload.get("runtimeContext") if isinstance(payload.get("runtimeContext"), dict) else {}
+    workspace_id = str(runtime_context.get("workspaceId") or "default")
 
     yield step("agent_start", f"Pi Agent · model={cfg['model']}")
     resolved = resolve_intent(intent, message)
@@ -892,9 +894,10 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14, user_id: str = "d
                 conversation_id,
                 run_id,
                 selected_chart_id=payload.get("selectedChartId"),
+                user_id=user_id,
+                workspace_id=workspace_id,
             )
             return
-    runtime_context = payload.get("runtimeContext") if isinstance(payload.get("runtimeContext"), dict) else {}
     if runtime_context:
         yield step(
             "context",
@@ -924,7 +927,12 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14, user_id: str = "d
         except Exception:
             board_summary = None
 
-    gateway = ToolGateway.create(linked, defer_apply=(run_mode == "plan"), user_id=user_id)
+    gateway = ToolGateway.create(
+        linked,
+        defer_apply=(run_mode == "plan"),
+        user_id=user_id,
+        workspace_id=workspace_id,
+    )
     state = gateway.state
     openai_tools = gateway.openai_specs()
 
@@ -1124,7 +1132,7 @@ def run_lead(payload: Dict[str, Any], *, max_rounds: int = 14, user_id: str = "d
                             {
                                 "title": ans.get("title") or "洞察",
                                 "html": fin.get("message") or f"查询返回 {ans.get('rowCount') or 0} 行。",
-                                "follows": ["保存到仪表盘", "生成整页看板"],
+                                "follows": ["生成整页看板"],
                             },
                         )
                     else:
@@ -1213,6 +1221,7 @@ def _run_rechart(
     run_id: str = "",
     selected_chart_id: Optional[str] = None,
     user_id: str = "demo",
+    workspace_id: str = "default",
 ) -> Generator[str, None, None]:
     """Deterministic multi-turn surgical edit of an existing dashboard (no LLM).
 
@@ -1239,10 +1248,20 @@ def _run_rechart(
     charts = summary.get("charts") or []
     if not isinstance(charts, list) or not charts:
         yield step("fallback", "看板为空，走首次生成")
-        yield from _run_gen(message, dataset_ids, linked, style_id, run_mode, conversation_id, run_id, user_id)
+        yield from _run_gen(
+            message,
+            dataset_ids,
+            linked,
+            style_id,
+            run_mode,
+            conversation_id,
+            run_id,
+            user_id,
+            workspace_id,
+        )
         return
 
-    gateway = ToolGateway.create(linked, user_id=user_id)
+    gateway = ToolGateway.create(linked, user_id=user_id, workspace_id=workspace_id)
     if "od_rechart_chart" not in gateway.by_name:
         yield sse("error", {"code": "NO_RECHART_TOOL", "message": "harness 未注册 od_rechart_chart"})
         yield sse("finish", {"reason": "error", "detail": "no_rechart_tool"})
@@ -1250,7 +1269,17 @@ def _run_rechart(
 
     if mt == "replace":
         yield step("fallback", "用户要求整页重新生成")
-        yield from _run_gen(message, dataset_ids, linked, style_id, run_mode, conversation_id, run_id, user_id)
+        yield from _run_gen(
+            message,
+            dataset_ids,
+            linked,
+            style_id,
+            run_mode,
+            conversation_id,
+            run_id,
+            user_id,
+            workspace_id,
+        )
         return
 
     title = str(summary.get("name") or "AI 看板")
@@ -1357,6 +1386,8 @@ def run_deterministic(payload: Dict[str, Any], user_id: str = "demo") -> Generat
     style_id = payload.get("styleId") or "feishu-blue"
     mode = (payload.get("mode") or "auto").lower()
     conversation_id = str(payload.get("conversationId") or "")
+    runtime_context = payload.get("runtimeContext") if isinstance(payload.get("runtimeContext"), dict) else {}
+    workspace_id = str(runtime_context.get("workspaceId") or "default")
 
     yield step("context", "确定性工具环（无 Lead/LLM）")
     yield step("intent", f"意图: {intent}")
@@ -1391,6 +1422,7 @@ def run_deterministic(payload: Dict[str, Any], user_id: str = "demo") -> Generat
                 str(payload.get("runId") or ""),
                 selected_chart_id=payload.get("selectedChartId"),
                 user_id=user_id,
+                workspace_id=workspace_id,
             )
             return
 
@@ -1403,6 +1435,7 @@ def run_deterministic(payload: Dict[str, Any], user_id: str = "demo") -> Generat
         conversation_id,
         str(payload.get("runId") or ""),
         user_id,
+        workspace_id,
     )
 
 
@@ -1412,17 +1445,53 @@ def _emit_sqlbot(bot: Dict[str, Any]) -> Generator[str, None, None]:
     chart_type = str(bot.get("chartType") or "bar")
     rows = bot.get("rows") or []
     columns = bot.get("columns") or []
+    column_labels = bot.get("columnLabels") or display_columns(columns, bot.get("schema") if isinstance(bot.get("schema"), dict) else None)
     encode = bot.get("encode") or {}
+    if isinstance(encode, dict):
+        encode = dict(encode)
+        if column_labels:
+            if encode.get("category") and not encode.get("categoryLabel"):
+                try:
+                    encode["categoryLabel"] = column_labels[columns.index(str(encode.get("category")))]
+                except ValueError:
+                    encode["categoryLabel"] = column_labels[0] if column_labels else encode.get("category")
+            if encode.get("value") and not encode.get("valueLabel"):
+                try:
+                    encode["valueLabel"] = column_labels[columns.index(str(encode.get("value")))]
+                except ValueError:
+                    encode["valueLabel"] = column_labels[1] if len(column_labels) > 1 else encode.get("value")
+    ds_name = str(bot.get("datasetName") or bot.get("datasetId") or "当前表")
+    row_count = bot.get("rowCount") if isinstance(bot.get("rowCount"), int) else len(rows)
     yield sse("answer_sql", {"sql": sql, "title": title, "datasetId": bot.get("datasetId")})
+    if is_empty_query(rows, row_count):
+        span = str(bot.get("timeSpanHint") or "")
+        span_html = f" {span}。" if span else ""
+        yield sse(
+            "answer_insight",
+            {
+                "title": "查询无有效数据",
+                "headlineHtml": f"<strong>{ds_name}</strong> 按本题条件返回 0 行",
+                "insightHtml": (
+                    f"SQL 已执行，但没有命中任何记录。{span_html}"
+                    "请去掉过严的年份/筛选，或改问样本里实际有数的时间范围。"
+                ),
+                "follows": ["不限年份再问一次", "按月看收入趋势", "换一张有数据的表"],
+                "datasetName": ds_name,
+                "sql": sql,
+            },
+        )
+        yield sse("message_delta", {"text": f"查询返回 0 行。{span}".strip()})
+        yield sse("finish", {"reason": "answered", "detail": "empty"})
+        return
     yield sse(
         "answer_table",
         {
             "title": title,
             "datasetId": bot.get("datasetId"),
             "datasetName": bot.get("datasetName"),
-            "columns": columns,
+            "columns": column_labels or columns,
             "rows": rows,
-            "rowCount": bot.get("rowCount") or len(rows),
+            "rowCount": row_count,
             "truncated": bot.get("truncated"),
             "encode": encode,
             "sql": sql,
@@ -1437,12 +1506,13 @@ def _emit_sqlbot(bot: Dict[str, Any]) -> Generator[str, None, None]:
             "datasetId": bot.get("datasetId"),
             "datasetName": bot.get("datasetName"),
             "encode": encode,
-            "rowCount": bot.get("rowCount") or len(rows),
+            "rowCount": row_count,
             "labels": labels,
             "heights": bar_heights(rows, 1 if len(columns) > 1 else 0),
             "sql": sql,
         },
     )
+    yield sse("message_delta", {"text": f"问数完成：{row_count} 行（会话预览，未写入看板）。"})
     yield sse("finish", {"reason": "answered", "detail": "sqlbot"})
 
 
@@ -1827,17 +1897,23 @@ def _run_ask(message: str, intent: str, dataset_ids: List[str]) -> Generator[str
             {
                 "title": "初步解读",
                 "html": f"基于实时查询，<strong>{dim}</strong> 上 <strong>{top}</strong> 等出现在前列（共 {row_count} 行）。",
-                "follows": ["保存到仪表盘", "生成整页看板"],
+                "follows": ["生成整页看板"],
             },
         )
     yield sse("message_delta", {"text": f"问数完成：{row_count} 行（会话预览，未写入看板）。"})
     yield sse("finish", {"reason": "answered", "detail": intent})
 
 
-def _plan_one_dataset(linked: Optional[str], ds_id: str, user_id: str = "demo", intent_hint: str = "") -> Dict[str, Any]:
+def _plan_one_dataset(
+    linked: Optional[str],
+    ds_id: str,
+    user_id: str = "demo",
+    intent_hint: str = "",
+    workspace_id: str = "default",
+) -> Dict[str, Any]:
     """单数据集规划（独立 ToolState/registry，供多数据集并行调用，互不串扰）。"""
     try:
-        gateway = ToolGateway.create(linked, user_id=user_id)
+        gateway = ToolGateway.create(linked, user_id=user_id, workspace_id=workspace_id)
         args: Dict[str, Any] = {"datasetId": ds_id}
         if intent_hint:
             args["intent"] = intent_hint
@@ -1901,6 +1977,7 @@ def _run_gen(
     conversation_id: str = "",
     run_id: str = "",
     user_id: str = "demo",
+    workspace_id: str = "default",
 ) -> Generator[str, None, None]:
     mode = patch_mode(message, linked)
     if not dataset_ids:
@@ -1920,7 +1997,7 @@ def _run_gen(
         except Exception:
             yield step("board", "无可用看板摘要，按新建处理")
 
-    gateway = ToolGateway.create(linked, user_id=user_id)
+    gateway = ToolGateway.create(linked, user_id=user_id, workspace_id=workspace_id)
     planned: Dict[str, Any] = {}
     composed: Dict[str, Any] = {}
     patch: Dict[str, Any] = {}
@@ -1932,7 +2009,7 @@ def _run_gen(
         results: List[Dict[str, Any]] = []
         with ThreadPoolExecutor(max_workers=min(4, len(dataset_ids))) as pool:
             futs = {
-                pool.submit(_plan_one_dataset, linked, ds, user_id, intent_hint): ds for ds in dataset_ids
+                pool.submit(_plan_one_dataset, linked, ds, user_id, intent_hint, workspace_id): ds for ds in dataset_ids
             }
             for fut in futs:
                 try:

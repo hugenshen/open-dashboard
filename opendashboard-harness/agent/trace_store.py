@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from agent import session_store
 
@@ -27,4 +27,33 @@ def get_run_trace(conversation_id: str, run_id: str) -> Dict[str, Any]:
         "pending": pending,
         "knowledgeRefs": run.get("knowledgeRefs") or [],
         "memoryRefs": run.get("memoryRefs") or [],
+    }
+
+
+def get_conversation_replay(conversation_id: str) -> Dict[str, Any]:
+    """History hydrate payload: per-run events + ask artifacts, no live SSE needed."""
+    doc = session_store.get_raw(conversation_id) or {}
+    runs: List[Dict[str, Any]] = []
+    for run in doc.get("runs") or []:
+        rid = str(run.get("id") or "")
+        if not rid:
+            continue
+        events = session_store.list_events(conversation_id, run_id=rid)
+        artifact = run.get("artifact") if isinstance(run.get("artifact"), dict) else {}
+        runs.append(
+            {
+                "id": rid,
+                "status": run.get("status"),
+                "finishDetail": run.get("finishDetail"),
+                "mode": run.get("mode"),
+                "createTime": run.get("createTime"),
+                "eventCount": len(events),
+                "events": events,
+                "artifact": artifact,
+            }
+        )
+    return {
+        "conversationId": conversation_id,
+        "linkedDashboardId": doc.get("linkedDashboardId"),
+        "runs": runs,
     }

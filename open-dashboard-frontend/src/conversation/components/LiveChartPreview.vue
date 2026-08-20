@@ -3,6 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import { chartQueryApi } from '../../api/dashboard'
 import type { ChartQueryResult, FilterContextItem } from '../../types/dashboard'
+import { displayFieldNames, humanizeFieldName } from '../../utils/fieldLabel'
 
 const props = withDefaults(
   defineProps<{
@@ -16,6 +17,7 @@ const props = withDefaults(
     /** Ask/SQLBot rows already fetched — skip chartQuery (encode may use SQL aliases). */
     rows?: unknown[][]
     columns?: string[]
+    columnLabels?: string[]
     height?: number
   }>(),
   {
@@ -66,8 +68,11 @@ function hasPreviewRows() {
 function previewFromRows(): ChartQueryResult | null {
   const rows = props.rows
   if (!rows?.length) return null
-  const fields = (props.columns || []).map((name) => ({ name, type: 'string' }))
-  const valueName = String(props.encode?.value || props.columns?.[1] || 'value')
+  const displayCols = displayFieldNames(props.columns, props.columnLabels)
+  const fields = displayCols.map((name) => ({ name, type: 'string' }))
+  const valueName = String(
+    props.encode?.valueLabel || displayCols[1] || humanizeFieldName(String(props.encode?.value || '指标'))
+  )
   const categories = rows.map((r) => String((r as unknown[])?.[0] ?? ''))
   const seriesData = rows.map((r) => {
     const row = r as unknown[]
@@ -87,10 +92,22 @@ function previewFromRows(): ChartQueryResult | null {
 }
 
 async function load() {
-  const preview = previewFromRows()
-  if (preview) {
-    render(preview)
-    return
+  if (Array.isArray(props.rows)) {
+    if (!props.rows.length) {
+      empty.value = true
+      error.value = ''
+      loading.value = false
+      chart?.dispose()
+      chart = null
+      if (el.value) el.value.innerHTML = ''
+      return
+    }
+    const preview = previewFromRows()
+    if (preview) {
+      empty.value = false
+      render(preview)
+      return
+    }
   }
   if (!hasBoard() && !hasInline()) {
     error.value = '未绑定数据集'
@@ -142,7 +159,9 @@ function render(result: ChartQueryResult) {
     // data 行是权威值（如 [[610]]），series.kpi 在某些后端路径为占位(1.0)，优先用 data
     const kpi = Number(rows[0]?.[0] ?? rows[0]?.[1] ?? s.kpi ?? 0)
     // 标题即人读的指标名（如「记录数」），优先于 SQL 别名（如 call_status）
-    const label = String(props.title || s.label || '指标')
+    const label = String(
+      props.title || s.label || humanizeFieldName(String(props.encode?.valueLabel || props.encode?.value || '指标'))
+    )
     el.value.innerHTML = `<div class="kpi"><div class="l">${escapeHtml(label)}</div><div class="v">${formatKpi(kpi)}</div></div>`
     return
   }
@@ -155,7 +174,9 @@ function render(result: ChartQueryResult) {
     chart?.dispose()
     chart = null
     const fields = result.fields || []
-    const head = fields.map((f) => `<th>${escapeHtml(f.name)}</th>`).join('')
+    const head = fields
+      .map((f) => `<th>${escapeHtml(humanizeFieldName(String(f.name || '')))}</th>`)
+      .join('')
     const body = rows
       .slice(0, 12)
       .map((r) => `<tr>${fields.map((_, i) => `<td>${escapeHtml(r[i] ?? '')}</td>`).join('')}</tr>`)
@@ -173,14 +194,15 @@ function render(result: ChartQueryResult) {
   el.value.appendChild(host)
   chart = echarts.init(host)
   const categories = (result.series?.categories as string[]) || rows.map((r) => String(r[0] ?? ''))
-  const seriesArr =
+  const rawSeries =
     (result.series?.series as Array<{ name: string; data: number[] }>) ||
     [
       {
-        name: String(props.encode.value || 'value'),
+        name: String(props.encode.valueLabel || props.encode.value || '指标'),
         data: rows.map((r) => Number(r[1] ?? r[0] ?? 0))
       }
     ]
+  const seriesArr = rawSeries.map((s) => ({ ...s, name: humanizeFieldName(s.name) }))
   if (chartType === 'pie') {
     chart.setOption(
       {
@@ -200,12 +222,21 @@ function render(result: ChartQueryResult) {
   }
   const isHbar = chartType === 'hbar'
   const seriesType = chartType === 'line' || chartType === 'area' ? 'line' : 'bar'
+  const valueAxis = {
+    type: 'value' as const,
+    axisLabel: { fontSize: 10, formatter: compactAxisNum }
+  }
+  const categoryAxis = {
+    type: 'category' as const,
+    data: categories,
+    axisLabel: { fontSize: 10, hideOverlap: true }
+  }
   chart.setOption(
     {
       tooltip: { trigger: 'axis' },
-      grid: { left: isHbar ? 72 : 36, right: 12, top: 24, bottom: 28 },
-      xAxis: isHbar ? { type: 'value' } : { type: 'category', data: categories, axisLabel: { fontSize: 10 } },
-      yAxis: isHbar ? { type: 'category', data: categories, axisLabel: { fontSize: 10 } } : { type: 'value' },
+      grid: { left: 8, right: 16, top: 28, bottom: 32, containLabel: true },
+      xAxis: isHbar ? valueAxis : categoryAxis,
+      yAxis: isHbar ? categoryAxis : valueAxis,
       series: seriesArr.map((s) => ({
         type: seriesType,
         name: s.name,
@@ -216,6 +247,14 @@ function render(result: ChartQueryResult) {
     true
   )
   resizeWhenReady()
+}
+
+function compactAxisNum(n: number) {
+  if (!Number.isFinite(n)) return ''
+  const abs = Math.abs(n)
+  if (abs >= 1e8) return `${(n / 1e8).toFixed(abs >= 1e9 ? 1 : 0)}亿`
+  if (abs >= 1e4) return `${(n / 1e4).toFixed(abs >= 1e6 ? 1 : 0)}万`
+  return n.toLocaleString('zh-CN', { maximumFractionDigits: 0 })
 }
 
 function formatKpi(n: number) {
@@ -252,7 +291,8 @@ watch(
     JSON.stringify(props.encode || {}),
     JSON.stringify(props.filters || []),
     JSON.stringify(props.rows || []),
-    JSON.stringify(props.columns || [])
+    JSON.stringify(props.columns || []),
+    JSON.stringify(props.columnLabels || [])
   ],
   () => load()
 )

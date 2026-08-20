@@ -25,6 +25,12 @@ public class AuthExceptionHandler {
                 .body(Map.of("error", "forbidden", "message", e.getMessage()));
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> illegalArgument(IllegalArgumentException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", "bad_request", "message", e.getMessage()));
+    }
+
     /** 业务性 4xx（文件上传格式/大小不合法等）透传 reason，前端能展示具体原因而非裸状态码。 */
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, String>> responseStatus(ResponseStatusException e) {

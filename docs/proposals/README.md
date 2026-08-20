@@ -17,9 +17,9 @@
 | [P004](./P004-conversation/) 对话分析 | in-progress | wip / wip / blocked | v0.5 | [README](./P004-conversation/README.md#开发入口) · [4A 生成](../design/architecture.html#gen) |
 | [P006](./P006-ask-data/) 对话问数 | in-progress | wip / wip / blocked | v0.5 | [README](./P006-ask-data/README.md#开发入口) · [4A 问数](../design/architecture.html#ask) |
 | [P007](./P007-app-shell/) 产品壳与工作台 | in-progress | accepted / wip / blocked | v0.5 | [README 开发入口](./P007-app-shell/README.md#开发入口) |
-| [P008](./P008-permission-aware-workbench/) 权限感知工作台 | accepted | none / wip / none | v0.5 | [README 开发入口](./P008-permission-aware-workbench/README.md#开发入口) |
-| [P009](./P009-workspace-governance/) 工作区隔离、用户体系与知识治理 | in-progress | none / wip / none | v0.6 | [README 开发入口](./P009-workspace-governance/README.md#开发入口) |
-| [P010](./P010-user-memory-ask-knowledge/) 用户记忆与问数知识库 | in-progress | none / wip / none | v0.5 | [README](./P010-user-memory-ask-knowledge/README.md#开发入口) |
+| [P008](./P008-permission-aware-workbench/) 权限感知工作台 | accepted | wip / wip / none | v0.5 | [README 开发入口](./P008-permission-aware-workbench/README.md#开发入口) |
+| [P009](./P009-workspace-governance/) 工作区隔离、用户体系与知识治理 | in-progress | wip / wip / none | v0.6 | [README 开发入口](./P009-workspace-governance/README.md#开发入口) |
+| [P010](./P010-user-memory-ask-knowledge/) 用户记忆与问数知识库 | in-progress | wip / wip / none | v0.5 | [README](./P010-user-memory-ask-knowledge/README.md#开发入口) · [管理面](./P010-user-memory-ask-knowledge/management-design.md) |
 
 ### 计划中（`draft`）
 

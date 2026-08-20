@@ -1,17 +1,17 @@
 # 对话分析（内测）
 
 > 现行代码中的生成看板与业界对照已写入 [architecture.html#gen](../../design/architecture.html#gen) · [业界对照](../../design/architecture.html#compare)（已编码未验收）。本文仍是提案详细设计。
-> 对齐 marmos/Omega 交互闭环与视觉气质；产物写入现有 Dashboard draft；取数仍走 `datasetQuery` / `chartQuery`。  
-> 交互真相源：[`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html)  
-> **Ask-data 总架构（问数优先）**：[P006 design](../P006-ask-data/design.md)  
-> **生成流程方案**：[dashboard-generation-design.md](./dashboard-generation-design.md)  
-> Harness 细节：[harness-design.md](./harness-design.md)  
+> 对齐 marmos/Omega 交互闭环与视觉气质；产物写入现有 Dashboard draft；取数仍走 `datasetQuery` / `chartQuery`。
+> 交互真相源：[`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html)
+> **Ask-data 总架构（问数优先）**：[P006 design](../P006-ask-data/design.md)
+> **生成流程方案**：[dashboard-generation-design.md](./dashboard-generation-design.md)
+> Harness 细节：[harness-design.md](./harness-design.md)
 > 参照文：[marmos 实测](https://mp.weixin.qq.com/s/1VXH-tv51O7O5ICyN6AmBg)
 
 ## 定位
 
 - **对话是新入口**；仪表盘仍是唯一运行时真相。
-- **默认意图是问数**；结果卡只提供「保存到仪表盘」。整页「直接生成仪表盘」是落地页 / Composer 快捷意图或追问，不是结果卡主操作。
+- **默认意图是问数**；问数结果卡本期不提供「保存到仪表盘」。整页「直接生成仪表盘」是落地页 / Composer 快捷意图或追问，不是结果卡主操作。
 - 不生成「数据写死在 HTML」的静态页；持久化只写结构化 `DashboardPatch`。
 - 双入口：一级 `/conversations`（高保 `#/conversation`）；仪表盘编辑器内可点开 SQLBot 问数面板。其他一级页面不展示 SQLBot。
 
@@ -63,8 +63,12 @@ Vue 已用 AppShell 替换 ModuleTopbar（P007 产品实现，待 PR-SH-10 验�
 
 ## 执行模式
 
-- **Auto**：规划后直接 apply patch  
-- **Plan**：先推送 `plan`，`confirm-plan` 后再 apply  
+- **Auto**（本期唯一入口）：规划后直接 apply patch
+- **Plan**：先推送 `plan`，`confirm-plan` 后再 apply。Harness 契约保留；**对话 Composer 不展示切换**，一律发 Auto。
+
+## 风格模板
+
+`styleId` 写入 `set_theme` token（accent / bg / density）。对话预览与编辑器**未消费**这些 token，用户看不出差别。**Composer 不展示风格切换**，固定 `feishu-blue`。高保缩略图预览仍是二期。
 
 ## SSE 事件
 
@@ -72,8 +76,8 @@ Vue 已用 AppShell 替换 ModuleTopbar（P007 产品实现，待 PR-SH-10 验�
 
 `step` 可带 `preview` 与 `parent`（问数时 `parent=sqlbot`，子步骤嵌在「SQLBot 生成 SQL」下：读 Schema、抽样、模型生成、只读校验、执行、选图）。思考过程在回答气泡外，Kimi 式一级折叠（思考中 / 已思考）：完成后**默认展开**，用户可手动折叠；折叠后步骤区收起，结果卡上移贴住对话，不留中间空白。
 
-- 问数 / 洞察：`finish.reason=answered`（会话预览，不落结果行）
-- 采纳：结果卡调用 Harness `POST /harness/v1/conversations/{id}/runs/{runId}/adopt` 保存本题图；Harness 从 run artifact 生成 Patch → Java internal `apply-patch` → `chart_ready`；整页生成由独立 `intent=gen` 入口触发。FE 不直调 Java，Java public adopt 入口不存在
+- 问数 / 洞察：`finish.reason=answered`（会话预览，不落结果行）；问数结果卡本期不调用 adopt
+- 整页生成由独立 `intent=gen` 入口触发（Auto 直接 emit_patch / Plan 走 confirm-plan）。Harness `POST …/adopt` 契约保留、产品入口延后。FE 不直调 Java，Java public adopt 入口不存在
 - 生成看板：`finish.reason=done` / Plan 模式 `awaiting_confirm`
 
 ## DashboardPatch
@@ -96,11 +100,11 @@ Apply 前校验：数据集可访问、字段存在、encode 角色合法。禁�
 
 见 [harness-design.md](./harness-design.md)。摘要：
 
-1. Schema Guard：指定了 dataset 但未读到 schema → 禁止页面级 patch  
-2. 证据链：选中图 encode → 用户指定 dataset → 字段语义 → 业务说明 → 检索候选  
-3. 默认确定性规划器；可选 OpenAI 兼容 LLM（失败回退确定性）  
-4. Apply → revision → `chartQuery` 预览 → `chart_ready`  
-5. 一期模型 UI 仅 **Auto 推荐**；其它标二期  
+1. Schema Guard：指定了 dataset 但未读到 schema → 禁止页面级 patch
+2. 证据链：选中图 encode → 用户指定 dataset → 字段语义 → 业务说明 → 检索候选
+3. 默认确定性规划器；可选 OpenAI 兼容 LLM（失败回退确定性）
+4. Apply → revision → `chartQuery` 预览 → `chart_ready`
+5. 一期 Composer 仅 **Auto**；Plan / 风格切换标二期，不出现在输入栏
 
 ### BI 工具白名单
 
@@ -108,13 +112,13 @@ Apply 前校验：数据集可访问、字段存在、encode 角色合法。禁�
 
 ## 版本与分享
 
-- 每次成功 apply 记 revision；侧栏版本历史预览/回滚  
+- 每次成功 apply 记 revision；侧栏版本历史预览/回滚
 - 分享：公开/私密 · 实时/快照；链接复用 `/share/:token`
 
 ## 双轨 AI（产品边界）
 
-1. **问数轨（默认 / P006）** — NL → 会话结果 → 可选保存/生成看板（Patch）  
-2. **配置写入轨（P004）** — 快捷「生成仪表盘」或采纳 → Patch → draft → 预览 → 编辑器  
+1. **问数轨（默认 / P006）** — NL → 会话结果 → 可选保存/生成看板（Patch）
+2. **配置写入轨（P004）** — 快捷「生成仪表盘」或采纳 → Patch → draft → 预览 → 编辑器
 3. **洞察报告轨（v0.6 / P005）** — 统计洞察 + LLM 叙事 → Umo 块（引用 live 图）
 
 详见 [P006 Ask-data 设计](../P006-ask-data/design.md)。

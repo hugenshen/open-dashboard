@@ -9,6 +9,7 @@ os.environ["OD_HARNESS_DATA_DIR"] = tempfile.mkdtemp(prefix="od-mem-test-")
 
 from agent import memory_store  # noqa: E402
 from agent.knowledge import format_knowledge_block  # noqa: E402
+from tools.gateway import ToolGateway  # noqa: E402
 
 
 def test_memory_document_shape():
@@ -33,6 +34,38 @@ def test_memory_search_substring():
     hits = memory_store.search("u2", "状态")
     assert any("状态" in h["content"] for h in hits)
     assert memory_store.search("u2", "不存在的内容") == []
+
+
+def test_memory_store_isolated_by_workspace():
+    memory_store.add_fact("u_ws", "A 工作区偏好金额", category="preference", confidence=0.8, workspace_id="ws-a")
+    memory_store.add_fact("u_ws", "B 工作区偏好退款", category="preference", confidence=0.8, workspace_id="ws-b")
+
+    ws_a = memory_store.load_document("u_ws", workspace_id="ws-a")
+    ws_b = memory_store.load_document("u_ws", workspace_id="ws-b")
+
+    assert ws_a["workspaceId"] == "ws-a"
+    assert ws_b["workspaceId"] == "ws-b"
+    assert "A 工作区偏好金额" in [f["content"] for f in ws_a["facts"]]
+    assert "B 工作区偏好退款" not in [f["content"] for f in ws_a["facts"]]
+    assert "B 工作区偏好退款" in [f["content"] for f in ws_b["facts"]]
+
+
+def test_memory_tools_use_gateway_workspace():
+    ws_a = ToolGateway.create(user_id="tool_user", workspace_id="ws-a")
+    ws_b = ToolGateway.create(user_id="tool_user", workspace_id="ws-b")
+
+    assert ws_a.execute("memory_add", {"content": "默认金额单位万元", "category": "preference"})["ok"]
+    assert ws_b.execute("memory_add", {"content": "默认金额单位元", "category": "preference"})["ok"]
+
+    hit_a = ws_a.execute("memory_search", {"query": "万元"})
+    miss_a = ws_a.execute("memory_search", {"query": "单位元"})
+    hit_b = ws_b.execute("memory_search", {"query": "单位元"})
+
+    assert hit_a["workspaceId"] == "ws-a"
+    assert hit_a["facts"] and hit_a["facts"][0]["content"] == "默认金额单位万元"
+    assert miss_a["facts"] == []
+    assert hit_b["workspaceId"] == "ws-b"
+    assert hit_b["facts"] and hit_b["facts"][0]["content"] == "默认金额单位元"
 
 
 def test_memory_format_block():

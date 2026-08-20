@@ -36,13 +36,14 @@ askableDatasets = conversation:use ∩ dataset:use
 |-----------|-----------|
 | 最近看板 | 「我的仪表盘」：我的 / 共享给我；卡片含所有者、更新时间、draft/published、我的权限、`accessState` |
 | （新增） | 「我的报告」同样分组；published 静态稿可直接读 |
-| 问数 hero | 当前可问数据集上下文，只能选 `askableDatasets`；空则引导申请/连接，不用演示集 |
+| 问数 hero | 当前可问数据集上下文，只能选 `askableDatasets`；空则引导到数据广场申请，不用演示集 |
+| （新增） | 「数据广场」：用户端展示资产分类、数据空间、我的数据、已获权 / 可申请 / 申请中；未获权只展示摘要，不给 schema 和样例数据 |
 | 待处理 | 仅 `edit \| manage \| owner` 的 draft / 待发布 |
 | 空态 | 无资源或无可问数据时引导连接/申请，不展示伪造业务动态 |
 
 高保角色验收参数（标明为模拟，非真实 ACL）：`?role=admin|analyst|viewer|empty`。
 
-高保在 [`docs/prototypes/hi-fi/workbench.html`](../../prototypes/hi-fi/workbench.html) 做增量；**不改** `p007-app-shell-final`。定稿后再打 P008 acceptance 快照。
+高保在 [`docs/prototypes/hi-fi/workbench.html`](../../prototypes/hi-fi/workbench.html) 与 [`data-market.html`](../../prototypes/hi-fi/data-market.html) 做增量；**不改** `p007-app-shell-final`。定稿后再打 P008 acceptance 快照。
 
 ## 3. 建议契约（实现分支才写入 OpenAPI）
 
@@ -59,6 +60,14 @@ GET /api/dataset/askable
   工作台、对话、编辑器 SQLBot 共用（已编码）
   服务端拒绝手工 ID 绕过（internal BI schema / query / sql 同样闸门）
 
+GET /api/workspaces/{workspaceId}/data-plaza
+  用户端数据广场：assets, myData, requestableAssets, pendingRequests
+  requestable 只返回业务说明、负责人、敏感等级、申请条件，不返回 schema 明细和样例数据
+
+POST /api/workspaces/{workspaceId}/dataset-requests
+  提交数据消费申请：datasetId, purpose, expireAt, requestedActions
+  审批通过后由 Java 权限中心写入 dataset:use、行列策略和必要工具权限
+
 GET /api/report/{id}/published
   只读静态稿，不得触发 chartQuery / datasetQuery
   刷新 / 洞察 / 继续问数走单独写接口并重验 dataset:use
@@ -70,6 +79,7 @@ GET /api/report/{id}/published
 |----|------|
 | `RESOURCE_FORBIDDEN` | 无资源 ACL |
 | `DATASET_UNAVAILABLE` | 有资源 ACL，缺数据集 `use` |
+| `DATASET_REQUEST_PENDING` | 数据消费申请已提交，暂不可问 |
 | `STATIC_SNAPSHOT_MISSING` | 已发布报告尚无静态稿 |
 
 工作台聚合只拼权限结果。最终闸门仍在各领域服务（`chartQuery`、报告读、harness run）。权限缓存必须可失效；撤销 `dataset:use` 后不得继续用旧缓存查询。

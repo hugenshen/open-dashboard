@@ -39,6 +39,7 @@ public class GlossaryRepository implements GlossaryGateway {
                   values_json = EXCLUDED.values_json,
                   confidence = EXCLUDED.confidence,
                   updated_at = EXCLUDED.updated_at
+                WHERE de_glossary.status IS DISTINCT FROM 'confirmed'
                 """,
                 req.term(), req.type(), req.datasetId(), req.canonicalField(),
                 writeJson(req.aliases() == null ? List.of() : req.aliases()),

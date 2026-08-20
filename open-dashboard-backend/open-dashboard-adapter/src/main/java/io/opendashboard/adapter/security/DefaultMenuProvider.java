@@ -21,15 +21,27 @@ public class DefaultMenuProvider implements MenuProvider {
     @Override
     public List<MenuItem> menus(AuthPrincipal principal) {
         List<MenuItem> items = new ArrayList<>();
-        items.add(new MenuItem("workbench", "工作台", "/workbench"));
+        items.add(new MenuItem("workbench", "工作台", "/workbench", "use"));
+        items.add(new MenuItem("dataPlaza", "数据广场", "/data-plaza", "use"));
         if (conversationProperties != null && conversationProperties.isEnabled()) {
-            items.add(new MenuItem("conversations", "对话", "/conversations"));
+            items.add(new MenuItem("conversations", "对话分析", "/conversations", "use"));
         }
-        items.add(new MenuItem("datasources", "数据源", "/datasources"));
-        items.add(new MenuItem("datasets", "数据集", "/datasets"));
-        items.add(new MenuItem("dimensions", "维度管理", "/dimensions"));
-        items.add(new MenuItem("dashboards", "仪表盘", "/dashboards"));
-        items.add(new MenuItem("reports", "报告", "/reports"));
+        if (principal.hasPermission("dashboard:view") || principal.hasPermission("dashboard:manage")) {
+            items.add(new MenuItem("dashboards", "仪表盘", "/dashboards", "use"));
+        }
+        if (principal.hasPermission("report:view") || principal.hasPermission("report:manage")) {
+            items.add(new MenuItem("reports", "报告", "/reports", "use"));
+        }
+        if (principal.hasPermission("datasource:manage") || principal.hasPermission("dataset:manage")) {
+            items.add(new MenuItem("datasources", "数据源", "/datasources", "manage"));
+        }
+        if (principal.hasPermission("dataset:manage")) {
+            items.add(new MenuItem("datasets", "数据集", "/datasets", "manage"));
+            items.add(new MenuItem("dimensions", "知识维护", "/dimensions", "manage"));
+        }
+        if (principal.hasPermission("workspace:admin") || principal.hasPermission("workspace:manage_member")) {
+            items.add(new MenuItem("workspaceAdmin", "成员权限", "/workspace-admin", "manage"));
+        }
         return List.copyOf(items);
     }
 }

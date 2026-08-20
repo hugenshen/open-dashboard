@@ -20,7 +20,7 @@ from agent.event_stream import EventStreamRecorder
 from agent.knowledge import load as load_knowledge
 from agent.knowledge import save as save_knowledge
 from agent.run_controller import RunController
-from agent.trace_store import get_run_trace
+from agent.trace_store import get_conversation_replay, get_run_trace
 from agent.runtime import harness_mode, run_adopt, run_agent, run_confirm_plan, use_lead
 from agent.types import sse
 from agent.user_context import has_permission, set_principal, set_workspace
@@ -392,6 +392,19 @@ def cancel_run(
     return {"ok": True}
 
 
+@app.get("/v1/conversations/{cid}/replay")
+def conversation_replay(
+    cid: str,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    owner = _owner(x_user_id, x_user_perms)
+    if not session_store.get_conversation(cid, owner_id=owner, workspace_id=_workspace(x_workspace_id)):
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return get_conversation_replay(cid)
+
+
 @app.get("/v1/conversations/{cid}/runs/{run_id}/trace")
 def run_trace(
     cid: str,
@@ -534,7 +547,7 @@ async def conversation_runs(
         try:
             from agent.memory_store import flush_session_to_memory
 
-            flush_session_to_memory(owner, cid, session_store.list_messages(cid))
+            flush_session_to_memory(owner, cid, session_store.list_messages(cid), workspace_id=workspace_id)
         except Exception:
             pass
 
@@ -647,6 +660,26 @@ async def adopt(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/v1/datasets/{dataset_id}/review-fields")
+def review_dataset_fields(
+    dataset_id: str,
+    x_od_internal_token: Optional[str] = Header(default=None, alias="X-OD-Internal-Token"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_perms: Optional[str] = Header(default=None, alias="X-User-Perms"),
+    x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
+):
+    """规则学习之后的 LLM 字段复核。Java 数据集「重新学习」调用；不进对话 Agent 环。"""
+    token = os.environ.get("OD_INTERNAL_TOKEN") or "od-dev-internal"
+    if token and x_od_internal_token != token:
+        raise HTTPException(status_code=401, detail="bad internal token")
+    _workspace(x_workspace_id)
+    if x_user_id:
+        _bind_principal(x_user_id, x_user_perms)
+    from tools.od_bi import review_dataset_fields as _review
+
+    return _review(dataset_id)
 
 
 @app.post("/v1/runs")

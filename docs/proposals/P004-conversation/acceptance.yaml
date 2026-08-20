@@ -91,11 +91,11 @@ items:
   - id: PR-CONV-09
     title: 思考过程持久化与历史回溯
     gate: acceptance
-    criterion: 每次生成的工具步骤链（od_profile_dataset/od_plan_charts/od_review_charts/od_layout_board/od_emit_patch 及质检说明）随 assistant 消息持久化到后端，打开历史会话可在「已思考」区回溯完整推理/执行过程。
+    criterion: 每次生成的工具步骤链（od_profile_dataset/od_plan_charts/od_review_charts/od_layout_board/od_emit_patch 及质检说明）随 assistant 消息持久化到后端；打开历史会话可在「已思考」区回溯完整推理/执行过程。问数会话同时从 Harness replay（events + artifact）回填步骤与结果卡，不重新 POST /runs。
     method: ui
     command_or_path: /conversations
-    expected: 新生成会话重新打开后展示完整步骤链；有 linkedDashboardId 的会话打开不重复触发生成。
-    evidence: "回归：UI gen 后 assistant 消息 attachments 含 trace（SQLBot→读取 Schema→试查询→只读校验→选择图表）；重新打开无 POST /runs，'已思考' 展示步骤链；#11 旧数据无 trace 属预期。"
+    expected: 新生成会话重新打开后展示完整步骤链；问数历史展示结果卡（表/临时图）；有 linkedDashboardId 的会话打开不重复触发生成。
+    evidence: "回归：UI gen 后 assistant 消息 attachments 含 trace（SQLBot→读取 Schema→试查询→只读校验→选择图表）；重新打开无 POST /runs，'已思考' 展示步骤链；问数历史走 GET /harness/v1/conversations/{id}/replay 回填 answer_*；#11 旧数据无 trace/artifact 属预期。"
     status: pass
     blocker_of_done: false
     requirements_target: PR-CONV-09
@@ -176,6 +176,17 @@ items:
     status: pass
     blocker_of_done: false
     requirements_target: PR-SL-04
+  - id: PR-SL-05
+    title: 重新学习 LLM 复核角色
+    gate: code
+    criterion: POST /api/dataset/{id}/learn 先写规则画像，再调 Harness review-fields；LLM 可改 role_learned/别名；confirmed 指标与词表不被覆盖。Harness/LLM 不可用时仍返回 ok 且保留规则结果。
+    method: api
+    command_or_path: POST /api/dataset/{id}/learn · POST /harness/v1/datasets/{id}/review-fields
+    expected: 响应含 llmReviewed/llmSource/llmChanged；pytest test_review_fields.py 覆盖 LLM/stats 回包。
+    evidence: ""
+    status: todo
+    blocker_of_done: false
+    requirements_target: PR-SL-05
   - id: PR-KB-01
     title: 指标注册表 CRUD
     gate: code
@@ -275,47 +286,3 @@ items:
     status: pass
     blocker_of_done: false
     requirements_target: PR-SA-05
-  - id: PR-UM-01
-    title: 记忆写入
-    gate: code
-    criterion: memory_add 工具可写「用户偏好 X」，落盘 user 维度（deermem document）。
-    method: api
-    command_or_path: opendashboard-harness/agent/memory_store.py
-    expected: {user}/memory/{user}.json facts[] 含该偏好；revision 递增。
-    evidence: "remember_user_choice/add_fact 写入 u_e2e.json：facts[0].content=「金额统一用万元展示」category=preference。"
-    status: pass
-    blocker_of_done: false
-    requirements_target: PR-UM-01
-  - id: PR-UM-02
-    title: 记忆检索与注入
-    gate: code
-    criterion: memory_search 可召回（大小写不敏感子串），<memory> 块注入 system。
-    method: api
-    command_or_path: opendashboard-harness/agent/memory_store.py
-    expected: search 命中相关 fact；format_memory_block 输出 <system-reminder><memory>。
-    evidence: "search(u,'万元') 命中「以后金额用万元展示」；format_memory_block 输出 <memory> 块。"
-    status: pass
-    blocker_of_done: false
-    requirements_target: PR-UM-02
-  - id: PR-UM-03
-    title: 跨会话生效（偏好单位）
-    gate: acceptance
-    criterion: 会话 A 确认「金额用万元」→ 会话 B 生成默认万元单位。
-    method: ui
-    command_or_path: /conversations
-    expected: 会话 B 生成 KPI title 含「万元」。
-    evidence: "u_e2e 会话 A 说「以后金额统一用万元展示」→ 记忆落盘；会话 B 生成 KPI「amount（万元）」（无偏好用户为「amount（元）」。"
-    status: pass
-    blocker_of_done: false
-    requirements_target: PR-UM-03
-  - id: PR-UM-04
-    title: 压缩沉淀（run 结束 flush）
-    gate: code
-    criterion: 会话/run 结束关键结论自动进记忆（无手动操作）。
-    method: api
-    command_or_path: opendashboard-harness/api/app.py
-    expected: run 结束后 flush_session_to_memory 抽取偏好/纠正/决策进 user 记忆。
-    evidence: "conversation_runs gen() 末尾 flush；u_e2e 首轮对话自动沉淀「金额统一用万元展示」（LLM 抽取，category=preference）。"
-    status: pass
-    blocker_of_done: false
-    requirements_target: PR-UM-04

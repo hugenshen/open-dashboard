@@ -9,6 +9,7 @@ from agent import memory_store
 from agent.knowledge import ensure_skill_file, fetch_knowledge, format_knowledge_block
 from agent.memory import format_memory_block, load_facts
 from agent.types import AgentMessage
+from agent.user_context import current_workspace_id
 
 
 def load_skills_prompt() -> str:
@@ -87,7 +88,8 @@ def transform_context(
     """
     ids = [str(x) for x in (dataset_ids or [])]
     # 用户级记忆（跨会话，deermem document shape）
-    mem = memory_store.format_memory_block(user_id)
+    workspace_id = current_workspace_id()
+    mem = memory_store.format_memory_block(user_id, workspace_id=workspace_id)
     if not mem:
         # 兜底：会话级旧事实（不破坏既有行为）
         mem = format_memory_block(load_facts(conversation_id))

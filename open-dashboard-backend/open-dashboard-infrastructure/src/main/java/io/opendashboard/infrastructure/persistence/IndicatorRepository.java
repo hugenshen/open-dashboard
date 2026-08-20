@@ -44,6 +44,7 @@ public class IndicatorRepository implements IndicatorGateway {
                   status = EXCLUDED.status,
                   confidence = EXCLUDED.confidence,
                   updated_at = EXCLUDED.updated_at
+                WHERE de_indicator.status IS DISTINCT FROM 'confirmed'
                 """,
                 req.datasetId(), req.fieldName(), req.name(), req.agg(), req.unit(), req.formula(), req.description(),
                 req.status() == null ? "draft" : req.status(),

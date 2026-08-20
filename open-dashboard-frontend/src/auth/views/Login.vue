@@ -1,0 +1,255 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { DEMO_ADMIN_AUTH, DEMO_ANALYST_AUTH, setAuthHeaders, type AuthHeaderBundle } from '../../api/http'
+
+const router = useRouter()
+const route = useRoute()
+
+const mode = ref<'admin' | 'analyst'>('admin')
+const account = ref('demo')
+const password = ref('')
+const error = ref('')
+
+const redirect = computed(() => {
+  const raw = route.query.redirect
+  return typeof raw === 'string' && raw.startsWith('/') ? raw : '/workbench'
+})
+
+const loggedOut = computed(() => route.query.logged_out === '1')
+const expired = computed(() => route.query.expired === '1')
+
+function profile(): AuthHeaderBundle {
+  if (mode.value === 'analyst') {
+    return {
+      ...DEMO_ANALYST_AUTH,
+      userId: account.value.trim() || DEMO_ANALYST_AUTH.userId,
+      displayName: account.value.trim() ? '分析师' : DEMO_ANALYST_AUTH.displayName
+    }
+  }
+  return {
+    ...DEMO_ADMIN_AUTH,
+    userId: account.value.trim() || DEMO_ADMIN_AUTH.userId,
+    displayName: account.value.trim() ? '演示管理员' : DEMO_ADMIN_AUTH.displayName
+  }
+}
+
+async function login() {
+  error.value = ''
+  if (!account.value.trim()) {
+    error.value = '请输入账号'
+    return
+  }
+  setAuthHeaders(profile())
+  await router.replace(redirect.value)
+}
+
+function useAdmin() {
+  mode.value = 'admin'
+  account.value = 'demo'
+  password.value = 'demo'
+}
+
+function useAnalyst() {
+  mode.value = 'analyst'
+  account.value = 'analyst'
+  password.value = 'demo'
+}
+</script>
+
+<template>
+  <main class="login-page">
+    <section class="login-card">
+      <div class="brand">
+        <i>OD</i>
+        <span>Open Dashboard</span>
+      </div>
+      <p v-if="loggedOut" class="notice">已退出登录</p>
+      <p v-if="expired" class="notice warn">登录状态已失效，请重新登录</p>
+      <h1>登录工作区</h1>
+      <p class="sub">登录后进入当前工作区；用户使用端与管理端菜单会按权限展示。</p>
+
+      <div class="segments" role="tablist" aria-label="演示账号类型">
+        <button type="button" :class="{ on: mode === 'admin' }" @click="useAdmin">管理员</button>
+        <button type="button" :class="{ on: mode === 'analyst' }" @click="useAnalyst">分析师</button>
+      </div>
+
+      <form @submit.prevent="login">
+        <label>
+          <span>账号</span>
+          <input v-model="account" autocomplete="username" placeholder="demo" />
+        </label>
+        <label>
+          <span>密码</span>
+          <input v-model="password" autocomplete="current-password" placeholder="demo" type="password" />
+        </label>
+        <p v-if="error" class="error">{{ error }}</p>
+        <button class="primary" type="submit">登录</button>
+      </form>
+
+      <div class="tips">
+        <b>演示权限</b>
+        <span v-if="mode === 'admin'">管理员拥有成员权限、数据源、数据集和知识维护入口。</span>
+        <span v-else>分析师只能进入工作台、数据广场、对话分析、仪表盘和报告。</span>
+      </div>
+    </section>
+  </main>
+</template>
+
+<style scoped>
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    linear-gradient(180deg, rgba(79, 70, 229, 0.08), transparent 34%),
+    #f6f7fb;
+  color: #111827;
+}
+
+.login-card {
+  width: min(440px, 100%);
+  border: 1px solid #dfe3ea;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(17, 24, 39, 0.12);
+  padding: 28px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
+  font-weight: 750;
+}
+
+.brand i {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: #4f46e5;
+  color: #fff;
+  font-style: normal;
+  font-size: 11px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.sub,
+.tips,
+.notice {
+  color: #4b5563;
+  line-height: 1.65;
+}
+
+.notice {
+  margin: 0 0 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #047857;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.notice.warn {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.segments {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 22px 0 16px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #f3f4f6;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #4b5563;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.segments button.on {
+  background: #fff;
+  color: #3730a3;
+  border-color: #dfe3ea;
+}
+
+form {
+  display: grid;
+  gap: 14px;
+}
+
+label span {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 42px;
+  border: 1px solid #d8dde7;
+  border-radius: 8px;
+  background: #f7f8fc;
+  padding: 0 12px;
+}
+
+input:focus {
+  outline: 3px solid rgba(79, 70, 229, 0.22);
+  border-color: #4f46e5;
+  background: #fff;
+}
+
+.primary {
+  min-height: 42px;
+  background: #4f46e5;
+  color: #fff;
+}
+
+.primary:hover {
+  background: #4338ca;
+}
+
+.error {
+  margin: -2px 0;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.tips {
+  margin-top: 18px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 14px;
+  font-size: 13px;
+}
+
+.tips b,
+.tips span {
+  display: block;
+}
+</style>

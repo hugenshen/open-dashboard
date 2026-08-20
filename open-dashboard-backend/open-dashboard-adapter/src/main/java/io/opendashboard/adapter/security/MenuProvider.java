@@ -12,5 +12,9 @@ public interface MenuProvider {
 
     List<MenuItem> menus(AuthPrincipal principal);
 
-    record MenuItem(String key, String label, String path) {}
+    record MenuItem(String key, String label, String path, String group) {
+        public MenuItem(String key, String label, String path) {
+            this(key, label, path, "use");
+        }
+    }
 }

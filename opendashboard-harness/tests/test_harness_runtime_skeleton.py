@@ -5,7 +5,7 @@ from agent.knowledge import save as save_knowledge
 from agent.memory_runtime import remember_user_fact
 from agent.runtime import _record_runtime_refs
 from agent.run_controller import RunController
-from agent.trace_store import get_run_trace
+from agent.trace_store import get_conversation_replay, get_run_trace
 from agent.types import sse
 from tools.gateway import ToolGateway
 
@@ -40,6 +40,12 @@ def test_run_controller_records_events_and_trace(tmp_path, monkeypatch):
     assert trace["eventCount"] == 3
     assert trace["artifact"]["answer_sql"]["sql"] == "SELECT 1"
     assert session_store.list_messages(conv["id"])[0]["content"] == "答案"
+
+    replay = get_conversation_replay(conv["id"])
+    assert replay["conversationId"] == conv["id"]
+    assert len(replay["runs"]) == 1
+    assert replay["runs"][0]["artifact"]["answer_sql"]["sql"] == "SELECT 1"
+    assert [e["type"] for e in replay["runs"][0]["events"]] == ["answer_sql", "message_delta", "finish"]
 
 
 def test_context_builder_adds_runtime_context(tmp_path, monkeypatch):

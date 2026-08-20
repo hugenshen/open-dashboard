@@ -421,6 +421,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                 </div>
                 <div class="wb-empty-actions">
                   <router-link class="primary" to="/datasources">连接数据源</router-link>
+                  <router-link to="/data-plaza">浏览数据广场</router-link>
                   <router-link to="/conversations">查看问数示例</router-link>
                 </div>
               </div>
@@ -476,6 +477,16 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                 <small :class="emptyMode ? '' : dirty ? 'warn' : ''">
                   {{ emptyMode ? '暂无仪表盘' : dirty ? '存在未发布改动' : '没有待发布改动' }}
                 </small>
+              </router-link>
+              <router-link class="wb-kpi" to="/data-plaza">
+                <span>数据广场</span>
+                <strong>{{ datasets.length }}</strong>
+                <small>{{ datasets.length ? '可直接进入问数' : '查看可申请资产' }}</small>
+              </router-link>
+              <router-link class="wb-kpi" to="/workspace-admin">
+                <span>成员权限</span>
+                <strong>工作区</strong>
+                <small>用户组、角色、数据策略</small>
               </router-link>
             </div>
             <div class="wb-health">

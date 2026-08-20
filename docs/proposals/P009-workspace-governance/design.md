@@ -2,7 +2,7 @@
 
 > 状态：未实现详细设计，不属于现行 4A 架构。实现并验收后只把稳定结果沉淀到 [`architecture.html`](../../design/architecture.html)。  
 > 需求入口：[README](./README.md) · 验收：[acceptance.yaml](./acceptance.yaml)  
-> 本轮只输出方案，不改 OpenAPI、不改代码。
+> 本轮同步方案与高保，不改 OpenAPI、不改运行代码。
 
 ## 1. 参考框架对照
 
@@ -175,6 +175,59 @@ Harness → Java Internal Context / Tool API
 FE → Java Public Run API → Harness → Java Internal API
 ```
 
+### 2.4 前端信息架构
+
+前端先采用一个产品壳，不拆两个独立应用。产品壳按权限分区展示：
+
+| 区域 | 面向谁 | 页面 | 服务入口 |
+|------|--------|------|----------|
+| 用户使用端 | 业务用户、分析师、看板消费者 | 工作台、数据广场、对话分析、仪表盘、报告 | AI run 调 Harness public；数据广场和资源读写按需调 Java public |
+| 管理端 | 平台管理员、工作区管理员、数据管理员、知识管理员 | 数据源、数据集、知识库、成员权限、审计 | Java public API |
+
+导航规则：
+
+- 所有用户进入平台后必须先落在一个当前工作区；顶部工作区切换器展示 `workspaceId`、工作区名和当前角色。
+- 无管理权限的用户只看到用户使用端；有数据、知识或成员权限时才展示对应管理入口。
+- 用户使用端不承载成员、角色、发布、审计等治理动作，只展示“当前有哪些数据、可申请哪些数据、当前可问什么、用了什么知识、生成了什么产物”。
+- 管理端不发起 AI run；它维护数据、知识、权限和审计事实。需要试问时跳回对话分析，并带当前 `workspaceId` 与授权数据集上下文。
+
+高保落点：
+
+| 文件 | 覆盖内容 |
+|------|----------|
+| `docs/prototypes/hi-fi/index.html` | 高保统一入口：登录入口、用户使用端、管理端、当前演示上下文和端到端链路 |
+| `docs/prototypes/hi-fi/shared/shell.js` | 用户使用端 / 管理端分组、工作区切换器、当前用户角色 |
+| `docs/prototypes/hi-fi/login.html` | 登录、企业 SSO、退出后提示、忘记密码 |
+| `docs/prototypes/hi-fi/register.html` | 注册用户、邀请码加入工作区、创建新工作区 |
+| `docs/prototypes/hi-fi/account-settings.html` | 个人资料、修改密码、登录安全、通知偏好 |
+| `docs/prototypes/hi-fi/data-market.html` | 用户端数据广场：数据空间、资产分类、我的数据、已获权、可申请、申请中、消费申请 |
+| `docs/prototypes/hi-fi/workspace-admin.html` | 成员、项目组、角色矩阵、数据权限、工具权限、审计摘要 |
+| `docs/prototypes/hi-fi/knowledge.html` | 管理端知识库：候选确认、指标、术语、金标准问法、我的记忆 |
+| `docs/prototypes/hi-fi/conversation-workspace.html` | 用户使用端对话分析：当前工作区、可问数据集、知识命中和管理跳转 |
+
+用户使用端核心体验：
+
+```text
+选择工作区
+  → 工作台看到可问数据、最近对话、我的看板/报告
+  → 数据广场查看企业资产、我的数据、可申请和申请中
+  → 未获权时提交消费申请
+  → 进入对话分析提问或生成
+  → 前端直接调用 Harness public run
+  → 对话展示结果、知识命中、权限解释和可保存产物
+```
+
+管理端核心体验：
+
+```text
+工作区管理员进入成员权限
+  → 同步/邀请用户
+  → 绑定项目组与角色
+  → 配置数据集 use、可申请范围、行列策略和工具策略
+  → 数据/知识管理员发布可问数据集和 active 知识
+  → 审计页回看 run、工具调用、权限决策与知识版本
+```
+
 ## 3. 领域模型
 
 | 实体 | 关键字段 | 说明 |
@@ -231,9 +284,9 @@ effective = AuthN 用户身份
 ### 5.1 用户接入
 
 ```text
-外部身份登录或管理员创建用户
+用户登录 / 注册 / 外部身份回调
   → Java 创建/更新 user
-  → 用户进入默认工作区或收到邀请
+  → 读取用户已加入工作区或待处理邀请
   → 接受邀请后创建 workspace_member
   → 继承项目组角色与直接角色
   → 前端展示可切换工作区
@@ -244,6 +297,29 @@ effective = AuthN 用户身份
 - 本地用户：用于开发、私有部署和管理员兜底。
 - OIDC / SSO：企业接入推荐路径。
 - 外部 header adapter：用于被已有平台网关托管时传入 user / org / group。
+
+### 5.1.1 认证与账号通用功能
+
+认证交互高保归属 P009，覆盖：
+
+| 页面 / 交互 | 入口 | 结果 |
+|-------------|------|------|
+| 登录 | `login.html` | 账号密码登录后进入上次工作区或工作区选择 |
+| 企业 SSO 登录 | `login.html` | 跳转身份提供方，回调后由 Java 建立 user session |
+| 忘记密码 | `login.html#reset` | 发送一次性重置链接，重置成功后注销其它设备 |
+| 注册 | `register.html` | 创建 user；可用邀请码加入工作区，或创建新工作区 |
+| 账号设置 | 账号下拉 → `account-settings.html` | 修改个人资料、语言、通知偏好 |
+| 修改密码 | 账号下拉 → `account-settings.html#password` | 校验旧密码、更新新密码、可注销其它设备 |
+| 登录安全 | `account-settings.html#security` | 查看设备会话，注销非当前设备 |
+| 退出登录 | 账号下拉 → 退出确认 | 清空当前浏览器会话，跳回 `login.html?logged_out=1` |
+
+规则：
+
+- `userId` 永远由服务端登录态确定，前端表单不能指定。
+- 注册不会自动获得数据权限；只有加入工作区并获得角色后，才出现对应用户使用端和管理端菜单。
+- 修改密码属于用户级账号能力，不改变任何工作区角色、ACL、数据策略或记忆。
+- 退出登录只结束会话，不删除用户记忆、工作区成员关系、运行 trace 或业务产物。
+- SSO / header adapter 用户的密码修改入口应展示“到身份提供方修改”，本地用户才展示旧密码校验表单。
 
 ### 5.2 工作区切换
 
@@ -582,3 +658,5 @@ Java 权限边界 > Java active 知识 > session 记忆 > user 记忆 > workspac
 - 权限闭环：PR-WS-03、PR-WS-04、PR-WS-05、PR-WS-06、PR-WS-09。
 - 知识和记忆：PR-WS-07、PR-WS-08、PR-WS-11、PR-WS-12。
 - 稳定性与追溯：PR-WS-10、PR-WS-13。
+- 前端信息架构：PR-WS-14、PR-WS-16。
+- 认证与账号通用功能：PR-WS-15。

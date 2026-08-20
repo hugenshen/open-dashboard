@@ -41,7 +41,17 @@ public class DatasetProfiler {
         this.profileStore = profileStore;
     }
 
+    /** Harness / planner: stored field stats plus live chart probes. */
     public Map<String, Object> profile(String datasetId) {
+        return profile(datasetId, true);
+    }
+
+    /**
+     * @param includeProbes live KPI/bar/line probes against the source DB.
+     *                      Dataset manage UI must pass false — probes are for
+     *                      {@code od_profile_dataset} only.
+     */
+    public Map<String, Object> profile(String datasetId, boolean includeProbes) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (datasetId == null || datasetId.isBlank()) {
             out.put("ok", false);
@@ -60,8 +70,8 @@ public class DatasetProfiler {
         List<DatasetFieldVO> dims = new ArrayList<>();
         List<DatasetFieldVO> times = new ArrayList<>();
         // 已学习的角色（统计判定）优先；无则回退现场关键词判定
-        Map<String, String> learned = loadLearnedRoles(datasetId);
         Map<String, FieldProfileVO> stats = loadFieldStats(datasetId);
+        Map<String, String> learned = learnedRolesFrom(stats);
         if (detail.fields() != null) {
             for (DatasetFieldVO f : detail.fields()) {
                 String role = learned.getOrDefault(f.name(), roleOf(f));
@@ -71,9 +81,14 @@ public class DatasetProfiler {
                 row.put("group", f.group());
                 row.put("dataType", f.dataType());
                 row.put("role", role);
-                row.put("roleSource", learned.containsKey(f.name()) ? "learned" : "naming");
-                // 附带统计特征（distinct/取值/null），供"维度管理/公共维度"展示与消费
                 FieldProfileVO p = stats.get(f.name());
+                String src = "naming";
+                if (p != null && p.roleSource() != null && !p.roleSource().isBlank()) {
+                    src = p.roleSource();
+                } else if (learned.containsKey(f.name())) {
+                    src = "learned";
+                }
+                row.put("roleSource", src);
                 if (p != null) {
                     row.put("distinctCount", p.distinctCount());
                     row.put("nullRate", p.nullRate());
@@ -95,6 +110,22 @@ public class DatasetProfiler {
         dims.sort((a, b) -> Integer.compare(dimScore(b), dimScore(a)));
         measures.sort((a, b) -> Integer.compare(measureScore(b), measureScore(a)));
         times.sort((a, b) -> Integer.compare(timeScore(b), timeScore(a)));
+
+        out.put("ok", true);
+        out.put("datasetId", datasetId);
+        out.put("name", detail.meta().name());
+        out.put("tableName", detail.meta().tableName());
+        out.put("folder", detail.meta().folder());
+        out.put("weakDataset", DeterministicPlanner.isWeakDataset(detail));
+        out.put("fields", fields);
+        out.put("measures", names(measures, 6));
+        out.put("dims", names(dims, 6));
+        out.put("timeFields", names(times, 3));
+        out.put("queryFields", queryFields(times, dims));
+
+        if (!includeProbes) {
+            return out;
+        }
 
         List<Map<String, Object>> probes = new ArrayList<>();
         DatasetFieldVO countKey = !dims.isEmpty() ? dims.getFirst() : firstField(detail);
@@ -140,12 +171,6 @@ public class DatasetProfiler {
                     return n instanceof Number num && num.intValue() == 0;
                 }));
 
-        out.put("ok", true);
-        out.put("datasetId", datasetId);
-        out.put("name", detail.meta().name());
-        out.put("tableName", detail.meta().tableName());
-        out.put("folder", detail.meta().folder());
-        out.put("weakDataset", DeterministicPlanner.isWeakDataset(detail));
         out.put("empty", empty);
         out.put("liveRowHint", liveRows);
         if (FieldSemantics.queryFailed(sqlNote) || sqlNote.startsWith("-- live")) {
@@ -153,27 +178,16 @@ public class DatasetProfiler {
         } else if (empty) {
             out.put("hint", "探测查询无有效行，不要用空 encode 写看板。");
         }
-        out.put("fields", fields);
-        out.put("measures", names(measures, 6));
-        out.put("dims", names(dims, 6));
-        out.put("timeFields", names(times, 3));
-        out.put("queryFields", queryFields(times, dims));
         out.put("probes", probes);
         return out;
     }
 
-    private Map<String, String> loadLearnedRoles(String datasetId) {
-        FieldProfileGateway store = profileStore.getIfAvailable();
-        if (store == null) return Map.of();
+    private static Map<String, String> learnedRolesFrom(Map<String, FieldProfileVO> stats) {
         Map<String, String> out = new HashMap<>();
-        try {
-            for (FieldProfileVO p : store.listByDataset(datasetId)) {
-                if (p.roleLearned() != null && !p.roleLearned().isBlank()) {
-                    out.put(p.fieldName(), p.roleLearned());
-                }
+        for (FieldProfileVO p : stats.values()) {
+            if (p.roleLearned() != null && !p.roleLearned().isBlank()) {
+                out.put(p.fieldName(), p.roleLearned());
             }
-        } catch (Exception e) {
-            // 无表/查询失败时回退关键词判定
         }
         return out;
     }

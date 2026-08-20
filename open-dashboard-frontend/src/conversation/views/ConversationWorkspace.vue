@@ -7,13 +7,16 @@ import {
   conversationApi,
   explainConversationError,
   type ConversationMessageVO,
+  type ConversationReplayEvent,
+  type ConversationReplayVO,
   type ConversationRevisionVO,
-  type ConversationVO,
-  type StylePresetVO
+  type ConversationVO
 } from '../api'
 import ToolStepList, { type ToolPreview, type ToolStep } from '../components/ToolStepList.vue'
 import LiveChartPreview from '../components/LiveChartPreview.vue'
+import DatasetPicker from '../components/DatasetPicker.vue'
 import type { FilterContextItem } from '../../types/dashboard'
+import { displayFieldNames } from '../../utils/fieldLabel'
 
 type ChatLine = { role: 'user' | 'assistant' | 'system'; text: string; tools?: ToolStep[] }
 type StepLine = { id: string; label: string }
@@ -101,13 +104,10 @@ const charts = ref<ChartReady[]>([])
 const boardTitle = ref('数据分析看板')
 const emptyPreview = ref(false)
 const queryBar = ref<QueryBar | null>(null)
-const styles = ref<StylePresetVO[]>([])
 const datasets = ref<DatasetMetaVO[]>([])
 
 const prompt = ref('')
 const intent = ref<'ask' | 'gen'>('ask')
-const mode = ref<'auto' | 'plan'>('auto')
-const styleId = ref('feishu-blue')
 const selectedDatasets = ref<string[]>([])
 const streaming = ref(false)
 const runId = ref('')
@@ -126,14 +126,6 @@ const lastIntent = ref('')
 const lastQuestion = ref('')
 const intentMap = ref<IntentMap | null>(null)
 const dsMenuOpen = ref(false)
-const dsKeyword = ref('')
-const filteredDatasets = computed(() => {
-  const kw = dsKeyword.value.trim().toLowerCase()
-  if (!kw) return datasets.value
-  return datasets.value.filter((d) => {
-    return (d.name || '').toLowerCase().includes(kw) || (d.tableName || '').toLowerCase().includes(kw)
-  })
-})
 
 const EXAMPLES = [
   { label: '换一个问数问题', text: '换一个问数问题', intent: 'ask' as const },
@@ -165,9 +157,6 @@ const TOOL_LABELS: Record<string, string> = {
 }
 
 const liveTools = ref<ToolStep[]>([])
-const fileInput = ref<HTMLInputElement | null>(null)
-const importing = ref(false)
-const importHint = ref('')
 
 const canSend = computed(
   () => prompt.value.trim().length > 0 && !streaming.value && selectedDatasets.value.length > 0
@@ -271,8 +260,21 @@ function ingestLiveTool(
   hint?: string,
   parent?: string
 ) {
-  if (liveTools.value.some((t) => t.id === 'pending')) {
-    liveTools.value = liveTools.value.filter((t) => t.id !== 'pending')
+  ingestToolInto(liveTools.value, id, rawLabel, kind, tool, preview, hint, parent)
+}
+
+function ingestToolInto(
+  bag: ToolStep[],
+  id: string,
+  rawLabel: string,
+  kind: string,
+  tool: string,
+  preview?: ToolPreview,
+  hint?: string,
+  parent?: string
+) {
+  for (let i = bag.length - 1; i >= 0; i--) {
+    if (bag[i].id === 'pending') bag.splice(i, 1)
   }
   if (/^(turn_|message_end|agent_end|agent_start|context|think)/.test(id)) return
   if (/推理轮次|轮次\s*\d+\s*结束|transformContext|model=|skills \+ memory|assistant turn|^Pi Agent|^Lead /i.test(rawLabel)) return
@@ -293,9 +295,7 @@ function ingestLiveTool(
     open: !!preview
   }
   if (parent) {
-    const host = [...liveTools.value]
-      .reverse()
-      .find((t) => t.tool === parent || t.id === parent)
+    const host = [...bag].reverse().find((t) => t.tool === parent || t.id === parent)
     if (host) {
       if (!host.children) host.children = []
       host.open = true
@@ -325,15 +325,15 @@ function ingestLiveTool(
     }
   }
   if (ended) {
-    const hit = [...liveTools.value].reverse().find((t) => t.status === 'run' && (!toolName || t.tool === toolName))
+    const hit = [...bag].reverse().find((t) => t.status === 'run' && (!toolName || t.tool === toolName))
     if (hit) {
       hit.status = 'done'
       if (preview) hit.preview = preview
       if (hint) hit.hint = hint
       if (hit.preview || hit.children?.length) hit.open = true
     } else {
-      liveTools.value.push({
-        id: `${toolName || id}-${liveTools.value.length}`,
+      bag.push({
+        id: `${toolName || id}-${bag.length}`,
         label,
         status: 'done',
         tool: toolName || undefined,
@@ -344,19 +344,17 @@ function ingestLiveTool(
     }
     return
   }
-  liveTools.value.forEach((t) => {
+  bag.forEach((t) => {
     if (t.status === 'run' && t.tool && toolName && t.tool !== toolName) t.status = 'done'
   })
-  const runningSame = [...liveTools.value]
-    .reverse()
-    .find((t) => t.status === 'run' && toolName && t.tool === toolName)
+  const runningSame = [...bag].reverse().find((t) => t.status === 'run' && toolName && t.tool === toolName)
   if (runningSame) {
     if (preview) runningSame.preview = preview
     if (hint) runningSame.hint = hint
     return
   }
-  liveTools.value.push({
-    id: `${toolName || id}-${liveTools.value.length}`,
+  bag.push({
+    id: `${toolName || id}-${bag.length}`,
     label: TOOL_LABELS[toolName] || TOOL_LABELS[id] || label,
     status: 'run',
     tool: toolName || undefined,
@@ -366,40 +364,39 @@ function ingestLiveTool(
   })
 }
 
+function markToolsDone(tools: ToolStep[]): ToolStep[] {
+  return tools
+    .filter((t) => t.id !== 'pending')
+    .map((t) => ({
+      ...t,
+      status: 'done' as const,
+      children: t.children?.length ? markToolsDone(t.children) : undefined
+    }))
+}
+
+function buildToolsFromEvents(events: ConversationReplayEvent[] | undefined): ToolStep[] {
+  const bag: ToolStep[] = []
+  for (const ev of events || []) {
+    if (ev.type !== 'step') continue
+    const data = ev.data || {}
+    ingestToolInto(
+      bag,
+      String(data.id || data.name || bag.length),
+      String(data.label || data.detail || ''),
+      String(data.kind || ''),
+      String(data.tool || ''),
+      asPreview(data.preview),
+      data.hint ? String(data.hint) : undefined,
+      data.parent ? String(data.parent) : undefined
+    )
+  }
+  return markToolsDone(bag)
+}
+
 function asPreview(raw: unknown): ToolPreview | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   return raw as ToolPreview
 }
-
-async function onPickFile(ev: Event) {
-  const input = ev.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file) return
-  importing.value = true
-  importHint.value = ''
-  try {
-    const detail = await datasetApi.importFile(file)
-    const list = await datasetApi.listAskable()
-    datasets.value = list
-    const id = detail.meta?.id
-    if (id) selectedDatasets.value = [id]
-    importHint.value = `已导入「${detail.meta?.name || file.name}」，可直接问数`
-    chat.value.push({
-      role: 'system',
-      text: `已把 ${file.name} 作为问数数据集（${(detail.fields || []).length} 个字段）。对齐 DataEase：先落表再查，不是每次上传都打 HTTP。`
-    })
-  } catch (e) {
-    // 后端已透传具体原因（格式/大小/解析失败），去掉 "POST /dataset/import →" 前缀让提示更可读
-    const raw = e instanceof Error ? e.message : String(e)
-    const m = raw.match(/: (.+)$/)
-    importHint.value = m ? m[1] : raw
-  } finally {
-    importing.value = false
-  }
-}
-
-const styleName = computed(() => styles.value.find((s) => s.id === styleId.value)?.name || '智能风格')
 
 onMounted(async () => {
   try {
@@ -409,16 +406,16 @@ onMounted(async () => {
       error.value = '对话功能未开启（opendashboard.conversation.enabled）'
       return
     }
-    const [list, styleList, ds] = await Promise.all([
+    const [list, ds] = await Promise.all([
       conversationApi.list(),
-      conversationApi.styles(),
       datasetApi.listAskable()
     ])
     conversations.value = list
-    styles.value = styleList
     datasets.value = ds
     if (ds.length) {
-      selectedDatasets.value = pickDefaultDatasets(ds)
+      const fromQuery = String(route.query.datasetId || '')
+      selectedDatasets.value =
+        fromQuery && ds.some((d) => d.id === fromQuery) ? [fromQuery] : pickDefaultDatasets(ds)
     } else {
       selectedDatasets.value = []
     }
@@ -478,32 +475,217 @@ async function ensureConversation(titleHint?: string): Promise<ConversationVO> {
 async function openConversation(id: string): Promise<boolean> {
   const detail = await conversationApi.get(id)
   current.value = detail
+  steps.value = []
+  charts.value = []
+  liveTools.value = []
+  queryBar.value = null
+  intentMap.value = null
+  awaitingConfirm.value = false
+  runId.value = ''
+  emptyPreview.value = false
+  intent.value = 'ask'
   messages.value = await conversationApi.messages(id)
-  chat.value = messages.value.map((m) => ({
-    role: m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'assistant',
-    text: m.content,
-    // 历史会话回溯：从持久化的 attachments 恢复思考过程步骤链
-    tools: extractTrace(m.attachments)
-  }))
+  chat.value = collapseAssistantDupes(
+    messages.value.map((m) => ({
+      role: (m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'assistant') as ChatLine['role'],
+      text: m.content,
+      // 历史会话回溯：从持久化的 attachments 恢复思考过程步骤链
+      tools: extractTrace(m.attachments)
+    }))
+  )
   selectedDatasets.value = detail.datasetIds?.length ? [...detail.datasetIds] : selectedDatasets.value
   linkedDashboardId.value = detail.linkedDashboardId || null
-  // 后端记录可能未同步生成时建立的 linkedDashboardId，从运行时补拉权威值
-  if (!linkedDashboardId.value) {
-    try {
-      const runtime = await conversationApi.getHarness(id)
-      linkedDashboardId.value = runtime.linkedDashboardId || null
-    } catch {
-      /* 运行时不回退 */
+  resetAnswer()
+  const lastUser = [...chat.value].reverse().find((m) => m.role === 'user' && m.text.trim())
+  lastQuestion.value = lastUser?.text.trim() || lastQuestion.value
+  const lastAsst = [...messages.value].reverse().find((m) => m.role === 'assistant')
+  applyAnswerAttachment(lastAsst?.attachments)
+  // 后端记录可能未同步生成时建立的 linkedDashboardId，从运行时补拉权威值；
+  // 同时用 harness replay 回填思考步骤与问数结果卡（不重新 POST /runs）。
+  let replayAnswered = false
+  try {
+    const replay = await conversationApi.replay(id)
+    if (replay.linkedDashboardId) linkedDashboardId.value = replay.linkedDashboardId
+    replayAnswered = replayLooksAnswered(replay)
+    hydrateFromReplay(replay)
+  } catch {
+    if (!linkedDashboardId.value) {
+      try {
+        const runtime = await conversationApi.getHarness(id)
+        linkedDashboardId.value = runtime.linkedDashboardId || null
+      } catch {
+        /* 运行时不回退 */
+      }
     }
   }
-  resetAnswer()
   sidePanel.value = 'none'
   phase.value = 'workspace'
   if (linkedDashboardId.value) {
     // 重新打开已生成的对话：从草稿看板重建图表预览，避免刷新后图表区空白
     void hydratePreviewFromDashboard(linkedDashboardId.value)
   }
-  return maybeResumeUnanswered()
+  return maybeResumeUnanswered(replayAnswered)
+}
+
+function hydrateFromReplay(replay: ConversationReplayVO) {
+  const runs = (replay.runs || []).filter((r) => r.id)
+  const assistantIdxs = chat.value
+    .map((m, i) => (m.role === 'assistant' ? i : -1))
+    .filter((i) => i >= 0)
+  const toolRuns = runs.filter((r) => (r.events || []).some((e) => e.type === 'step'))
+  toolRuns.forEach((run, i) => {
+    const tools = buildToolsFromEvents(run.events)
+    const idx = assistantIdxs[i] ?? assistantIdxs[assistantIdxs.length - 1]
+    if (idx == null || !tools.length) return
+    const cur = chat.value[idx]
+    const haveDetail = (xs?: ToolStep[]) => !!xs?.some((t) => t.preview || t.children?.length)
+    if (!cur.tools?.length || (!haveDetail(cur.tools) && haveDetail(tools))) {
+      chat.value[idx] = { ...cur, tools }
+    }
+  })
+  const lastAsk = [...runs]
+    .reverse()
+    .find((r) => r.artifact && hasAskArtifact(r.artifact) && r.status !== 'error')
+  if (lastAsk) {
+    runId.value = lastAsk.id
+    applyAskArtifact(lastAsk.artifact || {})
+    const finish = [...(lastAsk.events || [])].reverse().find((e) => e.type === 'finish')
+    const detail = String(finish?.data?.detail || lastAsk.finishDetail || '')
+    lastIntent.value = String((lastAsk.artifact || {}).intent || (detail === 'gen' ? 'gen' : 'ask'))
+  }
+  if (!steps.value.length) {
+    const lastTools =
+      [...chat.value].reverse().find((m) => m.role === 'assistant' && m.tools?.length)?.tools || []
+    if (lastTools.length) steps.value = lastTools.map((t) => ({ id: t.id, label: t.label }))
+  }
+}
+
+function isFillerAssistantText(text?: string): boolean {
+  const t = (text || '').trim()
+  if (!t) return true
+  if (t === '问数完成。' || t === '已生成。' || t === '仪表盘已生成。') return true
+  if (/^问数完成[：:]/.test(t)) return true
+  return false
+}
+
+function collapseAssistantDupes(lines: ChatLine[]): ChatLine[] {
+  const out: ChatLine[] = []
+  for (const m of lines) {
+    const prev = out[out.length - 1]
+    if (m.role === 'assistant' && prev?.role === 'assistant') {
+      const sameText = (m.text || '').trim() === (prev.text || '').trim()
+      const bothFiller = isFillerAssistantText(m.text) && isFillerAssistantText(prev.text)
+      if (sameText || bothFiller) {
+        const tools = (m.tools?.length || 0) >= (prev.tools?.length || 0) ? m.tools : prev.tools
+        out[out.length - 1] = {
+          ...prev,
+          text: isFillerAssistantText(m.text) ? prev.text : m.text,
+          tools
+        }
+        continue
+      }
+    }
+    out.push({ ...m })
+  }
+  return out
+}
+
+function askArtifactRowCount(artifact: Record<string, unknown>): number {
+  const chart = artifact.answer_chart
+  const table = artifact.answer_table
+  const c = chart && typeof chart === 'object' ? (chart as Record<string, unknown>) : undefined
+  const t = table && typeof table === 'object' ? (table as Record<string, unknown>) : undefined
+  if (typeof c?.rowCount === 'number') return c.rowCount
+  if (typeof t?.rowCount === 'number') return t.rowCount
+  if (Array.isArray(t?.rows)) return (t.rows as unknown[]).length
+  return -1
+}
+
+function isEmptyAskArtifact(artifact?: Record<string, unknown> | null): boolean {
+  if (!artifact) return false
+  return askArtifactRowCount(artifact) === 0
+}
+
+function replayLooksAnswered(replay: ConversationReplayVO): boolean {
+  return (replay.runs || []).some((r) => {
+    if (r.status === 'error' || r.status === 'cancelled') return false
+    if (hasAskArtifact(r.artifact || {})) return true
+    if (r.status === 'answered' || r.status === 'done' || r.status === 'awaiting_confirm') return true
+    return (r.events || []).some((e) => e.type === 'finish' && String(e.data?.reason || '') !== 'error')
+  })
+}
+
+function emptyAskInsight(artifact: Record<string, unknown>, question: string): Record<string, unknown> {
+  const table = artifact.answer_table && typeof artifact.answer_table === 'object'
+    ? (artifact.answer_table as Record<string, unknown>)
+    : {}
+  const chart = artifact.answer_chart && typeof artifact.answer_chart === 'object'
+    ? (artifact.answer_chart as Record<string, unknown>)
+    : {}
+  const ds = String(chart.datasetName || table.datasetName || chart.datasetId || table.datasetId || '当前表')
+  return {
+    title: '查询无有效数据',
+    headlineHtml: `<strong>${ds}</strong> 按本题条件返回 0 行`,
+    insightHtml:
+      'SQL 已执行，但没有命中任何记录。请去掉过严的年份/筛选，或改问表里实际有数的时间范围。',
+    follows: ['不限年份再问一次', '按月看收入趋势', '换一张有数据的表'],
+    question,
+    datasetName: ds
+  }
+}
+
+function hasAskArtifact(artifact: Record<string, unknown>): boolean {
+  return !!(
+    artifact.answer_table ||
+    artifact.answer_chart ||
+    artifact.answer_sql ||
+    artifact.answer_insight ||
+    artifact.answer_clarify
+  )
+}
+
+function applyAskArtifact(artifact: Record<string, unknown>) {
+  if (artifact.answer_clarify && typeof artifact.answer_clarify === 'object') {
+    handleEvent('answer_clarify', artifact.answer_clarify as Record<string, unknown>)
+    return
+  }
+  if (artifact.answer_sql && typeof artifact.answer_sql === 'object') {
+    handleEvent('answer_sql', artifact.answer_sql as Record<string, unknown>)
+  }
+  if (isEmptyAskArtifact(artifact)) {
+    const insight =
+      artifact.answer_insight && typeof artifact.answer_insight === 'object'
+        ? (artifact.answer_insight as Record<string, unknown>)
+        : emptyAskInsight(artifact, lastQuestion.value)
+    handleEvent('answer_insight', insight)
+    return
+  }
+  if (artifact.answer_table && typeof artifact.answer_table === 'object') {
+    handleEvent('answer_table', artifact.answer_table as Record<string, unknown>)
+  }
+  if (artifact.answer_chart && typeof artifact.answer_chart === 'object') {
+    handleEvent('answer_chart', artifact.answer_chart as Record<string, unknown>)
+  }
+  if (artifact.answer_insight && typeof artifact.answer_insight === 'object') {
+    handleEvent('answer_insight', artifact.answer_insight as Record<string, unknown>)
+  }
+}
+
+function applyAnswerAttachment(attachments?: Record<string, unknown>[]) {
+  const raw = (attachments || []).find((a) => a && a.kind === 'answer')
+  if (!raw) return
+  if (raw.runId) runId.value = String(raw.runId)
+  if (raw.intent) lastIntent.value = String(raw.intent)
+  const artifact: Record<string, unknown> = {}
+  if (raw.table && typeof raw.table === 'object') {
+    artifact.answer_table = raw.table
+    const t = raw.table as Record<string, unknown>
+    if (t.sql) artifact.answer_sql = { sql: t.sql, title: t.title }
+  }
+  if (raw.chart && typeof raw.chart === 'object') artifact.answer_chart = raw.chart
+  if (raw.insight && typeof raw.insight === 'object') artifact.answer_insight = raw.insight
+  if (raw.clarify && typeof raw.clarify === 'object') artifact.answer_clarify = raw.clarify
+  applyAskArtifact(artifact)
 }
 
 /** 从已关联的草稿看板重建 charts / queryBar（用于对话页刷新后的预览回填） */
@@ -542,10 +724,11 @@ async function hydratePreviewFromDashboard(dashboardId: string): Promise<void> {
   }
 }
 
-async function maybeResumeUnanswered(): Promise<boolean> {
+async function maybeResumeUnanswered(replayAnswered = false): Promise<boolean> {
   if (streaming.value) return false
   if (!selectedDatasets.value.length) return false
   if (chat.value.some((m) => m.role === 'assistant')) return false
+  if (hasAnswer.value || replayAnswered) return false
   // 已生成过看板/产物的会话视为已完成：打开时不自动重放生成，
   // 避免每次进入历史会话都重复触发一次 run（消息越积越多）。
   if (linkedDashboardId.value) return false
@@ -564,7 +747,14 @@ function useExample(ex: { text: string; intent: 'ask' | 'gen' }) {
   intent.value = ex.intent
 }
 
-/** 把 liveTools 精简为可持久化的思考过程 trace（去掉 run 态与非必要字段），供后端存储与回溯展示。 */
+/** 把 liveTools 精简为可持久化的思考过程 trace（去掉 run 态），供后端存储与回溯展示。 */
+function sanitizePreview(preview?: ToolPreview): ToolPreview | undefined {
+  if (!preview) return undefined
+  const sample = Array.isArray(preview.sample) ? preview.sample.slice(0, 8) : undefined
+  const fields = Array.isArray(preview.fields) ? preview.fields.slice(0, 40) : undefined
+  return { ...preview, sample, fields }
+}
+
 function sanitizeTrace(tools: ToolStep[]): ToolStep[] {
   return tools.map((t) => ({
     id: String(t.id || ''),
@@ -572,6 +762,7 @@ function sanitizeTrace(tools: ToolStep[]): ToolStep[] {
     status: 'done' as const,
     tool: t.tool ? String(t.tool) : undefined,
     hint: t.hint ? String(t.hint) : undefined,
+    preview: sanitizePreview(t.preview),
     children: t.children?.length ? sanitizeTrace(t.children) : undefined
   }))
 }
@@ -581,25 +772,19 @@ function extractTrace(attachments?: Record<string, unknown>[]): ToolStep[] | und
   const trace = (attachments || []).find((a) => a && a.kind === 'trace')
   const steps = trace?.steps
   if (!Array.isArray(steps) || !steps.length) return undefined
-  return (steps as ToolStep[]).map((t) => ({
+  return (steps as ToolStep[]).map((t) => restoreToolStep(t))
+}
+function restoreToolStep(t: ToolStep): ToolStep {
+  return {
     id: String(t.id || ''),
     label: String(t.label || ''),
-    status: t.status === 'run' ? 'done' : 'done',
+    status: 'done',
     tool: t.tool ? String(t.tool) : undefined,
     hint: t.hint ? String(t.hint) : undefined,
+    preview: t.preview && typeof t.preview === 'object' ? (t.preview as ToolPreview) : undefined,
     open: false,
-    children: Array.isArray(t.children) && t.children.length ? extractTraceChildren(t.children) : undefined
-  }))
-}
-function extractTraceChildren(children: ToolStep[]): ToolStep[] {
-  return children.map((c) => ({
-    id: String(c.id || ''),
-    label: String(c.label || ''),
-    status: 'done',
-    tool: c.tool ? String(c.tool) : undefined,
-    hint: c.hint ? String(c.hint) : undefined,
-    children: Array.isArray(c.children) && c.children.length ? extractTraceChildren(c.children) : undefined
-  }))
+    children: Array.isArray(t.children) && t.children.length ? t.children.map(restoreToolStep) : undefined
+  }
 }
 
 function resetAnswer() {
@@ -612,12 +797,15 @@ function resetAnswer() {
 }
 
 async function send(opts?: { resume?: boolean }) {
+  if (streaming.value) return
   if (!selectedDatasets.value.length) {
-    chat.value.push({ role: 'system', text: '请先连接数据源或上传 CSV / Excel，再提问。' })
+    dsMenuOpen.value = true
+    chat.value.push({ role: 'system', text: '请先选择一张表，再提问。' })
     return
   }
-  if (!canSend.value) return
   const text = prompt.value.trim()
+  if (!text) return
+  streaming.value = true
   prompt.value = ''
   phase.value = 'workspace'
   sidePanel.value = 'none'
@@ -632,13 +820,13 @@ async function send(opts?: { resume?: boolean }) {
   assistantBuf.value = ''
   intentMap.value = null
   resetAnswer()
+  dsMenuOpen.value = false
 
   if (!opts?.resume) {
     chat.value.push({ role: 'user', text })
   }
   lastQuestion.value = text
   lastIntent.value = intent.value
-  streaming.value = true
   liveTools.value = [{ id: 'pending', label: '正在问数…', status: 'run' }]
   let failed = false
   try {
@@ -652,8 +840,8 @@ async function send(opts?: { resume?: boolean }) {
       {
         message: text,
         ...(intent.value === 'gen' ? { intent: 'gen' as const } : {}),
-        mode: mode.value,
-        styleId: styleId.value,
+        mode: 'auto',
+        styleId: 'feishu-blue',
         datasetIds: selectedDatasets.value
       },
       handleEvent
@@ -692,10 +880,11 @@ function flushAssistant() {
     .filter((t) => t.id !== 'pending')
     .map((t) => ({ ...t, status: 'done' as const }))
   const text = assistantBuf.value.trim()
-  if (text || tools.length) {
+  const persistText = text || (charts.value.length ? '仪表盘已生成。' : '')
+  if (persistText || tools.length) {
     chat.value.push({
       role: 'assistant',
-      text: text || (charts.value.length ? '仪表盘已生成。' : ''),
+      text: persistText,
       tools
     })
   } else if (!hasAnswer.value && chat.value.at(-1)?.role !== 'system') {
@@ -705,14 +894,28 @@ function flushAssistant() {
     })
   }
   const cid = current.value?.id
-  if (cid && (text || tools.length)) {
-    // 把本次生成的完整思考过程（工具步骤链）随 assistant 消息持久化到后端，
-    // 供历史会话回溯展示。attachments 用现有合约承载 steps trace，不引入新表。
-    const attachments = tools.length
-      ? [{ kind: 'trace', steps: sanitizeTrace(tools) }]
-      : undefined
+  if (cid && (persistText || tools.length || hasAnswer.value)) {
+    // 把本次生成的完整思考过程（工具步骤链）和问数结果随 assistant 消息持久化，
+    // 供历史会话回溯展示。attachments 用现有合约承载，不引入新表。
+    const attachments: Record<string, unknown>[] = []
+    if (tools.length) attachments.push({ kind: 'trace', steps: sanitizeTrace(tools) })
+    if (hasAnswer.value) {
+      attachments.push({
+        kind: 'answer',
+        intent: lastIntent.value || intent.value,
+        runId: runId.value || undefined,
+        table: answerTable.value || undefined,
+        chart: answerChart.value || undefined,
+        insight: answerInsight.value || undefined,
+        clarify: answerClarify.value || undefined
+      })
+    }
     void conversationApi
-      .appendMessage(cid, { role: 'assistant', content: text || '已生成。', attachments })
+      .appendMessage(cid, {
+        role: 'assistant',
+        content: persistText,
+        attachments: attachments.length ? attachments : undefined
+      })
       .catch(() => {})
   }
   assistantBuf.value = ''
@@ -771,7 +974,10 @@ function handleEvent(event: string, data: Record<string, unknown>) {
     if (intent.value === 'gen' || charts.value.length) return
     answerTable.value = {
       title: String(data.title || '明细表'),
-      columns: Array.isArray(data.columns) ? (data.columns as string[]) : [],
+      columns: displayFieldNames(
+        Array.isArray(data.columns) ? (data.columns as string[]) : [],
+        Array.isArray(data.columnLabels) ? (data.columnLabels as string[]) : undefined
+      ),
       rows: Array.isArray(data.rows) ? (data.rows as unknown[][]) : [],
       rowCount: typeof data.rowCount === 'number' ? data.rowCount : 0,
       truncated: !!data.truncated,
@@ -796,7 +1002,7 @@ function handleEvent(event: string, data: Record<string, unknown>) {
       heights,
       insightHtml: data.insightHtml ? String(data.insightHtml) : undefined,
       question: data.question ? String(data.question) : lastQuestion.value,
-      follows: Array.isArray(data.follows) ? (data.follows as string[]) : []
+      follows: publicFollows(data.follows)
     }
   } else if (event === 'answer_insight') {
     if (intent.value === 'gen' || charts.value.length) return
@@ -805,7 +1011,7 @@ function handleEvent(event: string, data: Record<string, unknown>) {
       headlineHtml: String(data.headlineHtml || ''),
       insightHtml: String(data.insightHtml || ''),
       drivers: Array.isArray(data.drivers) ? (data.drivers as AnswerInsight['drivers']) : [],
-      follows: Array.isArray(data.follows) ? (data.follows as string[]) : [],
+      follows: publicFollows(data.follows),
       question: data.question ? String(data.question) : lastQuestion.value,
       datasetName: data.datasetName ? String(data.datasetName) : undefined
     }
@@ -814,7 +1020,7 @@ function handleEvent(event: string, data: Record<string, unknown>) {
       title: String(data.title || '需要澄清'),
       headlineHtml: String(data.headlineHtml || ''),
       insightHtml: String(data.insightHtml || ''),
-      follows: Array.isArray(data.follows) ? (data.follows as string[]) : [],
+      follows: publicFollows(data.follows),
       question: data.question ? String(data.question) : lastQuestion.value
     }
   } else if (event === 'chart_ready') {
@@ -864,10 +1070,7 @@ function handleEvent(event: string, data: Record<string, unknown>) {
     chat.value.push({ role: 'system', text: String(data.message || '错误') })
   } else if (event === 'finish') {
     const reason = String(data.reason || '')
-    const detail = String(data.detail || '')
     if (reason === 'awaiting_confirm') awaitingConfirm.value = true
-    if (reason === 'answered' && detail !== 'clarify' && detail !== 'suggest') canAdopt.value = true
-    if (detail === 'clarify' || detail === 'suggest') canAdopt.value = false
   }
 }
 
@@ -933,36 +1136,6 @@ async function hydrateQueryOptions() {
   }
 }
 
-async function adopt(action: 'save' | 'generate') {
-  if (!current.value || !runId.value || streaming.value || !canSave.value) return
-  streaming.value = true
-  assistantBuf.value = ''
-  charts.value = []
-  queryBar.value = null
-  if (action === 'generate') {
-    answerTable.value = null
-    answerChart.value = null
-    answerInsight.value = null
-    answerClarify.value = null
-  }
-  try {
-    await conversationApi.adopt(
-      current.value.id,
-      runId.value,
-      { action, styleId: styleId.value },
-      handleEvent
-    )
-    current.value = await conversationApi.get(current.value.id)
-    linkedDashboardId.value = current.value.linkedDashboardId || linkedDashboardId.value
-    canAdopt.value = false
-  } catch (e) {
-    chat.value.push({ role: 'system', text: e instanceof Error ? e.message : String(e) })
-  } finally {
-    streaming.value = false
-    flushAssistant()
-  }
-}
-
 function followAsk(text: string) {
   prompt.value = text
   intent.value = /生成/.test(text) ? 'gen' : 'ask'
@@ -977,20 +1150,6 @@ function suggestAsk() {
   prompt.value = '换一个问数问题'
   intent.value = 'ask'
   void send()
-}
-
-async function copyConclusion() {
-  const html =
-    answerChart.value?.insightHtml ||
-    answerInsight.value?.insightHtml ||
-    answerInsight.value?.headlineHtml ||
-    ''
-  const text = html.replace(/<[^>]+>/g, '').trim() || lastQuestion.value
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch {
-    /* ignore */
-  }
 }
 
 function newChat() {
@@ -1050,13 +1209,6 @@ async function restoreRevision(rev: ConversationRevisionVO) {
   }
 }
 
-function toggleDataset(id: string) {
-  const set = new Set(selectedDatasets.value)
-  if (set.has(id)) set.delete(id)
-  else set.add(id)
-  selectedDatasets.value = [...set]
-}
-
 function toggleSide(panel: 'history' | 'explore') {
   sidePanel.value = sidePanel.value === panel ? 'none' : panel
 }
@@ -1064,13 +1216,6 @@ function toggleSide(panel: 'history' | 'explore') {
 
 <template>
   <div class="conv-root">
-    <input
-      ref="fileInput"
-      type="file"
-      class="file-hidden"
-      accept=".csv,.tsv,.txt,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      @change="onPickFile"
-    />
     <div v-if="loading" class="boot">加载对话…</div>
     <div v-else-if="!enabled || error" class="boot err">{{ error || '对话未启用' }}</div>
     <div v-else class="body">
@@ -1123,41 +1268,6 @@ function toggleSide(panel: 'history' | 'explore') {
               {{ intent === 'gen' ? '将写入 Dashboard draft' : '结果仅会话预览' }}
             </div>
             <div class="composer">
-              <div class="comp-row">
-                <button class="gbtn" type="button" @click="dsMenuOpen = !dsMenuOpen">
-                  ＋ 数据集 ▾
-                </button>
-                <button class="gbtn" type="button" :disabled="importing" @click="fileInput?.click()">
-                  {{ importing ? '导入中…' : '上传 CSV / Excel' }}
-                </button>
-                <span class="ctx-pill">上下文 <b>{{ ctxName }}</b></span>
-                <span v-if="importHint" class="import-hint">{{ importHint }}</span>
-                <span class="sp" />
-              </div>
-              <div v-if="dsMenuOpen" class="ds-menu">
-                <div class="ds-search">
-                  <input v-model="dsKeyword" type="text" placeholder="搜索数据集…" />
-                  <span class="ds-count">{{ selectedDatasets.length }} 已选</span>
-                </div>
-                <div class="ds-list">
-                  <label
-                    v-for="d in filteredDatasets"
-                    :key="d.id"
-                    class="ds"
-                    :class="{ on: selectedDatasets.includes(d.id) }"
-                  >
-                    <input
-                      type="checkbox"
-                      :checked="selectedDatasets.includes(d.id)"
-                      @change="toggleDataset(d.id)"
-                    />
-                    <span class="ds-name">{{ d.name }}</span>
-                    <span class="ds-meta">{{ d.tableName || d.folder || '' }}</span>
-                    <span v-if="selectedDatasets.includes(d.id)" class="ds-tick">✓</span>
-                  </label>
-                </div>
-                <div v-if="!filteredDatasets.length" class="muted pad">没有匹配的数据集，或先上传 CSV / Excel</div>
-              </div>
               <textarea
                 v-model="prompt"
                 rows="4"
@@ -1166,6 +1276,12 @@ function toggleSide(panel: 'history' | 'explore') {
                 @keydown.ctrl.enter="send"
               />
               <div class="comp-row">
+                <DatasetPicker
+                  :datasets="datasets"
+                  v-model:open="dsMenuOpen"
+                  v-model:selected-ids="selectedDatasets"
+                  :allow-multi="intent === 'gen'"
+                />
                 <button
                   class="pill"
                   :class="{ 'on-intent': intent === 'ask' }"
@@ -1181,21 +1297,6 @@ function toggleSide(panel: 'history' | 'explore') {
                   @click="intent = 'gen'"
                 >
                   <b>生成看板</b>
-                </button>
-                <button class="pill" type="button" @click="mode = mode === 'auto' ? 'plan' : 'auto'">
-                  ⚡ <b>{{ mode === 'auto' ? 'Auto' : 'Plan' }}</b>
-                </button>
-                <button
-                  v-if="intent === 'gen'"
-                  class="pill"
-                  type="button"
-                  @click="
-                    styleId =
-                      styles[(styles.findIndex((s) => s.id === styleId) + 1) % Math.max(styles.length, 1)]
-                        ?.id || styleId
-                  "
-                >
-                  ▦ <b>{{ styleName }}</b>
                 </button>
                 <span class="sp" />
                 <button class="send" type="button" :disabled="!canSend" @click="send" title="发送">
@@ -1234,7 +1335,7 @@ function toggleSide(panel: 'history' | 'explore') {
             </div>
 
             <div class="foot-note">
-              Open Dashboard 内测 · 问数结果为会话预览，写入看板前不落查询结果行
+              Open Dashboard 内测 · 问数结果为会话预览，本期不写入看板
             </div>
           </div>
         </div>
@@ -1244,8 +1345,6 @@ function toggleSide(panel: 'history' | 'explore') {
       <section v-else class="stage workspace" :class="{ 'ask-chat': askChatMode }">
         <div class="chat-col">
           <div class="chat-hd">
-            <span>{{ current?.title || '新对话' }}</span>
-            <span class="sp" />
             <button class="gbtn" type="button" @click="newChat">新对话</button>
             <button
               class="gbtn"
@@ -1286,7 +1385,7 @@ function toggleSide(panel: 'history' | 'explore') {
               </div>
               <div class="asst-col">
                 <ToolStepList v-if="m.role === 'assistant' && m.tools?.length" :steps="m.tools" default-open />
-                <div v-if="m.text" class="bub">
+                <div v-if="m.text && !isFillerAssistantText(m.text)" class="bub">
                   <div class="bub-text">{{ m.text }}</div>
                 </div>
               </div>
@@ -1364,12 +1463,8 @@ function toggleSide(panel: 'history' | 'explore') {
                   </div>
                 </div>
                 <div v-if="answerChart?.insightHtml" class="insight" v-html="answerChart.insightHtml" />
-                <div class="ask-body">
+                <div class="ask-body" :class="{ single: !answerTable || !!answerChart }">
                   <div v-if="answerChart" class="viz">
-                    <div class="vl">
-                      临时图 · {{ answerChart.chartType }} ·
-                      {{ answerTable?.rows?.length ? '问数结果' : 'chartQuery' }}
-                    </div>
                     <LiveChartPreview
                       :dataset-id="answerChart.datasetId"
                       :chart-type="answerChart.chartType || 'bar'"
@@ -1380,7 +1475,7 @@ function toggleSide(panel: 'history' | 'explore') {
                       :height="220"
                     />
                   </div>
-                  <div v-if="answerTable" class="viz">
+                  <div v-else-if="answerTable" class="viz">
                     <div class="vl">明细表 · {{ answerTable.rowCount }} 行</div>
                     <pre v-if="answerTable.sql" class="sql-block">{{ answerTable.sql }}</pre>
                     <table>
@@ -1424,40 +1519,6 @@ function toggleSide(panel: 'history' | 'explore') {
           </div>
 
             <div class="dock workspace-dock">
-            <div class="ctx-row-ws">
-              <span class="ctx-pill">上下文 <b>{{ ctxName }}</b></span>
-              <button class="gbtn" type="button" @click="dsMenuOpen = !dsMenuOpen">更换数据集 ▾</button>
-              <button class="gbtn" type="button" :disabled="streaming || !selectedDatasets.length" @click="suggestAsk">
-                换一个问数问题
-              </button>
-              <button class="gbtn" type="button" :disabled="importing" @click="fileInput?.click()">
-                {{ importing ? '导入中…' : '上传 CSV / Excel' }}
-              </button>
-            </div>
-            <div v-if="dsMenuOpen" class="ds-menu">
-              <div class="ds-search">
-                <input v-model="dsKeyword" type="text" placeholder="搜索数据集…" />
-                <span class="ds-count">{{ selectedDatasets.length }} 已选</span>
-              </div>
-              <div class="ds-list">
-                <label
-                  v-for="d in filteredDatasets"
-                  :key="d.id"
-                  class="ds"
-                  :class="{ on: selectedDatasets.includes(d.id) }"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="selectedDatasets.includes(d.id)"
-                    @change="toggleDataset(d.id)"
-                  />
-                  <span class="ds-name">{{ d.name }}</span>
-                  <span class="ds-meta">{{ d.tableName || d.folder || '' }}</span>
-                  <span v-if="selectedDatasets.includes(d.id)" class="ds-tick">✓</span>
-                </label>
-              </div>
-              <div v-if="!filteredDatasets.length" class="muted pad">没有匹配的数据集，或先上传 CSV / Excel</div>
-            </div>
             <div class="composer">
               <textarea
                 v-model="prompt"
@@ -1467,6 +1528,13 @@ function toggleSide(panel: 'history' | 'explore') {
                 @keydown.ctrl.enter="send"
               />
               <div class="comp-row">
+                <DatasetPicker
+                  :datasets="datasets"
+                  v-model:open="dsMenuOpen"
+                  v-model:selected-ids="selectedDatasets"
+                  :allow-multi="intent === 'gen'"
+                  placement="above"
+                />
                 <button
                   class="pill"
                   :class="{ 'on-intent': intent === 'ask' }"
@@ -1482,6 +1550,9 @@ function toggleSide(panel: 'history' | 'explore') {
                   @click="intent = 'gen'"
                 >
                   <b>生成看板</b>
+                </button>
+                <button class="gbtn" type="button" :disabled="streaming || !selectedDatasets.length" @click="suggestAsk">
+                  换一个问数问题
                 </button>
                 <span class="sp" />
                 <button class="send" type="button" :disabled="!canSend" @click="send">↑</button>
@@ -1619,12 +1690,8 @@ function toggleSide(panel: 'history' | 'explore') {
                   class="insight"
                   v-html="answerChart.insightHtml"
                 />
-                <div class="ask-body">
+                <div class="ask-body" :class="{ single: !answerTable || !!answerChart }">
                   <div v-if="answerChart" class="viz">
-                    <div class="vl">
-                      临时图 · {{ answerChart.chartType }} ·
-                      {{ answerTable?.rows?.length ? '问数结果' : 'chartQuery' }}
-                    </div>
                     <LiveChartPreview
                       :dataset-id="answerChart.datasetId"
                       :chart-type="answerChart.chartType || 'bar'"
@@ -1635,7 +1702,7 @@ function toggleSide(panel: 'history' | 'explore') {
                       :height="220"
                     />
                   </div>
-                  <div v-if="answerTable" class="viz">
+                  <div v-else-if="answerTable" class="viz">
                     <div class="vl">明细表 · {{ answerTable.rowCount }} 行</div>
                     <pre v-if="answerTable.sql" class="sql-block">{{ answerTable.sql }}</pre>
                     <table>
@@ -1962,6 +2029,8 @@ function toggleSide(panel: 'history' | 'explore') {
   padding-left: 4px;
 }
 .composer {
+  position: relative;
+  z-index: 3;
   border: 1px solid #dfe4f2;
   border-radius: 22px;
   background: color-mix(in srgb, var(--od-card, #fff) 88%, transparent);
@@ -1972,6 +2041,7 @@ function toggleSide(panel: 'history' | 'explore') {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: visible;
 }
 .composer:focus-within {
   border-color: color-mix(in srgb, var(--brand) 38%, #dfe4f2);
@@ -2000,110 +2070,6 @@ function toggleSide(panel: 'history' | 'explore') {
 .gbtn.on {
   background: var(--soft);
   color: var(--ink);
-}
-.ctx-pill {
-  font-size: 12px;
-  color: var(--muted);
-}
-.import-hint {
-  font-size: 12px;
-  color: var(--ok, #34c759);
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.file-hidden {
-  display: none;
-}
-.ctx-pill b {
-  color: var(--ink);
-  font-weight: 600;
-}
-.ds-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 4px 2px 8px;
-}
-.ds-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.ds-search input {
-  flex: 1;
-  min-width: 0;
-  height: 28px;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  padding: 0 10px;
-  font-size: 12.5px;
-  background: #fff;
-  color: var(--ink);
-  outline: 0;
-}
-.ds-search input:focus {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-soft);
-}
-.ds-count {
-  flex-shrink: 0;
-  font-size: 11.5px;
-  color: var(--faint);
-}
-.ds-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 240px;
-  overflow: auto;
-}
-.ds {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--muted);
-  padding: 6px 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.ds:hover {
-  background: var(--soft);
-}
-.ds.on {
-  border-color: color-mix(in srgb, var(--brand) 35%, transparent);
-  background: var(--brand-soft);
-  color: var(--ink);
-}
-.ds input {
-  accent-color: var(--brand);
-  flex-shrink: 0;
-}
-.ds-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-  color: inherit;
-}
-.ds-meta {
-  flex-shrink: 0;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--faint);
-}
-.ds-tick {
-  flex-shrink: 0;
-  color: var(--brand);
-  font-weight: 700;
 }
 textarea {
   width: 100%;
@@ -2279,20 +2245,18 @@ textarea {
   padding: 0 16px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
+  gap: 8px;
+  overflow: hidden;
   border-bottom: 1px solid var(--line);
-}
-.chat-hd .sp {
-  flex: 1;
 }
 .chat-hd .gbtn {
   height: 30px;
-  padding: 0 10px;
+  padding: 0 12px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .chat-scroll {
   flex: 1;
@@ -2326,16 +2290,53 @@ textarea {
 .stage.workspace.ask-chat .chat-scroll {
   overflow: auto;
 }
+.stage.workspace.ask-chat .flow-bar {
+  padding: 0 16px;
+}
 .stage.workspace.ask-chat .msgs {
   flex: 0 0 auto;
   overflow: visible;
+  padding: 12px 16px 8px;
+  gap: 10px;
 }
 .stage.workspace.ask-chat .ask-inline {
   flex: 0 0 auto;
   max-height: none;
   overflow: visible;
   border-top: 0;
-  padding-top: 4px;
+  /* 与 assistant 列对齐：msgs 16 + 头像 26 + gap 8 */
+  padding: 0 16px 12px 50px;
+}
+.stage.workspace.ask-chat .asst-col :deep(.kimi-body) {
+  margin: 6px 0 0;
+  padding: 0;
+  border-left: 0;
+}
+.stage.workspace.ask-chat .asst-col :deep(.bar) {
+  border: 1px solid #eceef1;
+  background: #f7f8fa;
+}
+.stage.workspace.ask-chat .ask-inline .ask-result {
+  max-width: none;
+  width: 100%;
+  border-radius: 12px;
+  box-shadow: none;
+}
+.stage.workspace.ask-chat .ask-inline .ask-body {
+  padding: 8px 12px 14px;
+}
+.stage.workspace.ask-chat .ask-inline .viz {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-height: 0;
+}
+.stage.workspace.ask-chat .ask-inline .viz .vl {
+  margin-bottom: 6px;
+}
+.stage.workspace.ask-chat .workspace-dock {
+  padding-left: 16px;
+  padding-right: 16px;
 }
 .flow-bar {
   height: 32px;
@@ -2459,18 +2460,12 @@ textarea {
   color: #9a6700;
   font-size: 12.5px;
 }
-.plan-box,
-.adopt-box {
+.plan-box {
   margin: 0 12px 8px;
   padding: 10px;
   border: 1px solid var(--line-2);
   border-radius: 10px;
   background: #f7f9fc;
-}
-.adopt-box {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 .plan-title {
   font-weight: 600;
@@ -2508,15 +2503,10 @@ textarea {
 }
 .workspace-dock {
   border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  padding: 10px 12px 14px;
+  padding: 10px 16px 14px;
   margin-bottom: 14px;
   background: transparent;
-}
-.ctx-row-ws {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  overflow: visible;
 }
 .workspace-dock .composer {
   border-radius: 12px;

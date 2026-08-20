@@ -2,6 +2,7 @@ package io.opendashboard.application.conversation;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.opendashboard.domain.context.AuthPrincipal;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -43,6 +44,64 @@ public class AgentHarnessClient {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    public Map<String, Object> reviewFields(String datasetId, AuthPrincipal principal) throws Exception {
+        return reviewFields(datasetId, principal, () -> false);
+    }
+
+    public Map<String, Object> reviewFields(
+            String datasetId,
+            AuthPrincipal principal,
+            java.util.function.BooleanSupplier cancelled
+    ) throws Exception {
+        String url = trimSlash(props.getHarness().getBaseUrl())
+                + "/v1/datasets/" + java.net.URLEncoder.encode(datasetId, StandardCharsets.UTF_8)
+                + "/review-fields";
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofMillis(Math.max(30_000L, props.getHarness().getTimeoutMs())))
+                .header("Accept", "application/json")
+                .header("X-OD-Internal-Token", props.getHarness().getInternalToken())
+                .POST(HttpRequest.BodyPublishers.noBody());
+        if (principal != null) {
+            b.header("X-User-Id", principal.userId());
+            if (principal.permissions() != null && !principal.permissions().isEmpty()) {
+                b.header("X-User-Perms", String.join(",", principal.permissions()));
+            }
+        }
+        java.util.concurrent.CompletableFuture<HttpResponse<String>> fut =
+                http.sendAsync(b.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        while (!fut.isDone()) {
+            if (cancelled != null && cancelled.getAsBoolean()) {
+                fut.cancel(true);
+                throw new java.util.concurrent.CancellationException("review cancelled");
+            }
+            try {
+                Thread.sleep(120);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                fut.cancel(true);
+                throw new java.util.concurrent.CancellationException("review interrupted");
+            }
+        }
+        HttpResponse<String> resp;
+        try {
+            resp = fut.join();
+        } catch (java.util.concurrent.CompletionException e) {
+            if (cancelled != null && cancelled.getAsBoolean()
+                    || e.getCause() instanceof java.util.concurrent.CancellationException) {
+                throw new java.util.concurrent.CancellationException("review cancelled");
+            }
+            throw e;
+        }
+        if (resp.statusCode() >= 400) {
+            throw new IllegalStateException("harness HTTP " + resp.statusCode() + ": " + resp.body());
+        }
+        String body = resp.body();
+        if (body == null || body.isBlank()) {
+            return Map.of("ok", false);
+        }
+        return mapper.readValue(body, new TypeReference<>() {});
     }
 
     public void proxyRun(Map<String, Object> payload, ConversationHarness.Emitter emitter) throws Exception {

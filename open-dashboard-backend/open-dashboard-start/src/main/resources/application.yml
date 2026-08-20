@@ -51,8 +51,9 @@ opendashboard:
   datasource:
     crypto-key: opendashboard-local-ds-key
   auth:
-    # When true and no X-User-Id header, use demo principal (disable in production)
-    dev-fallback: true
+    # When true and no X-User-Id header, use a demo principal. Keep false by default;
+    # local demos should log in explicitly so route guards and 401 behavior are visible.
+    dev-fallback: false
     fallback-user-id: demo
     fallback-display-name: 演示用户
     fallback-permissions: "*"

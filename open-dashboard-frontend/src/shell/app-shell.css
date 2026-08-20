@@ -296,6 +296,36 @@ html[data-od-theme='dark'] .od-avatar {
   align-items: center;
   gap: 2px;
 }
+.od-workspace-switch {
+  height: 40px;
+  min-width: 248px;
+  padding: 0 10px;
+  border: 1px solid var(--od-line);
+  border-radius: 10px;
+  background: var(--od-card);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--od-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.od-workspace-switch span {
+  max-width: 86px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.od-workspace-switch select {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--od-ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
 .od-ghost {
   height: 40px;
   padding: 0 12px;
@@ -506,5 +536,12 @@ html[data-od-theme='dark'] .hifi-dash-root {
   }
   .od-top {
     padding: 0 20px;
+  }
+  .od-workspace-switch {
+    min-width: 160px;
+    width: min(42vw, 220px);
+  }
+  .od-workspace-switch span {
+    display: none;
   }
 }

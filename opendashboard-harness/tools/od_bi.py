@@ -34,7 +34,7 @@ def bi_call(method: str, path: str, body: Any = None) -> Any:
         "X-OD-Internal-Token": internal_token(),
     }
     try:
-        from agent.user_context import current_perms, current_user_id
+        from agent.user_context import current_perms, current_user_id, current_workspace_id
 
         uid = current_user_id()
         if uid:
@@ -42,6 +42,7 @@ def bi_call(method: str, path: str, body: Any = None) -> Any:
             perms = current_perms()
             if perms:
                 headers["X-User-Perms"] = perms
+        headers["X-Workspace-Id"] = current_workspace_id()
     except Exception:
         pass
     req = urllib.request.Request(
@@ -80,16 +81,19 @@ class ToolState:
         self.defer_apply: bool = False
         self.pending: Optional[Dict[str, Any]] = None
         self.rechart: bool = False
-        # 阶段4：当前 run 的用户标识（memory_add/memory_search 写/读 user 记忆）
+        # 当前 run 的用户与工作区标识（memory_add/memory_search 写/读 user 记忆）
         self.user_id: str = "demo"
+        self.workspace_id: str = "default"
 
 
 def build_od_tools(
     linked_dashboard_id: Optional[str],
     state: ToolState,
     user_id: str = "demo",
+    workspace_id: str = "default",
 ) -> List[AgentTool]:
     state.user_id = user_id or "demo"
+    state.workspace_id = workspace_id or "default"
     def list_datasets(_: Dict[str, Any]) -> Any:
         return bi_call("GET", "/api/internal/bi/datasets")
 
@@ -416,17 +420,35 @@ def build_od_tools(
         from agent import memory_store
 
         category = str(args.get("category") or "context").strip()
-        memory_store.add_fact(state.user_id, content, category=category, confidence=0.8)
-        return {"ok": True, "user": state.user_id, "content": content, "category": category}
+        memory_store.add_fact(
+            state.user_id,
+            content,
+            category=category,
+            confidence=0.8,
+            workspace_id=state.workspace_id,
+        )
+        return {
+            "ok": True,
+            "workspaceId": state.workspace_id,
+            "user": state.user_id,
+            "content": content,
+            "category": category,
+        }
 
     def memory_search(args: Dict[str, Any]) -> Any:
         """memory_search：大小写不敏感子串召回用户记忆，按相关度排序。"""
         query = str(args.get("query") or "").strip()
         from agent import memory_store
 
-        hits = memory_store.search(state.user_id, query, top_k=int(args.get("topK") or 5))
+        hits = memory_store.search(
+            state.user_id,
+            query,
+            top_k=int(args.get("topK") or 5),
+            workspace_id=state.workspace_id,
+        )
         return {
             "ok": True,
+            "workspaceId": state.workspace_id,
             "user": state.user_id,
             "query": query,
             "facts": [{"content": h.get("content"), "category": h.get("category"), "confidence": h.get("confidence")} for h in hits],
@@ -472,7 +494,12 @@ def build_od_tools(
         )
         # 阶段2：confirmed 指标（agg/unit 权威）优先做 KPI（PR-DF-02）
         if isinstance(planned, dict) and planned.get("ok") and not planned.get("empty"):
-            planned = _apply_confirmed_metrics(planned, ds, user_id=state.user_id)
+            planned = _apply_confirmed_metrics(
+                planned,
+                ds,
+                user_id=state.user_id,
+                workspace_id=state.workspace_id,
+            )
         filters = args.get("filters") or (state.last_intent or {}).get("filters")
         if isinstance(planned, dict) and filters:
             for c in planned.get("charts") or []:
@@ -1251,6 +1278,26 @@ def _compact_sample(sample: List[Any], fields: List[Any], field_name: str, max_v
     return out
 
 
+def review_dataset_fields(dataset_id: str) -> Dict[str, Any]:
+    """数据集自学习第二段：用 LLM 复核规则角色（不跑 Agent 环）。
+    成功时写入角色缓存，供后续 od_profile_dataset 复用；失败/未配置时 source=stats。
+    """
+    auto = interpret_fields_llm(dataset_id)
+    if auto.get("source") == "llm" and (auto.get("fields") or []):
+        role_map: Dict[str, Any] = {}
+        for f in auto.get("fields") or []:
+            if not isinstance(f, dict) or not f.get("name"):
+                continue
+            role_map[str(f.get("name"))] = {
+                "role": f.get("role") or "junk",
+                "label": f.get("label") or "",
+                "aggregatable": bool(f.get("aggregatable")),
+                "alias": f.get("alias") or "",
+            }
+        _LLM_ROLE_CACHE[dataset_id] = {"map": role_map, "ts": time.time()}
+    return auto
+
+
 def _attach_llm_roles(profile: Dict[str, Any], dataset_id: str, force: bool = False) -> Dict[str, Any]:
     """把 LLM 判定的字段角色附加到 profile（含缓存）：返回的 fields 里 role 用 LLM 校准值，
     并在 profile 顶层带 llmRoleMap 供规划/模型参考。LLM 不可用/失败时保持原 stats role 不变化。"""
@@ -1376,7 +1423,12 @@ def _apply_llm_roles(profile: Dict[str, Any], llm_fields: List[Dict[str, Any]]) 
     return profile
 
 
-def _apply_confirmed_metrics(planned: Dict[str, Any], dataset_id: str, user_id: str = "") -> Dict[str, Any]:
+def _apply_confirmed_metrics(
+    planned: Dict[str, Any],
+    dataset_id: str,
+    user_id: str = "",
+    workspace_id: str = "default",
+) -> Dict[str, Any]:
     """阶段2：confirmed 指标（agg/unit 权威）优先做 KPI（PR-DF-02）。
     已确认指标作为 KPI 前置，title 含业务名与单位；不重复同字段已有图。
     阶段4（PR-UM-03）：用户记忆里有单位偏好（万元/千元…）时，KPI 标题用偏好单位展示。"""
@@ -1394,7 +1446,7 @@ def _apply_confirmed_metrics(planned: Dict[str, Any], dataset_id: str, user_id: 
         try:
             from agent.memory_store import unit_preference
 
-            unit_pref = unit_preference(user_id)
+            unit_pref = unit_preference(user_id, workspace_id=workspace_id)
         except Exception:
             pass
     by_field: Dict[str, Dict[str, Any]] = {}

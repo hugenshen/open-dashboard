@@ -14,23 +14,29 @@
     chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>',
     src: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
     set: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18" cy="18" r="2"/></svg>',
+    market: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16l-1 13H5L4 7z"/><path d="M8 7a4 4 0 0 1 8 0"/><path d="M8 12h8M8 16h5"/></svg>',
     dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
     rpt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>',
+    kb: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5h6a3 3 0 0 1 3 3v12a3 3 0 0 0-3-3H5z"/><path d="M19 5h-6a3 3 0 0 0-3 3v12a3 3 0 0 1 3-3h6z"/></svg>',
+    users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
     slim: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h16"/></svg>'
   };
 
   const GROUPS = [
-    { id: 'start', label: '开始' },
-    { id: 'resource', label: '资源' }
+    { id: 'use', label: '用户使用端' },
+    { id: 'manage', label: '管理端' }
   ];
 
   const PAGES = {
-    workbench: { href: './workbench.html', label: '工作台', group: 'start', icon: 'wb' },
-    conversation: { href: './conversation.html', label: '对话', group: 'start', icon: 'chat', beta: true },
-    datasource: { href: './datasource.html', label: '数据源', group: 'resource', icon: 'src' },
-    dataset: { href: './dataset.html', label: '数据集', group: 'resource', icon: 'set' },
-    dashboard: { href: './dashboard.html', label: '仪表盘', group: 'resource', icon: 'dash' },
-    report: { href: './report.html', label: '报告', group: 'resource', icon: 'rpt' }
+    workbench: { href: './workbench.html', label: '工作台', group: 'use', icon: 'wb' },
+    conversation: { href: './conversation.html', label: '对话分析', group: 'use', icon: 'chat', beta: true },
+    dataMarket: { href: './data-market.html', label: '数据广场', group: 'use', icon: 'market' },
+    dashboard: { href: './dashboard.html', label: '仪表盘', group: 'use', icon: 'dash' },
+    report: { href: './report.html', label: '报告', group: 'use', icon: 'rpt' },
+    datasource: { href: './datasource.html', label: '数据源', group: 'manage', icon: 'src' },
+    dataset: { href: './dataset.html', label: '数据集', group: 'manage', icon: 'set' },
+    knowledge: { href: './knowledge.html', label: '知识库', group: 'manage', icon: 'kb' },
+    admin: { href: './workspace-admin.html', label: '成员权限', group: 'manage', icon: 'users' }
   };
 
   function qs(s, el) { return (el || document).querySelector(s); }
@@ -129,6 +135,18 @@
     /* 资源页 / 工作台顶栏都不放问数；问数只在工作台页内和对话流。编辑器 Phase / SQLBot 由 is-editor 显示。 */
     return `<header class="od-top">
       <div class="od-top-actions">
+        <div class="od-workspace-wrap">
+          <button class="od-workspace" type="button" id="odWorkspaceBtn">
+            <span class="od-ws-dot"></span>
+            <span><b>零售经营项目组</b><small>workspace-retail · 分析师</small></span>
+          </button>
+          <div class="od-pop od-workspace-pop" id="odWorkspacePop">
+            <div class="who"><b>当前工作区</b><span>所有问数、看板、知识和记忆都绑定此工作区</span></div>
+            <button class="ws-opt on" type="button" data-ws-name="零售经营项目组" data-ws-role="分析师"><span>零售经营项目组</span><em>分析师</em></button>
+            <button class="ws-opt" type="button" data-ws-name="华东门店项目组" data-ws-role="只读用户"><span>华东门店项目组</span><em>只读用户</em></button>
+            <a class="ws-manage" href="./workspace-admin.html">管理工作区与权限</a>
+          </div>
+        </div>
         <div class="od-phase tabs" id="phaseTabs">
           <button class="on" type="button" data-phase="a">Phase A</button>
           <button type="button" data-phase="b">Phase B</button>
@@ -139,18 +157,32 @@
         <div style="position:relative">
           <button class="od-account" type="button" id="odAccountBtn">
             <span class="od-avatar">演</span>
-            演示账号
+            赵演示
           </button>
           <div class="od-pop" id="odAccountPop">
-            <div class="who"><b>演示账号</b><span>租户 · Open Dashboard 内测</span></div>
+            <div class="who"><b>赵演示</b><span>用户使用端 · 当前工作区成员</span></div>
+            <a href="./account-settings.html">账号设置</a>
+            <a href="./account-settings.html#password">修改密码</a>
             <button type="button" data-od-act="switch">切换账号</button>
-            <button type="button" data-od-act="settings">通用设置</button>
             <button type="button" data-od-act="logout">退出登录</button>
-            <div class="hint">高保演示 · 不接真实 IAM</div>
+            <div class="hint">userId: user-demo · 由登录态注入</div>
           </div>
         </div>
       </div>
     </header>`;
+  }
+
+  function authDialogHTML() {
+    return `<div class="od-auth-mask" id="odLogoutMask" aria-hidden="true">
+      <div class="od-auth-dialog" role="dialog" aria-modal="true" aria-labelledby="odLogoutTitle">
+        <h3 id="odLogoutTitle">退出登录</h3>
+        <p>退出后会清空当前浏览器会话，重新进入平台需要再次登录并选择工作区。已保存的对话、看板和个人记忆不会删除。</p>
+        <div class="od-auth-actions">
+          <button class="od-pop-cancel" type="button" data-od-act="logout-cancel">取消</button>
+          <button class="od-pop-danger" type="button" data-od-act="logout-confirm">确认退出</button>
+        </div>
+      </div>
+    </div>`;
   }
 
   function mountShell() {
@@ -170,6 +202,9 @@
     }
     if (!qs('.od-top', col)) {
       col.insertAdjacentHTML('afterbegin', topHTML());
+    }
+    if (!qs('#odLogoutMask', document)) {
+      document.body.insertAdjacentHTML('beforeend', authDialogHTML());
     }
     if (!qs('#app', col) && !qs('.od-page', col)) {
       const stage = document.createElement('div');
@@ -249,6 +284,8 @@
 
     const acc = qs('#odAccountBtn');
     const pop = qs('#odAccountPop');
+    const wsBtn = qs('#odWorkspaceBtn');
+    const wsPop = qs('#odWorkspacePop');
     if (acc && pop) {
       acc.setAttribute('aria-haspopup', 'menu');
       acc.setAttribute('aria-expanded', 'false');
@@ -256,16 +293,46 @@
         e.stopPropagation();
         const tp = qs('#odThemePop');
         if (tp) tp.classList.remove('open');
+        if (wsPop) wsPop.classList.remove('open');
         pop.classList.toggle('open');
         acc.setAttribute('aria-expanded', pop.classList.contains('open') ? 'true' : 'false');
       };
       pop.onclick = (e) => e.stopPropagation();
+    }
+    if (wsBtn && wsPop) {
+      wsBtn.setAttribute('aria-haspopup', 'menu');
+      wsBtn.setAttribute('aria-expanded', 'false');
+      wsBtn.onclick = (e) => {
+        e.stopPropagation();
+        const tp = qs('#odThemePop');
+        if (tp) tp.classList.remove('open');
+        if (pop) pop.classList.remove('open');
+        wsPop.classList.toggle('open');
+        wsBtn.setAttribute('aria-expanded', wsPop.classList.contains('open') ? 'true' : 'false');
+      };
+      wsPop.onclick = (e) => e.stopPropagation();
+      qsa('.ws-opt', wsPop).forEach((b) => {
+        b.onclick = () => {
+          qsa('.ws-opt', wsPop).forEach((x) => x.classList.toggle('on', x === b));
+          const label = qs('#odWorkspaceBtn b');
+          const sub = qs('#odWorkspaceBtn small');
+          if (label) label.textContent = b.dataset.wsName || '当前工作区';
+          if (sub) sub.textContent = 'runtimeContext · ' + (b.dataset.wsRole || '成员');
+          wsPop.classList.remove('open');
+          wsBtn.setAttribute('aria-expanded', 'false');
+          odToast('已切换工作区 · ' + (b.dataset.wsName || '当前工作区'));
+        };
+      });
     }
 
     document.addEventListener('click', () => {
       if (pop) {
         pop.classList.remove('open');
         if (acc) acc.setAttribute('aria-expanded', 'false');
+      }
+      if (wsPop) {
+        wsPop.classList.remove('open');
+        if (wsBtn) wsBtn.setAttribute('aria-expanded', 'false');
       }
       const tp = qs('#odThemePop');
       if (tp) tp.classList.remove('open');
@@ -274,6 +341,8 @@
       if (e.key !== 'Escape') return;
       if (pop) pop.classList.remove('open');
       if (acc) acc.setAttribute('aria-expanded', 'false');
+      if (wsPop) wsPop.classList.remove('open');
+      if (wsBtn) wsBtn.setAttribute('aria-expanded', 'false');
       const tp = qs('#odThemePop');
       if (tp) tp.classList.remove('open');
     });
@@ -283,16 +352,22 @@
         const act = b.dataset.odAct;
         if (act === 'sqlbot') location.href = odHref('conversation');
         else if (act === 'help') odToast('帮助手册 · 演示');
-        else if (act === 'settings') {
-          const tp = qs('#odThemePop');
-          const tb = qs('#odThemeBtn');
-          if (tb && tp) {
-            if (pop) pop.classList.remove('open');
-            tp.classList.add('open');
-          } else odToast('通用设置 · 演示');
+        else if (act === 'switch') location.href = './login.html?switch=1';
+        else if (act === 'logout') {
+          const mask = qs('#odLogoutMask');
+          if (mask) {
+            mask.classList.add('open');
+            mask.setAttribute('aria-hidden', 'false');
+          }
         }
-        else if (act === 'switch') odToast('已切换到演示账号 · 演');
-        else if (act === 'logout') odToast('退出登录 · 演示');
+        else if (act === 'logout-cancel') {
+          const mask = qs('#odLogoutMask');
+          if (mask) {
+            mask.classList.remove('open');
+            mask.setAttribute('aria-hidden', 'true');
+          }
+        }
+        else if (act === 'logout-confirm') location.href = './login.html?logged_out=1';
         if (pop) pop.classList.remove('open');
       };
     });

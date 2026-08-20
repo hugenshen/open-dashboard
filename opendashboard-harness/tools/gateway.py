@@ -24,9 +24,13 @@ class ToolGateway:
         *,
         defer_apply: bool = False,
         user_id: str = "demo",
+        workspace_id: str = "default",
     ) -> "ToolGateway":
         tools, state, by_name = create_registry(
-            linked_dashboard_id, defer_apply=defer_apply, user_id=user_id
+            linked_dashboard_id,
+            defer_apply=defer_apply,
+            user_id=user_id,
+            workspace_id=workspace_id,
         )
         return cls(tools=tools, state=state, by_name=by_name)
 

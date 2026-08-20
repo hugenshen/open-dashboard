@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
+import { humanizeFieldName } from '../../utils/fieldLabel'
 
 export type ToolPreview = {
   kind?: string
@@ -102,7 +103,7 @@ function cell(v: unknown, max = 28): string {
 }
 
 function sampleCols(p: ToolPreview): string[] {
-  if (p.columns?.length) return p.columns.map(String)
+  if (p.columns?.length) return p.columns.map((c) => humanizeFieldName(String(c)))
   const rows = sampleRows(p)
   const n = Math.max(0, ...rows.map((r) => r.length))
   if (!n) return []

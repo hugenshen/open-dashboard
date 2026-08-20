@@ -1,50 +1,103 @@
 /**
- * Shared fetch helper: attaches pluggable identity headers (no login page).
- * Customers replace getAuthHeaders() to inject SSO/JWT tokens.
+ * Shared fetch helper: attaches pluggable identity headers after login.
+ * Customers can replace this module with SSO/JWT token injection.
  */
 
 const AUTH_STORAGE_KEY = 'od.auth.headers'
+const AUTH_SESSION_VERSION = 2
 
 export type AuthHeaderBundle = {
   userId: string
   displayName: string
   permissions: string
+  workspaceId: string
+  sessionVersion: number
 }
 
-const DEFAULT_AUTH: AuthHeaderBundle = {
+export const DEMO_ADMIN_AUTH: AuthHeaderBundle = {
   userId: 'demo',
   displayName: '演示用户',
-  permissions: '*'
+  permissions: '*',
+  workspaceId: 'workspace-retail',
+  sessionVersion: AUTH_SESSION_VERSION
 }
 
-export function getAuthHeaders(): Record<string, string> {
-  let bundle = DEFAULT_AUTH
+export const DEMO_ANALYST_AUTH: AuthHeaderBundle = {
+  userId: 'analyst',
+  displayName: '分析师',
+  permissions: 'dataset:use,conversation:use,dashboard:view,report:view',
+  workspaceId: 'workspace-retail',
+  sessionVersion: AUTH_SESSION_VERSION
+}
+
+export function readAuthBundle(): AuthHeaderBundle | null {
   try {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<AuthHeaderBundle>
-      bundle = {
-        userId: parsed.userId || DEFAULT_AUTH.userId,
-        displayName: parsed.displayName || DEFAULT_AUTH.displayName,
-        permissions: parsed.permissions || DEFAULT_AUTH.permissions
+      if (
+        parsed.sessionVersion !== AUTH_SESSION_VERSION ||
+        !parsed.userId ||
+        !parsed.permissions ||
+        !parsed.workspaceId
+      ) {
+        return null
       }
-    } else {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(DEFAULT_AUTH))
+      return {
+        userId: parsed.userId,
+        displayName: parsed.displayName || parsed.userId,
+        permissions: parsed.permissions,
+        workspaceId: parsed.workspaceId,
+        sessionVersion: AUTH_SESSION_VERSION
+      }
     }
   } catch {
     /* ignore */
   }
+  return null
+}
+
+export function getAuthBundle(): AuthHeaderBundle {
+  return readAuthBundle() || DEMO_ADMIN_AUTH
+}
+
+export function hasAuthSession(): boolean {
+  return readAuthBundle() !== null
+}
+
+export function getAuthHeaders(): Record<string, string> {
+  const bundle = readAuthBundle()
+  if (!bundle) return {}
   // fetch header values must be ISO-8859-1; encode non-ASCII display names
   return {
     'X-User-Id': bundle.userId,
     'X-User-Name': encodeURIComponent(bundle.displayName),
-    'X-User-Perms': bundle.permissions
+    'X-User-Perms': bundle.permissions,
+    'X-Workspace-Id': bundle.workspaceId
   }
 }
 
 export function setAuthHeaders(bundle: Partial<AuthHeaderBundle>) {
-  const next = { ...DEFAULT_AUTH, ...bundle }
+  const next = { ...DEMO_ADMIN_AUTH, ...readAuthBundle(), ...bundle }
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next))
+}
+
+export function clearAuthHeaders() {
+  localStorage.removeItem(AUTH_STORAGE_KEY)
+}
+
+export function setCurrentWorkspaceId(workspaceId: string) {
+  if (!hasAuthSession()) return
+  setAuthHeaders({ workspaceId })
+}
+
+export function hasStoredPermission(permission: string): boolean {
+  const bundle = readAuthBundle()
+  if (!bundle || !permission) return false
+  const perms = bundle.permissions.split(',').map((x) => x.trim()).filter(Boolean)
+  if (perms.includes('*') || perms.includes(permission)) return true
+  const colon = permission.indexOf(':')
+  return colon > 0 && perms.includes(permission.slice(0, colon + 1) + '*')
 }
 
 export async function apiFetch<T>(

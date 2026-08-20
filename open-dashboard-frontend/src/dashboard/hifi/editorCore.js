@@ -1,5 +1,6 @@
 /* extracted hi-fi editor core — product mount API */
 import * as echarts from 'echarts';
+import { humanizeFieldName } from '../../utils/fieldLabel';
 
 let __productOpts = null;
 let __origMarkDirty = null;
@@ -2595,7 +2596,9 @@ function fieldSortOf(ch, name) {
 function displayFieldLabel(ch, name) {
   const alias = fieldCfgOf(ch, name).alias;
   if (alias && String(alias).trim()) return String(alias).trim();
-  return fieldLabelOf(ch.datasetId, name);
+  const lab = fieldLabelOf(ch.datasetId, name);
+  if (lab && /[\u4e00-\u9fff]/.test(String(lab))) return lab;
+  return humanizeFieldName(name);
 }
 
 /** 明细表列：维度槽 + 指标槽；兼容旧 encode.columns */

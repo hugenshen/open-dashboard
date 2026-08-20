@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { hasAuthSession, hasStoredPermission } from '../api/http'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -8,6 +9,18 @@ export const router = createRouter({
     { path: '/editor/:id', redirect: (to) => `/dashboards/${to.params.id}/edit` },
     { path: '/preview/:id', redirect: (to) => `/dashboards/${to.params.id}/preview` },
 
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('../auth/views/Login.vue'),
+      meta: { title: '登录', hideShell: true, public: true }
+    },
+    {
+      path: '/forbidden',
+      name: 'forbidden',
+      component: () => import('../auth/views/Forbidden.vue'),
+      meta: { title: '无权限', hideShell: true, public: true }
+    },
     {
       path: '/workbench',
       name: 'workbench',
@@ -31,6 +44,12 @@ export const router = createRouter({
       name: 'datasets',
       component: () => import('../dataset/views/DatasetManage.vue'),
       meta: { title: '数据集', fullBleed: true }
+    },
+    {
+      path: '/data-plaza',
+      name: 'data-plaza',
+      component: () => import('../data-plaza/views/DataPlaza.vue'),
+      meta: { title: '数据广场', fullBleed: true }
     },
     {
       path: '/datasets/:id',
@@ -66,7 +85,7 @@ export const router = createRouter({
       path: '/share/:token',
       name: 'dashboard-share',
       component: () => import('../dashboard/views/DashboardShareView.vue'),
-      meta: { title: '分享仪表盘', fullBleed: true, hideShell: true }
+      meta: { title: '分享仪表盘', fullBleed: true, hideShell: true, public: true }
     },
     {
       path: '/conversations/:id?',
@@ -103,6 +122,34 @@ export const router = createRouter({
       name: 'dimensions',
       component: () => import('../dimension/views/DimensionManage.vue'),
       meta: { title: '维度管理', fullBleed: true }
+    },
+    {
+      path: '/knowledge',
+      name: 'knowledge',
+      component: () => import('../dimension/views/DimensionManage.vue'),
+      meta: { title: '知识维护', fullBleed: true }
+    },
+    {
+      path: '/workspace-admin',
+      name: 'workspace-admin',
+      component: () => import('../workspace/views/WorkspaceAdmin.vue'),
+      meta: {
+        title: '成员权限',
+        fullBleed: true,
+        requiredPermissions: ['workspace:admin', 'workspace:manage_member']
+      }
     }
   ]
+})
+
+router.beforeEach((to) => {
+  if (to.meta.public) return true
+  if (!hasAuthSession()) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  const required = to.meta.requiredPermissions || []
+  if (required.length && !required.some((permission) => hasStoredPermission(permission))) {
+    return { path: '/forbidden' }
+  }
+  return true
 })
