@@ -28,7 +28,7 @@ public class AuthSpiConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(MenuProvider.class)
+    @ConditionalOnMissingBean(value = MenuProvider.class, ignored = JdbcMenuProvider.class)
     public MenuProvider menuProvider(ConversationProperties conversationProperties) {
         return new DefaultMenuProvider(conversationProperties);
     }

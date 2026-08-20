@@ -33,27 +33,37 @@ public class WorkspaceController {
 
     @GetMapping("/{workspaceId}/summary")
     public WorkspaceGovernanceService.WorkspaceSummaryVO summary(@PathVariable String workspaceId) {
-        return service.summary(workspaceId, principal());
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        return service.summary(workspaceId, principal);
     }
 
     @GetMapping("/{workspaceId}/groups")
     public List<WorkspaceGovernanceService.WorkspaceGroupVO> groups(@PathVariable String workspaceId) {
-        return service.groups(workspaceId, principal());
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        return service.groups(workspaceId, principal);
     }
 
     @GetMapping("/{workspaceId}/members")
     public List<WorkspaceGovernanceService.WorkspaceMemberVO> members(@PathVariable String workspaceId) {
-        return service.members(workspaceId, principal());
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        return service.members(workspaceId, principal);
     }
 
     @GetMapping("/{workspaceId}/roles")
     public List<WorkspaceGovernanceService.WorkspaceRoleVO> roles(@PathVariable String workspaceId) {
-        return service.roles(workspaceId, principal());
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        return service.roles(workspaceId, principal);
     }
 
     @GetMapping("/{workspaceId}/effective-permissions")
     public WorkspaceGovernanceService.EffectivePermissionVO effectivePermissions(@PathVariable String workspaceId) {
-        return service.effectivePermissions(workspaceId, principal());
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        return service.effectivePermissions(workspaceId, principal);
     }
 
     @GetMapping("/{workspaceId}/data-plaza")
@@ -83,5 +93,12 @@ public class WorkspaceController {
             throw new UnauthorizedException("Authentication required");
         }
         return principal;
+    }
+
+    private static void requireWorkspaceAdmin(AuthPrincipal principal) {
+        if (principal.hasPermission("workspace:admin") || principal.hasPermission("workspace:manage_member")) {
+            return;
+        }
+        throw new io.opendashboard.domain.exception.ForbiddenException("需要工作区管理权限");
     }
 }

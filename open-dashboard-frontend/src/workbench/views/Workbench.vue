@@ -9,6 +9,7 @@ import type { BusiNodeVO, DashboardBarVO, PublishStatus } from '../../types/dash
 import type { ReportMetaVO } from '../../report/types'
 import RecentDashCover, { type CoverDomain } from '../components/RecentDashCover.vue'
 import RecentReportIcon, { type ReportIconKind } from '../components/RecentReportIcon.vue'
+import { hasStoredPermission } from '../../api/http'
 
 const ASK_Q = 'od.ask.q'
 const ASK_DRAFT = 'od.ask.draft'
@@ -48,7 +49,9 @@ const emptyMode = computed(
 const srcOk = computed(() => datasources.value.filter((s) => s.status === 'ok').length)
 const srcPending = computed(() => datasources.value.length - srcOk.value)
 const dirty = computed(() => dashBars.value.filter((d) => d.status === 'publishedWithDraft').length)
-const todoCount = computed(() => dirty.value + srcPending.value)
+const canManageDatasource = computed(() => hasStoredPermission('datasource:manage') || hasStoredPermission('dataset:manage'))
+const canManageWorkspace = computed(() => hasStoredPermission('workspace:admin') || hasStoredPermission('workspace:manage_member'))
+const todoCount = computed(() => dirty.value + (canManageDatasource.value ? srcPending.value : 0))
 
 const hello = computed(() => {
   const h = new Date().getHours()
@@ -111,7 +114,7 @@ const recentAsks = computed(() => {
 const briefs = computed(() => {
   const items: Array<{ to: string; text: string }> = []
   if (dirty.value) items.push({ to: '/dashboards', text: `${dirty.value} 个看板有未发布改动` })
-  if (srcPending.value) items.push({ to: '/datasources', text: `${srcPending.value} 个数据源待处理` })
+  if (canManageDatasource.value && srcPending.value) items.push({ to: '/datasources', text: `${srcPending.value} 个数据源待处理` })
   if (datasets.value.length && !items.length) {
     items.push({ to: '/conversations', text: `已准备 ${datasets.value.length} 个数据集，可以直接问数` })
   }
@@ -197,7 +200,7 @@ async function load(opts?: { quiet?: boolean }) {
   error.value = ''
   try {
     const [srcsR, dtsR, treeR, rptsR, convR] = await Promise.allSettled([
-      datasourceApi.list(),
+      canManageDatasource.value ? datasourceApi.list() : Promise.resolve([] as DatasourceVO[]),
       datasetApi.listAskable(),
       dashboardTreeApi.tree({}),
       reportApi.list(DESKTOP_RECENT_REPORTS),
@@ -356,8 +359,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                 </template>
                 <template v-else>
                   <span class="wb-stat"><b>{{ dashTotal }}</b> 个仪表盘</span>
-                  <span class="wb-stat"><b>{{ datasources.length }}</b> 个数据源</span>
-                  <span class="wb-stat"><b>{{ todoCount }}</b> 项待处理</span>
+                  <span class="wb-stat"><b>{{ datasets.length }}</b> 个可问数据</span>
+                  <span v-if="canManageDatasource || dirty" class="wb-stat"><b>{{ todoCount }}</b> 项待处理</span>
                 </template>
               </div>
             </div>
@@ -464,7 +467,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
               </button>
             </div>
             <div class="wb-kpis">
-              <router-link class="wb-kpi" to="/datasources">
+              <router-link v-if="canManageDatasource" class="wb-kpi" to="/datasources">
                 <span>数据源状态</span>
                 <strong>{{ emptyMode ? '0 / 0' : `${srcOk} / ${datasources.length || 0}` }}</strong>
                 <small :class="emptyMode ? '' : srcPending ? 'warn' : 'ok'">
@@ -483,7 +486,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                 <strong>{{ datasets.length }}</strong>
                 <small>{{ datasets.length ? '可直接进入问数' : '查看可申请资产' }}</small>
               </router-link>
-              <router-link class="wb-kpi" to="/workspace-admin">
+              <router-link v-if="canManageWorkspace" class="wb-kpi" to="/workspace-admin">
                 <span>成员权限</span>
                 <strong>工作区</strong>
                 <small>用户组、角色、数据策略</small>

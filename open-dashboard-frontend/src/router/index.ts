@@ -39,6 +39,12 @@ export const router = createRouter({
       meta: { title: '登录', hideShell: true, public: true }
     },
     {
+      path: '/register',
+      name: 'register',
+      component: () => import('../auth/views/Register.vue'),
+      meta: { title: '注册', hideShell: true, public: true }
+    },
+    {
       path: '/forbidden',
       name: 'forbidden',
       component: () => import('../auth/views/Forbidden.vue'),

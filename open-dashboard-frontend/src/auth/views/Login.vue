@@ -23,6 +23,10 @@ const loggedOut = computed(() => route.query.logged_out === '1')
 const expired = computed(() => route.query.expired === '1')
 const ssoError = computed(() => route.query.sso_error === '1')
 const readyProviders = computed(() => providers.value.filter((p) => p.ready))
+const registerTo = computed(() => ({
+  path: '/register',
+  query: { redirect: redirect.value }
+}))
 
 async function login() {
   error.value = ''
@@ -86,6 +90,7 @@ onMounted(async () => {
       <p v-if="ssoError" class="notice warn">企业 SSO 登录未完成，请重试或改用账号密码登录</p>
       <h1>登录工作区</h1>
       <p class="sub">登录后进入当前工作区；用户使用端与管理端菜单会按权限展示。</p>
+      <p class="auth-linkline">新用户还没有账号？<RouterLink :to="registerTo">立即注册</RouterLink></p>
 
       <div class="sso" v-if="readyProviders.length || loadingProviders">
         <button
@@ -179,9 +184,22 @@ h1 {
 
 .sub,
 .tips,
-.notice {
+.notice,
+.auth-linkline {
   color: #4b5563;
   line-height: 1.65;
+}
+
+.auth-linkline {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+
+.auth-linkline a {
+  margin-left: 4px;
+  color: #4f46e5;
+  font-weight: 800;
+  text-decoration: none;
 }
 
 .notice {

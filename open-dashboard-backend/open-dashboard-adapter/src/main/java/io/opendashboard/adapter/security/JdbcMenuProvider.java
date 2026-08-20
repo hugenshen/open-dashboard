@@ -3,6 +3,7 @@ package io.opendashboard.adapter.security;
 import io.opendashboard.application.conversation.ConversationProperties;
 import io.opendashboard.domain.context.AuthPrincipal;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 @Repository
+@Primary
 @ConditionalOnBean(JdbcTemplate.class)
 public class JdbcMenuProvider implements MenuProvider {
 

@@ -129,7 +129,8 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const method = opts.method || 'GET'
   const qs = opts.params ? `?${new URLSearchParams(opts.params)}` : ''
-  const res = await fetch(`/api${url}${qs}`, {
+  const apiPath = `/api${url}${qs}`
+  const res = await fetch(apiPath, {
     method,
     credentials: 'same-origin',
     headers: {
@@ -147,7 +148,7 @@ export async function apiFetch<T>(
     } catch {
       /* ignore */
     }
-    throw new Error(`${method} ${url} → ${res.status}${detail}`)
+    throw new Error(`${method} ${apiPath} → ${res.status}${detail}`)
   }
   if (res.status === 204) return undefined as T
   const text = await res.text()
@@ -157,7 +158,8 @@ export async function apiFetch<T>(
 
 /** Multipart upload (do not set Content-Type; browser sets boundary). */
 export async function apiFetchForm<T>(url: string, form: FormData): Promise<T> {
-  const res = await fetch(`/api${url}`, {
+  const apiPath = `/api${url}`
+  const res = await fetch(apiPath, {
     method: 'POST',
     credentials: 'same-origin',
     headers: {
@@ -173,7 +175,7 @@ export async function apiFetchForm<T>(url: string, form: FormData): Promise<T> {
     } catch {
       /* ignore */
     }
-    throw new Error(`POST ${url} → ${res.status}${detail}`)
+    throw new Error(`POST ${apiPath} → ${res.status}${detail}`)
   }
   if (res.status === 204) return undefined as T
   const text = await res.text()
@@ -192,7 +194,8 @@ export async function apiFetchBinary(
 ): Promise<{ blob: Blob; filename: string }> {
   const method = opts.method || 'GET'
   const qs = opts.params ? `?${new URLSearchParams(opts.params)}` : ''
-  const res = await fetch(`/api${url}${qs}`, {
+  const apiPath = `/api${url}${qs}`
+  const res = await fetch(apiPath, {
     method,
     credentials: 'same-origin',
     headers: {
@@ -202,7 +205,7 @@ export async function apiFetchBinary(
     body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(opts.data ?? {})
   })
   if (!res.ok) {
-    throw new Error(`${method} ${url} → ${res.status}`)
+    throw new Error(`${method} ${apiPath} → ${res.status}`)
   }
   const cd = res.headers.get('Content-Disposition') || ''
   const m = /filename="?([^";]+)"?/i.exec(cd)
