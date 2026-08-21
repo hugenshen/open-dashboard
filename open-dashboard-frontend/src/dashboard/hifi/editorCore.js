@@ -6532,7 +6532,6 @@ function renderEditor(app) {
   const mob = ensureMobile(d);
   const isMob = state.phase !== 'a' && state.editSurface === 'mobile';
   const leftCompLabel = isMob ? '组件池' : '组件';
-  window.dispatchEvent(new CustomEvent('od:editor-chrome-park'));
   app.innerHTML = `
     <div class="bar bar-editor ${editorShellClass()}">
       <div class="bar-leading">
@@ -6551,7 +6550,7 @@ function renderEditor(app) {
         <button class="btn" id="btnPreview">预览</button>
         <button class="btn ghost" id="btnShare">分享</button>
         <button class="btn primary" id="btnPub">发布</button>
-        <div id="editorShellHost" class="bar-shell-host"></div>
+        <div id="editorShellHost" class="bar-shell-host" aria-hidden="true"></div>
       </div>
     </div>
     <div class="editor ${editorShellClass()}">
@@ -6613,7 +6612,6 @@ function renderEditor(app) {
   }
   renderRight(app.querySelector('#right'));
   wireKeyboardLayout();
-  window.dispatchEvent(new CustomEvent('od:editor-chrome-ready'));
 }
 
 function renderLayoutBar(el) {

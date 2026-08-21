@@ -25,10 +25,10 @@ items:
   - id: PR-SH-03
     title: 编辑器画布不被遮挡
     gate: hi-fi
-    criterion: 仪表盘编辑器仍可切换 Phase 与保存，细轨不遮挡画布工具。
+    criterion: 仪表盘编辑器无双顶栏空白；左栏细轨可展开且占位推内容（非浮层），不遮挡画布工具。
     method: ui
     command_or_path: docs/prototypes/hi-fi/dashboard.html
-    expected: 画布和工具条可完整操作。
+    expected: 画布和工具条可完整操作；展开侧栏后内容整体右移。
     evidence: docs/prototypes/snapshots/2026-08-17-p007-app-shell-final/
     status: pass
     blocker_of_done: true
@@ -69,10 +69,10 @@ items:
   - id: PR-SH-07
     title: 左栏收缩规则
     gate: hi-fi
-    criterion: 工作台、对话和资源页保持展开，仅仪表盘编辑器自动收窄。
+    criterion: 工作台、对话和资源页保持展开；仪表盘编辑器进入时自动收窄，可再展开（不写死锁、非浮层）。
     method: ui
     command_or_path: docs/prototypes/hi-fi/index.html
-    expected: 用户手动偏好持久化且非编辑器切换不强制收缩。
+    expected: 用户手动偏好持久化且非编辑器切换不强制收缩；编辑态展开不覆盖离开后的偏好。
     evidence: docs/prototypes/snapshots/2026-08-17-p007-app-shell-final/
     status: pass
     blocker_of_done: true

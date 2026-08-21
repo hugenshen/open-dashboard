@@ -42,7 +42,7 @@
 | 默认 | 左栏 240px 展开 |
 | 用户收起 | `localStorage['od.rail.slim']`；非编辑器记住偏好；收起/展开不弹 toast |
 | 仪表盘编辑器 | 进入默认细轨 72px（不写偏好）；可展开为完整左栏（占位推内容，非浮层）；离开后恢复用户偏好 |
-| 编辑器顶栏 | 隐藏产品 `od-top`；SQLBot / 帮助 / 外观 / 账号 Teleport 到 `#editorShellHost` |
+| 编辑器顶栏 | 产品 `od-top` 不占行高，叠到编辑器 `.bar` 右侧；`#editorShellHost` 仅留宽 |
 | 窄屏 ≤900px | CSS 强制图标轨 |
 | 分享页 | `meta.hideShell`，无产品壳 |
 | 对话内侧栏 | 隐藏；新对话 / 历史 / 探索放对话顶条 |
