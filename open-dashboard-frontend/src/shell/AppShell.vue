@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, flushSync, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi, type MenuItem } from '../api/auth'
 import type { WorkspaceVO } from '../api/auth'
 import { setAuthFromMe } from '../api/http'
 import { conversationApi } from '../conversation/api'
 import RailIcon from './RailIcon.vue'
+import { plazaScope, setPlazaScope } from '../data-plaza/plazaScope'
 import {
   THEMES,
   applyTheme,
@@ -24,6 +25,7 @@ const menuError = ref('')
 const displayName = ref('演示账号')
 const workspaceId = ref('workspace-retail')
 const workspaces = ref<WorkspaceVO[]>([])
+const permissions = ref<string[]>([])
 const sqlbotEnabled = ref(false)
 const sqlbotOpen = ref(false)
 const theme = ref<OdTheme>(readTheme())
@@ -41,7 +43,14 @@ const SQLBOT_OPEN_KEY = 'od.sqlbot.open'
 
 const isEditor = computed(() => route.meta.shell === 'editor')
 const isConversation = computed(() => route.path.startsWith('/conversations'))
-const slim = computed(() => isEditor.value || userSlim.value)
+const isDataPlaza = computed(() => route.path.startsWith('/data-plaza'))
+/** 编辑态会话内细轨；进入编辑默认收起，展开与其它页一样占位推内容（不写浮层） */
+const editorSlim = ref(true)
+const editorHostReady = ref(false)
+const slim = computed(() => (isEditor.value ? editorSlim.value : userSlim.value))
+const railExpanded = computed(() => !slim.value)
+const railToggleTitle = computed(() => (slim.value ? '展开侧栏' : '收起侧栏'))
+const teleportEditorActions = computed(() => isEditor.value && editorHostReady.value)
 const active = computed(() => {
   const p = route.path
   const hit = items.value.find((m) => p === m.path || p.startsWith(m.path + '/'))
@@ -66,6 +75,27 @@ const adminItems = computed(() => items.value.filter((m) => m.group === 'manage'
 const currentWorkspace = computed(
   () => workspaces.value.find((w) => w.id === workspaceId.value) || workspaces.value[0]
 )
+const isManageSurface = computed(() => route.meta.surface === 'manage')
+const isPlatformAdmin = computed(
+  () => permissions.value.includes('*') || permissions.value.includes('platform:admin')
+)
+const showWorkspaceSwitcher = computed(
+  () => isManageSurface.value && (isPlatformAdmin.value || workspaces.value.length > 1)
+)
+const showWorkspaceLabel = computed(
+  () => isManageSurface.value && !showWorkspaceSwitcher.value && !!currentWorkspace.value
+)
+const workspaceRoleLabel = computed(() => {
+  if (isPlatformAdmin.value) return '超级管理员'
+  const role = currentWorkspace.value?.role
+  if (role === 'workspace-admin' || role === 'workspace_admin') return '工作区管理员'
+  return currentWorkspace.value?.role || '管理员'
+})
+const accountScope = computed(() => {
+  if (!isManageSurface.value) return '用户使用端'
+  if (isPlatformAdmin.value) return `超级管理员 · ${workspaces.value.length} 个工作区`
+  return currentWorkspace.value?.name || '管理端'
+})
 
 const avatarText = computed(() => {
   const n = displayName.value.trim()
@@ -98,9 +128,39 @@ function setTheme(id: OdTheme) {
 }
 
 function toggleSlim() {
-  if (isEditor.value) return
+  if (isEditor.value) {
+    editorSlim.value = !editorSlim.value
+    return
+  }
   userSlim.value = !userSlim.value
   writeRailSlim(userSlim.value)
+}
+
+function watchEditorShellHost(on: boolean) {
+  editorHostObserver?.disconnect()
+  editorHostObserver = null
+  window.removeEventListener('od:editor-chrome-park', onEditorChromePark)
+  window.removeEventListener('od:editor-chrome-ready', onEditorChromeReady)
+  if (!on) {
+    editorHostReady.value = false
+    return
+  }
+  window.addEventListener('od:editor-chrome-park', onEditorChromePark)
+  window.addEventListener('od:editor-chrome-ready', onEditorChromeReady)
+  onEditorChromeReady()
+}
+
+function onEditorChromePark() {
+  /* 同步收回 Teleport，避免紧接着的 editorCore innerHTML 冲掉 Vue 节点 */
+  flushSync(() => {
+    editorHostReady.value = false
+  })
+}
+
+function onEditorChromeReady() {
+  nextTick(() => {
+    editorHostReady.value = !!document.getElementById('editorShellHost')
+  })
 }
 
 function onSqlbotSet(ev: Event) {
@@ -146,7 +206,8 @@ async function changeWorkspace(ev: Event) {
     setAuthFromMe(me)
     workspaceId.value = me.workspaceId
     workspaces.value = me.workspaces || workspaces.value
-    flash('已切换工作区')
+    permissions.value = me.effectivePermissions?.length ? me.effectivePermissions : me.permissions || []
+    flash('已切换治理工作区')
     window.setTimeout(() => window.location.reload(), 180)
   } catch (e) {
     flash(e instanceof Error ? e.message : '切换失败')
@@ -186,6 +247,7 @@ onMounted(async () => {
     displayName.value = decodeDisplayName(me.displayName || me.userId) || '演示账号'
     workspaceId.value = me.workspaceId || me.currentWorkspace?.id || 'workspace-retail'
     workspaces.value = me.workspaces || (me.currentWorkspace ? [me.currentWorkspace] : [])
+    permissions.value = me.effectivePermissions?.length ? me.effectivePermissions : me.permissions || []
   } catch {
     displayName.value = '演示账号'
   }
@@ -202,6 +264,7 @@ onUnmounted(() => {
   document.removeEventListener('click', onDocClick)
   document.removeEventListener('keydown', onKey)
   window.removeEventListener('od:sqlbot-set', onSqlbotSet)
+  watchEditorShellHost(false)
   if (toastTimer) clearTimeout(toastTimer)
   delete document.body.dataset.mod
 })
@@ -209,10 +272,23 @@ onUnmounted(() => {
 watch(
   () => route.fullPath,
   () => {
-  themeOpen.value = false
-  accountOpen.value = false
-  passwordOpen.value = false
-}
+    themeOpen.value = false
+    accountOpen.value = false
+    passwordOpen.value = false
+  }
+)
+
+watch(
+  isEditor,
+  (editing) => {
+    if (editing) {
+      editorSlim.value = true
+      nextTick(() => watchEditorShellHost(true))
+    } else {
+      watchEditorShellHost(false)
+    }
+  },
+  { immediate: true }
 )
 
 watch(
@@ -263,90 +339,107 @@ watch(
         <button
           class="od-rail-item"
           type="button"
-          :title="slim ? '展开侧栏' : '收起侧栏'"
-          :aria-expanded="slim ? 'false' : 'true'"
+          :title="railToggleTitle"
+          :aria-expanded="railExpanded ? 'true' : 'false'"
           @click="toggleSlim"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M4 6h16M4 12h10M4 18h16" />
           </svg>
-          <span class="od-rail-txt">{{ slim ? '展开侧栏' : '收起侧栏' }}</span>
+          <span class="od-rail-txt">{{ railToggleTitle }}</span>
         </button>
       </div>
     </aside>
 
     <div class="od-col">
       <header class="od-top">
-        <div v-if="crumb && !isEditor" class="od-crumb">{{ crumb }}</div>
-        <div class="od-top-actions">
-          <label v-if="workspaces.length" class="od-workspace-switch" title="当前工作区">
-            <span>{{ currentWorkspace?.role || '成员' }}</span>
-            <select :value="workspaceId" @change="changeWorkspace">
-              <option v-for="ws in workspaces" :key="ws.id" :value="ws.id">
-                {{ ws.name }}
-              </option>
-            </select>
-          </label>
-          <!-- 产品不展示 Phase A/B/C；节点留给 editorCore 绑定，能力固定为 C -->
-          <div id="phaseTabs" class="od-phase tabs" hidden aria-hidden="true">
-            <button type="button" data-phase="a">Phase A</button>
-            <button type="button" data-phase="b">Phase B</button>
-            <button class="on" type="button" data-phase="c">Phase C</button>
-          </div>
-          <button
-            v-if="sqlbotEnabled"
-            class="od-ghost od-sqlbot"
-            type="button"
-            :class="{ on: sqlbotOpen }"
-            title="SQLBot 问数"
-            @click="toggleSqlbot"
-          >
-            SQLBot
-          </button>
-          <a class="od-ghost" href="/help/" target="_blank" rel="noopener noreferrer">帮助</a>
-          <div class="od-theme-wrap" @click.stop>
-            <button class="od-icon-btn" type="button" title="外观" @click="themeOpen = !themeOpen; accountOpen = false">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <circle cx="12" cy="12" r="4" />
-                <path
-                  d="M12 3v2M12 19v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M3 12h2M19 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
-                />
-              </svg>
-            </button>
-            <div class="od-pop" :class="{ open: themeOpen }">
-              <button
-                v-for="th in THEMES"
-                :key="th.id"
-                type="button"
-                :aria-checked="theme === th.id ? 'true' : 'false'"
-                @click="setTheme(th.id)"
-              >
-                {{ th.label }}
-              </button>
-            </div>
-          </div>
-          <div class="od-account-wrap" @click.stop>
-            <button
-              class="od-account"
-              type="button"
-              :aria-expanded="accountOpen ? 'true' : 'false'"
-              @click="accountOpen = !accountOpen; themeOpen = false"
-            >
-              <span class="od-avatar">{{ avatarText }}</span>
-              {{ displayName }}
-            </button>
-            <div class="od-pop" :class="{ open: accountOpen }">
-              <div class="who">
-                <b>{{ displayName }}</b>
-                <span>{{ currentWorkspace?.name || '默认工作区' }}</span>
-              </div>
-              <button type="button" @click="flash('账号中心已连接服务端身份')">账号中心</button>
-              <button type="button" @click="openSettings">修改密码</button>
-              <button type="button" @click="logout">退出登录</button>
-              <div class="hint">身份、工作区和权限来自服务端会话</div>
-            </div>
-          </div>
+        <div class="od-top-start">
+          <div v-if="crumb && !isEditor && !isDataPlaza" class="od-crumb">{{ crumb }}</div>
         </div>
+        <nav v-if="isDataPlaza" class="od-plaza-scope" aria-label="资产分区">
+          <button type="button" :class="{ on: plazaScope === 'mine' }" @click="setPlazaScope('mine')">
+            我的
+          </button>
+          <button type="button" :class="{ on: plazaScope === 'org' }" @click="setPlazaScope('org')">
+            企业
+          </button>
+        </nav>
+        <div v-else class="od-plaza-scope od-plaza-scope-spacer" aria-hidden="true" />
+        <Teleport :disabled="!teleportEditorActions" to="#editorShellHost">
+          <div class="od-top-actions" :class="{ 'in-editor-bar': teleportEditorActions }">
+            <label v-if="showWorkspaceSwitcher" class="od-workspace-switch" title="切换要治理的工作区">
+              <span>{{ workspaceRoleLabel }}</span>
+              <select :value="workspaceId" @change="changeWorkspace">
+                <option v-for="ws in workspaces" :key="ws.id" :value="ws.id">
+                  {{ ws.name }}
+                </option>
+              </select>
+            </label>
+            <div v-else-if="showWorkspaceLabel" class="od-workspace-label" :title="currentWorkspace?.name">
+              <span>{{ workspaceRoleLabel }}</span>
+              <b>{{ currentWorkspace?.name }}</b>
+            </div>
+            <!-- 产品不展示 Phase A/B/C；节点留给 editorCore 绑定，能力固定为 C -->
+            <div id="phaseTabs" class="od-phase tabs" hidden aria-hidden="true">
+              <button type="button" data-phase="a">Phase A</button>
+              <button type="button" data-phase="b">Phase B</button>
+              <button class="on" type="button" data-phase="c">Phase C</button>
+            </div>
+            <button
+              v-if="sqlbotEnabled"
+              class="od-ghost od-sqlbot"
+              type="button"
+              :class="{ on: sqlbotOpen }"
+              title="SQLBot 问数"
+              @click="toggleSqlbot"
+            >
+              SQLBot
+            </button>
+            <a class="od-ghost" href="/help/" target="_blank" rel="noopener noreferrer">帮助</a>
+            <div class="od-theme-wrap" @click.stop>
+              <button class="od-icon-btn" type="button" title="外观" @click="themeOpen = !themeOpen; accountOpen = false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="4" />
+                  <path
+                    d="M12 3v2M12 19v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M3 12h2M19 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+                  />
+                </svg>
+              </button>
+              <div class="od-pop" :class="{ open: themeOpen }">
+                <button
+                  v-for="th in THEMES"
+                  :key="th.id"
+                  type="button"
+                  :aria-checked="theme === th.id ? 'true' : 'false'"
+                  @click="setTheme(th.id)"
+                >
+                  {{ th.label }}
+                </button>
+              </div>
+            </div>
+            <div class="od-account-wrap" @click.stop>
+              <button
+                class="od-account"
+                type="button"
+                :aria-expanded="accountOpen ? 'true' : 'false'"
+                @click="accountOpen = !accountOpen; themeOpen = false"
+              >
+                <span class="od-avatar">{{ avatarText }}</span>
+                {{ displayName }}
+              </button>
+              <div class="od-pop" :class="{ open: accountOpen }">
+                <div class="who">
+                  <b>{{ displayName }}</b>
+                  <span>{{ accountScope }}</span>
+                </div>
+                <button type="button" @click="flash('账号中心已连接服务端身份')">账号中心</button>
+                <button type="button" @click="openSettings">修改密码</button>
+                <button type="button" @click="logout">退出登录</button>
+                <div class="hint">身份和权限来自服务端会话</div>
+              </div>
+            </div>
+          </div>
+        </Teleport>
       </header>
       <div class="od-stage">
         <slot />

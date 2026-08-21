@@ -259,4 +259,13 @@ public class JdbcIdentityRepository implements IdentityRepository {
         String id = "u_" + username;
         createUser(new UserAccount(id, username, displayName, null, "active"), passwordHash, workspaceId, roleCode);
     }
+
+    @Override
+    public void ensureSeedMembership(String username, String workspaceId, String roleCode) {
+        findUserByUsername(username).ifPresent(user -> jdbc.update("""
+                INSERT INTO od_workspace_member (user_id, workspace_id, role_code, status, created_at)
+                VALUES (?, ?, ?, 'active', ?)
+                ON CONFLICT DO NOTHING
+                """, user.id(), workspaceId, roleCode, System.currentTimeMillis()));
+    }
 }

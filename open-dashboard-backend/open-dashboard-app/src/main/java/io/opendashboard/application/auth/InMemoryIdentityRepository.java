@@ -167,12 +167,34 @@ public class InMemoryIdentityRepository implements IdentityRepository {
         createUser(new UserAccount("u_" + username, username, displayName, null, "active"), passwordHash, workspaceId, roleCode);
     }
 
+    @Override
+    public void ensureSeedMembership(String username, String workspaceId, String roleCode) {
+        findUserByUsername(username).ifPresent(user ->
+                workspaceRolesByUser.computeIfAbsent(user.id(), k -> new LinkedHashSet<>())
+                        .add(workspaceId + "|" + roleCode));
+    }
+
     private PasswordCredential credential(String userId, PasswordHash h) {
         return new PasswordCredential(userId, h.algorithm(), h.iterations(), h.salt(), h.hash());
     }
 
     private List<String> rolePermissions(String roleCode) {
-        if ("workspace_admin".equals(roleCode)) return List.of("*");
+        if ("platform_admin".equals(roleCode)) return List.of("*", "platform:admin");
+        if ("workspace_admin".equals(roleCode)) {
+            return List.of(
+                    "conversation:use",
+                    "dataset:use",
+                    "dashboard:view",
+                    "dashboard:manage",
+                    "report:view",
+                    "report:manage",
+                    "datasource:manage",
+                    "dataset:manage",
+                    "knowledge:manage",
+                    "workspace:manage_member",
+                    "workspace:admin"
+            );
+        }
         if ("analyst".equals(roleCode)) {
             return List.of("dataset:use", "conversation:use", "dashboard:view", "report:view");
         }

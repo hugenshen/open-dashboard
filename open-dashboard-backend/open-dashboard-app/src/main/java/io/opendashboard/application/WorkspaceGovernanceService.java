@@ -107,11 +107,25 @@ public class WorkspaceGovernanceService {
                 current,
                 principal.userId(),
                 sorted(permissions),
-                dataAssets(current, principal).stream()
-                        .filter(a -> "dataset".equals(a.type()) && (a.added() || "granted".equals(a.authStatus())))
-                        .map(DataAssetVO::id)
-                        .toList()
+                grantedAskableSources(principal)
         );
+    }
+
+    /**
+     * P008 askable sources: granted/askable datasets in workspaces the user can see.
+     * {@code source} maps plaza assets onto live {@code de_dataset} ids.
+     */
+    public List<String> grantedAskableSources(AuthPrincipal principal) {
+        Set<String> visible = new LinkedHashSet<>(visibleWorkspaceIds(principal));
+        return assets.stream()
+                .filter(a -> "dataset".equals(a.type()))
+                .filter(a -> visible.contains(a.workspaceId()))
+                .map(a -> toAssetVO(a, principal))
+                .filter(a -> a.actions().contains("ask"))
+                .map(DataAssetVO::source)
+                .filter(source -> source != null && !source.isBlank())
+                .distinct()
+                .toList();
     }
 
     public DataPlazaVO dataPlaza(String workspaceId, AuthPrincipal principal) {
@@ -249,12 +263,20 @@ public class WorkspaceGovernanceService {
     }
 
     private List<String> visibleWorkspaceIds(AuthPrincipal principal) {
+        if (isPlatformAdmin(principal)) {
+            return List.copyOf(workspaces.keySet());
+        }
         List<String> ids = identityRepository.workspacesForUser(principal.userId());
         if (ids.isEmpty()) ids = List.of(principal.workspaceId());
         return ids.stream()
                 .filter(workspaces::containsKey)
                 .distinct()
                 .toList();
+    }
+
+    private boolean isPlatformAdmin(AuthPrincipal principal) {
+        Set<String> permissions = principal.permissions();
+        return permissions.contains("*") || permissions.contains("platform:admin");
     }
 
     private Set<String> permissionsForWorkspace(AuthPrincipal principal, String workspaceId) {
@@ -272,7 +294,10 @@ public class WorkspaceGovernanceService {
     }
 
     private String roleFromPermissions(Set<String> permissions) {
-        if (permissions.contains("*") || permissions.contains("workspace:admin") || permissions.contains("workspace:manage_member")) {
+        if (permissions.contains("*") || permissions.contains("platform:admin")) {
+            return "platform-admin";
+        }
+        if (permissions.contains("workspace:admin") || permissions.contains("workspace:manage_member")) {
             return "workspace-admin";
         }
         if (permissions.contains("dashboard:manage") || permissions.contains("report:manage") || permissions.contains("conversation:use")) {
@@ -308,7 +333,9 @@ public class WorkspaceGovernanceService {
 
     private void seedSecurity() {
         List<RoleSeed> defaultRoles = List.of(
-                new RoleSeed("workspace-admin", "工作区管理员", "管理成员、用户组、角色和资产发布范围",
+                new RoleSeed("platform-admin", "超级管理员", "管理全部工作区、成员、数据和知识发布",
+                        List.of("platform:admin", "workspace:admin", "workspace:manage_member", "dataset:manage", "dataset:use", "conversation:use")),
+                new RoleSeed("workspace-admin", "工作区管理员", "管理本工作区成员、用户组、角色和资产发布范围",
                         List.of("workspace:admin", "workspace:manage_member", "dataset:manage", "dataset:use", "conversation:use")),
                 new RoleSeed("analyst", "分析师", "可消费授权资产并创建对话、看板和报告",
                         List.of("dataset:use", "conversation:use", "dashboard:manage", "report:manage")),

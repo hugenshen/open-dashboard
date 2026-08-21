@@ -71,10 +71,10 @@ items:
     gate: acceptance
     criterion: 工作台、对话和编辑器 SQLBot 只列 conversation:use 与 dataset:use 的交集。
     method: api
-    command_or_path: askable datasets endpoint
+    command_or_path: scripts/e2e-auth-ask.sh · GET /api/dataset/askable
     expected: 三个入口集合一致，无权数据集不可通过手工 ID 绕过。
-    evidence: ""
-    status: todo
+    evidence: "2026-08-20 e2e-auth-ask.sh：分析师 askable 真子集；三入口共用 GET /api/dataset/askable。与 PR-ACL-04 同一实现。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-ASK-07
   - id: PR-ASK-08
@@ -82,10 +82,10 @@ items:
     gate: code
     criterion: Agent loop、LLM 和 NL2SQL 在 Python Harness；Java 仅执行内部 BI 工具。
     method: script
-    command_or_path: opendashboard-harness/
+    command_or_path: scripts/e2e-auth-ask.sh · POST /api/conversations/{id}/runs
     expected: Java 无模型调用，旧 runs 入口不代理 Agent。
-    evidence: ""
-    status: todo
+    evidence: "2026-08-20 e2e：Java POST /api/conversations/any/runs → 410 HARNESS_DIRECT。与 PR-CONV-06 同一实现。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-ASK-08
   - id: PR-ASK-09
@@ -95,8 +95,8 @@ items:
     method: script
     command_or_path: opendashboard-harness/tests/test_sqlbot_suggest.py
     expected: is_suggest_request 命中元指令；suggest_questions 产出基于字段的具体问法；follows 不含「换一个问数问题」。
-    evidence: ""
-    status: todo
+    evidence: "2026-08-20 pytest tests/test_sqlbot_suggest.py：is_suggest_request 命中「换一个问数问题」等元指令；suggest_questions/suggest_follows 产出字段问法且不含元指令。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-ASK-09
   - id: PR-ASK-10
@@ -128,8 +128,8 @@ items:
     method: script
     command_or_path: opendashboard-harness/tests/test_sqlbot_ask_context.py
     expected: pick_few_shots 命中相似问法；compose_ask_knowledge 含 <few-shot-examples>。
-    evidence: ""
-    status: todo
+    evidence: "2026-08-20 pytest tests/test_sqlbot_ask_context.py：pick_few_shots 按问题重叠优先，无重叠回退第一条；compose_ask_knowledge 含 <few-shot-examples>。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-ASK-12
   - id: PR-ASK-13
@@ -139,7 +139,7 @@ items:
     method: script
     command_or_path: opendashboard-harness/tests/test_sqlbot_ask_context.py
     expected: value_hints 在问到 CNY 时带出 Currency 取值；format_knowledge_block 含 值:CNY。
-    evidence: ""
-    status: todo
+    evidence: "2026-08-20 pytest tests/test_sqlbot_ask_context.py：value_hints 问到 CNY 时带出 Currency；小枚举始终注入 <dimension-values>。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-ASK-13

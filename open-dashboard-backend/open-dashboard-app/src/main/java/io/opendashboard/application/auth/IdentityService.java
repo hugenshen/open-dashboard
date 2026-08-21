@@ -43,8 +43,14 @@ public class IdentityService {
     @PostConstruct
     public void seed() {
         if (!seedDemoUsers) return;
-        seedUser("demo", "演示管理员", "workspace_admin", "demo123456");
+        seedUser("demo", "超级管理员", "platform_admin", "demo123456");
+        seedUser("wsadmin", "工作区管理员", "workspace_admin", "wsadmin123456");
         seedUser("analyst", "分析师", "analyst", "analyst123456");
+        repo.ensureSeedMembership("demo", AuthPrincipal.DEFAULT_WORKSPACE_ID, "platform_admin");
+        repo.ensureSeedMembership("demo", "workspace-east", "platform_admin");
+        repo.ensureSeedMembership("demo", "workspace-finance", "platform_admin");
+        repo.ensureSeedMembership("wsadmin", AuthPrincipal.DEFAULT_WORKSPACE_ID, "workspace_admin");
+        repo.ensureSeedMembership("wsadmin", "workspace-east", "workspace_admin");
     }
 
     public LoginResult login(LoginRequest req, String userAgent) {

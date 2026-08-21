@@ -5,10 +5,10 @@ items:
     gate: code
     criterion: 功能关闭或缺少 conversation:use 时，菜单和 run 均不可用。
     method: api
-    command_or_path: /harness/v1/conversations/{id}/runs
+    command_or_path: scripts/e2e-auth-ask.sh · /harness/v1/conversations/{id}/runs
     expected: 请求被拒绝且不会调用 BI 工具。
-    evidence: ""
-    status: todo
+    evidence: "2026-08-20 e2e：Harness POST /v1/conversations/{id}/runs 仅带 report:view → 403 missing conversation:use。test_auth_gates.py：无 ask 权限时 QUERY_TOOLS 不暴露且 execute→TOOL_FORBIDDEN。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-CONV-01
   - id: PR-CONV-02
@@ -60,10 +60,10 @@ items:
     gate: code
     criterion: Vue 直连 Python Harness；Java public conversation runs 不承担 Agent 编排，Java public adopt 入口不存在。
     method: api
-    command_or_path: opendashboard-harness/
+    command_or_path: scripts/e2e-auth-ask.sh · POST /api/conversations/{id}/runs
     expected: LLM、Agent loop、confirm-plan 与 adopt 运行时状态只存在于 Harness；Java 仅暴露 internal BI 工具和已废弃 runs 错误入口。
-    evidence: ""
-    status: todo
+    evidence: "2026-08-20 e2e：POST /api/conversations/any/runs → 410 {code:HARNESS_DIRECT} JSON（不再误标 SSE）。ConversationController.startRun 为退役入口。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-CONV-06
   - id: PR-CONV-07
@@ -71,10 +71,10 @@ items:
     gate: code
     criterion: Harness 只能通过带内部 Token 的 /api/internal/bi/* 查询或写配置。
     method: api
-    command_or_path: /api/internal/bi/*
+    command_or_path: scripts/e2e-auth-ask.sh · GET /api/internal/bi/datasets
     expected: 缺失或错误 Token 返回拒绝，外部请求不可直接调用。
-    evidence: ""
-    status: todo
+    evidence: "2026-08-20 e2e：GET /api/internal/bi/datasets 无 Token 与 X-OD-Internal-Token:wrong 均 401。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-CONV-07
   - id: PR-CONV-08
@@ -82,10 +82,10 @@ items:
     gate: acceptance
     criterion: run 只能使用同时满足 conversation:use 与 dataset:use 的数据集。
     method: api
-    command_or_path: /harness/v1/conversations/{id}/runs
+    command_or_path: scripts/e2e-auth-ask.sh · GET /api/dataset/askable
     expected: 无权数据集不进入 Schema、提示词、SQL 或 Patch。
-    evidence: ""
-    status: todo
+    evidence: "2026-08-20 AskableDatasetService：conversation:use ∩ (dataset:use|dataset:manage)；分析师按广场 granted ask 收口。e2e askable 分析师真子集。Harness ToolGateway QUERY_TOOLS 同步要求 ask 权限；写看板工具要求 dashboard:manage|edit。"
+    status: pass
     blocker_of_done: true
     requirements_target: PR-CONV-08
   - id: PR-CONV-09

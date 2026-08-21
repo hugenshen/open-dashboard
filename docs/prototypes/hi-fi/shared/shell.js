@@ -131,22 +131,38 @@
   </aside>`;
   }
 
+  function isManageSurface() {
+    return PAGES[currentMod()]?.group === 'manage';
+  }
+
   function topHTML() {
     /* 资源页 / 工作台顶栏都不放问数；问数只在工作台页内和对话流。编辑器 Phase / SQLBot 由 is-editor 显示。 */
-    return `<header class="od-top">
-      <div class="od-top-actions">
-        <div class="od-workspace-wrap">
+    const workspace = isManageSurface()
+      ? `<div class="od-workspace-wrap">
           <button class="od-workspace" type="button" id="odWorkspaceBtn">
             <span class="od-ws-dot"></span>
-            <span><b>零售经营项目组</b><small>workspace-retail · 分析师</small></span>
+            <span><b>零售经营项目组</b><small>超级管理员 · 治理工作区</small></span>
           </button>
           <div class="od-pop od-workspace-pop" id="odWorkspacePop">
-            <div class="who"><b>当前工作区</b><span>所有问数、看板、知识和记忆都绑定此工作区</span></div>
-            <button class="ws-opt on" type="button" data-ws-name="零售经营项目组" data-ws-role="分析师"><span>零售经营项目组</span><em>分析师</em></button>
-            <button class="ws-opt" type="button" data-ws-name="华东门店项目组" data-ws-role="只读用户"><span>华东门店项目组</span><em>只读用户</em></button>
+            <div class="who"><b>治理工作区</b><span>工作区只出现在管理端；超级管理员可切换全部工作区</span></div>
+            <button class="ws-opt on" type="button" data-ws-name="零售经营项目组" data-ws-role="超级管理员"><span>零售经营项目组</span><em>超级管理员</em></button>
+            <button class="ws-opt" type="button" data-ws-name="华东门店项目组" data-ws-role="工作区管理员"><span>华东门店项目组</span><em>工作区管理员</em></button>
             <a class="ws-manage" href="./workspace-admin.html">管理工作区与权限</a>
           </div>
-        </div>
+        </div>`
+      : '';
+    const accountScope = isManageSurface() ? '管理端 · 超级管理员' : '用户使用端';
+    const plazaScope = currentMod() === 'dataMarket'
+      ? `<nav class="od-plaza-scope" aria-label="资产分区">
+          <button type="button" data-scope="mine">我的</button>
+          <button class="on" type="button" data-scope="org">企业</button>
+        </nav>`
+      : '<div class="od-plaza-scope"></div>';
+    return `<header class="od-top">
+      <div class="od-top-start"></div>
+      ${plazaScope}
+      <div class="od-top-actions">
+        ${workspace}
         <div class="od-phase tabs" id="phaseTabs">
           <button class="on" type="button" data-phase="a">Phase A</button>
           <button type="button" data-phase="b">Phase B</button>
@@ -160,7 +176,7 @@
             赵演示
           </button>
           <div class="od-pop" id="odAccountPop">
-            <div class="who"><b>赵演示</b><span>用户使用端 · 当前工作区成员</span></div>
+            <div class="who"><b>赵演示</b><span>${accountScope}</span></div>
             <a href="./account-settings.html">账号设置</a>
             <a href="./account-settings.html#password">修改密码</a>
             <button type="button" data-od-act="switch">切换账号</button>
@@ -176,7 +192,7 @@
     return `<div class="od-auth-mask" id="odLogoutMask" aria-hidden="true">
       <div class="od-auth-dialog" role="dialog" aria-modal="true" aria-labelledby="odLogoutTitle">
         <h3 id="odLogoutTitle">退出登录</h3>
-        <p>退出后会清空当前浏览器会话，重新进入平台需要再次登录并选择工作区。已保存的对话、看板和个人记忆不会删除。</p>
+        <p>退出后会清空当前浏览器会话，重新进入平台需要再次登录。已保存的对话、看板和个人记忆不会删除。</p>
         <div class="od-auth-actions">
           <button class="od-pop-cancel" type="button" data-od-act="logout-cancel">取消</button>
           <button class="od-pop-danger" type="button" data-od-act="logout-confirm">确认退出</button>
@@ -275,11 +291,13 @@
         if (label) label.textContent = isSlim ? '展开侧栏' : '收起侧栏';
       };
       syncSlimState();
-      slim.onclick = () => {
+      slim.onclick = (e) => {
+        e.stopPropagation();
         app.classList.toggle('slim');
         try { localStorage.setItem(RAIL_KEY, app.classList.contains('slim') ? 'true' : 'false'); } catch (_) { /* ignore */ }
         syncSlimState();
       };
+      window.odSyncRailSlim = syncSlimState;
     }
 
     const acc = qs('#odAccountBtn');
@@ -317,10 +335,10 @@
           const label = qs('#odWorkspaceBtn b');
           const sub = qs('#odWorkspaceBtn small');
           if (label) label.textContent = b.dataset.wsName || '当前工作区';
-          if (sub) sub.textContent = 'runtimeContext · ' + (b.dataset.wsRole || '成员');
+          if (sub) sub.textContent = (b.dataset.wsRole || '管理员') + ' · 治理工作区';
           wsPop.classList.remove('open');
           wsBtn.setAttribute('aria-expanded', 'false');
-          odToast('已切换工作区 · ' + (b.dataset.wsName || '当前工作区'));
+          odToast('已切换治理工作区 · ' + (b.dataset.wsName || '当前工作区'));
         };
       });
     }
@@ -375,6 +393,44 @@
     bindTheme();
   }
 
+  /** 渲染前把壳层操作暂存回 .od-top，避免 #app.innerHTML 冲掉节点 */
+  function parkEditorChrome() {
+    const top = qs('.od-top');
+    const actions = qs('.od-top-actions');
+    if (top && actions && actions.parentElement !== top) top.appendChild(actions);
+    const host = qs('#editorShellHost');
+    if (host) host.remove();
+  }
+
+  /** 编辑态：把壳层右侧操作迁入编辑器顶条，离开编辑态再迁回 .od-top */
+  function syncEditorChrome() {
+    const app = qs('#odApp');
+    const top = qs('.od-top');
+    const actions = qs('.od-top-actions');
+    if (!app || !top || !actions) return;
+
+    const editing = app.classList.contains('is-editor');
+    let host = qs('#editorShellHost');
+
+    if (editing) {
+      const bar = qs('#app > .bar');
+      if (!bar) return;
+      if (!host) {
+        host = document.createElement('div');
+        host.id = 'editorShellHost';
+        host.className = 'bar-shell-host';
+        bar.appendChild(host);
+      } else if (host.parentElement !== bar) {
+        bar.appendChild(host);
+      }
+      if (actions.parentElement !== host) host.appendChild(actions);
+    } else {
+      if (actions.parentElement !== top) top.appendChild(actions);
+      if (host) host.remove();
+    }
+    if (typeof window.odSyncRailSlim === 'function') window.odSyncRailSlim();
+  }
+
   function boot() {
     mountShell();
     bindChrome();
@@ -382,6 +438,8 @@
 
   window.odBindShell = boot;
   window.odMountShell = mountShell;
+  window.odParkEditorChrome = parkEditorChrome;
+  window.odSyncEditorChrome = syncEditorChrome;
   if (qs('#odApp')) boot();
   else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

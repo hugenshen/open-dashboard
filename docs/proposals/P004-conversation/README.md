@@ -147,4 +147,4 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | 2026-08-18 | 落地 eval runner / 事件日志 / Lead 多轮硬路由；记忆与术语知识库划到 [P010](../P010-user-memory-ask-knowledge/) |
 | 2026-08-19 | 重新学习增加 Harness LLM 复核：规则先写画像，LLM 只改角色/业务名/别名，confirmed 指标与词表不覆盖（PR-SL-05） |
 | 2026-08-19 | 收口 [memory-knowledge-design.md](./memory-knowledge-design.md)：P004 只承接数据集自学习、confirmed 语义消费、字段解释与 emit 探活；跨会话记忆、知识库管理面与长期治理归 [P010](../P010-user-memory-ask-knowledge/)，工作区隔离归 [P009](../P009-workspace-governance/) |
-| 2026-08-19 | 问数结果卡不再提供「保存到仪表盘」（P006 本期范围）；整页写入仍走独立生成意图。adopt 契约保留、产品入口延后 |
+| 2026-08-20 | 落地 PR-CONV-01/06/07/08：Java public runs 410；internal BI 无/错 Token 401；Harness run 缺 conversation:use 403；可问集合走 GET /api/dataset/askable。e2e-auth-ask.sh pass |

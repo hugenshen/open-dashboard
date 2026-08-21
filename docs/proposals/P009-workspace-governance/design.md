@@ -186,10 +186,12 @@ FE → Java Public Run API → Harness → Java Internal API
 
 导航规则：
 
-- 所有用户进入平台后必须先落在一个当前工作区；顶部工作区切换器展示 `workspaceId`、工作区名和当前角色。
+- 用户使用端不展示工作区名称、不提供工作区切换。数据广场用「企业资产 / 我的资产」分区组织目录，不出现工作区切换，也不用左侧数据空间栏做导航。
+- 工作区只出现在管理端。超级管理员可切换并治理全部工作区；工作区管理员通常只管理 1～2 个，只有多于一个时才显示切换器。
+- 运行时请求仍携带 `workspaceId`（管理端当前治理范围，或用户端服务端绑定的默认范围），前端不把该概念暴露给业务用户。
 - 无管理权限的用户只看到用户使用端；有数据、知识或成员权限时才展示对应管理入口。
 - 用户使用端不承载成员、角色、发布、审计等治理动作，只展示“当前有哪些数据、可申请哪些数据、当前可问什么、用了什么知识、生成了什么产物”。
-- 管理端不发起 AI run；它维护数据、知识、权限和审计事实。需要试问时跳回对话分析，并带当前 `workspaceId` 与授权数据集上下文。
+- 管理端不发起 AI run；它维护数据、知识、权限和审计事实。需要试问时跳回对话分析。
 
 高保落点：
 
@@ -200,7 +202,7 @@ FE → Java Public Run API → Harness → Java Internal API
 | `docs/prototypes/hi-fi/login.html` | 登录、企业 SSO、退出后提示、忘记密码 |
 | `docs/prototypes/hi-fi/register.html` | 注册用户、邀请码加入工作区、创建新工作区 |
 | `docs/prototypes/hi-fi/account-settings.html` | 个人资料、修改密码、登录安全、通知偏好 |
-| `docs/prototypes/hi-fi/data-market.html` | 用户端数据广场：数据空间、资产分类、我的数据、已获权、可申请、申请中、消费申请 |
+| `docs/prototypes/hi-fi/data-market.html` | 用户端数据广场：企业资产 / 我的资产、资产分类、已获权、可申请、已添加、申请中、消费申请 |
 | `docs/prototypes/hi-fi/workspace-admin.html` | 成员、项目组、角色矩阵、数据权限、工具权限、审计摘要 |
 | `docs/prototypes/hi-fi/knowledge.html` | 管理端知识库：候选确认、指标、术语、金标准问法、我的记忆 |
 | `docs/prototypes/hi-fi/conversation-workspace.html` | 用户使用端对话分析：当前工作区、可问数据集、知识命中和管理跳转 |
@@ -208,9 +210,8 @@ FE → Java Public Run API → Harness → Java Internal API
 用户使用端核心体验：
 
 ```text
-选择工作区
-  → 工作台看到可问数据、最近对话、我的看板/报告
-  → 数据广场查看企业资产、我的数据、可申请和申请中
+进入工作台看到可问数据、最近对话、我的看板/报告
+  → 数据广场按企业资产 / 我的资产查看已获权、可申请、已添加和申请中
   → 未获权时提交消费申请
   → 进入对话分析提问或生成
   → 前端直接调用 Harness public run
@@ -220,7 +221,8 @@ FE → Java Public Run API → Harness → Java Internal API
 管理端核心体验：
 
 ```text
-工作区管理员进入成员权限
+超级管理员或工作区管理员进入管理端
+  → 超级管理员可切换全部工作区；工作区管理员只看到自己的 1～2 个
   → 同步/邀请用户
   → 绑定项目组与角色
   → 配置数据集 use、可申请范围、行列策略和工具策略

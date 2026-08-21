@@ -258,8 +258,9 @@ html[data-od-theme='dark'] .od-avatar {
 .od-top {
   height: var(--od-top-h);
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
   gap: 10px;
   padding: 0 32px;
   background: var(--od-top);
@@ -267,6 +268,51 @@ html[data-od-theme='dark'] .od-avatar {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   z-index: 20;
+}
+
+.od-top-start {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.od-plaza-scope {
+  display: flex;
+  align-items: stretch;
+  justify-self: center;
+  height: 100%;
+  gap: 0;
+}
+
+.od-plaza-scope-spacer {
+  width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.od-plaza-scope button {
+  min-height: 0;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--od-muted);
+  padding: 0 20px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: inset 0 -2px 0 transparent;
+}
+
+.od-plaza-scope button.on {
+  color: var(--od-brand);
+  font-weight: 720;
+  box-shadow: inset 0 -2px 0 var(--od-brand);
+}
+
+.od-plaza-scope button:hover {
+  color: var(--od-brand);
 }
 
 .od-icon-btn {
@@ -291,7 +337,7 @@ html[data-od-theme='dark'] .od-avatar {
 }
 
 .od-top-actions {
-  margin-left: auto;
+  justify-self: end;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -315,6 +361,32 @@ html[data-od-theme='dark'] .od-avatar {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.od-workspace-label {
+  height: 40px;
+  max-width: 280px;
+  padding: 0 12px;
+  border: 1px solid var(--od-line);
+  border-radius: 10px;
+  background: var(--od-card);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--od-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.od-workspace-label span {
+  flex-shrink: 0;
+}
+.od-workspace-label b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--od-ink);
+  font-size: 14px;
+  font-weight: 650;
 }
 .od-workspace-switch select {
   min-width: 0;
@@ -355,6 +427,52 @@ a.od-ghost {
 }
 .od-app.is-editor .od-sqlbot {
   display: inline-flex;
+}
+
+/* 编辑态：隐藏产品顶栏空白；操作经 Teleport 并入编辑器 .bar */
+.od-app.is-editor .od-top {
+  display: none;
+}
+
+.bar-shell-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--od-line, #e5e6eb);
+  flex-shrink: 0;
+  position: relative;
+  min-height: 32px;
+}
+.od-top-actions.in-editor-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: auto;
+}
+.od-top-actions.in-editor-bar .od-ghost {
+  height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.od-top-actions.in-editor-bar .od-account {
+  height: 30px;
+  font-size: 12px;
+  padding: 0 8px 0 4px;
+}
+.od-top-actions.in-editor-bar .od-avatar {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+.od-top-actions.in-editor-bar .od-icon-btn {
+  width: 30px;
+  height: 30px;
+}
+.od-top-actions.in-editor-bar .od-pop {
+  top: 34px;
 }
 
 .od-phase {

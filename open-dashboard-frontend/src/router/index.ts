@@ -60,19 +60,19 @@ export const router = createRouter({
       path: '/datasources',
       name: 'datasources',
       component: () => import('../datasource/views/DatasourceManage.vue'),
-      meta: { title: '数据源', fullBleed: true }
+      meta: { title: '数据源', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/datasources/:id',
       name: 'datasource-detail',
       component: () => import('../datasource/views/DatasourceManage.vue'),
-      meta: { title: '数据源', fullBleed: true }
+      meta: { title: '数据源', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/datasets',
       name: 'datasets',
       component: () => import('../dataset/views/DatasetManage.vue'),
-      meta: { title: '数据集', fullBleed: true }
+      meta: { title: '数据集', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/data-plaza',
@@ -84,7 +84,7 @@ export const router = createRouter({
       path: '/datasets/:id',
       name: 'dataset-detail',
       component: () => import('../dataset/views/DatasetManage.vue'),
-      meta: { title: '数据集', fullBleed: true }
+      meta: { title: '数据集', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/dashboards',
@@ -150,13 +150,13 @@ export const router = createRouter({
       path: '/dimensions',
       name: 'dimensions',
       component: () => import('../dimension/views/DimensionManage.vue'),
-      meta: { title: '维度管理', fullBleed: true }
+      meta: { title: '维度管理', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/knowledge',
       name: 'knowledge',
       component: () => import('../dimension/views/DimensionManage.vue'),
-      meta: { title: '知识维护', fullBleed: true }
+      meta: { title: '知识维护', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/workspace-admin',
@@ -165,7 +165,8 @@ export const router = createRouter({
       meta: {
         title: '成员权限',
         fullBleed: true,
-        requiredPermissions: ['workspace:admin', 'workspace:manage_member']
+        surface: 'manage',
+        requiredPermissions: ['workspace:admin', 'workspace:manage_member', 'platform:admin']
       }
     }
   ]

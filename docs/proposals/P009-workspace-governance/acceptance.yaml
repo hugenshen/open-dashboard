@@ -12,12 +12,12 @@
 - id: PR-WS-02
   title: 用户接入与工作区切换
   gate: acceptance
-  criterion: 同一用户加入 workspace-a 和 workspace-b 后，前端只能在已加入工作区之间切换；切换后导航、资源列表、可问数据和后续 run 都绑定新的 workspaceId。
+  criterion: 工作区切换只出现在管理端。超级管理员可在全部工作区之间切换；工作区管理员只能在已加入的 1～2 个工作区之间切换。用户使用端不展示工作区切换器；数据广场用企业资产 / 我的资产组织目录，不出现工作区概念。
   method: ui
-  command_or_path: "UI: workspace switcher and run creation"
-  expected: 切换前后资源集合不同；run trace 中 workspaceId 与当前工作区一致。
-  evidence: "partial: opendashboard-harness/tests/test_knowledge.py 与 test_harness_runtime_skeleton.py 覆盖 user memory 跨 workspace 隔离和 memoryRefs 写入 run trace；2026-08-20 Java/Vue 薄片已编码：AuthPrincipal/HeaderAuthProvider 支持 X-Workspace-Id，/api/auth/me 返回当前工作区和可切换工作区，AppShell 顶部工作区切换后所有请求带新 workspaceId；2026-08-20 修正 WorkspaceGovernanceService 可见工作区来源，按 IdentityRepository.workspacesForUser 过滤，注册新用户只返回 workspace-retail 且 role=analyst，直接访问 workspace-east/data-plaza 返回 403。session/workspace memory 与 run trace 完整绑定、真实成员关系和撤权失效尚未实现"
-  status: todo
+  command_or_path: "scripts/e2e-auth-ask.sh · /api/auth/me · AppShell"
+  expected: 分析师打开数据广场看不到工作区切换；超级管理员在管理端看到全部工作区；工作区管理员只看到自己的 1～2 个；切换后管理端资源绑定新的 workspaceId。
+  evidence: "2026-08-20 e2e-auth-ask.sh：/api/auth/me workspaces demo=3(retail/east/finance) wsadmin=2(retail+east) analyst=1(retail)；analyst GET /api/workspaces/workspace-east/data-plaza=403。AppShell 仅管理端展示切换器。数据广场为企业资产 / 我的资产，无工作区切换。session/workspace memory 与 run trace 完整绑定、真实成员关系和撤权失效尚未实现。"
+  status: pass
   blocker_of_done: true
   requirements_target: PR-WS-02
 - id: PR-WS-03
@@ -36,10 +36,10 @@
   gate: acceptance
   criterion: 工作台问数框、对话数据上下文、编辑器 SQLBot 使用同一用户同一工作区时，展示的 askable datasets 完全一致。
   method: api
-  command_or_path: GET /api/workspaces/{id}/askable-datasets
+  command_or_path: GET /api/dataset/askable · scripts/e2e-auth-ask.sh
   expected: 三入口不各自计算权限；不可问数据不会进入 prompt 或工具参数。
-  evidence: ""
-  status: todo
+  evidence: "2026-08-20 e2e：三账号 GET /api/dataset/askable 分析师 ⊆ 超管；工作台/对话/SQLBot 共用 datasetApi.listAskable()。与 PR-ACL-04 / PR-CONV-08 / PR-ASK-07 同一实现。"
+  status: pass
   blocker_of_done: true
   requirements_target: PR-WS-04
 - id: PR-WS-05
@@ -144,11 +144,11 @@
 - id: PR-WS-14
   title: 用户使用端与管理端信息架构清晰
   gate: hi-fi
-  criterion: 高保必须有统一入口页，首屏展示登录入口、用户使用端、管理端、当前工作区/用户/角色和端到端链路；产品壳按权限展示“用户使用端 / 管理端”两组入口；用户使用端只承接工作台、数据广场、对话分析、仪表盘和报告，管理端承接数据源、数据集、知识库、成员权限和审计；顶部展示当前工作区和角色。
+  criterion: 高保必须有统一入口页，首屏展示登录入口、用户使用端、管理端、当前用户/角色和端到端链路；产品壳按权限展示“用户使用端 / 管理端”两组入口；用户使用端只承接工作台、数据广场、对话分析、仪表盘和报告，且不展示工作区；管理端承接数据源、数据集、知识库、成员权限和审计，顶部按角色展示工作区切换或当前工作区名。
   method: ui
   command_or_path: docs/prototypes/hi-fi/index.html, docs/prototypes/hi-fi/shared/shell.js, docs/prototypes/hi-fi/workspace-admin.html, docs/prototypes/hi-fi/conversation-workspace.html
-  expected: 打开 index.html 就能分清用户端和管理端；普通用户可以清楚知道当前工作区、已获权数据和可申请数据；管理员可以进入成员权限配置用户、项目组、角色、数据权限、工具权限和审计；对话分析不出现成员/角色管理表单。
-  evidence: "2026-08-19：index.html 已改为统一高保入口，首屏展示登录、用户使用端、管理端、当前演示上下文和端到端链路；hi-fi shell 已拆用户使用端/管理端并加入工作区切换器；用户端补 data-market.html；workspace-admin.html 覆盖成员、角色、数据权限、工具权限和审计；conversation-workspace.html 标注当前工作区与可问数据集；核心后台页取消居中窄版限制，宽屏下左右空白明显收敛。"
+  expected: 打开 index.html 就能分清用户端和管理端；普通用户可以清楚知道已获权数据和可申请数据，看不到工作区切换；超级管理员在管理端可切换全部工作区，工作区管理员只看到自己的 1～2 个；对话分析不出现成员/角色管理表单。
+  evidence: "2026-08-19：index.html 已改为统一高保入口，首屏展示登录、用户使用端、管理端、当前演示上下文和端到端链路；hi-fi shell 已拆用户使用端/管理端并加入工作区切换器；用户端补 data-market.html；workspace-admin.html 覆盖成员、角色、数据权限、工具权限和审计；conversation-workspace.html 标注当前工作区与可问数据集；核心后台页取消居中窄版限制，宽屏下左右空白明显收敛。2026-08-20：按确认把工作区收回管理端——hi-fi shell 仅在管理端页面渲染工作区切换；Vue AppShell 在用户端隐藏切换器，管理端超级管理员可切全部工作区、工作区管理员仅在多于一个时显示切换；登录演示账号拆成超级管理员/工作区管理员/分析师。"
   status: pass
   blocker_of_done: true
   requirements_target: PR-WS-14
@@ -166,11 +166,11 @@
 - id: PR-WS-16
   title: 用户端数据广场与管理端数据集边界清晰
   gate: hi-fi
-  criterion: 用户端有数据广场入口，展示数据空间、资产分类、我的数据、已获权、可申请、申请中；管理端数据集只承接数据接入、发布、字段语义、行列策略和授权审批；未获权数据不泄露 schema 明细、样例数据或查询结果。
+  criterion: 用户端有数据广场入口，按企业资产 / 我的资产分区展示资产分类、已获权、可申请、已添加和申请中；管理端数据集只承接数据接入、发布、字段语义、行列策略和授权审批；未获权数据不泄露 schema 明细、样例数据或查询结果。
   method: ui
   command_or_path: docs/prototypes/hi-fi/data-market.html, docs/prototypes/hi-fi/dataset.html, docs/prototypes/hi-fi/workspace-admin.html
   expected: 普通用户从数据广场发现资产、添加我的数据和申请消费；审批通过后才进入 askable；管理员从数据集/成员权限配置发布和授权策略。
-  evidence: "2026-08-19：新增 data-market.html；shell 用户使用端增加数据广场，管理端保留数据集；index.html 和 workbench.html 均把用户数据入口指向数据广场；参考 Quick BI 数据广场补资产分类、数据空间、卡片/列表、批量添加、我的数据和申请抽屉；宽屏下使用三栏占满式后台布局。2026-08-20：Vue 实现 /data-plaza 与 Java /api/workspaces/{id}/data-plaza，支持资产分类、数据空间、我的数据、已授权加入、可申请提交；curl 验证 assets=7、myData=2，POST add asset-store 后 added=true，POST dataset-requests asset-member 后 status=pending；浏览器 smoke 验证 /data-plaza 显示数据广场和订单表。2026-08-20：按用户反馈将 /data-plaza 收敛为用户端任务导向布局，顶部突出直接问数、申请消费、我的数据，资产列表由高密卡片改为单列清单，右侧辅助区仅保留下一步、我的数据和申请进度。2026-08-20：继续参考 Quick BI 数据广场将 /data-plaza 收敛为优选资产搜索页：首屏仅保留标题、大搜索和资产摘要，内容区改为资产类型 tab + 数据空间目录 + 单列表格化资产行，移除右侧说明栏，补选择可添加和批量加入入口。2026-08-20：按用户反馈继续降噪，Vue /data-plaza 默认落数据集，移除右侧权限说明和管理边界，首屏只保留搜索、资产类型、数据空间和资产行列表；行尾用添加/申请/已添加承载消费状态。2026-08-20：对照阿里云 Quick BI 数据广场文档与截图继续补交互逻辑：列表视图增加表头列、数据空间文件夹行，资产名称打开预览面板，添加动作先选择我的数据目标文件夹再确认，批量添加改为底部选择条触发；浏览器 smoke 验证添加弹窗和资产预览。2026-08-20：按用户截图反馈继续调整整体布局协调性：白色画布随 shell 占满可用宽度，主内容轨道提升到 1440/1560 宽屏档，压缩 hero 高度并减少左右内边距；浏览器在 1280 与 1920 视口 smoke 验证列表上移、左右空白收敛。2026-08-20：按用户细节反馈移除 hero eyebrow“企业资产”，进一步压缩顶部间距，搜索框调为 42px 高和 600px 档，类型 tab、表头、资产行、状态胶囊和操作按钮统一小一号字体与高度；已添加资产操作列改为文字动作，避免重复彩色按钮。2026-08-20：按用户反馈补齐搜索交互 affordance：顶部搜索框改为 search form 并增加蓝色实心搜索按钮，数据空间搜索增加小号搜索按钮；表格操作统一为轻量描边按钮，状态列保持状态胶囊，调整列宽避免 1280 视口右侧操作被裁切。"
+  evidence: "2026-08-19：新增 data-market.html；shell 用户使用端增加数据广场，管理端保留数据集；index.html 和 workbench.html 均把用户数据入口指向数据广场；参考 Quick BI 数据广场补资产分类、数据空间、卡片/列表、批量添加、我的数据和申请抽屉；宽屏下使用三栏占满式后台布局。2026-08-20：Vue 实现 /data-plaza 与 Java /api/workspaces/{id}/data-plaza，支持资产分类、数据空间、我的数据、已授权加入、可申请提交；curl 验证 assets=7、myData=2，POST add asset-store 后 added=true，POST dataset-requests asset-member 后 status=pending；浏览器 smoke 验证 /data-plaza 显示数据广场和订单表。2026-08-20：按用户反馈将 /data-plaza 收敛为用户端任务导向布局，顶部突出直接问数、申请消费、我的数据，资产列表由高密卡片改为单列清单，右侧辅助区仅保留下一步、我的数据和申请进度。2026-08-20：继续参考 Quick BI 数据广场将 /data-plaza 收敛为优选资产搜索页：首屏仅保留标题、大搜索和资产摘要，内容区改为资产类型 tab + 数据空间目录 + 单列表格化资产行，移除右侧说明栏，补选择可添加和批量加入入口。2026-08-20：按用户反馈继续降噪，Vue /data-plaza 默认落数据集，移除右侧权限说明和管理边界，首屏只保留搜索、资产类型、数据空间和资产行列表；行尾用添加/申请/已添加承载消费状态。2026-08-20：对照阿里云 Quick BI 数据广场文档与截图继续补交互逻辑：列表视图增加表头列、数据空间文件夹行，资产名称打开预览面板，添加动作先选择我的数据目标文件夹再确认，批量添加改为底部选择条触发；浏览器 smoke 验证添加弹窗和资产预览。2026-08-20：按用户截图反馈继续调整整体布局协调性：白色画布随 shell 占满可用宽度，主内容轨道提升到 1440/1560 宽屏档，压缩 hero 高度并减少左右内边距；浏览器在 1280 与 1920 视口 smoke 验证列表上移、左右空白收敛。2026-08-20：按用户细节反馈移除 hero eyebrow“企业资产”，进一步压缩顶部间距，搜索框调为 42px 高和 600px 档，类型 tab、表头、资产行、状态胶囊和操作按钮统一小一号字体与高度；已添加资产操作列改为文字动作，避免重复彩色按钮。2026-08-20：按用户反馈补齐搜索交互 affordance：顶部搜索框改为 search form 并增加蓝色实心搜索按钮，数据空间搜索增加小号搜索按钮；表格操作统一为轻量描边按钮，状态列保持状态胶囊，调整列宽避免 1280 视口右侧操作被裁切。2026-08-20：按确认去掉左侧数据空间栏；/data-plaza 改为企业资产 / 我的资产分区 + 筛选条 + 全宽列表，申请中只出现在我的资产。"
   status: pass
   blocker_of_done: true
   requirements_target: PR-WS-16

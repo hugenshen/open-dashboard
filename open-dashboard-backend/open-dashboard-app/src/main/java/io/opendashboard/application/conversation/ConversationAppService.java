@@ -73,20 +73,23 @@ public class ConversationAppService {
     }
 
     public Optional<ConversationVO> get(String id) {
-        return store.find(id);
+        return owned(id);
     }
 
     public Optional<ConversationVO> update(String id, ConversationUpdateRequest request) {
+        if (owned(id).isEmpty()) return Optional.empty();
         return store.update(id, request == null
                 ? new ConversationUpdateRequest(null, null, null, null)
                 : request);
     }
 
     public boolean delete(String id) {
+        if (owned(id).isEmpty()) return false;
         return store.delete(id);
     }
 
     public List<ConversationMessageVO> messages(String id) {
+        if (owned(id).isEmpty()) return List.of();
         return store.listMessages(id);
     }
 
@@ -98,10 +101,12 @@ public class ConversationAppService {
     }
 
     public List<ConversationRevisionVO> revisions(String id) {
+        if (owned(id).isEmpty()) return List.of();
         return store.listRevisions(id);
     }
 
     public Optional<ConversationRevisionVO> restore(String conversationId, String revId) {
+        if (owned(conversationId).isEmpty()) return Optional.empty();
         Optional<ConversationRevisionVO> rev = store.findRevision(revId);
         if (rev.isEmpty()) return Optional.empty();
         if (!conversationId.equals(rev.get().conversationId())) return Optional.empty();
@@ -198,6 +203,11 @@ public class ConversationAppService {
                 emitter.emit("finish", Map.of("reason", "error", "detail", "exception"));
             }
         }));
+    }
+
+    private Optional<ConversationVO> owned(String id) {
+        String uid = AuthContext.userIdOr("demo");
+        return store.find(id).filter(c -> uid.equals(c.ownerId()));
     }
 
     private void runWithPrincipal(AuthPrincipal principal, Runnable action) {

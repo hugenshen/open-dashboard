@@ -6,7 +6,7 @@ import { authApi, type SsoProvider } from '../../api/auth'
 const router = useRouter()
 const route = useRoute()
 
-const mode = ref<'admin' | 'analyst'>('admin')
+const mode = ref<'platform' | 'workspace' | 'analyst'>('platform')
 const account = ref('demo')
 const password = ref('demo123456')
 const error = ref('')
@@ -49,10 +49,16 @@ async function login() {
   }
 }
 
-function useAdmin() {
-  mode.value = 'admin'
+function usePlatform() {
+  mode.value = 'platform'
   account.value = 'demo'
   password.value = 'demo123456'
+}
+
+function useWorkspaceAdmin() {
+  mode.value = 'workspace'
+  account.value = 'wsadmin'
+  password.value = 'wsadmin123456'
 }
 
 function useAnalyst() {
@@ -88,8 +94,8 @@ onMounted(async () => {
       <p v-if="loggedOut" class="notice">已退出登录</p>
       <p v-if="expired" class="notice warn">登录状态已失效，请重新登录</p>
       <p v-if="ssoError" class="notice warn">企业 SSO 登录未完成，请重试或改用账号密码登录</p>
-      <h1>登录工作区</h1>
-      <p class="sub">登录后进入当前工作区；用户使用端与管理端菜单会按权限展示。</p>
+      <h1>登录</h1>
+      <p class="sub">登录后按权限进入用户使用端或管理端。工作区只出现在管理端。</p>
       <p class="auth-linkline">新用户还没有账号？<RouterLink :to="registerTo">立即注册</RouterLink></p>
 
       <div class="sso" v-if="readyProviders.length || loadingProviders">
@@ -107,7 +113,8 @@ onMounted(async () => {
       </div>
 
       <div class="segments" role="tablist" aria-label="演示账号类型">
-        <button type="button" :class="{ on: mode === 'admin' }" @click="useAdmin">管理员</button>
+        <button type="button" :class="{ on: mode === 'platform' }" @click="usePlatform">超级管理员</button>
+        <button type="button" :class="{ on: mode === 'workspace' }" @click="useWorkspaceAdmin">工作区管理员</button>
         <button type="button" :class="{ on: mode === 'analyst' }" @click="useAnalyst">分析师</button>
       </div>
 
@@ -128,8 +135,9 @@ onMounted(async () => {
 
       <div class="tips">
         <b>演示权限</b>
-        <span v-if="mode === 'admin'">管理员拥有成员权限、数据源、数据集和知识维护入口。</span>
-        <span v-else>分析师只能进入工作台、数据广场、对话分析、仪表盘和报告。</span>
+        <span v-if="mode === 'platform'">超级管理员可治理全部工作区；工作区切换只出现在管理端。</span>
+        <span v-else-if="mode === 'workspace'">工作区管理员通常只管理 1～2 个工作区；用户端没有工作区概念。</span>
+        <span v-else>分析师只进入工作台、数据广场、对话分析、仪表盘和报告。</span>
       </div>
     </section>
   </main>
@@ -148,7 +156,7 @@ onMounted(async () => {
 }
 
 .login-card {
-  width: min(440px, 100%);
+  width: min(480px, 100%);
   border: 1px solid #dfe3ea;
   border-radius: 12px;
   background: #fff;
@@ -220,12 +228,17 @@ h1 {
 
 .segments {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 6px;
   margin: 22px 0 16px;
   padding: 4px;
   border-radius: 10px;
   background: #f3f4f6;
+}
+
+.segments button {
+  font-size: 13px;
+  padding: 0 8px;
 }
 
 .sso {

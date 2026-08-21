@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { getAuthBundle } from '../../api/http'
-import type { WorkspaceGroupVO, WorkspaceRoleVO } from '../../api/auth'
+import { getAuthBundle, setAuthFromMe } from '../../api/http'
+import { authApi, type WorkspaceGroupVO, type WorkspaceRoleVO, type WorkspaceVO } from '../../api/auth'
 import {
   workspaceApi,
   type EffectivePermissionVO,
@@ -20,6 +20,8 @@ const effective = ref<EffectivePermissionVO | null>(null)
 const memberKeyword = ref('')
 
 const workspaceId = computed(() => summary.value?.workspace.id || getAuthBundle().workspaceId)
+const managedWorkspaces = ref<WorkspaceVO[]>([])
+const showWorkspacePicker = computed(() => managedWorkspaces.value.length > 1)
 const filteredMembers = computed(() => {
   const q = memberKeyword.value.trim().toLowerCase()
   if (!q) return members.value
@@ -40,18 +42,20 @@ async function load() {
   error.value = ''
   const id = getAuthBundle().workspaceId
   try {
-    const [sum, memberList, groupList, roleList, eff] = await Promise.all([
+    const [sum, memberList, groupList, roleList, eff, ws] = await Promise.all([
       workspaceApi.summary(id),
       workspaceApi.members(id),
       workspaceApi.groups(id),
       workspaceApi.roles(id),
-      workspaceApi.effectivePermissions(id)
+      workspaceApi.effectivePermissions(id),
+      workspaceApi.workspaces()
     ])
     summary.value = sum
     members.value = memberList
     groups.value = groupList
     roles.value = roleList
     effective.value = eff
+    managedWorkspaces.value = ws
   } catch (e) {
     error.value = e instanceof Error ? e.message : '工作区治理数据加载失败'
   } finally {
@@ -63,6 +67,18 @@ function statusText(status: WorkspaceMemberVO['status']) {
   if (status === 'active') return '已启用'
   if (status === 'invited') return '待加入'
   return '已停用'
+}
+
+async function switchManagedWorkspace(ev: Event) {
+  const id = (ev.target as HTMLSelectElement).value
+  if (!id || id === workspaceId.value) return
+  try {
+    const me = await authApi.switchWorkspace(id)
+    setAuthFromMe(me)
+    await load()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '切换工作区失败'
+  }
 }
 
 onMounted(load)
@@ -77,6 +93,12 @@ onMounted(load)
         <span>{{ summary?.workspace.description || '管理项目组成员、用户组、角色权限、数据资产消费边界。' }}</span>
       </div>
       <div class="head-actions">
+        <label v-if="showWorkspacePicker" class="ws-pick">
+          <span>治理工作区</span>
+          <select :value="workspaceId" @change="switchManagedWorkspace">
+            <option v-for="ws in managedWorkspaces" :key="ws.id" :value="ws.id">{{ ws.name }}</option>
+          </select>
+        </label>
         <button type="button" @click="load" :disabled="loading">刷新</button>
         <button class="primary" type="button">邀请成员</button>
       </div>
@@ -225,6 +247,25 @@ onMounted(load)
   display: flex;
   gap: 8px;
   align-items: flex-start;
+}
+
+.ws-pick {
+  display: grid;
+  gap: 4px;
+  min-width: 200px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ws-pick select {
+  height: 34px;
+  border: 1px solid #d8dde7;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  padding: 0 10px;
+  font: inherit;
 }
 
 button {

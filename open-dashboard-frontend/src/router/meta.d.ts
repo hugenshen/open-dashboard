@@ -7,6 +7,6 @@ declare module 'vue-router' {
     hideShell?: boolean
     public?: boolean
     requiredPermissions?: string[]
-    shell?: 'default' | 'editor'
+    surface?: 'use' | 'manage'
   }
 }

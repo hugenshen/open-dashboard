@@ -43,6 +43,8 @@ public interface IdentityRepository {
 
     void ensureSeedUser(String username, String displayName, String workspaceId, String roleCode, PasswordHash passwordHash);
 
+    void ensureSeedMembership(String username, String workspaceId, String roleCode);
+
     record UserAccount(
             String id,
             String username,
