@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { DEMO_ADMIN_AUTH, DEMO_ANALYST_AUTH, setAuthHeaders, type AuthHeaderBundle } from '../../api/http'
+import { authApi, type SsoProvider } from '../../api/auth'
 
 const router = useRouter()
 const route = useRoute()
 
-const mode = ref<'admin' | 'analyst'>('admin')
+const mode = ref<'platform' | 'workspace' | 'analyst'>('platform')
 const account = ref('demo')
-const password = ref('')
+const password = ref('demo123456')
 const error = ref('')
+const submitting = ref(false)
+const providers = ref<SsoProvider[]>([])
+const loadingProviders = ref(false)
 
 const redirect = computed(() => {
   const raw = route.query.redirect
@@ -18,21 +21,12 @@ const redirect = computed(() => {
 
 const loggedOut = computed(() => route.query.logged_out === '1')
 const expired = computed(() => route.query.expired === '1')
-
-function profile(): AuthHeaderBundle {
-  if (mode.value === 'analyst') {
-    return {
-      ...DEMO_ANALYST_AUTH,
-      userId: account.value.trim() || DEMO_ANALYST_AUTH.userId,
-      displayName: account.value.trim() ? '分析师' : DEMO_ANALYST_AUTH.displayName
-    }
-  }
-  return {
-    ...DEMO_ADMIN_AUTH,
-    userId: account.value.trim() || DEMO_ADMIN_AUTH.userId,
-    displayName: account.value.trim() ? '演示管理员' : DEMO_ADMIN_AUTH.displayName
-  }
-}
+const ssoError = computed(() => route.query.sso_error === '1')
+const readyProviders = computed(() => providers.value.filter((p) => p.ready))
+const registerTo = computed(() => ({
+  path: '/register',
+  query: { redirect: redirect.value }
+}))
 
 async function login() {
   error.value = ''
@@ -40,21 +34,54 @@ async function login() {
     error.value = '请输入账号'
     return
   }
-  setAuthHeaders(profile())
-  await router.replace(redirect.value)
+  if (!password.value) {
+    error.value = '请输入密码'
+    return
+  }
+  submitting.value = true
+  try {
+    await authApi.login({ username: account.value.trim(), password: password.value })
+    await router.replace(redirect.value)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '登录失败'
+  } finally {
+    submitting.value = false
+  }
 }
 
-function useAdmin() {
-  mode.value = 'admin'
+function usePlatform() {
+  mode.value = 'platform'
   account.value = 'demo'
-  password.value = 'demo'
+  password.value = 'demo123456'
+}
+
+function useWorkspaceAdmin() {
+  mode.value = 'workspace'
+  account.value = 'wsadmin'
+  password.value = 'wsadmin123456'
 }
 
 function useAnalyst() {
   mode.value = 'analyst'
   account.value = 'analyst'
-  password.value = 'demo'
+  password.value = 'analyst123456'
 }
+
+function startSso(provider: SsoProvider) {
+  if (!provider.ready) return
+  window.location.href = `/api/auth/sso/${encodeURIComponent(provider.id)}/start?redirect=${encodeURIComponent(redirect.value)}`
+}
+
+onMounted(async () => {
+  loadingProviders.value = true
+  try {
+    providers.value = await authApi.ssoProviders()
+  } catch {
+    providers.value = []
+  } finally {
+    loadingProviders.value = false
+  }
+})
 </script>
 
 <template>
@@ -66,11 +93,28 @@ function useAnalyst() {
       </div>
       <p v-if="loggedOut" class="notice">已退出登录</p>
       <p v-if="expired" class="notice warn">登录状态已失效，请重新登录</p>
-      <h1>登录工作区</h1>
-      <p class="sub">登录后进入当前工作区；用户使用端与管理端菜单会按权限展示。</p>
+      <p v-if="ssoError" class="notice warn">企业 SSO 登录未完成，请重试或改用账号密码登录</p>
+      <h1>登录</h1>
+      <p class="sub">登录后按权限进入用户使用端或管理端。工作区只出现在管理端。</p>
+      <p class="auth-linkline">新用户还没有账号？<RouterLink :to="registerTo">立即注册</RouterLink></p>
+
+      <div class="sso" v-if="readyProviders.length || loadingProviders">
+        <button
+          v-for="provider in readyProviders"
+          :key="provider.id"
+          type="button"
+          class="sso-btn"
+          @click="startSso(provider)"
+        >
+          <span>{{ provider.id === 'google' ? 'G' : provider.label.slice(0, 1).toUpperCase() }}</span>
+          使用 {{ provider.label }} 登录
+        </button>
+        <p v-if="loadingProviders && !readyProviders.length">正在检查企业登录方式...</p>
+      </div>
 
       <div class="segments" role="tablist" aria-label="演示账号类型">
-        <button type="button" :class="{ on: mode === 'admin' }" @click="useAdmin">管理员</button>
+        <button type="button" :class="{ on: mode === 'platform' }" @click="usePlatform">超级管理员</button>
+        <button type="button" :class="{ on: mode === 'workspace' }" @click="useWorkspaceAdmin">工作区管理员</button>
         <button type="button" :class="{ on: mode === 'analyst' }" @click="useAnalyst">分析师</button>
       </div>
 
@@ -81,16 +125,19 @@ function useAnalyst() {
         </label>
         <label>
           <span>密码</span>
-          <input v-model="password" autocomplete="current-password" placeholder="demo" type="password" />
+          <input v-model="password" autocomplete="current-password" placeholder="demo123456" type="password" />
         </label>
         <p v-if="error" class="error">{{ error }}</p>
-        <button class="primary" type="submit">登录</button>
+        <button class="primary" type="submit" :disabled="submitting">
+          {{ submitting ? '登录中...' : '登录' }}
+        </button>
       </form>
 
       <div class="tips">
         <b>演示权限</b>
-        <span v-if="mode === 'admin'">管理员拥有成员权限、数据源、数据集和知识维护入口。</span>
-        <span v-else>分析师只能进入工作台、数据广场、对话分析、仪表盘和报告。</span>
+        <span v-if="mode === 'platform'">超级管理员可治理全部工作区；工作区切换只出现在管理端。</span>
+        <span v-else-if="mode === 'workspace'">工作区管理员通常只管理 1～2 个工作区；用户端没有工作区概念。</span>
+        <span v-else>分析师只进入工作台、数据广场、对话分析、仪表盘和报告。</span>
       </div>
     </section>
   </main>
@@ -109,7 +156,7 @@ function useAnalyst() {
 }
 
 .login-card {
-  width: min(440px, 100%);
+  width: min(480px, 100%);
   border: 1px solid #dfe3ea;
   border-radius: 12px;
   background: #fff;
@@ -145,9 +192,22 @@ h1 {
 
 .sub,
 .tips,
-.notice {
+.notice,
+.auth-linkline {
   color: #4b5563;
   line-height: 1.65;
+}
+
+.auth-linkline {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+
+.auth-linkline a {
+  margin-left: 4px;
+  color: #4f46e5;
+  font-weight: 800;
+  text-decoration: none;
 }
 
 .notice {
@@ -168,12 +228,52 @@ h1 {
 
 .segments {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 6px;
   margin: 22px 0 16px;
   padding: 4px;
   border-radius: 10px;
   background: #f3f4f6;
+}
+
+.segments button {
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.sso {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0 14px;
+}
+
+.sso p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.sso-btn {
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  border-color: #d8dde7;
+  background: #fff;
+  color: #111827;
+}
+
+.sso-btn span {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #eef2ff;
+  color: #4338ca;
+  font-weight: 800;
+  font-size: 13px;
 }
 
 button,

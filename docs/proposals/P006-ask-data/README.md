@@ -169,4 +169,4 @@ schema（M-Schema）→ LLM 生成 JSON{sql, chart-type}
 | 2026-08-17 | 补波及表；验收细节只保留在 yaml |
 | 2026-08-17 | 本月不交付 PR-ASK-07（可问集合一致）；等 P008。工作台问数框与结果卡保存本题图已按现有设计对齐产品 |
 | 2026-08-17 | 问数临时图改走 chartQuery + ECharts，不再用 CSS 条形图冒充图表 |
-| 2026-08-18 | 术语/SQL 示例与跨会话记忆划到 [P010](../P010-user-memory-ask-knowledge/)；三入口接 `GET /api/dataset/askable`
+| 2026-08-20 | 落地 PR-ASK-07/08：三入口共用 GET /api/dataset/askable；Java public runs 410。pytest 覆盖 PR-ASK-09/12/13（suggest / few-shot / dimension-values）。e2e-auth-ask.sh pass |

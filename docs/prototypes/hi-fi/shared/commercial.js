@@ -2111,8 +2111,18 @@ function render() {
     try { userSlim = localStorage.getItem('od.rail.slim') === 'true'; } catch (_) { /* ignore */ }
     od.classList.toggle('is-editor', editing);
     od.classList.toggle('is-conversation', state.module === 'conversation');
-    od.classList.toggle('slim', editing || userSlim);
+    /* 编辑态首次进入默认收成图标轨；之后与其它页一样由用户展开/收起（占位推内容，非浮层） */
+    if (editing) {
+      if (!od.dataset.editorRailInit) {
+        od.classList.add('slim');
+        od.dataset.editorRailInit = '1';
+      }
+    } else {
+      delete od.dataset.editorRailInit;
+      od.classList.toggle('slim', userSlim);
+    }
   }
+  if (typeof window.odParkEditorChrome === 'function') window.odParkEditorChrome();
   app.classList.toggle('mobile-frame', state.mobile && state.screen === 'preview' && state.module === 'dashboard' && !useMobileLayout());
   syncModNav();
   document.querySelectorAll('#phaseTabs button').forEach(b => b.classList.toggle('on', b.dataset.phase === state.phase));
@@ -2129,6 +2139,7 @@ function render() {
   else if (state.screen === 'preview') renderPreview(app);
   else renderEditor(app);
 
+  if (typeof window.odSyncEditorChrome === 'function') window.odSyncEditorChrome();
   syncRoute();
 }
 

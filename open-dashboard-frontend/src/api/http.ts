@@ -1,6 +1,7 @@
 /**
- * Shared fetch helper: attaches pluggable identity headers after login.
- * Customers can replace this module with SSO/JWT token injection.
+ * Shared fetch helper. Identity is resolved by the backend from an HttpOnly
+ * session cookie; the local marker only lets the router avoid a first-frame
+ * flicker before /auth/me confirms the session.
  */
 
 const AUTH_STORAGE_KEY = 'od.auth.headers'
@@ -68,7 +69,8 @@ export function hasAuthSession(): boolean {
 export function getAuthHeaders(): Record<string, string> {
   const bundle = readAuthBundle()
   if (!bundle) return {}
-  // fetch header values must be ISO-8859-1; encode non-ASCII display names
+  // Only direct Harness calls consume these dev headers. Java public APIs ignore
+  // them unless the request also carries the internal service token.
   return {
     'X-User-Id': bundle.userId,
     'X-User-Name': encodeURIComponent(bundle.displayName),
@@ -80,6 +82,22 @@ export function getAuthHeaders(): Record<string, string> {
 export function setAuthHeaders(bundle: Partial<AuthHeaderBundle>) {
   const next = { ...DEMO_ADMIN_AUTH, ...readAuthBundle(), ...bundle }
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next))
+}
+
+export function setAuthFromMe(me: {
+  userId: string
+  displayName: string
+  permissions?: string[]
+  effectivePermissions?: string[]
+  workspaceId: string
+}) {
+  setAuthHeaders({
+    userId: me.userId,
+    displayName: me.displayName,
+    permissions: (me.effectivePermissions?.length ? me.effectivePermissions : me.permissions || []).join(','),
+    workspaceId: me.workspaceId,
+    sessionVersion: AUTH_SESSION_VERSION
+  })
 }
 
 export function clearAuthHeaders() {
@@ -111,8 +129,10 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const method = opts.method || 'GET'
   const qs = opts.params ? `?${new URLSearchParams(opts.params)}` : ''
-  const res = await fetch(`/api${url}${qs}`, {
+  const apiPath = `/api${url}${qs}`
+  const res = await fetch(apiPath, {
     method,
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
       ...getAuthHeaders()
@@ -128,7 +148,7 @@ export async function apiFetch<T>(
     } catch {
       /* ignore */
     }
-    throw new Error(`${method} ${url} → ${res.status}${detail}`)
+    throw new Error(`${method} ${apiPath} → ${res.status}${detail}`)
   }
   if (res.status === 204) return undefined as T
   const text = await res.text()
@@ -138,8 +158,10 @@ export async function apiFetch<T>(
 
 /** Multipart upload (do not set Content-Type; browser sets boundary). */
 export async function apiFetchForm<T>(url: string, form: FormData): Promise<T> {
-  const res = await fetch(`/api${url}`, {
+  const apiPath = `/api${url}`
+  const res = await fetch(apiPath, {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
       ...getAuthHeaders()
     },
@@ -153,7 +175,7 @@ export async function apiFetchForm<T>(url: string, form: FormData): Promise<T> {
     } catch {
       /* ignore */
     }
-    throw new Error(`POST ${url} → ${res.status}${detail}`)
+    throw new Error(`POST ${apiPath} → ${res.status}${detail}`)
   }
   if (res.status === 204) return undefined as T
   const text = await res.text()
@@ -172,8 +194,10 @@ export async function apiFetchBinary(
 ): Promise<{ blob: Blob; filename: string }> {
   const method = opts.method || 'GET'
   const qs = opts.params ? `?${new URLSearchParams(opts.params)}` : ''
-  const res = await fetch(`/api${url}${qs}`, {
+  const apiPath = `/api${url}${qs}`
+  const res = await fetch(apiPath, {
     method,
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
       ...getAuthHeaders()
@@ -181,7 +205,7 @@ export async function apiFetchBinary(
     body: method === 'GET' || method === 'DELETE' ? undefined : JSON.stringify(opts.data ?? {})
   })
   if (!res.ok) {
-    throw new Error(`${method} ${url} → ${res.status}`)
+    throw new Error(`${method} ${apiPath} → ${res.status}`)
   }
   const cd = res.headers.get('Content-Disposition') || ''
   const m = /filename="?([^";]+)"?/i.exec(cd)

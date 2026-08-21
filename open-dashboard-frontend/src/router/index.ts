@@ -1,5 +1,28 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { hasAuthSession, hasStoredPermission } from '../api/http'
+import { authApi, type AuthMe } from '../api/auth'
+import { clearAuthHeaders, hasAuthSession, setAuthFromMe } from '../api/http'
+
+let authCache: AuthMe | null = null
+
+function hasPermission(me: AuthMe, permission: string) {
+  const permissions = me.effectivePermissions?.length ? me.effectivePermissions : me.permissions || []
+  if (permissions.includes('*') || permissions.includes(permission)) return true
+  const colon = permission.indexOf(':')
+  return colon > 0 && permissions.includes(permission.slice(0, colon + 1) + '*')
+}
+
+async function currentAuth(): Promise<AuthMe | null> {
+  if (authCache) return authCache
+  try {
+    authCache = await authApi.me()
+    setAuthFromMe(authCache)
+    return authCache
+  } catch {
+    clearAuthHeaders()
+    authCache = null
+    return null
+  }
+}
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -14,6 +37,12 @@ export const router = createRouter({
       name: 'login',
       component: () => import('../auth/views/Login.vue'),
       meta: { title: '登录', hideShell: true, public: true }
+    },
+    {
+      path: '/register',
+      name: 'register',
+      component: () => import('../auth/views/Register.vue'),
+      meta: { title: '注册', hideShell: true, public: true }
     },
     {
       path: '/forbidden',
@@ -31,19 +60,19 @@ export const router = createRouter({
       path: '/datasources',
       name: 'datasources',
       component: () => import('../datasource/views/DatasourceManage.vue'),
-      meta: { title: '数据源', fullBleed: true }
+      meta: { title: '数据源', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/datasources/:id',
       name: 'datasource-detail',
       component: () => import('../datasource/views/DatasourceManage.vue'),
-      meta: { title: '数据源', fullBleed: true }
+      meta: { title: '数据源', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/datasets',
       name: 'datasets',
       component: () => import('../dataset/views/DatasetManage.vue'),
-      meta: { title: '数据集', fullBleed: true }
+      meta: { title: '数据集', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/data-plaza',
@@ -55,7 +84,7 @@ export const router = createRouter({
       path: '/datasets/:id',
       name: 'dataset-detail',
       component: () => import('../dataset/views/DatasetManage.vue'),
-      meta: { title: '数据集', fullBleed: true }
+      meta: { title: '数据集', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/dashboards',
@@ -121,13 +150,13 @@ export const router = createRouter({
       path: '/dimensions',
       name: 'dimensions',
       component: () => import('../dimension/views/DimensionManage.vue'),
-      meta: { title: '维度管理', fullBleed: true }
+      meta: { title: '维度管理', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/knowledge',
       name: 'knowledge',
       component: () => import('../dimension/views/DimensionManage.vue'),
-      meta: { title: '知识维护', fullBleed: true }
+      meta: { title: '知识维护', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/workspace-admin',
@@ -136,19 +165,24 @@ export const router = createRouter({
       meta: {
         title: '成员权限',
         fullBleed: true,
-        requiredPermissions: ['workspace:admin', 'workspace:manage_member']
+        surface: 'manage',
+        requiredPermissions: ['workspace:admin', 'workspace:manage_member', 'platform:admin']
       }
     }
   ]
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   if (to.meta.public) return true
   if (!hasAuthSession()) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
+  const me = await currentAuth()
+  if (!me) {
+    return { path: '/login', query: { redirect: to.fullPath, expired: '1' } }
+  }
   const required = to.meta.requiredPermissions || []
-  if (required.length && !required.some((permission) => hasStoredPermission(permission))) {
+  if (required.length && !required.some((permission) => hasPermission(me, permission))) {
     return { path: '/forbidden' }
   }
   return true

@@ -2,6 +2,7 @@ package io.opendashboard.application;
 
 import io.opendashboard.domain.context.AuthPrincipal;
 import io.opendashboard.domain.exception.ForbiddenException;
+import io.opendashboard.domain.gateway.IdentityRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -25,8 +26,10 @@ public class WorkspaceGovernanceService {
     private final List<AssetSeed> assets = new ArrayList<>();
     private final Set<String> addedAssets = ConcurrentHashMap.newKeySet();
     private final Map<String, DataRequestVO> requests = new ConcurrentHashMap<>();
+    private final IdentityRepository identityRepository;
 
-    public WorkspaceGovernanceService() {
+    public WorkspaceGovernanceService(IdentityRepository identityRepository) {
+        this.identityRepository = identityRepository;
         seedWorkspaces();
         seedSecurity();
         seedAssets();
@@ -49,8 +52,10 @@ public class WorkspaceGovernanceService {
 
     public List<WorkspaceVO> workspaces(AuthPrincipal principal, String currentWorkspaceId) {
         String current = visibleWorkspaceId(principal, currentWorkspaceId);
-        return workspaces.values().stream()
-                .map(w -> workspaceVO(w, current.equals(w.id())))
+        return visibleWorkspaceIds(principal).stream()
+                .map(workspaces::get)
+                .filter(w -> w != null)
+                .map(w -> workspaceVO(w, current.equals(w.id()), permissionsForWorkspace(principal, w.id())))
                 .toList();
     }
 
@@ -72,7 +77,8 @@ public class WorkspaceGovernanceService {
     }
 
     public WorkspaceVO workspace(AuthPrincipal principal, String workspaceId) {
-        return workspaceVO(workspaces.get(visibleWorkspaceId(principal, workspaceId)), true);
+        String current = visibleWorkspaceId(principal, workspaceId);
+        return workspaceVO(workspaces.get(current), true, permissionsForWorkspace(principal, current));
     }
 
     public List<WorkspaceGroupVO> groups(String workspaceId, AuthPrincipal principal) {
@@ -96,22 +102,30 @@ public class WorkspaceGovernanceService {
 
     public EffectivePermissionVO effectivePermissions(String workspaceId, AuthPrincipal principal) {
         String current = visibleWorkspaceId(principal, workspaceId);
-        LinkedHashSet<String> permissions = new LinkedHashSet<>(principal.permissions());
-        groups.getOrDefault(current, List.of()).forEach(g -> g.roles().forEach(roleCode ->
-                roleSeeds(current).stream()
-                        .filter(r -> r.code().equals(roleCode))
-                        .findFirst()
-                        .ifPresent(role -> permissions.addAll(role.permissions()))
-        ));
+        LinkedHashSet<String> permissions = new LinkedHashSet<>(permissionsForWorkspace(principal, current));
         return new EffectivePermissionVO(
                 current,
                 principal.userId(),
                 sorted(permissions),
-                dataAssets(current, principal).stream()
-                        .filter(a -> "dataset".equals(a.type()) && (a.added() || "granted".equals(a.authStatus())))
-                        .map(DataAssetVO::id)
-                        .toList()
+                grantedAskableSources(principal)
         );
+    }
+
+    /**
+     * P008 askable sources: granted/askable datasets in workspaces the user can see.
+     * {@code source} maps plaza assets onto live {@code de_dataset} ids.
+     */
+    public List<String> grantedAskableSources(AuthPrincipal principal) {
+        Set<String> visible = new LinkedHashSet<>(visibleWorkspaceIds(principal));
+        return assets.stream()
+                .filter(a -> "dataset".equals(a.type()))
+                .filter(a -> visible.contains(a.workspaceId()))
+                .map(a -> toAssetVO(a, principal))
+                .filter(a -> a.actions().contains("ask"))
+                .map(DataAssetVO::source)
+                .filter(source -> source != null && !source.isBlank())
+                .distinct()
+                .toList();
     }
 
     public DataPlazaVO dataPlaza(String workspaceId, AuthPrincipal principal) {
@@ -242,16 +256,54 @@ public class WorkspaceGovernanceService {
 
     private String visibleWorkspaceId(AuthPrincipal principal, String workspaceId) {
         String id = workspaceId == null || workspaceId.isBlank() ? principal.workspaceId() : workspaceId;
-        if (!workspaces.containsKey(id)) {
+        if (!workspaces.containsKey(id) || !visibleWorkspaceIds(principal).contains(id)) {
             throw new ForbiddenException("工作区不可见: " + id);
         }
         return id;
     }
 
-    private WorkspaceVO workspaceVO(WorkspaceSeed seed, boolean current) {
+    private List<String> visibleWorkspaceIds(AuthPrincipal principal) {
+        if (isPlatformAdmin(principal)) {
+            return List.copyOf(workspaces.keySet());
+        }
+        List<String> ids = identityRepository.workspacesForUser(principal.userId());
+        if (ids.isEmpty()) ids = List.of(principal.workspaceId());
+        return ids.stream()
+                .filter(workspaces::containsKey)
+                .distinct()
+                .toList();
+    }
+
+    private boolean isPlatformAdmin(AuthPrincipal principal) {
+        Set<String> permissions = principal.permissions();
+        return permissions.contains("*") || permissions.contains("platform:admin");
+    }
+
+    private Set<String> permissionsForWorkspace(AuthPrincipal principal, String workspaceId) {
+        List<String> permissions = identityRepository.permissionsForUser(principal.userId(), workspaceId);
+        if (workspaceId.equals(principal.workspaceId()) && permissions.isEmpty()) {
+            return principal.permissions();
+        }
+        return new LinkedHashSet<>(permissions);
+    }
+
+    private WorkspaceVO workspaceVO(WorkspaceSeed seed, boolean current, Set<String> permissions) {
         long assetCount = assets.stream().filter(a -> seed.id().equals(a.workspaceId())).count();
-        return new WorkspaceVO(seed.id(), seed.name(), seed.description(), seed.mode(), seed.role(), current,
+        return new WorkspaceVO(seed.id(), seed.name(), seed.description(), seed.mode(), roleFromPermissions(permissions), current,
                 seed.memberCount(), (int) assetCount);
+    }
+
+    private String roleFromPermissions(Set<String> permissions) {
+        if (permissions.contains("*") || permissions.contains("platform:admin")) {
+            return "platform-admin";
+        }
+        if (permissions.contains("workspace:admin") || permissions.contains("workspace:manage_member")) {
+            return "workspace-admin";
+        }
+        if (permissions.contains("dashboard:manage") || permissions.contains("report:manage") || permissions.contains("conversation:use")) {
+            return "analyst";
+        }
+        return "viewer";
     }
 
     private List<RoleSeed> roleSeeds(String workspaceId) {
@@ -281,7 +333,9 @@ public class WorkspaceGovernanceService {
 
     private void seedSecurity() {
         List<RoleSeed> defaultRoles = List.of(
-                new RoleSeed("workspace-admin", "工作区管理员", "管理成员、用户组、角色和资产发布范围",
+                new RoleSeed("platform-admin", "超级管理员", "管理全部工作区、成员、数据和知识发布",
+                        List.of("platform:admin", "workspace:admin", "workspace:manage_member", "dataset:manage", "dataset:use", "conversation:use")),
+                new RoleSeed("workspace-admin", "工作区管理员", "管理本工作区成员、用户组、角色和资产发布范围",
                         List.of("workspace:admin", "workspace:manage_member", "dataset:manage", "dataset:use", "conversation:use")),
                 new RoleSeed("analyst", "分析师", "可消费授权资产并创建对话、看板和报告",
                         List.of("dataset:use", "conversation:use", "dashboard:manage", "report:manage")),

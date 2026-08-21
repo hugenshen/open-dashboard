@@ -186,10 +186,12 @@ FE → Java Public Run API → Harness → Java Internal API
 
 导航规则：
 
-- 所有用户进入平台后必须先落在一个当前工作区；顶部工作区切换器展示 `workspaceId`、工作区名和当前角色。
+- 用户使用端不展示工作区名称、不提供工作区切换。数据广场用「企业资产 / 我的资产」分区组织目录，不出现工作区切换，也不用左侧数据空间栏做导航。
+- 工作区只出现在管理端。超级管理员可切换并治理全部工作区；工作区管理员通常只管理 1～2 个，只有多于一个时才显示切换器。
+- 运行时请求仍携带 `workspaceId`（管理端当前治理范围，或用户端服务端绑定的默认范围），前端不把该概念暴露给业务用户。
 - 无管理权限的用户只看到用户使用端；有数据、知识或成员权限时才展示对应管理入口。
 - 用户使用端不承载成员、角色、发布、审计等治理动作，只展示“当前有哪些数据、可申请哪些数据、当前可问什么、用了什么知识、生成了什么产物”。
-- 管理端不发起 AI run；它维护数据、知识、权限和审计事实。需要试问时跳回对话分析，并带当前 `workspaceId` 与授权数据集上下文。
+- 管理端不发起 AI run；它维护数据、知识、权限和审计事实。需要试问时跳回对话分析。
 
 高保落点：
 
@@ -200,7 +202,7 @@ FE → Java Public Run API → Harness → Java Internal API
 | `docs/prototypes/hi-fi/login.html` | 登录、企业 SSO、退出后提示、忘记密码 |
 | `docs/prototypes/hi-fi/register.html` | 注册用户、邀请码加入工作区、创建新工作区 |
 | `docs/prototypes/hi-fi/account-settings.html` | 个人资料、修改密码、登录安全、通知偏好 |
-| `docs/prototypes/hi-fi/data-market.html` | 用户端数据广场：数据空间、资产分类、我的数据、已获权、可申请、申请中、消费申请 |
+| `docs/prototypes/hi-fi/data-market.html` | 用户端数据广场：企业资产 / 我的资产、资产分类、已获权、可申请、已添加、申请中、消费申请 |
 | `docs/prototypes/hi-fi/workspace-admin.html` | 成员、项目组、角色矩阵、数据权限、工具权限、审计摘要 |
 | `docs/prototypes/hi-fi/knowledge.html` | 管理端知识库：候选确认、指标、术语、金标准问法、我的记忆 |
 | `docs/prototypes/hi-fi/conversation-workspace.html` | 用户使用端对话分析：当前工作区、可问数据集、知识命中和管理跳转 |
@@ -208,9 +210,8 @@ FE → Java Public Run API → Harness → Java Internal API
 用户使用端核心体验：
 
 ```text
-选择工作区
-  → 工作台看到可问数据、最近对话、我的看板/报告
-  → 数据广场查看企业资产、我的数据、可申请和申请中
+进入工作台看到可问数据、最近对话、我的看板/报告
+  → 数据广场按企业资产 / 我的资产查看已获权、可申请、已添加和申请中
   → 未获权时提交消费申请
   → 进入对话分析提问或生成
   → 前端直接调用 Harness public run
@@ -220,7 +221,8 @@ FE → Java Public Run API → Harness → Java Internal API
 管理端核心体验：
 
 ```text
-工作区管理员进入成员权限
+超级管理员或工作区管理员进入管理端
+  → 超级管理员可切换全部工作区；工作区管理员只看到自己的 1～2 个
   → 同步/邀请用户
   → 绑定项目组与角色
   → 配置数据集 use、可申请范围、行列策略和工具策略
@@ -247,6 +249,21 @@ FE → Java Public Run API → Harness → Java Internal API
 | `audit_event` | `workspaceId`、`userId`、`runId`、`toolName`、`decision` | 可追溯审计 |
 
 所有业务表和知识表必须带 `workspaceId`。跨工作区共享只能通过显式复制或发布，不允许同一资源在多个工作区隐式可见。
+
+当前已落地的身份与菜单权限薄片使用 `V15__identity_access.sql`：
+
+| 物理表 | 职责 | 当前边界 |
+|--------|------|----------|
+| `od_user_account` | 本地账号、展示名、邮箱和状态 | 服务端生成 `user_id`，前端不能指定 |
+| `od_password_credential` | 密码凭证 | PBKDF2-HMAC-SHA256、随机盐、可调迭代次数；不存明文密码 |
+| `od_auth_session` | 浏览器会话 | 只存 Token 哈希、过期时间、当前 `workspace_id` 和 user-agent 摘要 |
+| `od_workspace_member` | 用户加入工作区 | 当前版本落用户-工作区-角色；后续再拆项目组继承 |
+| `od_role`、`od_permission`、`od_role_permission` | RBAC 权限字典和角色授权 | 用于计算 `AuthPrincipal.effectivePermissions` |
+| `od_menu_item`、`od_menu_permission` | 菜单字典和菜单访问条件 | `JdbcMenuProvider` 服务端过滤用户端 / 管理端菜单 |
+| `od_external_identity` | 外部身份绑定 | Google / OIDC 的 `provider + subject` 绑定本地 user |
+| `od_sso_state` | SSO 一次性 state | 保存 state hash、nonce、PKCE code verifier、登录后 redirect 和消费时间 |
+
+浏览器身份以 `OD_SESSION` HttpOnly Cookie 为准。`X-User-Id`、`X-User-Perms` 等 header 只允许带有效 `X-OD-Internal-Token` 的 Java/Harness 内部调用使用，避免前端直接放大权限。
 
 ## 4. 权限模型
 
@@ -294,9 +311,10 @@ effective = AuthN 用户身份
 
 第一阶段可以支持三种来源：
 
-- 本地用户：用于开发、私有部署和管理员兜底。
-- OIDC / SSO：企业接入推荐路径。
-- 外部 header adapter：用于被已有平台网关托管时传入 user / org / group。
+- 本地用户：本阶段已实现，支持登录、注册、修改密码、退出和切换工作区。
+- Google / OIDC SSO：本阶段已实现通用 OIDC provider，支持 Google、Azure AD、Okta、Keycloak、自建 IdP 等授权码登录；回调后由 Java 绑定/创建本地 user 并建立 `OD_SESSION`。
+- SAML SSO：作为后续企业增强，接入后也必须落到同一 user/session/permission 模型。
+- 外部 header adapter：仅保留给可信内部网关或 Harness 内部调用，必须校验 `X-OD-Internal-Token`。
 
 ### 5.1.1 认证与账号通用功能
 
@@ -305,7 +323,7 @@ effective = AuthN 用户身份
 | 页面 / 交互 | 入口 | 结果 |
 |-------------|------|------|
 | 登录 | `login.html` | 账号密码登录后进入上次工作区或工作区选择 |
-| 企业 SSO 登录 | `login.html` | 跳转身份提供方，回调后由 Java 建立 user session |
+| 企业 SSO 登录 | `login.html` | 跳转 Google 或通用 OIDC 身份提供方，回调后由 Java 建立 user session |
 | 忘记密码 | `login.html#reset` | 发送一次性重置链接，重置成功后注销其它设备 |
 | 注册 | `register.html` | 创建 user；可用邀请码加入工作区，或创建新工作区 |
 | 账号设置 | 账号下拉 → `account-settings.html` | 修改个人资料、语言、通知偏好 |

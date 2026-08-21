@@ -65,14 +65,39 @@ public final class ConversationDtos {
             String title,
             Map<String, Object> layoutPrefs,
             List<String> datasetIds,
-            String linkedDashboardId
-    ) {}
+            String linkedDashboardId,
+            String userId,
+            String ownerId
+    ) {
+        public ConversationUpdateRequest {
+            rejectClientUserId(userId, ownerId);
+        }
+
+        public ConversationUpdateRequest(
+                String title,
+                Map<String, Object> layoutPrefs,
+                List<String> datasetIds,
+                String linkedDashboardId
+        ) {
+            this(title, layoutPrefs, datasetIds, linkedDashboardId, null, null);
+        }
+    }
 
     public record ConversationCreateRequest(
             String title,
             List<String> datasetIds,
-            String linkedDashboardId
-    ) {}
+            String linkedDashboardId,
+            String userId,
+            String ownerId
+    ) {
+        public ConversationCreateRequest {
+            rejectClientUserId(userId, ownerId);
+        }
+
+        public ConversationCreateRequest(String title, List<String> datasetIds, String linkedDashboardId) {
+            this(title, datasetIds, linkedDashboardId, null, null);
+        }
+    }
 
     public record ConversationRunRequest(
             String message,
@@ -81,8 +106,32 @@ public final class ConversationDtos {
             String styleId,
             List<String> datasetIds,
             String selectedChartId,
-            Map<String, Object> selectedEncode
-    ) {}
+            Map<String, Object> selectedEncode,
+            String userId,
+            String ownerId
+    ) {
+        public ConversationRunRequest {
+            rejectClientUserId(userId, ownerId);
+        }
+
+        public ConversationRunRequest(
+                String message,
+                String intent,
+                String mode,
+                String styleId,
+                List<String> datasetIds,
+                String selectedChartId,
+                Map<String, Object> selectedEncode
+        ) {
+            this(message, intent, mode, styleId, datasetIds, selectedChartId, selectedEncode, null, null);
+        }
+    }
+
+    static void rejectClientUserId(String userId, String ownerId) {
+        if ((userId != null && !userId.isBlank()) || (ownerId != null && !ownerId.isBlank())) {
+            throw new IllegalArgumentException("CLIENT_USER_ID_FORBIDDEN");
+        }
+    }
 
     public record StylePresetVO(
             String id,

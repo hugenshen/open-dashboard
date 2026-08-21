@@ -62,7 +62,7 @@ implementation:
 | 怎么验收 | [acceptance.yaml](./acceptance.yaml) |
 | 依赖 | P004 对话分析、P006 对话问数、P008 权限感知工作台 |
 | 契约 | 本切片已补 Harness run/adopt/trace/memory/knowledge 与 Java workspace/data-plaza 接口到 [`openapi.yaml`](../../design/openapi.yaml)；后续跨端继续先改契约 |
-| 当前范围 | 已确认“同壳双区域”：用户使用端承接工作台/数据广场/对话分析/仪表盘/报告，管理端承接数据发布/知识/成员权限；代码已落 `/login`、路由守卫、退出登录、`X-Workspace-Id`、`/api/workspaces`、数据广场和成员权限 Vue 页面；正式 IAM、注册/忘记密码 API、数据库迁移、RLS/CLS、审批流写库和审计仍后续推进 |
+| 当前范围 | 已确认“同壳双区域”：用户使用端不暴露工作区概念；工作区只出现在管理端。超级管理员可治理全部工作区，工作区管理员通常只管理 1～2 个。`scripts/e2e-auth-ask.sh` 已验证 demo/wsadmin/analyst 可见工作区与 east 广场 403。正式 IAM、RLS/CLS、审批流写库和审计仍后续推进 |
 
 ## 背景与目标
 
@@ -106,7 +106,7 @@ implementation:
 
 ## 产品需求与用户流程
 
-用户以“工作区”为平台边界。一个企业可以有多个工作区，一个工作区对应一个项目组、业务域或客户空间。用户可以加入多个工作区，但每次运行问数或生成时必须落在一个明确的 `workspaceId`。
+用户端以“企业资产”为发现边界，不以工作区为入口。工作区是管理端的治理边界：一个企业可以有多个工作区，超级管理员可管理全部工作区，一般工作区管理员通常只管理 1～2 个。运行时仍绑定明确的 `workspaceId`，但用户使用端不展示、不切换工作区。
 
 核心用户流程：
 
@@ -130,7 +130,7 @@ implementation:
 
 当前高保入口：
 
-- 产品壳：[`shared/shell.js`](../../prototypes/hi-fi/shared/shell.js) / [`shared/shell.css`](../../prototypes/hi-fi/shared/shell.css) 展示工作区切换器、用户使用端、管理端。
+- 产品壳：[`shared/shell.js`](../../prototypes/hi-fi/shared/shell.js) / [`shared/shell.css`](../../prototypes/hi-fi/shared/shell.css) 只在管理端展示工作区切换器；用户使用端、管理端分组保留。
 - 统一入口：[`index.html`](../../prototypes/hi-fi/index.html) 首屏展示登录、用户使用端、管理端和端到端链路。
 - 登录注册：[`login.html`](../../prototypes/hi-fi/login.html) / [`register.html`](../../prototypes/hi-fi/register.html) 覆盖登录、注册、忘记密码和企业 SSO 示意。
 - 账号设置：[`account-settings.html`](../../prototypes/hi-fi/account-settings.html) 覆盖个人资料、修改密码、登录安全和通知偏好。
@@ -142,7 +142,7 @@ implementation:
 使用端：
 
 - 工作台：搜索、最近对话、我的仪表盘和报告。
-- 数据广场：按数据空间和资产类型查看企业资产、我的数据、可申请和申请中，并发起消费申请。
+- 数据广场：按企业资产 / 我的资产分区和资产类型发现资产；企业侧筛选已获权 / 可申请，我的侧承接已添加与申请中；不展示工作区，也不用左侧数据空间栏做导航。
 - 对话分析：问数、生成看板、查看知识命中和运行解释。
 - 仪表盘 / 报告：浏览、编辑和分享受权限控制的产物。
 
@@ -228,3 +228,6 @@ implementation:
 | 2026-08-19 | 补登录、注册、忘记密码、账号设置、修改密码和退出登录高保闭环 |
 | 2026-08-19 | `index.html` 改为高保统一入口，首屏区分用户使用端和管理端 |
 | 2026-08-19 | 补用户端数据广场：普通用户查看企业资产、我的数据、已获权/可申请/申请中，管理端数据集只负责发布治理 |
+| 2026-08-20 | 确认用户端不再暴露工作区：工作区只出现在管理端；超级管理员治理全部工作区，工作区管理员通常 1～2 个；数据广场用数据空间组织资产 |
+| 2026-08-20 | 数据广场改为企业资产 / 我的资产分区，去掉左侧数据空间导航；申请中只出现在我的资产 |
+| 2026-08-20 | e2e 三角色：demo 3 工作区、wsadmin 2、analyst 1；analyst 访问 east 广场 403；可问集合分析师 ⊆ 超管（PR-WS-02/04） |

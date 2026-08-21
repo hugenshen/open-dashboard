@@ -1,8 +1,8 @@
 /**
- * Auth / menu shell APIs (identity from headers; no login page).
+ * Auth / menu shell APIs. Backend resolves identity from HttpOnly session cookie.
  */
 
-import { apiFetch } from './http'
+import { apiFetch, clearAuthHeaders, setAuthFromMe } from './http'
 
 export type AuthMe = {
   userId: string
@@ -49,7 +49,57 @@ export type WorkspaceRoleVO = {
   permissions: string[]
 }
 
+export type LoginRequest = {
+  username: string
+  password: string
+  workspaceId?: string
+}
+
+export type RegisterRequest = {
+  username: string
+  password: string
+  displayName?: string
+  email?: string
+  workspaceId?: string
+}
+
+export type ChangePasswordRequest = {
+  oldPassword: string
+  newPassword: string
+}
+
+export type SsoProvider = {
+  id: string
+  label: string
+  ready: boolean
+}
+
 export const authApi = {
+  login: async (data: LoginRequest) => {
+    const me = await apiFetch<AuthMe>('/auth/login', { method: 'POST', data })
+    setAuthFromMe(me)
+    return me
+  },
+  register: async (data: RegisterRequest) => {
+    const me = await apiFetch<AuthMe>('/auth/register', { method: 'POST', data })
+    setAuthFromMe(me)
+    return me
+  },
+  logout: async () => {
+    try {
+      await apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' })
+    } finally {
+      clearAuthHeaders()
+    }
+  },
+  switchWorkspace: async (workspaceId: string) => {
+    const me = await apiFetch<AuthMe>('/auth/workspace', { method: 'POST', data: { workspaceId } })
+    setAuthFromMe(me)
+    return me
+  },
+  changePassword: (data: ChangePasswordRequest) =>
+    apiFetch<{ ok: boolean }>('/auth/password', { method: 'POST', data }),
   me: () => apiFetch<AuthMe>('/auth/me'),
-  menus: () => apiFetch<MenuItem[]>('/auth/menus')
+  menus: () => apiFetch<MenuItem[]>('/auth/menus'),
+  ssoProviders: () => apiFetch<SsoProvider[]>('/auth/sso/providers')
 }

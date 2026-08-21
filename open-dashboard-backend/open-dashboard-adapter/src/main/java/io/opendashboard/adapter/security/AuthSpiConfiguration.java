@@ -1,7 +1,10 @@
 package io.opendashboard.adapter.security;
 
+import io.opendashboard.application.auth.IdentityService;
+import io.opendashboard.application.auth.SsoProperties;
 import io.opendashboard.application.conversation.ConversationProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,17 +14,21 @@ import org.springframework.context.annotation.Configuration;
  * to replace these without Spring Security.
  */
 @Configuration
-@EnableConfigurationProperties({AuthProperties.class, ConversationProperties.class})
+@EnableConfigurationProperties({AuthProperties.class, ConversationProperties.class, SsoProperties.class})
 public class AuthSpiConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(AuthProvider.class)
-    public AuthProvider authProvider() {
-        return new HeaderAuthProvider();
+    public AuthProvider authProvider(
+            IdentityService identityService,
+            ConversationProperties conversationProperties,
+            @Value("${opendashboard.auth.session-cookie-name:OD_SESSION}") String cookieName
+    ) {
+        return new SessionCookieAuthProvider(identityService, conversationProperties, cookieName);
     }
 
     @Bean
-    @ConditionalOnMissingBean(MenuProvider.class)
+    @ConditionalOnMissingBean(value = MenuProvider.class, ignored = JdbcMenuProvider.class)
     public MenuProvider menuProvider(ConversationProperties conversationProperties) {
         return new DefaultMenuProvider(conversationProperties);
     }

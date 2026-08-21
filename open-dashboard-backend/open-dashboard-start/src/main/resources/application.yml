@@ -57,3 +57,27 @@ opendashboard:
     fallback-user-id: demo
     fallback-display-name: 演示用户
     fallback-permissions: "*"
+    sso:
+      enabled: true
+      state-cookie-name: OD_SSO_STATE
+      state-ttl-seconds: 600
+      default-workspace-id: workspace-retail
+      default-role-code: analyst
+      providers:
+        google:
+          enabled: false
+          label: Google
+          client-id: ${OD_GOOGLE_CLIENT_ID:}
+          client-secret: ${OD_GOOGLE_CLIENT_SECRET:}
+          redirect-uri: ${OD_GOOGLE_REDIRECT_URI:http://127.0.0.1:8080/api/auth/sso/google/callback}
+          scopes: [openid, email, profile]
+        oidc:
+          enabled: false
+          label: Enterprise SSO
+          client-id: ${OD_OIDC_CLIENT_ID:}
+          client-secret: ${OD_OIDC_CLIENT_SECRET:}
+          authorization-uri: ${OD_OIDC_AUTHORIZATION_URI:}
+          token-uri: ${OD_OIDC_TOKEN_URI:}
+          user-info-uri: ${OD_OIDC_USERINFO_URI:}
+          redirect-uri: ${OD_OIDC_REDIRECT_URI:http://127.0.0.1:8080/api/auth/sso/oidc/callback}
+          scopes: [openid, email, profile]

@@ -476,6 +476,8 @@ async def conversation_runs(
     x_workspace_id: Optional[str] = Header(default=None, alias="X-Workspace-Id"),
 ):
     owner = _owner(x_user_id, x_user_perms)
+    if not has_permission("conversation:use"):
+        raise HTTPException(status_code=403, detail="missing conversation:use")
     workspace_id = _workspace(x_workspace_id)
     conv = session_store.get_conversation(cid, owner_id=owner, workspace_id=workspace_id)
     if not conv:

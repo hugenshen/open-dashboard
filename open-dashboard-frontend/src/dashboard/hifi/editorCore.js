@@ -6550,6 +6550,7 @@ function renderEditor(app) {
         <button class="btn" id="btnPreview">预览</button>
         <button class="btn ghost" id="btnShare">分享</button>
         <button class="btn primary" id="btnPub">发布</button>
+        <div id="editorShellHost" class="bar-shell-host" aria-hidden="true"></div>
       </div>
     </div>
     <div class="editor ${editorShellClass()}">

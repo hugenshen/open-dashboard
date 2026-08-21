@@ -15,7 +15,7 @@
 | `account-settings.html` | 账号设置、修改密码、登录安全、通知偏好 | in-progress · P009 |
 | `workbench.html` | 工作台 | current · P007 交互真相 |
 | `conversation.html` | 对话问数（产品壳 + 嵌入 workspace） | in-progress · P004 / P006 |
-| `data-market.html` | 数据广场（用户端：资产分类 / 我的数据 / 可申请 / 申请中） | in-progress · P008 / P009 |
+| `data-market.html` | 数据广场（用户端：企业资产 / 我的资产 / 可申请 / 申请中） | in-progress · P008 / P009 |
 | `datasource.html` | 数据源 | current |
 | `dataset.html` | 数据集 | current |
 | `knowledge.html` | 知识库（管理端：候选/指标/词表/问法/记忆） | in-progress · P010 |

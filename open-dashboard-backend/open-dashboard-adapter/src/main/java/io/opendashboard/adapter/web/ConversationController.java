@@ -112,11 +112,11 @@ public class ConversationController {
         return ResponseEntity.ok(service.appendMessage(id, request));
     }
 
-    @PostMapping(value = "/{id}/runs", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PostMapping(value = "/{id}/runs", produces = MediaType.APPLICATION_JSON_VALUE)
     @RequirePermission("conversation:use")
-    public ResponseEntity<?> startRun(
+    public ResponseEntity<Map<String, String>> startRun(
             @PathVariable String id,
-            @RequestBody ConversationRunRequest request
+            @RequestBody(required = false) ConversationRunRequest request
     ) {
         // Deprecated: FE must call opendashboard-harness directly (/harness/v1/conversations/*/runs).
         return ResponseEntity.status(HttpStatus.GONE).body(Map.of(

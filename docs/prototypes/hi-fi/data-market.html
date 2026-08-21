@@ -10,28 +10,82 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
     button, input, select, textarea { font: inherit; }
-    .plaza { flex: 1; min-height: 0; overflow: auto; padding: 24px 28px 56px; }
+    .plaza { flex: 1; min-height: 0; overflow: hidden; padding: 0; display: flex; flex-direction: column; background: #f6f7fa; }
     .inner {
       width: 100%;
-      display: grid;
-      grid-template-columns: 256px minmax(760px, 1fr) clamp(340px, 18vw, 420px);
-      gap: 16px;
-      align-items: start;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
     }
+    .plaza-hero {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 28px 8px;
+      text-align: center;
+    }
+    .plaza-hero h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 780;
+      letter-spacing: -0.03em;
+    }
+    .plaza-hero p {
+      margin: 6px 0 0;
+      color: var(--od-muted);
+      font-size: 14px;
+      line-height: 1.45;
+      max-width: 560px;
+    }
+    .hero-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: min(640px, 100%);
+      height: 46px;
+      margin-top: 14px;
+      border: 1px solid #d7dce6;
+      border-radius: 14px;
+      background: #fff;
+      padding: 0 5px 0 16px;
+      box-shadow: 0 8px 20px rgba(79, 70, 229, 0.08);
+    }
+    .hero-search:focus-within {
+      border-color: var(--od-brand);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+    .hero-search svg { width: 18px; height: 18px; color: #8b93a3; flex-shrink: 0; }
+    .hero-search input {
+      flex: 1;
+      min-width: 0;
+      height: 100%;
+      border: 0;
+      outline: none;
+      background: transparent;
+      font-size: 15px;
+    }
+    .hero-search button {
+      min-width: 80px;
+      height: 36px;
+      border: 0;
+      border-radius: 11px;
+      background: var(--od-brand);
+      color: #fff;
+      padding: 0 18px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .plaza-head { display: none; }
     .hero, .panel, .space-nav, .side-card, .asset, .bulk-bar, .drawer {
       border: 1px solid var(--od-line);
       border-radius: 8px;
       background: var(--od-card);
       box-shadow: var(--od-shadow);
     }
-    .hero {
-      grid-column: 1 / -1;
-      padding: 20px 22px;
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 18px;
-    }
+    .hero { display: none; }
     .eyebrow { color: var(--od-brand); font-size: 12px; font-weight: 760; letter-spacing: .04em; }
     .hero h1 { margin-top: 7px; font-size: 24px; font-weight: 780; letter-spacing: 0; }
     .hero p {
@@ -98,20 +152,30 @@
     .mini-stat div { border: 1px solid var(--od-line); border-radius: 8px; background: var(--od-bg); padding: 10px; min-width: 0; }
     .mini-stat b { display: block; font-size: 18px; letter-spacing: 0; }
     .mini-stat span { color: var(--od-muted); font-size: 11.5px; }
-    .panel { min-width: 0; overflow: hidden; }
+    .panel {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+      margin: 0 16px 16px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: none;
+    }
     .toolbar {
-      display: grid;
-      grid-template-columns: minmax(240px, 1fr) auto auto;
-      gap: 10px;
-      padding: 14px;
-      border-bottom: 1px solid var(--od-line);
+      display: flex;
       align-items: center;
+      gap: 10px;
+      padding: 0 14px 12px;
+      border-bottom: 0;
     }
     .search-wrap {
-      height: 36px;
+      margin-left: auto;
+      width: min(360px, 100%);
+      height: 32px;
       border: 1px solid var(--od-line);
       border-radius: 8px;
-      background: var(--od-bg);
+      background: #fff;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -155,32 +219,34 @@
     .view-toggle svg { width: 15px; height: 15px; }
     .tabs {
       display: flex;
-      gap: 6px;
-      padding: 12px 14px 0;
+      gap: 2px;
+      padding: 0 14px 10px;
       overflow-x: auto;
-      border-bottom: 1px solid var(--od-line);
+      border-bottom: 0;
     }
     .tabs button {
-      min-height: 36px;
-      padding: 0 12px;
+      min-height: 28px;
+      padding: 0 10px;
       border: 0;
-      border-bottom: 2px solid transparent;
+      border-radius: 6px;
       background: transparent;
       color: var(--od-muted);
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 650;
       cursor: pointer;
       white-space: nowrap;
     }
-    .tabs button.on { color: var(--od-brand); border-bottom-color: var(--od-brand); }
+    .tabs button.on { color: var(--od-brand); background: var(--od-brand-soft); }
     .filters {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 12px 14px;
+      padding: 0 14px 12px;
       border-bottom: 1px solid var(--od-line);
       flex-wrap: wrap;
     }
+    .filters .tabs { padding: 0; flex: 1; min-width: 0; border: 0; }
+    .filters .sp { flex: 1; min-width: 8px; }
     .seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--od-bg); border: 1px solid var(--od-line); }
     .seg button {
       height: 30px;
@@ -204,7 +270,7 @@
       cursor: pointer;
     }
     .filter-chip.on { color: var(--od-brand); background: var(--od-brand-soft); border-color: #c7d2fe; }
-    .asset-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px; }
+    .asset-grid { display: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px; overflow: auto; }
     .asset {
       position: relative;
       padding: 14px;
@@ -268,7 +334,7 @@
     .badge.wait { background: #fff7e6; color: #b45309; border-color: #fde68a; }
     .badge.lock { background: #eef0f3; color: var(--od-muted); }
     .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .asset-list { display: none; padding: 14px; overflow: auto; }
+    .asset-list { display: block; padding: 0; overflow: auto; flex: 1; min-height: 0; }
     table { width: 100%; border-collapse: collapse; min-width: 780px; font-size: 13px; }
     th, td { padding: 11px 10px; border-bottom: 1px solid var(--od-line); text-align: left; vertical-align: middle; }
     th { color: var(--od-muted); font-size: 12px; font-weight: 760; background: var(--od-bg); }
@@ -276,6 +342,8 @@
     .asset-list .btn { min-height: 30px; padding: 5px 9px; }
     .panel.list-mode .asset-grid { display: none !important; }
     .panel.list-mode .asset-list { display: block; }
+    .panel.card-mode .asset-grid { display: grid; }
+    .panel.card-mode .asset-list { display: none; }
     .bulk-bar {
       display: none;
       position: sticky;
@@ -353,13 +421,26 @@
     }
     .checks input { accent-color: var(--od-brand); }
     .drawer-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .space-nav, .side { display: none; }
+    .scope-tabs { display: inline-flex; gap: 2px; padding: 3px; background: #eef0f3; border-radius: 8px; margin: 0; }
+    .scope-tabs button {
+      min-height: 30px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--od-muted);
+      padding: 0 14px;
+      font-weight: 650;
+      box-shadow: none;
+    }
+    .scope-tabs button.on { color: var(--od-brand); background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
     @media (max-width: 1700px) {
-      .inner { grid-template-columns: 248px minmax(0, 1fr) 318px; }
+      .inner { grid-template-columns: 1fr; }
       .asset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 1180px) {
       .plaza { padding: 20px; }
-      .inner { grid-template-columns: 220px minmax(0, 1fr); }
+      .inner { grid-template-columns: 1fr; }
       .side { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (max-width: 860px) {
@@ -378,41 +459,25 @@
   <div class="od-col">
     <main class="plaza od-page">
       <div class="inner">
-        <section class="hero">
-          <div>
-            <div class="eyebrow">用户使用端 · 企业资产发现</div>
-            <h1>数据广场</h1>
-            <p>用户先在广场发现企业内可消费的数据资产，已获权资产可以添加到“我的数据”并进入问数、看板和报告流程；权限不足的资产只展示业务摘要和申请入口，最终授权仍由管理端数据集和成员权限生效。</p>
-          </div>
-          <div class="hero-actions">
-            <a class="btn primary" href="./conversation.html">用我的数据开始分析</a>
-            <a class="btn" href="./dataset.html">管理端发布资产</a>
-          </div>
+        <section class="plaza-hero">
+          <h1>优选数据资产</h1>
+          <p id="heroCopy">组织内可用的全部数据资产，添加到我的数据后可对该数据进行分析</p>
+          <form class="hero-search" role="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input class="search" id="q" placeholder="您需要什么数据？搜一下" />
+            <button type="submit">搜索</button>
+          </form>
         </section>
 
-        <aside class="space-nav">
-          <div class="nav-title"><span>数据空间</span><span>当前工作区</span></div>
-          <button class="space-btn on" type="button" data-space="all"><span>全部可见资产</span><em>18</em></button>
-          <button class="space-btn" type="button" data-space="retail"><span>零售经营项目组</span><em>8</em></button>
-          <button class="space-btn" type="button" data-space="east"><span>华东门店项目组</span><em>5</em></button>
-          <button class="space-btn" type="button" data-space="finance"><span>财务共享空间</span><em>3</em></button>
-          <button class="space-btn" type="button" data-space="supply"><span>供应链协同空间</span><em>2</em></button>
-          <div class="space-divider"></div>
-          <button class="space-btn" type="button" data-space="mine"><span>已添加到我的数据</span><em id="mineCount">3</em></button>
-          <button class="space-btn" type="button" data-space="pending"><span>我的申请</span><em id="pendingCount">1</em></button>
-          <div class="mini-stat">
-            <div><b>8</b><span>可直接问数</span></div>
-            <div><b>6</b><span>可申请消费</span></div>
-            <div><b>4</b><span>已添加</span></div>
-            <div><b>2</b><span>需管理员发布</span></div>
-          </div>
-        </aside>
-
-        <section class="panel" id="panel">
-          <div class="toolbar">
-            <div class="search-wrap">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-              <input class="search" id="q" placeholder="搜索资产名称、业务域、负责人，例如 GMV / 订单 / 华东" />
+        <section class="panel list-mode" id="panel">
+          <div class="filters">
+            <div class="tabs" aria-label="资产分类">
+              <button class="on" type="button" data-type="all">全部</button>
+              <button type="button" data-type="dataset">数据集</button>
+              <button type="button" data-type="dashboard">仪表板</button>
+              <button type="button" data-type="bundle">数据表组合</button>
+              <button type="button" data-type="file">文件</button>
+              <button type="button" data-type="api">API 数据</button>
             </div>
             <select class="select" id="ownerFilter" aria-label="负责人筛选">
               <option value="all">全部负责人</option>
@@ -420,36 +485,18 @@
               <option value="王业务">王业务</option>
               <option value="陈治理">陈治理</option>
             </select>
+            <div class="seg" id="mineFilters" hidden>
+              <button class="on" type="button" data-state-filter="mine">已添加</button>
+              <button type="button" data-state-filter="pending">申请中</button>
+            </div>
             <div class="view-toggle" aria-label="视图切换">
-              <button class="on" type="button" data-view="card" title="卡片视图">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>
-              </button>
-              <button type="button" data-view="list" title="列表视图">
+              <button class="on" type="button" data-view="list" title="列表视图">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg>
               </button>
+              <button type="button" data-view="card" title="卡片视图">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>
+              </button>
             </div>
-          </div>
-
-          <div class="tabs" aria-label="资产分类">
-            <button class="on" type="button" data-type="all">全部资产</button>
-            <button type="button" data-type="dataset">数据集</button>
-            <button type="button" data-type="dashboard">仪表板</button>
-            <button type="button" data-type="bundle">数据表组合</button>
-            <button type="button" data-type="file">文件</button>
-            <button type="button" data-type="api">API 数据</button>
-          </div>
-
-          <div class="filters">
-            <div class="seg">
-              <button class="on" type="button" data-state-filter="all">全部</button>
-              <button type="button" data-state-filter="granted">已获权</button>
-              <button type="button" data-state-filter="requestable">可申请</button>
-              <button type="button" data-state-filter="pending">申请中</button>
-              <button type="button" data-state-filter="mine">我的数据</button>
-            </div>
-            <button class="filter-chip" type="button" data-sensitive="safe">低敏</button>
-            <button class="filter-chip" type="button" data-sensitive="masked">脱敏可用</button>
-            <button class="filter-chip" type="button" data-sensitive="high">高敏需审批</button>
           </div>
 
           <div class="asset-grid" id="assetGrid">
@@ -509,27 +556,9 @@
               <tbody id="listRows"></tbody>
             </table>
           </div>
-          <div class="empty" id="empty">没有匹配资产。可以切换数据空间、资产类型或联系管理员把资产发布到数据广场。</div>
+          <div class="empty" id="empty">没有匹配资产。可以切换企业 / 我的资产、资产类型或搜索关键词。</div>
           <div class="bulk-bar" id="bulkBar"><span>已选择 <b id="selectedCount">0</b> 个资产</span><span class="sp"></span><button class="btn" type="button" id="clearSelect">取消选择</button><button class="btn primary" type="button" id="bulkAdd">批量添加到我的数据</button></div>
         </section>
-
-        <aside class="side">
-          <section class="side-card">
-            <h2>我的数据 <a class="btn ghost" href="./conversation.html">去问数</a></h2>
-            <p>只有已获权并添加的资产会进入“我的数据”。对话分析和 SQLBot 继续从 Java 权限中心获取 askable 集合。</p>
-            <div class="my-list" id="myList"></div>
-          </section>
-          <section class="side-card">
-            <h2>权限说明</h2>
-            <p>广场可见不等于可消费。未获权资产只展示名称、业务说明、负责人、敏感等级和申请条件，不展示字段明细、样例数据或查询结果。</p>
-            <div class="flow"><div><b>已获权</b><br />可以添加到我的数据，并进入问数或看板消费。</div><div><b>可申请</b><br />只能看业务说明，提交用途、有效期和期望动作。</div><div><b>申请中</b><br />审批通过后由 Java 权限中心写入 dataset:use、行列策略和工具权限。</div></div>
-          </section>
-          <section class="side-card">
-            <h2>管理边界</h2>
-            <p>管理端“数据集”负责发布、字段语义、行列策略和审批；用户端“数据广场”只负责发现、添加和申请消费。</p>
-            <div class="flow"><div><b>管理员发布</b><br />资产进入可见范围和申请目录。</div><div><b>用户添加</b><br />已获权资产进入我的数据，等待学习完成后再分析。</div><div><b>Harness 消费</b><br />运行启动时只读取当前 workspace/user 的授权上下文。</div></div>
-          </section>
-        </aside>
       </div>
     </main>
   </div>
@@ -561,9 +590,9 @@
   const drawerTitle = document.getElementById('drawerTitle');
   const drawerDesc = document.getElementById('drawerDesc');
   const drawerBody = document.getElementById('drawerBody');
-  let stateFilter = 'all';
+  let stateFilter = 'mine';
   let typeFilter = 'all';
-  let spaceFilter = 'all';
+  let assetScope = 'org';
   let sensitiveFilter = '';
 
   function cards() { return [...document.querySelectorAll('.asset')]; }
@@ -577,9 +606,9 @@
   function syncCounters() {
     const mine = cards().filter((card) => card.dataset.mine === 'true').length;
     const pending = cards().filter((card) => card.dataset.state === 'pending').length;
-    mineCount.textContent = String(mine);
-    pendingCount.textContent = String(pending);
-    myList.innerHTML = cards().filter((card) => card.dataset.mine === 'true').slice(0, 5).map((card) => `<div class="my-item"><b>${assetName(card)}</b><span>${typeText(card)} · 已添加 · 可消费</span></div>`).join('');
+    if (mineCount) mineCount.textContent = String(mine);
+    if (pendingCount) pendingCount.textContent = String(pending);
+    if (myList) myList.innerHTML = cards().filter((card) => card.dataset.mine === 'true').slice(0, 5).map((card) => `<div class="my-item"><b>${assetName(card)}</b><span>${typeText(card)} · 已添加 · 可消费</span></div>`).join('');
   }
   function renderListRows(visibleCards) {
     listRows.innerHTML = visibleCards.map((card) => {
@@ -595,11 +624,10 @@
     const owner = document.getElementById('ownerFilter').value;
     const textOk = !q || card.innerText.toLowerCase().includes(q);
     const typeOk = typeFilter === 'all' || card.dataset.type === typeFilter;
-    const stateOk = stateFilter === 'all' || (stateFilter === 'mine' ? card.dataset.mine === 'true' : card.dataset.state === stateFilter);
-    const spaceOk = spaceFilter === 'all' || (spaceFilter === 'mine' ? card.dataset.mine === 'true' : spaceFilter === 'pending' ? card.dataset.state === 'pending' : card.dataset.space === spaceFilter);
+    const scopeOk = assetScope === 'org' ? card.dataset.state !== 'pending' : (stateFilter === 'mine' ? card.dataset.mine === 'true' : card.dataset.state === 'pending');
     const ownerOk = owner === 'all' || card.dataset.owner === owner;
     const sensitiveOk = !sensitiveFilter || card.dataset.sensitive === sensitiveFilter;
-    return textOk && typeOk && stateOk && spaceOk && ownerOk && sensitiveOk;
+    return textOk && typeOk && scopeOk && ownerOk && sensitiveOk;
   }
   function render() {
     const visible = [];
@@ -610,7 +638,8 @@
     });
     renderListRows(visible);
     empty.classList.toggle('show', visible.length === 0);
-    grid.style.display = visible.length === 0 ? 'none' : '';
+    if (visible.length === 0) grid.style.display = 'none';
+    else grid.style.removeProperty('display');
     updateBulk();
     syncCounters();
   }
@@ -681,9 +710,27 @@
       render();
     };
   });
+  document.querySelectorAll('[data-scope]').forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll('[data-scope]').forEach((x) => x.classList.toggle('on', x === btn));
+      assetScope = btn.dataset.scope;
+      document.getElementById('mineFilters').hidden = assetScope !== 'mine';
+      stateFilter = 'mine';
+      document.querySelectorAll('#mineFilters [data-state-filter]').forEach((x) => {
+        x.classList.toggle('on', x.dataset.stateFilter === stateFilter);
+      });
+      const copy = document.getElementById('heroCopy');
+      if (copy) {
+        copy.textContent = assetScope === 'mine'
+          ? '已添加到我的数据的资产可直接分析；申请中的资产可查看进度'
+          : '组织内可用的全部数据资产，添加到我的数据后可对该数据进行分析';
+      }
+      render();
+    };
+  });
   document.querySelectorAll('[data-state-filter]').forEach((btn) => {
     btn.onclick = () => {
-      document.querySelectorAll('[data-state-filter]').forEach((x) => x.classList.toggle('on', x === btn));
+      btn.parentElement.querySelectorAll('[data-state-filter]').forEach((x) => x.classList.toggle('on', x === btn));
       stateFilter = btn.dataset.stateFilter;
       render();
     };
@@ -695,21 +742,16 @@
       render();
     };
   });
-  document.querySelectorAll('.space-btn[data-space]').forEach((btn) => {
-    btn.onclick = () => {
-      document.querySelectorAll('.space-btn[data-space]').forEach((x) => x.classList.toggle('on', x === btn));
-      spaceFilter = btn.dataset.space;
-      render();
-    };
-  });
   document.querySelectorAll('[data-view]').forEach((btn) => {
     btn.onclick = () => {
       document.querySelectorAll('[data-view]').forEach((x) => x.classList.toggle('on', x === btn));
       panel.classList.toggle('list-mode', btn.dataset.view === 'list');
+      panel.classList.toggle('card-mode', btn.dataset.view === 'card');
       render();
     };
   });
   document.getElementById('q').oninput = render;
+  document.querySelector('.hero-search').onsubmit = (event) => { event.preventDefault(); render(); };
   document.getElementById('ownerFilter').onchange = render;
   document.getElementById('clearSelect').onclick = () => {
     cards().forEach((card) => { card.querySelector('.check').checked = false; });
