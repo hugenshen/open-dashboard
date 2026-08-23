@@ -48,6 +48,7 @@ P004/P006 的自研对话 UI（Composer、步骤折叠、结果卡）交互跟�
 |------|------|
 | **跑起来（M0）** | [`opendashboard-dsh-harness/README.md`](../../../opendashboard-dsh-harness/README.md) |
 | 范围与边界 | 本文 |
+| **Harness 架构图** | [dataq-dsh-harness-architecture.png](./dataq-dsh-harness-architecture.png) |
 | 技术切分 | [design.md](./design.md) |
 | **迁移方案（波次/清单）** | [migration.md](./migration.md) |
 | 问数高保（当前增量） | [`conversation-ask-dsh.html`](../../prototypes/hi-fi/conversation-ask-dsh.html) |

@@ -2,7 +2,7 @@
 
 对话 UI + Agent 运行时：npm 锁 `@deepseek-ai/dsh@0.1.1-rc.2`，本仓薄插件挂在 profile `od-conversation`。
 
-> 开发入口：[P011 README](../docs/proposals/P011-dsh-conversation-surface/README.md) · [migration](../docs/proposals/P011-dsh-conversation-surface/migration.md)
+> 开发入口：[P011 README](../docs/proposals/P011-dsh-conversation-surface/README.md) · [migration](../docs/proposals/P011-dsh-conversation-surface/migration.md) · [架构图](../docs/proposals/P011-dsh-conversation-surface/dataq-dsh-harness-architecture.png)
 
 ## 产品边界（BI 模式）
 

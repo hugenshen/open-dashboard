@@ -16,6 +16,8 @@
 
 ## 2. 分层（终态）
 
+![DataQ Conversation Harness 架构：profile → bundle/patch → Agent Loop 与 ctx.agents / systemPrompt / llm / sessions / tools](./dataq-dsh-harness-architecture.png)
+
 ```text
 ┌─────────────────────────────────────────────────────────┐
 │ OD AppShell（P007） 左栏：工作台|对话|数据|看板|报告      │
