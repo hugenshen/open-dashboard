@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi, type SsoProvider } from '../../api/auth'
+import DataQMark from '../../shell/DataQMark.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -49,22 +50,18 @@ async function login() {
   }
 }
 
-function usePlatform() {
-  mode.value = 'platform'
-  account.value = 'demo'
-  password.value = 'demo123456'
-}
-
-function useWorkspaceAdmin() {
-  mode.value = 'workspace'
-  account.value = 'wsadmin'
-  password.value = 'wsadmin123456'
-}
-
-function useAnalyst() {
-  mode.value = 'analyst'
-  account.value = 'analyst'
-  password.value = 'analyst123456'
+function fillDemo(next: 'platform' | 'workspace' | 'analyst') {
+  mode.value = next
+  if (next === 'platform') {
+    account.value = 'demo'
+    password.value = 'demo123456'
+  } else if (next === 'workspace') {
+    account.value = 'wsadmin'
+    password.value = 'wsadmin123456'
+  } else {
+    account.value = 'analyst'
+    password.value = 'analyst123456'
+  }
 }
 
 function startSso(provider: SsoProvider) {
@@ -85,139 +82,232 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="login-page">
-    <section class="login-card">
-      <div class="brand">
-        <i>OD</i>
-        <span>Open Dashboard</span>
+  <main class="auth-page">
+    <aside class="auth-rail" aria-hidden="true">
+      <div class="auth-brand">
+        <DataQMark class="brand-mark" />
+        <span>DataQ</span>
       </div>
-      <p v-if="loggedOut" class="notice">已退出登录</p>
-      <p v-if="expired" class="notice warn">登录状态已失效，请重新登录</p>
-      <p v-if="ssoError" class="notice warn">企业 SSO 登录未完成，请重试或改用账号密码登录</p>
-      <h1>登录</h1>
-      <p class="sub">登录后按权限进入用户使用端或管理端。工作区只出现在管理端。</p>
-      <p class="auth-linkline">新用户还没有账号？<RouterLink :to="registerTo">立即注册</RouterLink></p>
-
-      <div class="sso" v-if="readyProviders.length || loadingProviders">
-        <button
-          v-for="provider in readyProviders"
-          :key="provider.id"
-          type="button"
-          class="sso-btn"
-          @click="startSso(provider)"
-        >
-          <span>{{ provider.id === 'google' ? 'G' : provider.label.slice(0, 1).toUpperCase() }}</span>
-          使用 {{ provider.label }} 登录
-        </button>
-        <p v-if="loadingProviders && !readyProviders.length">正在检查企业登录方式...</p>
+      <div class="auth-hero">
+        <div class="auth-copy">
+          <h1>问数成图，一语成板</h1>
+          <p>用自然语言查数据、生成仪表盘；同一身份进入分析与治理。</p>
+        </div>
+        <ul class="auth-points">
+          <li>
+            <strong>问数</strong>
+            <span>数据集权限内直接出表出图</span>
+          </li>
+          <li>
+            <strong>成板</strong>
+            <span>一句话生成可编辑仪表盘</span>
+          </li>
+          <li>
+            <strong>协作</strong>
+            <span>按工作区与角色管控数据</span>
+          </li>
+        </ul>
       </div>
+    </aside>
 
-      <div class="segments" role="tablist" aria-label="演示账号类型">
-        <button type="button" :class="{ on: mode === 'platform' }" @click="usePlatform">超级管理员</button>
-        <button type="button" :class="{ on: mode === 'workspace' }" @click="useWorkspaceAdmin">工作区管理员</button>
-        <button type="button" :class="{ on: mode === 'analyst' }" @click="useAnalyst">分析师</button>
-      </div>
+    <section class="auth-main">
+      <div class="auth-card">
+        <p v-if="loggedOut" class="notice">已退出登录</p>
+        <p v-if="expired" class="notice warn">登录状态已失效，请重新登录</p>
+        <p v-if="ssoError" class="notice warn">企业 SSO 未完成，请重试或改用账号密码</p>
 
-      <form @submit.prevent="login">
-        <label>
-          <span>账号</span>
-          <input v-model="account" autocomplete="username" placeholder="demo" />
-        </label>
-        <label>
-          <span>密码</span>
-          <input v-model="password" autocomplete="current-password" placeholder="demo123456" type="password" />
-        </label>
-        <p v-if="error" class="error">{{ error }}</p>
-        <button class="primary" type="submit" :disabled="submitting">
-          {{ submitting ? '登录中...' : '登录' }}
-        </button>
-      </form>
+        <h2>登录</h2>
+        <p class="sub">欢迎回来，请输入账号继续。</p>
 
-      <div class="tips">
-        <b>演示权限</b>
-        <span v-if="mode === 'platform'">超级管理员可治理全部工作区；工作区切换只出现在管理端。</span>
-        <span v-else-if="mode === 'workspace'">工作区管理员通常只管理 1～2 个工作区；用户端没有工作区概念。</span>
-        <span v-else>分析师只进入工作台、数据广场、对话分析、仪表盘和报告。</span>
+        <div v-if="readyProviders.length || loadingProviders" class="sso">
+          <button
+            v-for="provider in readyProviders"
+            :key="provider.id"
+            type="button"
+            class="ghost"
+            @click="startSso(provider)"
+          >
+            使用 {{ provider.label }} 登录
+          </button>
+          <p v-if="loadingProviders && !readyProviders.length" class="muted">正在检查企业登录…</p>
+          <div v-if="readyProviders.length" class="split"><span>或使用账号密码</span></div>
+        </div>
+
+        <form @submit.prevent="login">
+          <label class="field">
+            <span>账号</span>
+            <input v-model="account" autocomplete="username" placeholder="用户名" />
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input
+              v-model="password"
+              autocomplete="current-password"
+              placeholder="请输入密码"
+              type="password"
+            />
+          </label>
+          <p v-if="error" class="error">{{ error }}</p>
+          <button class="primary" type="submit" :disabled="submitting">
+            {{ submitting ? '登录中…' : '登录' }}
+          </button>
+        </form>
+
+        <p class="foot">
+          还没有账号？
+          <RouterLink :to="registerTo">立即注册</RouterLink>
+        </p>
+
+        <details class="demo">
+          <summary>演示账号一键填入</summary>
+          <div class="demo-row">
+            <button type="button" :class="{ on: mode === 'platform' }" @click="fillDemo('platform')">
+              超级管理员
+            </button>
+            <button type="button" :class="{ on: mode === 'workspace' }" @click="fillDemo('workspace')">
+              工作区管理员
+            </button>
+            <button type="button" :class="{ on: mode === 'analyst' }" @click="fillDemo('analyst')">
+              分析师
+            </button>
+          </div>
+        </details>
       </div>
     </section>
   </main>
 </template>
 
 <style scoped>
-.login-page {
+.auth-page {
   min-height: 100vh;
   display: grid;
-  place-items: center;
-  padding: 32px;
-  background:
-    linear-gradient(180deg, rgba(79, 70, 229, 0.08), transparent 34%),
-    #f6f7fb;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1fr);
   color: #111827;
+  background: #f6f7fb;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
 }
 
-.login-card {
-  width: min(480px, 100%);
-  border: 1px solid #dfe3ea;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 24px 70px rgba(17, 24, 39, 0.12);
-  padding: 28px;
-}
-
-.brand {
+.auth-rail {
   display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 40px 48px 48px;
+  border-right: 1px solid #e5e7eb;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(79, 70, 229, 0.14), transparent 42%),
+    linear-gradient(160deg, #eef2ff 0%, #f8fafc 48%, #ffffff 100%);
+}
+
+.auth-brand {
+  display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 22px;
-  font-weight: 750;
+  font-size: 17px;
+  font-weight: 720;
+  letter-spacing: -0.02em;
 }
 
-.brand i {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: 18% 78%;
+  display: block;
+}
+
+.auth-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 28px;
+  max-width: 420px;
+  min-height: 0;
+  padding: 32px 0;
+}
+
+.auth-copy h1 {
+  margin: 0;
+  font-size: clamp(28px, 3.2vw, 36px);
+  font-weight: 760;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+}
+
+.auth-copy p {
+  margin: 14px 0 0;
+  color: #4b5563;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.auth-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.auth-points li {
+  display: grid;
+  grid-template-columns: 3em 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 12px 14px;
+  border: 1px solid rgba(79, 70, 229, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.auth-points strong {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.auth-points span {
+  color: #4b5563;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.auth-main {
   display: grid;
   place-items: center;
-  background: #4f46e5;
-  color: #fff;
-  font-style: normal;
-  font-size: 11px;
+  padding: 40px 28px;
+  background: #fff;
 }
 
-h1 {
-  margin: 0 0 8px;
-  font-size: 28px;
-  line-height: 1.15;
+.auth-card {
+  width: min(400px, 100%);
 }
 
-.sub,
-.tips,
-.notice,
-.auth-linkline {
-  color: #4b5563;
-  line-height: 1.65;
+.auth-card h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 740;
+  letter-spacing: -0.02em;
 }
 
-.auth-linkline {
-  margin: 10px 0 0;
+.sub {
+  margin: 8px 0 0;
+  color: #6b7280;
   font-size: 14px;
-}
-
-.auth-linkline a {
-  margin-left: 4px;
-  color: #4f46e5;
-  font-weight: 800;
-  text-decoration: none;
+  line-height: 1.5;
 }
 
 .notice {
-  margin: 0 0 12px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
   border: 1px solid #bbf7d0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #f0fdf4;
   color: #047857;
-  padding: 8px 10px;
   font-size: 13px;
+  line-height: 1.45;
 }
 
 .notice.warn {
@@ -226,130 +316,225 @@ h1 {
   color: #9a3412;
 }
 
-.segments {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
-  margin: 22px 0 16px;
-  padding: 4px;
-  border-radius: 10px;
-  background: #f3f4f6;
-}
-
-.segments button {
-  font-size: 13px;
-  padding: 0 8px;
-}
-
 .sso {
+  margin-top: 22px;
   display: grid;
   gap: 10px;
-  margin: 20px 0 14px;
 }
 
-.sso p {
+.muted {
   margin: 0;
-  color: #6b7280;
+  color: #9ca3af;
   font-size: 13px;
 }
 
-.sso-btn {
-  justify-content: center;
-  display: inline-flex;
+.split {
+  display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 42px;
-  border-color: #d8dde7;
-  background: #fff;
-  color: #111827;
+  gap: 12px;
+  margin: 6px 0 2px;
+  color: #9ca3af;
+  font-size: 12px;
 }
 
-.sso-btn span {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: #eef2ff;
-  color: #4338ca;
-  font-weight: 800;
-  font-size: 13px;
+.split::before,
+.split::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
 }
 
-button,
-input {
-  font: inherit;
-}
-
-button {
-  min-height: 38px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: #4b5563;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.segments button.on {
-  background: #fff;
-  color: #3730a3;
-  border-color: #dfe3ea;
+.split span {
+  white-space: nowrap;
 }
 
 form {
   display: grid;
   gap: 14px;
+  margin-top: 22px;
 }
 
-label span {
+.field span {
   display: block;
   margin-bottom: 7px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 650;
+  color: #374151;
 }
 
 input {
   width: 100%;
   box-sizing: border-box;
-  height: 42px;
-  border: 1px solid #d8dde7;
-  border-radius: 8px;
-  background: #f7f8fc;
-  padding: 0 12px;
+  height: 44px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  padding: 0 14px;
+  font: inherit;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+
+input:hover {
+  border-color: #d1d5db;
 }
 
 input:focus {
-  outline: 3px solid rgba(79, 70, 229, 0.22);
-  border-color: #4f46e5;
+  border-color: #a5b4fc;
   background: #fff;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.primary,
+.ghost {
+  width: 100%;
+  height: 44px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 650;
 }
 
 .primary {
-  min-height: 42px;
+  margin-top: 4px;
+  border: 0;
   background: #4f46e5;
   color: #fff;
 }
 
-.primary:hover {
+.primary:hover:not(:disabled) {
   background: #4338ca;
 }
 
+.primary:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.ghost {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #111827;
+}
+
+.ghost:hover {
+  background: #f9fafb;
+}
+
 .error {
-  margin: -2px 0;
+  margin: 0;
   color: #b42318;
   font-size: 13px;
 }
 
-.tips {
-  margin-top: 18px;
-  border-top: 1px solid #e5e7eb;
-  padding-top: 14px;
-  font-size: 13px;
+.foot {
+  margin: 18px 0 0;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
 }
 
-.tips b,
-.tips span {
-  display: block;
+.foot a {
+  margin-left: 4px;
+  color: #4f46e5;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.foot a:hover {
+  text-decoration: underline;
+}
+
+.demo {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid #f3f4f6;
+  color: #9ca3af;
+  font-size: 12.5px;
+}
+
+.demo summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.demo summary::-webkit-details-marker {
+  display: none;
+}
+
+.demo summary:hover {
+  color: #6b7280;
+}
+
+.demo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.demo-row button {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #fff;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.demo-row button:hover,
+.demo-row button.on {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+@media (max-width: 860px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-rail {
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 24px 24px 20px;
+  }
+
+  .auth-hero {
+    flex: none;
+    padding: 16px 0 0;
+    gap: 0;
+  }
+
+  .auth-copy h1 {
+    font-size: 24px;
+  }
+
+  .auth-points {
+    display: none;
+  }
+
+  .auth-main {
+    padding: 28px 20px 40px;
+    background: #f6f7fb;
+  }
+
+  .auth-card {
+    padding: 24px;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 12px 40px rgba(17, 24, 39, 0.06);
+  }
 }
 </style>

@@ -59,6 +59,7 @@ implementation:
 | 你要 | 去看 |
 |------|------|
 | 核心方案与 refs 对照 | [design.md](./design.md) |
+| 问数/看盘出数闸（怎么做） | [P008 permission-design-brief.html](../P008-permission-aware-workbench/permission-design-brief.html) · RLS 验收仍是本文 PR-WS-05 |
 | 怎么验收 | [acceptance.yaml](./acceptance.yaml) |
 | 依赖 | P004 对话分析、P006 对话问数、P008 权限感知工作台 |
 | 契约 | 本切片已补 Harness run/adopt/trace/memory/knowledge 与 Java workspace/data-plaza 接口到 [`openapi.yaml`](../../design/openapi.yaml)；后续跨端继续先改契约 |
@@ -150,7 +151,7 @@ implementation:
 
 - 数据源 / 数据集：接入、发布可问/可申请数据集、字段角色和数据策略。
 - 知识库：指标、术语、SQL 示例、SOP、候选审核和发布。
-- 成员权限：工作区成员、项目组、角色、资源 ACL、工具策略和审计。
+- 成员权限：工作区成员、项目组、角色只读目录；邀请、调整、审批本切片未开放，消费申请走数据广场。
 
 ## 技术设计与数据流
 
@@ -231,3 +232,4 @@ implementation:
 | 2026-08-20 | 确认用户端不再暴露工作区：工作区只出现在管理端；超级管理员治理全部工作区，工作区管理员通常 1～2 个；数据广场用数据空间组织资产 |
 | 2026-08-20 | 数据广场改为企业资产 / 我的资产分区，去掉左侧数据空间导航；申请中只出现在我的资产 |
 | 2026-08-20 | e2e 三角色：demo 3 工作区、wsadmin 2、analyst 1；analyst 访问 east 广场 403；可问集合分析师 ⊆ 超管（PR-WS-02/04） |
+| 2026-08-22 | 成员权限页改为只读目录：去掉空 CTA；数据边界引导到数据广场 |

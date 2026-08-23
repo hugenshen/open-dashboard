@@ -3,23 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>注册 · Open Dashboard 高保</title>
-  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <title>注册 · DataQ 高保</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';try{var b=localStorage.getItem('od.brand');if(b)document.documentElement.dataset.odBrand=b;}catch(e){}</script>
   <link rel="stylesheet" href="./shared/shell.css" />
   <link rel="stylesheet" href="./shared/auth.css" />
 </head>
 <body>
   <main class="auth-page">
     <section class="auth-rail">
-      <a class="auth-brand" href="./login.html"><i>OD</i><span>Open Dashboard</span></a>
+      <a class="auth-brand" href="./login.html"><img class="od-brand-mark" src="./shared/ip/od-ip-B1-otter-lower-left.png" width="36" height="36" alt="" /><span>DataQ</span></a>
+      <div class="auth-hero">
       <div class="auth-copy">
         <h1>先建立用户，再进入工作区</h1>
         <p>注册只创建用户身份；能看到哪些数据、能否问数和生成看板，由加入的工作区和角色决定。</p>
       </div>
       <div class="auth-flow">
-        <div><b>加入已有工作区</b><br />输入邀请码后成为待审核成员。</div>
-        <div><b>创建新工作区</b><br />首个用户成为工作区管理员。</div>
-        <div><b>后续治理</b><br />管理员在成员权限页绑定项目组、角色和数据策略。</div>
+        <div><b>加入已有工作区</b><span>输入邀请码后成为待审核成员。</span></div>
+        <div><b>创建新工作区</b><span>首个用户成为工作区管理员。</span></div>
+        <div><b>后续治理</b><span>管理员在成员权限页绑定项目组、角色和数据策略。</span></div>
+      </div>
       </div>
     </section>
 

@@ -2,31 +2,31 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { dashboardApi, dashboardTreeApi } from '../../api/dashboard'
-import type {
-  DashboardBarVO,
-  DashboardDetailVO,
-  DashboardTemplateVO,
-  BusiNodeVO
-} from '../../types/dashboard'
+import type { DashboardBarVO, DashboardTemplateVO, BusiNodeVO } from '../../types/dashboard'
+import '../../shell/catalog.css'
+import { useCatalogPage } from '../../shell/useCatalogPage'
 
 const route = useRoute()
 const router = useRouter()
 
 const tree = ref<BusiNodeVO[]>([])
-const selectedId = ref<string | null>(null)
-const bar = ref<DashboardBarVO | null>(null)
-const detail = ref<DashboardDetailVO | null>(null)
+const bars = ref<Record<string, DashboardBarVO>>({})
 const search = ref('')
+const statusFilter = ref<'all' | 'draft' | 'publishedWithDraft' | 'published'>('all')
+const updaterFilter = ref('all')
+const timeFrom = ref('')
+const timeTo = ref('')
 const error = ref('')
+const notice = ref('')
+let noticeTimer: ReturnType<typeof setTimeout> | null = null
 const creating = ref(false)
-const deleting = ref(false)
-const loadingDetail = ref(false)
+const deleting = ref<string | null>(null)
+const publishing = ref<string | null>(null)
 const showTemplateModal = ref(false)
 const templates = ref<DashboardTemplateVO[]>([])
 const selectedTemplateId = ref('blank')
 const createName = ref('')
 const loadingTemplates = ref(false)
-
 const templateError = ref('')
 
 const flat = computed(() => {
@@ -41,28 +41,74 @@ const flat = computed(() => {
   return out
 })
 
+const updaters = computed(() => {
+  const set = new Set<string>()
+  for (const n of flat.value) {
+    const b = bars.value[n.id]
+    const u = b?.updateBy || b?.createBy
+    if (u) set.add(u)
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh'))
+})
+
+function dayStart(iso: string) {
+  const d = new Date(`${iso}T00:00:00`)
+  return d.getTime()
+}
+
+function dayEnd(iso: string) {
+  const d = new Date(`${iso}T23:59:59.999`)
+  return d.getTime()
+}
+
+function matchTime(t?: number) {
+  if (!timeFrom.value && !timeTo.value) return true
+  if (!t) return false
+  if (timeFrom.value && t < dayStart(timeFrom.value)) return false
+  if (timeTo.value && t > dayEnd(timeTo.value)) return false
+  return true
+}
+
+function clearTimeRange() {
+  timeFrom.value = ''
+  timeTo.value = ''
+}
+
+const hasActiveFilter = computed(
+  () =>
+    !!search.value.trim() ||
+    statusFilter.value !== 'all' ||
+    updaterFilter.value !== 'all' ||
+    !!timeFrom.value ||
+    !!timeTo.value
+)
+
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
-  return flat.value.filter((n) => !q || n.name.toLowerCase().includes(q))
+  const list = flat.value.filter((n) => {
+    const b = bars.value[n.id]
+    const s = b?.status || 'draft'
+    if (statusFilter.value !== 'all' && s !== statusFilter.value) return false
+    if (updaterFilter.value !== 'all') {
+      const u = b?.updateBy || b?.createBy || ''
+      if (u !== updaterFilter.value) return false
+    }
+    if (!matchTime(b?.updateTime || b?.createTime)) return false
+    return !q || n.name.toLowerCase().includes(q)
+  })
+  const rank = (id: string) => {
+    const s = bars.value[id]?.status
+    if (s === 'publishedWithDraft') return 0
+    if (s === 'draft') return 1
+    return 2
+  }
+  const time = (id: string) => bars.value[id]?.updateTime || bars.value[id]?.createTime || 0
+  return [...list].sort((a, b) => rank(a.id) - rank(b.id) || time(b.id) - time(a.id) || a.name.localeCompare(b.name, 'zh'))
 })
 
-const chartList = computed(() => {
-  if (!detail.value) return []
-  return Object.values(detail.value.charts || {}).map((ch) => ({
-    id: ch.id,
-    title: ch.title || '未命名图表',
-    type: ch.chartType || '—',
-    datasetId: ch.datasetId
-  }))
-})
+const { page, pageCount, pageNumbers, paged, rangeLabel, pageSize, resetPage, goPage } = useCatalogPage(filtered)
 
-const layoutHint = computed(() => {
-  const comps = detail.value?.components || []
-  const charts = comps.filter((c) => c.type === 'chart').length
-  const others = comps.length - charts
-  if (!comps.length) return '画布为空'
-  return `${comps.length} 组件 · ${charts} 图表${others > 0 ? ` · ${others} 其它` : ''}`
-})
+watch([search, statusFilter, updaterFilter, timeFrom, timeTo], resetPage)
 
 function statusLabel(s?: string) {
   if (s === 'published') return '已发布'
@@ -76,74 +122,59 @@ function statusClass(s?: string) {
   return 'draft'
 }
 
-function typeLabel(t: string) {
-  const map: Record<string, string> = {
-    bar: '柱状图',
-    hbar: '条形图',
-    line: '折线图',
-    area: '面积图',
-    pie: '饼图',
-    kpi: '指标卡',
-    table: '明细表',
-    grouptable: '汇总表',
-    pivot: '透视表'
-  }
-  return map[t] || t
+function formatStamp(t?: number) {
+  if (!t) return '—'
+  return new Date(t).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function updaterOf(id: string) {
+  const b = bars.value[id]
+  return b?.updateBy || b?.createBy || '—'
+}
+
+function updatedAt(id: string) {
+  const b = bars.value[id]
+  return formatStamp(b?.updateTime || b?.createTime)
+}
+
+function createdAt(id: string) {
+  return formatStamp(bars.value[id]?.createTime)
+}
+
+async function hydrateBars(ids: string[]) {
+  const missing = ids.filter((id) => !bars.value[id])
+  if (!missing.length) return
+  const results = await Promise.all(
+    missing.map((id) => dashboardTreeApi.barInfo(id).catch(() => null))
+  )
+  const next = { ...bars.value }
+  results.forEach((b, i) => {
+    if (b) next[missing[i]] = b
+  })
+  bars.value = next
 }
 
 async function load() {
   error.value = ''
   try {
     tree.value = await dashboardTreeApi.tree({})
+    await hydrateBars(flat.value.map((n) => n.id))
     const routeId = typeof route.params.id === 'string' ? route.params.id : null
-    const id = routeId || selectedId.value || filtered.value[0]?.id
-    if (id) await selectDash(id)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  }
-}
-
-async function selectDash(id: string) {
-  selectedId.value = id
-  router.replace(`/dashboards/${id}`)
-  loadingDetail.value = true
-  detail.value = null
-  try {
-    bar.value = await dashboardTreeApi.barInfo(id)
-    try {
-      detail.value = await dashboardApi.get(id, 'draft')
-    } catch {
-      try {
-        detail.value = await dashboardApi.get(id, 'published')
-      } catch {
-        detail.value = null
-      }
+    if (routeId && flat.value.some((n) => n.id === routeId) && !String(route.path).endsWith('/edit')) {
+      await router.replace(`/dashboards/${routeId}/edit`)
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    loadingDetail.value = false
   }
 }
 
 async function openCreateModal() {
-  showTemplateModal.value = true
-  selectedTemplateId.value = 'blank'
-  createName.value = ''
-  templateError.value = ''
-  if (templates.value.length) return
-  loadingTemplates.value = true
-  try {
-    templates.value = await dashboardApi.listTemplates()
-    if (!templates.value.length) {
-      templateError.value = '后端未返回仪表盘模版'
-    }
-  } catch (e) {
-    templates.value = []
-    templateError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    loadingTemplates.value = false
-  }
+  await router.push({ name: 'dashboard-templates' })
 }
 
 function pickTemplate(id: string) {
@@ -186,186 +217,247 @@ async function confirmCreate() {
   }
 }
 
-function openEditor(id?: string) {
-  router.push(`/dashboards/${id || selectedId.value}/edit`)
+function openEditor(id: string) {
+  router.push(`/dashboards/${id}/edit`)
 }
 
-function openPreview(id?: string) {
-  router.push(`/dashboards/${id || selectedId.value}/preview`)
+function showNotice(msg: string) {
+  notice.value = msg
+  if (noticeTimer) clearTimeout(noticeTimer)
+  noticeTimer = setTimeout(() => {
+    notice.value = ''
+  }, 3200)
 }
 
-async function removeDash() {
-  const id = selectedId.value
-  if (!id || deleting.value) return
-  const name = bar.value?.name || id
-  if (!window.confirm(`确定删除仪表盘「${name}」？此操作不可恢复。`)) return
-  deleting.value = true
+function needsPublish(id: string) {
+  const s = bars.value[id]?.status || 'draft'
+  return s === 'draft' || s === 'publishedWithDraft'
+}
+
+function openPreview(id: string) {
+  if ((bars.value[id]?.status || 'draft') === 'draft') {
+    showNotice('当前是草稿，请先点「发布」后再预览已发布版')
+    return
+  }
+  router.push(`/dashboards/${id}/preview`)
+}
+
+async function publishDash(id: string) {
+  if (publishing.value || !needsPublish(id)) return
+  publishing.value = id
   error.value = ''
   try {
-    await dashboardTreeApi.delete(id)
-    selectedId.value = null
-    bar.value = null
-    detail.value = null
-    await router.replace('/dashboards')
-    tree.value = await dashboardTreeApi.tree({})
-    if (filtered.value.length) {
-      await selectDash(filtered.value[0].id)
+    const st = await dashboardApi.publish(id)
+    const prev = bars.value[id]
+    if (prev) {
+      bars.value = { ...bars.value, [id]: { ...prev, status: st.status } }
     }
+    showNotice('已发布')
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
-    deleting.value = false
+    publishing.value = null
+  }
+}
+
+async function removeDash(id: string, name: string) {
+  if (deleting.value) return
+  if (!window.confirm(`确定删除仪表盘「${name}」？此操作不可恢复。`)) return
+  deleting.value = id
+  error.value = ''
+  try {
+    await dashboardTreeApi.delete(id)
+    delete bars.value[id]
+    tree.value = await dashboardTreeApi.tree({})
+    await hydrateBars(flat.value.map((n) => n.id))
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    deleting.value = null
   }
 }
 
 onMounted(load)
 
-watch(filtered, (list) => {
-  if (selectedId.value && list.some((n) => n.id === selectedId.value)) return
-  if (list.length) selectDash(list[0].id)
-  else {
-    selectedId.value = null
-    bar.value = null
-    detail.value = null
+watch(
+  () => route.params.id,
+  (id) => {
+    if (typeof id === 'string' && id && flat.value.some((n) => n.id === id)) {
+      void router.replace(`/dashboards/${id}/edit`)
+    }
   }
-})
+)
 </script>
 
 <template>
   <div class="page">
     <p v-if="error" class="banner-err">{{ error }}</p>
+    <p v-if="notice" class="banner-warn">{{ notice }}</p>
 
-    <div class="layout">
-      <aside class="rail">
-        <div class="rail-top">
-          <div class="rail-title">
-            <h1>仪表盘</h1>
-            <span>{{ flat.length }}</span>
-          </div>
-          <button type="button" class="btn primary block" :disabled="creating" @click="openCreateModal">
-            新建仪表盘
-          </button>
-          <input v-model="search" class="search" placeholder="搜索名称…" />
-        </div>
-
-        <div class="rail-list">
-          <button
-            v-for="n in filtered"
-            :key="n.id"
-            type="button"
-            class="item"
-            :class="{ on: selectedId === n.id }"
-            @click="selectDash(n.id)"
-            @dblclick="openEditor(n.id)"
-          >
-            <span class="item-name">{{ n.name }}</span>
-            <span class="item-sub">id {{ n.id }}</span>
-          </button>
-          <div v-if="!filtered.length" class="muted pad">暂无仪表盘</div>
-        </div>
-      </aside>
-
-      <section v-if="bar && !loadingDetail" class="main">
-        <header class="head">
-          <div class="head-left">
-            <div class="title-row">
-              <h2>{{ bar.name }}</h2>
-              <span class="pill" :class="statusClass(bar.status)">{{ statusLabel(bar.status) }}</span>
-            </div>
-            <p class="meta-line">
-              <span>{{ layoutHint }}</span>
-              <span class="sep">·</span>
-              <span>{{ bar.updateBy || bar.createBy || '—' }}</span>
-              <span class="sep">·</span>
-              <span>{{ bar.updateTime ? new Date(bar.updateTime).toLocaleString('zh-CN') : '—' }}</span>
-            </p>
-          </div>
-          <div class="head-acts">
-            <button type="button" class="btn sm" @click="openPreview()">预览</button>
-            <button type="button" class="btn primary sm" @click="openEditor()">编辑</button>
-            <button type="button" class="btn danger sm" :disabled="deleting" @click="removeDash">
-              {{ deleting ? '删除中…' : '删除' }}
+    <section class="panel">
+      <header class="toolbar">
+        <div class="filters">
+          <label class="filter">
+            <span>状态</span>
+            <select v-model="statusFilter">
+              <option value="all">全部</option>
+              <option value="draft">草稿</option>
+              <option value="publishedWithDraft">有改动</option>
+              <option value="published">已发布</option>
+            </select>
+          </label>
+          <label class="filter">
+            <span>更新人</span>
+            <select v-model="updaterFilter">
+              <option value="all">全部</option>
+              <option v-for="u in updaters" :key="u" :value="u">{{ u }}</option>
+            </select>
+          </label>
+          <label class="filter range">
+            <span>更新时间</span>
+            <input v-model="timeFrom" type="date" :max="timeTo || undefined" />
+            <i>—</i>
+            <input v-model="timeTo" type="date" :min="timeFrom || undefined" />
+            <button
+              v-if="timeFrom || timeTo"
+              type="button"
+              class="clear"
+              title="清除时间"
+              @click="clearTimeRange"
+            >
+              ×
             </button>
-          </div>
-        </header>
-
-        <div class="work">
-          <div class="panel-hd">
-            <h3>图表</h3>
-            <span class="hint">双击左侧可打开编辑器</span>
-          </div>
-
-          <div v-if="!chartList.length" class="panel pad empty-box">
-            <p>还没有图表</p>
-            <button type="button" class="btn primary sm" @click="openEditor()">去编辑器添加</button>
-          </div>
-
-          <ul v-else class="chart-list panel">
-            <li v-for="ch in chartList" :key="ch.id">
-              <span class="ctype">{{ typeLabel(ch.type) }}</span>
-              <span class="ctitle">{{ ch.title }}</span>
-              <span class="cmeta">{{ ch.datasetId ? '已绑数据集' : '未绑数据' }}</span>
-            </li>
-          </ul>
+          </label>
+          <label class="filter search">
+            <input v-model="search" type="search" placeholder="搜索名称" />
+          </label>
         </div>
-      </section>
+        <button type="button" class="btn primary" :disabled="creating" @click="openCreateModal">
+          新建
+        </button>
+      </header>
 
-      <section v-else class="main empty-main">
-        <div class="muted pad">{{ loadingDetail ? '加载中…' : '选择左侧仪表盘，或新建一个' }}</div>
-      </section>
-    </div>
+      <div class="table-scroll">
+        <table class="catalog-table">
+          <thead>
+            <tr>
+              <th class="col-name">名称</th>
+              <th class="col-tight">状态</th>
+              <th class="col-tight">图表</th>
+              <th class="col-tight">更新人</th>
+              <th class="col-tight">更新时间</th>
+              <th class="col-tight">创建时间</th>
+              <th class="acts">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="n in paged" :key="n.id" @click="openEditor(n.id)">
+              <td class="col-name">
+                <span class="name-link">{{ n.name }}</span>
+              </td>
+              <td class="col-tight">
+                <span class="pill" :class="statusClass(bars[n.id]?.status)">
+                  {{ statusLabel(bars[n.id]?.status) }}
+                </span>
+              </td>
+              <td class="col-tight">{{ bars[n.id]?.chartCount ?? '—' }}</td>
+              <td class="col-tight muted">{{ updaterOf(n.id) }}</td>
+              <td class="col-tight muted">{{ updatedAt(n.id) }}</td>
+              <td class="col-tight muted">{{ createdAt(n.id) }}</td>
+              <td class="acts" @click.stop>
+                <div class="row-acts">
+                  <button type="button" class="act-btn" @click="openEditor(n.id)">打开</button>
+                  <button
+                    v-if="needsPublish(n.id)"
+                    type="button"
+                    class="act-btn"
+                    :disabled="publishing === n.id"
+                    @click="publishDash(n.id)"
+                  >
+                    {{ publishing === n.id ? '发布中' : '发布' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="act-btn"
+                    :title="
+                      (bars[n.id]?.status || 'draft') === 'draft'
+                        ? '草稿尚未发布，请先发布'
+                        : '打开已发布只读预览'
+                    "
+                    @click="openPreview(n.id)"
+                  >
+                    预览
+                  </button>
+                  <button
+                    type="button"
+                    class="act-btn danger"
+                    :disabled="deleting === n.id"
+                    @click="removeDash(n.id, n.name)"
+                  >
+                    {{ deleting === n.id ? '删除中' : '删除' }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!filtered.length">
+              <td colspan="7" class="empty-cell">
+                <template v-if="hasActiveFilter">没有符合筛选的仪表盘</template>
+                <template v-else>
+                  还没有仪表盘
+                  <button type="button" class="btn primary sm" @click="openCreateModal">新建</button>
+                </template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <footer v-if="filtered.length" class="pager">
+        <span class="pager-info">共 {{ filtered.length }} 条</span>
+        <div class="pager-btns">
+          <button type="button" :disabled="page <= 1" @click="goPage(page - 1)">上一页</button>
+          <template v-for="(n, i) in pageNumbers" :key="n">
+            <span v-if="i > 0 && n - pageNumbers[i - 1] > 1" class="ellipsis">…</span>
+            <button type="button" :class="{ on: n === page }" @click="goPage(n)">{{ n }}</button>
+          </template>
+          <button type="button" :disabled="page >= pageCount" @click="goPage(page + 1)">下一页</button>
+        </div>
+      </footer>
+    </section>
 
     <div
       v-if="showTemplateModal"
       class="modal-mask"
-      role="dialog"
-      aria-modal="true"
-      aria-label="选择仪表盘模版"
       @click.self="closeCreateModal"
     >
-      <div class="modal">
-        <header class="modal-hd">
-          <div>
-            <h3>新建仪表盘</h3>
-            <p>选择业务领域模版，或从空白开始</p>
-          </div>
-          <button type="button" class="btn sm" :disabled="creating" @click="closeCreateModal">关闭</button>
-        </header>
-
-        <label class="name-field">
-          <span>名称</span>
-          <input
-            v-model="createName"
-            class="search"
-            placeholder="可选，默认使用模版名"
-            :disabled="creating"
-          />
+      <div class="modal" role="dialog" aria-label="新建仪表盘">
+        <h3>新建仪表盘</h3>
+        <p class="modal-sub">选择模版或空白画布</p>
+        <label class="field">
+          名称
+          <input v-model="createName" placeholder="可选，默认用模版名或时间戳" />
         </label>
-
-        <div v-if="loadingTemplates" class="muted pad">加载模版…</div>
-        <div v-else-if="templateError" class="muted pad" style="color:#f54a45">{{ templateError }}</div>
+        <p v-if="templateError" class="banner-err inline">{{ templateError }}</p>
+        <p v-if="loadingTemplates" class="muted">加载模版…</p>
         <div v-else class="tpl-grid">
           <button
             v-for="t in templates"
             :key="t.id"
             type="button"
-            class="tpl-card"
+            class="tpl"
             :class="{ on: selectedTemplateId === t.id }"
-            :disabled="creating"
             @click="pickTemplate(t.id)"
           >
-            <span class="tpl-domain">{{ t.domain }}</span>
-            <span class="tpl-name">{{ t.name }}</span>
-            <span class="tpl-desc">{{ t.description }}</span>
+            <b>{{ t.name }}</b>
+            <span>{{ t.description || t.domain }}</span>
           </button>
         </div>
-
-        <footer class="modal-ft">
+        <div class="modal-acts">
           <button type="button" class="btn" :disabled="creating" @click="closeCreateModal">取消</button>
-          <button type="button" class="btn primary" :disabled="creating || !templates.length" @click="confirmCreate">
-            {{ creating ? '创建中…' : '使用模版创建' }}
+          <button type="button" class="btn primary" :disabled="creating" @click="confirmCreate">
+            {{ creating ? '创建中…' : '创建并编辑' }}
           </button>
-        </footer>
+        </div>
       </div>
     </div>
   </div>
@@ -375,70 +467,147 @@ watch(filtered, (list) => {
 .page {
   --primary: var(--od-brand, #4f46e5);
   --ink: var(--od-ink, #111827);
-  --muted: var(--od-muted, #4b5563);
-  --line: var(--od-line, #dfe3ea);
+  --muted: var(--od-muted, #6b7280);
+  --line: var(--od-line, #e5e7eb);
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--od-bg, #f6f7fb);
+  padding: 12px 16px 16px;
+  box-sizing: border-box;
+  background: var(--od-bg, #f5f6fa);
   color: var(--ink);
 }
 .banner-err {
-  margin: 0;
-  padding: 0.45rem 1rem;
+  margin: 0 0 8px;
+  padding: 0.45rem 0.85rem;
   background: #fff2f0;
   color: #b42318;
   font-size: 0.82rem;
-  border-bottom: 1px solid #ffccc7;
+  border-radius: 8px;
 }
-.layout {
-  flex: 1;
+.banner-warn {
+  margin: 0 0 8px;
+  padding: 0.45rem 0.85rem;
+  background: #fff7e6;
+  color: #ad6800;
+  font-size: 0.82rem;
+  border-radius: 8px;
+}
+.banner-err.inline {
+  border: 0;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-}
-.rail {
+  max-height: 100%;
   background: #fff;
-  border-right: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.toolbar {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
 }
-.rail-top {
-  padding: 0.85rem 0.85rem 0.55rem;
-  border-bottom: 1px solid var(--line);
+.filters {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
-.rail-title {
+.filter {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-.rail-title h1 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-}
-.rail-title span {
-  font-size: 0.75rem;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
   color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.filter > span {
+  flex-shrink: 0;
+}
+.filter select,
+.filter input[type='search'] {
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+}
+.filter select {
+  cursor: pointer;
+}
+.filter.search {
+  flex: 1;
+  min-width: 180px;
+  max-width: 280px;
+}
+.filter.search input {
+  width: 100%;
+}
+.filter.range {
+  padding-right: 6px;
+}
+.filter.range input[type='date'] {
+  width: 122px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+}
+.filter.range i {
+  color: #c0c4cc;
+  font-style: normal;
+}
+.filter .clear {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 16px;
+  line-height: 20px;
+  cursor: pointer;
+}
+.filter .clear:hover {
+  background: #f3f4f6;
+  color: #374151;
 }
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid #d0d5dd;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid #e5e7eb;
   background: #fff;
-  border-radius: 6px;
-  font-size: 12.5px;
-  line-height: 1;
+  border-radius: 8px;
+  font-size: 13px;
   cursor: pointer;
   color: var(--ink);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .btn:disabled {
   opacity: 0.55;
@@ -449,93 +618,167 @@ watch(filtered, (list) => {
   border-color: var(--primary);
   color: #fff;
 }
-.btn.danger {
-  color: #c62828;
-  border-color: #f0c0c0;
-  background: #fff5f5;
-}
 .btn.sm {
   height: 28px;
   padding: 0 10px;
   font-size: 12px;
 }
-.btn.block {
-  width: 100%;
-  height: 32px;
-}
-.search {
-  width: 100%;
-  box-sizing: border-box;
-  height: 32px;
-  padding: 0 0.6rem;
-  border: 1px solid #d8dee6;
-  border-radius: 6px;
-  font-size: 0.82rem;
-}
-.rail-list {
-  flex: 1;
+.table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
-  padding: 0.4rem;
 }
-.item {
+.catalog-table {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 0.12rem;
-  border: 0;
-  background: transparent;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+  font-size: 13px;
+}
+.catalog-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   text-align: left;
-  padding: 0.5rem 0.55rem;
-  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8b95a5;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+}
+.catalog-table td {
+  padding: 11px 16px;
+  border-bottom: 1px solid #f5f6f8;
+  vertical-align: middle;
+}
+.catalog-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.catalog-table tbody tr {
   cursor: pointer;
 }
-.item:hover {
-  background: var(--od-bg, #f6f7fb);
+.catalog-table tbody tr:hover {
+  background: #f7f8fa;
 }
-.item.on {
-  background: var(--od-brand-soft, #eef2ff);
-}
-.item-name {
-  font-size: 0.86rem;
+.name-link {
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--ink);
 }
-.item-sub {
-  font-size: 0.7rem;
+.catalog-table tbody tr:hover .name-link {
+  color: var(--primary);
+}
+.catalog-table td.muted {
   color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
-.main {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.catalog-table th.acts,
+.catalog-table td.acts {
+  width: 220px;
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 12px;
 }
-.empty-main {
+.row-acts {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
 }
-.head {
-  background: #fff;
-  border-bottom: 1px solid var(--line);
-  padding: 0.7rem 1.1rem;
+.act-btn {
+  position: relative;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: 13px;
+  line-height: 24px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.act-btn + .act-btn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: #eceef2;
+}
+.act-btn:hover {
+  color: #3730a3;
+}
+.act-btn.danger {
+  color: #9ca3af;
+}
+.act-btn.danger:hover:not(:disabled) {
+  color: #dc2626;
+}
+.act-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.catalog-table .empty-cell {
+  text-align: center;
+  color: var(--muted);
+  padding: 80px 16px;
+  cursor: default;
+}
+.catalog-table .empty-cell .btn {
+  display: inline-flex;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.pager {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
+  gap: 12px;
+  height: 48px;
+  padding: 0 16px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
   flex-shrink: 0;
 }
-.title-row {
+.pager-info {
+  color: var(--muted);
+  font-size: 13px;
+}
+.pager-btns {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 4px;
 }
-.head h2 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 650;
+.pager-btns button {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pager-btns button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.pager-btns button.on {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+.pager-btns button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pager .ellipsis {
+  width: 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 12px;
 }
 .pill {
   font-size: 0.68rem;
@@ -553,31 +796,41 @@ watch(filtered, (list) => {
   background: #fff7e6;
   color: #d48806;
 }
-.meta-line {
-  margin: 0.3rem 0 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem;
-}
-.sep {
-  opacity: 0.5;
-}
-.head-acts {
-  display: flex;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-.work {
-  flex: 1;
-  min-height: 0;
+.drawer {
+  border-left: 1px solid var(--line);
+  background: #fff;
+  padding: 18px;
   overflow: auto;
-  padding: 0.75rem 1.1rem 1.1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 14px;
+}
+.drawer-hd {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.drawer-hd h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+.meta-line {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.drawer-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .panel-hd {
   display: flex;
@@ -595,15 +848,6 @@ watch(filtered, (list) => {
   font-size: 0.72rem;
   color: var(--muted);
 }
-.panel {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.panel.pad {
-  padding: 1.2rem;
-}
 .empty-box {
   display: flex;
   flex-direction: column;
@@ -611,6 +855,7 @@ watch(filtered, (list) => {
   gap: 0.65rem;
   color: #5c6b7a;
   font-size: 0.88rem;
+  padding: 0.5rem 0;
 }
 .empty-box p {
   margin: 0;
@@ -619,6 +864,9 @@ watch(filtered, (list) => {
   list-style: none;
   margin: 0;
   padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
 }
 .chart-list li {
   display: grid;
@@ -648,7 +896,7 @@ watch(filtered, (list) => {
   white-space: nowrap;
 }
 .cmeta {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--muted);
 }
 .muted {
@@ -661,102 +909,85 @@ watch(filtered, (list) => {
 .modal-mask {
   position: fixed;
   inset: 0;
+  background: rgba(15, 17, 21, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 80;
-  background: rgba(15, 23, 42, 0.45);
-  display: grid;
-  place-items: center;
-  padding: 1rem;
 }
 .modal {
-  width: min(720px, 100%);
-  max-height: min(86vh, 720px);
-  overflow: auto;
   background: #fff;
   border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.2);
-  padding: 1rem 1.1rem 0.9rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
+  padding: 18px;
+  width: min(520px, calc(100vw - 24px));
+  max-height: 80vh;
+  overflow: auto;
 }
-.modal-hd {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
+.modal h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
 }
-.modal-hd h3 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
-}
-.modal-hd p {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
+.modal-sub {
+  margin: 0 0 12px;
+  font-size: 12px;
   color: var(--muted);
 }
-.name-field {
+.field {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.78rem;
-  color: #4e5969;
-  font-weight: 600;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.field input {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--ink);
 }
 .tpl-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
 }
-.tpl-card {
+.tpl {
   text-align: left;
-  border: 1px solid #d0d5dd;
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
   background: #fff;
-  padding: 0.75rem 0.85rem;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 0.28rem;
-  color: var(--ink);
 }
-.tpl-card:hover:not(:disabled) {
-  border-color: var(--primary);
-}
-.tpl-card.on {
+.tpl.on {
   border-color: var(--primary);
   background: var(--od-brand-soft, #eef2ff);
-  box-shadow: inset 0 0 0 1px var(--primary);
 }
-.tpl-card:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.tpl b {
+  display: block;
+  font-size: 13px;
 }
-.tpl-domain {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--primary);
-  letter-spacing: 0.02em;
-}
-.tpl-name {
-  font-size: 0.92rem;
-  font-weight: 700;
-}
-.tpl-desc {
-  font-size: 0.75rem;
-  line-height: 1.45;
+.tpl span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
   color: var(--muted);
 }
-.modal-ft {
+.modal-acts {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
-  padding-top: 0.15rem;
-  border-top: 1px solid var(--line);
+  gap: 8px;
 }
-@media (max-width: 640px) {
-  .tpl-grid {
+@media (max-width: 960px) {
+  .catalog-body.with-drawer {
     grid-template-columns: 1fr;
+  }
+  .drawer {
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
 }
 </style>

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>工作台 · Open Dashboard 高保</title>
-  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <title>工作台 · DataQ 高保</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';try{var b=localStorage.getItem('od.brand');if(b)document.documentElement.dataset.odBrand=b;}catch(e){}</script>
   <link rel="stylesheet" href="./shared/shell.css" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -366,7 +366,7 @@
             <div class="wb-block-hd"><h3>常用</h3></div>
             <div class="wb-apps">
               <a class="wb-app" href="./conversation.html"><div class="icon c1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div class="label">对话分析</div></a>
-              <a class="wb-app" href="./dashboard.html"><div class="icon c2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div><div class="label">新建看板</div></a>
+              <a class="wb-app" href="./dashboard.html#/templates"><div class="icon c2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div><div class="label">新建看板</div></a>
               <a class="wb-app" href="./data-market.html"><div class="icon c3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16l-1 13H5L4 7z"/><path d="M8 7a4 4 0 0 1 8 0"/><path d="M8 12h8M8 16h5"/></svg></div><div class="label">数据广场</div></a>
               <a class="wb-app" href="./data-market.html"><div class="icon c4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><div class="label">我的数据</div></a>
               <a class="wb-app" href="./dashboard.html"><div class="icon c5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></div><div class="label">仪表盘</div></a>
@@ -474,7 +474,7 @@
     const hello = h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好';
     document.getElementById('wbHello').textContent = hello + '，继续分析';
     if (emptyMode) {
-      document.getElementById('wbHello').textContent = '欢迎使用 Open Dashboard';
+      document.getElementById('wbHello').textContent = '欢迎使用 DataQ';
       document.getElementById('wbSubtitle').textContent = '连接业务数据，完成你的第一次分析';
       document.getElementById('wbStats').innerHTML = `
         <span class="wb-stat"><b>1</b> 连接数据源</span>
@@ -535,7 +535,7 @@
           if (index >= countParam) card.style.display = 'none';
         });
         grid.insertAdjacentHTML('beforeend', `
-          <a class="wb-dash-create" href="./dashboard.html">
+          <a class="wb-dash-create" href="./dashboard.html#/templates">
             <i aria-hidden="true">+</i>
             <b>创建新看板</b>
             <span>从数据集开始搭建</span>

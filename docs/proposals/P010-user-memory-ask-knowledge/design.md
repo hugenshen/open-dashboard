@@ -27,6 +27,14 @@
 
 召回：keyword 匹配问题文本；注入 SQLBot `sql_system` 的 `<few-shot-examples>` / `<dimension-values>` / `<business-knowledge>` 以及 Harness `<knowledge>` frozen-snapshot。
 
+问数（dsh）`od_get_schema` 在 terms/metrics/questions 之外再投影 `semantic`：
+
+- `metrics[].expression` 固定为 `AGG(field)`（如 `SUM(pay_amount)`），人写 `formula` 只放 `definition`，不当 SQL
+- `dimensions[].values` 为已确认枚举，过滤必须用原文字面量
+- `examples` 来自数据集金标准问法（最多 3 条）
+
+未确认候选不进入 `semantic`。不引入 Ossie YAML 作为主存储。
+
 管理面见 [management-design.md](./management-design.md)：一级「知识库」做确认闸门；Java `de_indicator` / `de_glossary` / `de_dataset_question` 为准。Harness 文件库仅过渡，且所有读写必须带 `workspaceId`。
 
 ## 3. 与 P008

@@ -2,6 +2,7 @@
 
 > 状态：未实现详细设计，不属于现行 4A 架构。实现并验收后只把稳定结果沉淀到 [`architecture.html`](../../design/architecture.html)。  
 > 需求入口：[README](./README.md) · 验收：[acceptance.yaml](./acceptance.yaml)  
+> 问数/看盘消费闸怎么做（改动前真实分叉、QueryGuard、ACL 表）：[P008 permission-design-brief.html](../P008-permission-aware-workbench/permission-design-brief.html)。P009 仍拥有工作区 IAM、data_policy 管理面与 PR-WS-05/06；不在两处各写一套出数公式。  
 > 本轮同步方案与高保，不改 OpenAPI、不改运行代码。
 
 ## 1. 参考框架对照

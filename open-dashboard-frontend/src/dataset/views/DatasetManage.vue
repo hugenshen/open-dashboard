@@ -14,6 +14,8 @@ import {
   type IndicatorVO,
   type TableItem
 } from '../api'
+import '../../shell/catalog.css'
+import '../../shell/studio.css'
 
 type DragPayload = {
   kind: 'pool' | 'selected'
@@ -57,6 +59,8 @@ const qForm = ref({
 })
 const search = ref('')
 const folderFilter = ref('全部')
+const srcFilter = ref('all')
+const statusFilter = ref('all')
 const tab = ref<'fields' | 'preview' | 'indicators' | 'questions' | 'lineage'>('fields')
 const error = ref('')
 const loading = ref(false)
@@ -118,8 +122,16 @@ const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
   return items.value.filter((d) => {
     if (folderFilter.value !== '全部' && (d.folder || '未分组') !== folderFilter.value) return false
-    if (q && !d.name.toLowerCase().includes(q)) return false
-    return true
+    if (srcFilter.value !== 'all' && d.datasourceId !== srcFilter.value) return false
+    if (statusFilter.value !== 'all' && (d.status || 'ready') !== statusFilter.value) return false
+    if (!q) return true
+    const src = srcNameOf(d.datasourceId).toLowerCase()
+    return (
+      d.name.toLowerCase().includes(q) ||
+      (d.folder || '').toLowerCase().includes(q) ||
+      src.includes(q) ||
+      (d.tableName || '').toLowerCase().includes(q)
+    )
   })
 })
 
@@ -127,6 +139,35 @@ const srcName = computed(() => {
   const id = detail.value?.meta.datasourceId
   return sources.value.find((s) => s.id === id)?.name || id || '—'
 })
+
+function srcNameOf(id?: string) {
+  if (!id) return '—'
+  return sources.value.find((s) => s.id === id)?.name || id
+}
+
+function srcOf(id?: string) {
+  return sources.value.find((s) => s.id === id)
+}
+
+const TYPE_STYLE: Record<string, { short: string; bg: string }> = {
+  mysql: { short: 'My', bg: 'linear-gradient(135deg,#3b82f6,#1d4ed8)' },
+  mariadb: { short: 'Ma', bg: 'linear-gradient(135deg,#3b82f6,#1d4ed8)' },
+  pg: { short: 'PG', bg: 'linear-gradient(135deg,#38bdf8,#0369a1)' },
+  postgresql: { short: 'PG', bg: 'linear-gradient(135deg,#38bdf8,#0369a1)' },
+  postgres: { short: 'PG', bg: 'linear-gradient(135deg,#38bdf8,#0369a1)' },
+  demo: { short: 'Demo', bg: 'linear-gradient(135deg,#94a3b8,#475569)' }
+}
+
+function typeStyle(type?: string) {
+  if (type && TYPE_STYLE[type]) return TYPE_STYLE[type]
+  return { short: (type || 'DS').slice(0, 2).toUpperCase(), bg: 'linear-gradient(135deg,#818cf8,#4f46e5)' }
+}
+
+function srcTypeOf(id?: string) {
+  return srcOf(id)?.type
+}
+
+const isDetail = computed(() => typeof route.params.id === 'string' && !!route.params.id)
 
 const dimN = computed(() => detail.value?.fields.filter((f) => f.group === 'dim').length || 0)
 const quotaN = computed(() => detail.value?.fields.filter((f) => f.group === 'quota').length || 0)
@@ -214,9 +255,18 @@ async function load() {
     const [list, srcs] = await Promise.all([datasetApi.list(), datasourceApi.list()])
     items.value = list
     sources.value = srcs
-    const routeId = typeof route.params.id === 'string' ? route.params.id : null
-    if (routeId && list.some((d) => d.id === routeId)) await selectDs(routeId)
-    else if (!selectedId.value && list.length) await selectDs(list[0].id)
+    const wanted = typeof route.params.id === 'string' ? route.params.id : ''
+    const id = list.some((d) => d.id === wanted) ? wanted : list[0]?.id || ''
+    if (!id) {
+      selectedId.value = null
+      detail.value = null
+      return
+    }
+    if (wanted !== id) {
+      await router.replace(`/datasets/${id}`)
+      return
+    }
+    await selectDs(id)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -388,9 +438,62 @@ async function stopLearn() {
     learnStopping.value = false
   }
 }
+function goList() {
+  const first = items.value[0]?.id
+  if (first) void router.push(`/datasets/${first}`)
+  else void router.push('/datasets')
+}
+
+function goSrc() {
+  const id = detail.value?.meta.datasourceId
+  if (id) void router.push(`/datasources/${id}`)
+}
+
+function goAskBlank() {
+  const ds = selectedId.value || ''
+  const params = new URLSearchParams()
+  if (ds) params.set('datasetId', ds)
+  void router.push(`/conversations?${params.toString()}`)
+}
+
+async function toggleDetailRole(name: string, group: 'dim' | 'quota') {
+  if (!selectedId.value || !detail.value) return
+  const current = detail.value.fields.find((f) => f.name === name)
+  if (!current || current.group === group) return
+  const fields = detail.value.fields.map((f) => (f.name === name ? { ...f, group } : f))
+  try {
+    const saved = await datasetApi.putFields(selectedId.value, fields.map(normalizeField))
+    if (saved) detail.value = saved
+    else detail.value = { ...detail.value, fields }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+function openDataset(id: string) {
+  void router.push(`/datasets/${id}`)
+}
+
+function formatDsTime(t?: number) {
+  if (!t) return '—'
+  return new Date(t).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function dsStatusLabel(s?: string) {
+  if (s === 'ready' || s === 'active') return '就绪'
+  if (s === 'draft') return '草稿'
+  if (s === 'error') return '异常'
+  return s || '—'
+}
+
 function goDimensions() {
   learnResult.value = null
-  void router.push('/dimensions')
+  void router.push('/knowledge')
 }
 function roleLabel2(r: string): string {
   const map: Record<string, string> = { dim: '维度', measure: '指标', time: '时间', flag: '标志位', id: 'ID', junk: '忽略' }
@@ -945,6 +1048,22 @@ onMounted(async () => {
   }
 })
 
+watch(
+  () => route.params.id,
+  async (id) => {
+    if (typeof id === 'string' && id) {
+      if (id !== selectedId.value) await selectDs(id)
+      return
+    }
+    if (items.value[0]) {
+      await router.replace(`/datasets/${items.value[0].id}`)
+      return
+    }
+    selectedId.value = null
+    detail.value = null
+  }
+)
+
 watch(tab, (t) => {
   if (t === 'preview') loadPreview()
   if (t === 'questions') loadQuestions()
@@ -953,318 +1072,372 @@ watch(tab, (t) => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page asset-studio">
     <p v-if="error && !showStudio" class="banner-err">{{ error }}</p>
 
-    <div class="layout">
-      <aside class="rail">
-        <div class="rail-top">
-          <div class="rail-title">
-            <h1>数据集</h1>
-            <span>{{ items.length }}</span>
-          </div>
-          <button type="button" class="btn primary block" @click="openStudio('create')">新建数据集</button>
-          <input v-model="search" class="search" placeholder="搜索名称…" />
-          <div class="filters">
-            <button
-              type="button"
-              class="filter"
-              :class="{ on: folderFilter === '全部' }"
-              @click="folderFilter = '全部'"
-            >
-              全部
-            </button>
-            <button
-              v-for="f in folders"
-              :key="f.name"
-              type="button"
-              class="filter"
-              :class="{ on: folderFilter === f.name }"
-              @click="folderFilter = f.name"
-            >
-              {{ f.name }}
-            </button>
+    <div class="asset-body">
+      <aside class="asset-rail">
+        <div class="rail-head"><span>数据集</span><span>{{ filtered.length }}</span></div>
+        <div class="rail-tools">
+          <label class="asset-search">
+            <span class="ico">⌕</span>
+            <input v-model="search" type="search" placeholder="搜索名称、分组、数据源" />
+          </label>
+          <div class="rail-tools-row">
+            <select v-model="folderFilter" class="rail-select" aria-label="分组">
+              <option value="全部">全部分组</option>
+              <option v-for="f in folders" :key="f.name" :value="f.name">{{ f.name }}（{{ f.count }}）</option>
+            </select>
+            <select v-model="srcFilter" class="rail-select" aria-label="数据源">
+              <option value="all">全部数据源</option>
+              <option v-for="s in sources" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
           </div>
         </div>
-
-        <div class="rail-list">
+        <div class="rail-scroll">
           <button
             v-for="d in filtered"
             :key="d.id"
             type="button"
-            class="ds"
-            :class="{ on: selectedId === d.id }"
-            @click="selectDs(d.id)"
+            class="asset-item"
+            :class="{ on: d.id === selectedId }"
+            @click="openDataset(d.id)"
           >
-            <span class="ds-name">{{ d.name }}</span>
-            <span class="ds-sub">{{ d.folder || '未分组' }} · {{ d.tableName || '—' }}</span>
+            <span class="type-badge" :style="{ background: typeStyle(srcTypeOf(d.datasourceId)).bg }">
+              {{ typeStyle(srcTypeOf(d.datasourceId)).short }}
+            </span>
+            <div class="meta">
+              <div class="name">{{ d.name }}</div>
+              <div class="desc">
+                <span>{{ d.folder || '未分组' }}</span>
+                <span>·</span>
+                <span>{{ srcNameOf(d.datasourceId) }}</span>
+              </div>
+            </div>
           </button>
-          <div v-if="!filtered.length" class="muted pad">无匹配数据集</div>
+          <div v-if="!filtered.length" class="empty-illus">
+            <div class="big">⌀</div>
+            {{ items.length ? '无匹配数据集' : '还没有数据集' }}
+          </div>
         </div>
       </aside>
 
-      <section v-if="detail && !loading" class="main">
-        <header class="head">
-          <div class="head-left">
-            <div class="title-row">
-              <h2>{{ detail.meta.name }}</h2>
-              <span class="pill">{{ detail.meta.status || 'ready' }}</span>
-            </div>
-            <p class="meta-line">
-              <span>{{ srcName }}</span>
-              <span class="sep">·</span>
-              <code>{{ detail.meta.tableName || '—' }}</code>
-              <span class="sep">·</span>
-              <span>{{ detail.meta.folder || '未分组' }}</span>
-              <span class="sep">·</span>
-              <span>{{ dimN }} 维 / {{ quotaN }} 指标</span>
-            </p>
-          </div>
-          <div class="head-acts">
-            <button type="button" class="btn sm" :disabled="learning" @click="askLearn">
-              {{ learning ? '学习中…' : '重新学习' }}
-            </button>
-            <button type="button" class="btn sm" @click="openStudio('edit')">编辑</button>
-          </div>
-        </header>
-
-        <div class="work">
-          <div class="tabs">
-            <button type="button" :class="{ on: tab === 'fields' }" @click="tab = 'fields'">字段</button>
-            <button type="button" :class="{ on: tab === 'indicators' }" @click="tab = 'indicators'">指标确认</button>
-            <button type="button" :class="{ on: tab === 'questions' }" @click="tab = 'questions'">高频问法</button>
-            <button type="button" :class="{ on: tab === 'preview' }" @click="tab = 'preview'">预览</button>
-            <button type="button" :class="{ on: tab === 'lineage' }" @click="tab = 'lineage'">血缘</button>
-          </div>
-
-          <div v-if="tab === 'fields'" class="panel">
-            <div v-if="hasLearned" class="learn-banner">
-              <b>系统已自动识别字段角色</b>
-              <span>基于真实采样统计：ID/标志位/时间/维度/指标。可在问数与生成看板时直接使用。</span>
-            </div>
-            <table class="tbl">
-              <thead>
-                <tr>
-                  <th>字段</th>
-                  <th>显示名</th>
-                  <th>角色</th>
-                  <th>自动识别</th>
-                  <th>类型</th>
-                  <th>来源</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="f in detail.fields" :key="f.name">
-                  <td><code>{{ f.name }}</code></td>
-                  <td>{{ f.label }}</td>
-                  <td>
-                    <span class="tag" :class="f.group">{{ f.group === 'dim' ? '维度' : '指标' }}</span>
-                  </td>
-                  <td>
-                    <template v-if="learnedRoles.get(f.name)">
-                      <span class="tag lrn" :class="learnedRoles.get(f.name)">
-                        {{ roleLabel(learnedRoles.get(f.name)!) }}
-                      </span>
-                    </template>
-                    <span v-else class="muted">—</span>
-                  </td>
-                  <td class="muted">{{ f.dataType || '—' }}</td>
-                  <td>
-                    <template v-if="f.origin === 'calc'">
-                      <span class="tag calc">计算</span>
-                      <code v-if="f.expression" class="expr" :title="f.expression">{{ f.expression }}</code>
-                    </template>
-                    <span v-else class="muted">表字段</span>
-                  </td>
-                </tr>
-                <tr v-if="!detail.fields.length">
-                  <td colspan="6" class="muted center">暂无字段，点「编辑」配置</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div v-else-if="tab === 'indicators'" class="panel">
-            <div class="ind-head">
-              <div class="ind-title">
-                <b>指标注册表</b>
-                <span class="muted tiny">自学习产出候选（draft），确认后成为权威口径（agg/unit），问数与生成看板优先使用。</span>
+      <div class="asset-main">
+        <div class="asset-bar">
+          <div class="spacer"></div>
+          <button type="button" class="btn primary" @click="openStudio('create')">+ 新建数据集</button>
+        </div>
+        <section class="asset-stage">
+        <template v-if="detail && !loading">
+          <div class="hero-card">
+            <div class="hero-top">
+              <span class="type-badge lg" :style="{ background: typeStyle(srcTypeOf(detail.meta.datasourceId)).bg }">
+                {{ typeStyle(srcTypeOf(detail.meta.datasourceId)).short }}
+              </span>
+              <div class="hero-copy">
+                <h2>{{ detail.meta.name }}</h2>
+                <div class="sub">
+                  {{ detail.meta.folder || '未分组' }} · 来自
+                  <button type="button" class="link" @click="goSrc">{{ srcName }}</button>
+                  · <code>{{ detail.meta.tableName || '—' }}</code>
+                  · {{ dsStatusLabel(detail.meta.status) }}
+                </div>
               </div>
+              <div class="hero-actions">
+                <button type="button" class="btn" @click="goSrc">数据源</button>
+                <button type="button" class="btn" :disabled="learning" @click="askLearn">
+                  {{ learning ? '学习中…' : '重新学习' }}
+                </button>
+                <button type="button" class="btn" @click="openStudio('edit')">编辑数据集</button>
+                <button type="button" class="btn" @click="tab = 'preview'">预览取数</button>
+                <button type="button" class="btn primary" @click="goAskBlank">问数</button>
+              </div>
+            </div>
+            <div class="metric-strip">
+              <div class="metric-cell">
+                <div class="k">维度</div>
+                <div class="v" style="color:#245bdb">{{ dimN }}</div>
+                <div class="h">Dimension</div>
+              </div>
+              <div class="metric-cell">
+                <div class="k">指标</div>
+                <div class="v" style="color:#047857">{{ quotaN }}</div>
+                <div class="h">Measure</div>
+              </div>
+              <div class="metric-cell">
+                <div class="k">字段</div>
+                <div class="v">{{ detail.fields.length }}</div>
+                <div class="h">Fields</div>
+              </div>
+              <div class="metric-cell">
+                <div class="k">高频问法</div>
+                <div class="v">{{ questions.length }}</div>
+                <div class="h">Few-shot</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-row">
+            <div class="studio-tabs">
+              <button type="button" :class="{ on: tab === 'fields' }" @click="tab = 'fields'">字段</button>
+              <button type="button" :class="{ on: tab === 'indicators' }" @click="tab = 'indicators'">指标确认</button>
+              <button type="button" :class="{ on: tab === 'questions' }" @click="tab = 'questions'">高频问法</button>
+              <button type="button" :class="{ on: tab === 'preview' }" @click="tab = 'preview'">预览</button>
+              <button type="button" :class="{ on: tab === 'lineage' }" @click="tab = 'lineage'">血缘</button>
+            </div>
+            <span class="hint">切换页签不会丢失字段角色修改</span>
+          </div>
+
+          <div v-if="tab === 'fields'" class="soft-panel">
+            <div class="phd">
+              <h3>字段配置</h3>
+              <span class="hint">切换维度 / 指标角色 · 供图表编码槽使用</span>
+            </div>
+            <div class="pbd flush">
+              <div v-if="hasLearned" class="learn-banner" style="margin:12px 16px 0">
+                <b>系统已自动识别字段角色</b>
+                <span>基于真实采样统计：ID/标志位/时间/维度/指标。</span>
+              </div>
+              <table class="field-table">
+                <thead>
+                  <tr>
+                    <th>显示名</th>
+                    <th>字段</th>
+                    <th>角色</th>
+                    <th>自动识别</th>
+                    <th>类型</th>
+                    <th>来源</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="f in detail.fields" :key="f.name">
+                    <td><b>{{ f.label }}</b></td>
+                    <td><code>{{ f.name }}</code></td>
+                    <td>
+                      <div class="role-seg">
+                        <button type="button" :class="{ on: f.group === 'dim', dim: f.group === 'dim' }" @click="toggleDetailRole(f.name, 'dim')">维度</button>
+                        <button type="button" :class="{ on: f.group === 'quota', quota: f.group === 'quota' }" @click="toggleDetailRole(f.name, 'quota')">指标</button>
+                      </div>
+                    </td>
+                    <td>
+                      <template v-if="learnedRoles.get(f.name)">
+                        <span class="mini-tag" :class="learnedRoles.get(f.name) === 'quota' || learnedRoles.get(f.name) === 'measure' ? 'green' : 'blue'">
+                          {{ roleLabel(learnedRoles.get(f.name)!) }}
+                        </span>
+                      </template>
+                      <span v-else class="muted">—</span>
+                    </td>
+                    <td class="muted">{{ f.dataType || '—' }}</td>
+                    <td>
+                      <template v-if="f.origin === 'calc'">
+                        <span class="mini-tag">计算</span>
+                        <code v-if="f.expression" class="expr" :title="f.expression">{{ f.expression }}</code>
+                      </template>
+                      <span v-else class="muted">表字段</span>
+                    </td>
+                  </tr>
+                  <tr v-if="!detail.fields.length">
+                    <td colspan="6" class="muted" style="text-align:center">暂无字段，点「编辑数据集」配置</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div v-else-if="tab === 'indicators'" class="soft-panel">
+            <div class="phd">
+              <h3>指标注册表</h3>
+              <span class="hint">自学习产出候选，确认后成为权威口径</span>
               <button type="button" class="btn sm" @click="showIndForm = !showIndForm">
                 {{ showIndForm ? '收起' : '手动新增' }}
               </button>
             </div>
-
-            <div v-if="showIndForm" class="ind-form">
-              <input v-model="indForm.fieldName" placeholder="字段名（如 spending_amount）" class="ipt sm" />
-              <input v-model="indForm.name" placeholder="业务名（如 消费金额）" class="ipt sm" />
-              <select v-model="indForm.agg" class="ipt sm">
-                <option value="SUM">SUM</option>
-                <option value="AVG">AVG</option>
-                <option value="COUNT">COUNT</option>
-                <option value="MIN">MIN</option>
-                <option value="MAX">MAX</option>
-              </select>
-              <input v-model="indForm.unit" placeholder="单位（元/万元/%/件）" class="ipt sm" />
-              <input v-model="indForm.formula" placeholder="口径说明（可选）" class="ipt sm grow" />
-              <button type="button" class="btn sm primary" @click="addIndicator">新增</button>
+            <div class="pbd">
+              <div v-if="showIndForm" class="ind-form">
+                <input v-model="indForm.fieldName" placeholder="字段名（如 spending_amount）" class="ipt sm" />
+                <input v-model="indForm.name" placeholder="业务名（如 消费金额）" class="ipt sm" />
+                <select v-model="indForm.agg" class="ipt sm">
+                  <option value="SUM">SUM</option>
+                  <option value="AVG">AVG</option>
+                  <option value="COUNT">COUNT</option>
+                  <option value="MIN">MIN</option>
+                  <option value="MAX">MAX</option>
+                </select>
+                <input v-model="indForm.unit" placeholder="单位（元/万元/%/件）" class="ipt sm" />
+                <input v-model="indForm.formula" placeholder="口径说明（可选）" class="ipt sm grow" />
+                <button type="button" class="btn sm primary" @click="addIndicator">新增</button>
+              </div>
+              <table class="field-table">
+                <thead>
+                  <tr>
+                    <th>业务名</th>
+                    <th>字段</th>
+                    <th>聚合</th>
+                    <th>单位</th>
+                    <th>口径</th>
+                    <th>状态</th>
+                    <th>可信度</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="ind in indicators" :key="ind.id">
+                    <td>{{ ind.name }}</td>
+                    <td><code>{{ ind.fieldName }}</code></td>
+                    <td>{{ ind.agg || '—' }}</td>
+                    <td>{{ ind.unit || '—' }}</td>
+                    <td class="muted" :title="ind.formula">{{ ind.formula || '—' }}</td>
+                    <td>
+                      <span class="mini-tag" :class="ind.status === 'confirmed' ? 'green' : 'blue'">
+                        {{ ind.status === 'confirmed' ? '已确认' : ind.status === 'deprecated' ? '已作废' : '候选' }}
+                      </span>
+                    </td>
+                    <td class="muted">{{ Math.round((ind.confidence || 0) * 100) }}%</td>
+                    <td class="ind-ops">
+                      <template v-if="ind.status === 'draft'">
+                        <button type="button" class="link" @click="confirmIndicator(ind)">确认</button>
+                        <button type="button" class="link danger" @click="removeIndicator(ind)">删除</button>
+                      </template>
+                      <template v-else-if="ind.status === 'confirmed'">
+                        <button type="button" class="link" @click="deprecateIndicator(ind)">作废</button>
+                      </template>
+                      <template v-else>
+                        <button type="button" class="link" @click="confirmIndicator(ind)">恢复</button>
+                      </template>
+                    </td>
+                  </tr>
+                  <tr v-if="!indLoading && !indicators.length">
+                    <td colspan="8" class="muted" style="text-align:center">暂无候选指标。</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-
-            <table class="tbl">
-              <thead>
-                <tr>
-                  <th>业务名</th>
-                  <th>字段</th>
-                  <th>聚合</th>
-                  <th>单位</th>
-                  <th>口径</th>
-                  <th>状态</th>
-                  <th>可信度</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="ind in indicators" :key="ind.id">
-                  <td>{{ ind.name }}</td>
-                  <td><code>{{ ind.fieldName }}</code></td>
-                  <td>{{ ind.agg || '—' }}</td>
-                  <td>{{ ind.unit || '—' }}</td>
-                  <td class="muted" :title="ind.formula">{{ ind.formula || '—' }}</td>
-                  <td>
-                    <span class="tag" :class="ind.status">
-                      {{ ind.status === 'confirmed' ? '已确认' : ind.status === 'deprecated' ? '已作废' : '候选' }}
-                    </span>
-                  </td>
-                  <td class="muted">{{ Math.round((ind.confidence || 0) * 100) }}%</td>
-                  <td class="ind-ops">
-                    <template v-if="ind.status === 'draft'">
-                      <button type="button" class="link" @click="confirmIndicator(ind)">确认</button>
-                      <button type="button" class="link danger" @click="removeIndicator(ind)">删除</button>
-                    </template>
-                    <template v-else-if="ind.status === 'confirmed'">
-                      <button type="button" class="link" @click="deprecateIndicator(ind)">作废</button>
-                    </template>
-                    <template v-else>
-                      <button type="button" class="link" @click="confirmIndicator(ind)">恢复</button>
-                    </template>
-                  </td>
-                </tr>
-                <tr v-if="!indLoading && !indicators.length">
-                  <td colspan="8" class="muted center">
-                    暂无候选指标。可在「字段」tab 看自动识别结果，或点「手动新增」录入。
-                  </td>
-                </tr>
-              </tbody>
-            </table>
           </div>
 
-          <div v-else-if="tab === 'questions'" class="panel">
-            <div class="ind-head">
-              <div class="ind-title">
-                <b>高频问法（few-shot）</b>
-                <span class="muted tiny">
-                  录入自然语言 + 已验证 SQL。问数时按相似度注入最多 3 条，提高过滤与聚合写法的准确度。表名必须是
-                  <code>{{ detail.meta.tableName || '当前物理表' }}</code>，不可改。
-                </span>
-              </div>
+          <div v-else-if="tab === 'questions'" class="soft-panel">
+            <div class="phd">
+              <h3>高频问法</h3>
+              <span class="hint">自然语言 + 已验证 SQL · 表名必须是 {{ detail.meta.tableName || '当前物理表' }}</span>
               <button type="button" class="btn sm" @click="toggleQForm">
                 {{ showQForm ? '收起' : editingQid != null ? '继续编辑' : '新增问法' }}
               </button>
             </div>
+            <div class="pbd">
+              <div v-if="showQForm" class="q-form">
+                <input v-model="qForm.question" class="ipt sm" placeholder="问法，如：人民币订单有多少" />
+                <textarea
+                  v-model="qForm.sql"
+                  class="ipt sm q-sql-input"
+                  :placeholder="`标准 SQL，表名必须是 ${detail.meta.tableName || '当前物理表'}`"
+                />
+                <div class="q-form-row">
+                  <select v-model="qForm.chartType" class="ipt sm">
+                    <option value="bar">柱状图</option>
+                    <option value="line">折线</option>
+                    <option value="pie">饼图</option>
+                    <option value="table">表格</option>
+                  </select>
+                  <input v-model="qForm.brief" class="ipt sm grow" placeholder="简短标题（可选）" />
+                  <button type="button" class="btn sm primary" @click="saveQuestion">
+                    {{ editingQid != null ? '保存修改' : '新增' }}
+                  </button>
+                </div>
+              </div>
+              <table class="field-table">
+                <thead>
+                  <tr>
+                    <th>问法</th>
+                    <th>SQL</th>
+                    <th>图</th>
+                    <th>状态</th>
+                    <th>命中</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="q in questions" :key="q.id">
+                    <td>{{ q.question }}</td>
+                    <td><code class="q-sql" :title="q.sql">{{ q.sql }}</code></td>
+                    <td class="muted">{{ q.chartType || '—' }}</td>
+                    <td>
+                      <span class="mini-tag" :class="q.status === 'active' ? 'green' : 'blue'">
+                        {{ q.status === 'active' ? '启用' : '停用' }}
+                      </span>
+                    </td>
+                    <td class="muted">{{ q.hitCount || 0 }}</td>
+                    <td class="ind-ops">
+                      <button type="button" class="link" @click="tryAsk(q)">试问</button>
+                      <button type="button" class="link" @click="startEditQuestion(q)">编辑</button>
+                      <button type="button" class="link" @click="toggleQuestion(q)">
+                        {{ q.status === 'active' ? '停用' : '启用' }}
+                      </button>
+                      <button type="button" class="link danger" @click="removeQuestion(q)">删除</button>
+                    </td>
+                  </tr>
+                  <tr v-if="!qLoading && !questions.length">
+                    <td colspan="6" class="muted" style="text-align:center">暂无高频问法。</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-            <div v-if="showQForm" class="q-form">
-              <input v-model="qForm.question" class="ipt sm" placeholder="问法，如：人民币订单有多少" />
-              <textarea
-                v-model="qForm.sql"
-                class="ipt sm q-sql-input"
-                :placeholder="`标准 SQL，表名必须是 ${detail.meta.tableName || '当前物理表'}`"
-              />
-              <div class="q-form-row">
-                <select v-model="qForm.chartType" class="ipt sm">
-                  <option value="bar">柱状图</option>
-                  <option value="line">折线</option>
-                  <option value="pie">饼图</option>
-                  <option value="table">表格</option>
-                </select>
-                <input v-model="qForm.brief" class="ipt sm grow" placeholder="简短标题（可选）" />
-                <button type="button" class="btn sm primary" @click="saveQuestion">
-                  {{ editingQid != null ? '保存修改' : '新增' }}
+          <div v-else-if="tab === 'preview'" class="soft-panel">
+            <div class="phd">
+              <h3>数据预览</h3>
+              <span class="hint">datasetQuery.execute · 前 {{ preview ? preview.rows.slice(0, 10).length : 0 }} 行</span>
+              <button type="button" class="btn" @click="loadPreview">运行取数</button>
+            </div>
+            <div class="pbd flush">
+              <table v-if="preview" class="schema-table">
+                <thead>
+                  <tr>
+                    <th v-for="f in preview.columns" :key="f.name">{{ f.name }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, i) in preview.rows.slice(0, 10)" :key="i">
+                    <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="empty-illus">加载预览…</div>
+            </div>
+          </div>
+
+          <div v-else class="soft-panel">
+            <div class="phd">
+              <h3>血缘与消费</h3>
+              <span class="hint">数据源 → 数据集 → 仪表盘</span>
+            </div>
+            <div class="pbd">
+              <div class="lineage">
+                <button type="button" class="node" @click="goSrc">
+                  <b>数据源</b>{{ srcName }}
                 </button>
+                <div class="arrow">→</div>
+                <div class="node on">
+                  <b>数据集</b>{{ detail.meta.name }}
+                  <div style="margin-top:4px;font-size:11px;color:var(--as-faint)">{{ dimN }} 维 · {{ quotaN }} 指标</div>
+                </div>
+                <div class="arrow">→</div>
+                <div class="node">
+                  <b>问数 / 看板</b>
+                  可在对话或仪表盘编辑器中绑定
+                </div>
               </div>
             </div>
-
-            <table class="tbl">
-              <thead>
-                <tr>
-                  <th>问法</th>
-                  <th>SQL</th>
-                  <th>图</th>
-                  <th>状态</th>
-                  <th>命中</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="q in questions" :key="q.id">
-                  <td>{{ q.question }}</td>
-                  <td><code class="q-sql" :title="q.sql">{{ q.sql }}</code></td>
-                  <td class="muted">{{ q.chartType || '—' }}</td>
-                  <td>
-                    <span class="tag" :class="q.status === 'active' ? 'confirmed' : 'draft'">
-                      {{ q.status === 'active' ? '启用' : '停用' }}
-                    </span>
-                  </td>
-                  <td class="muted">{{ q.hitCount || 0 }}</td>
-                  <td class="ind-ops">
-                    <button type="button" class="link" @click="tryAsk(q)">试问</button>
-                    <button type="button" class="link" @click="startEditQuestion(q)">编辑</button>
-                    <button type="button" class="link" @click="toggleQuestion(q)">
-                      {{ q.status === 'active' ? '停用' : '启用' }}
-                    </button>
-                    <button type="button" class="link danger" @click="removeQuestion(q)">删除</button>
-                  </td>
-                </tr>
-                <tr v-if="!qLoading && !questions.length">
-                  <td colspan="6" class="muted center">
-                    暂无高频问法。把业务里最常问、且 SQL 已验证的例子录进来，问数会当作 few-shot。
-                  </td>
-                </tr>
-              </tbody>
-            </table>
           </div>
-
-          <div v-else-if="tab === 'preview'" class="panel panel-preview">
-            <table v-if="preview" class="tbl tbl-preview">
-              <thead>
-                <tr>
-                  <th v-for="f in preview.columns" :key="f.name">{{ f.name }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(row, i) in preview.rows.slice(0, 10)" :key="i">
-                  <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="muted pad">加载预览…</div>
-          </div>
-
-          <div v-else class="panel pad">
-            <p class="lineage">
-              数据源 <b>{{ srcName }}</b>
-              <span class="arrow">→</span>
-              表 <code>{{ detail.meta.tableName }}</code>
-              <span class="arrow">→</span>
-              数据集 <b>{{ detail.meta.name }}</b>
-            </p>
-            <p class="muted tiny">可在仪表盘编辑器中绑定本数据集。</p>
+        </template>
+        <div v-else class="empty-illus">
+          <div class="big">▦</div>
+          {{ loading ? '加载中…' : items.length ? '请选择左侧数据集' : '还没有数据集，先新建一个' }}
+          <div v-if="!loading && !items.length" style="margin-top:12px">
+            <button type="button" class="btn primary" @click="openStudio('create')">新建数据集</button>
           </div>
         </div>
       </section>
-
-      <section v-else class="main empty-main">
-        <div class="muted pad">{{ loading ? '加载中…' : '选择左侧数据集，或新建一个' }}</div>
-      </section>
+      </div>
     </div>
 
     <div v-if="showStudio" class="modal-mask" @click.self="closeStudio">
@@ -1585,6 +1758,7 @@ watch(tab, (t) => {
   flex-direction: column;
   background: var(--od-bg, #f6f7fb);
   color: var(--ink);
+  min-height: 0;
 }
 .banner-err {
   margin: 0;
@@ -1598,7 +1772,7 @@ watch(tab, (t) => {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 .rail {
   background: #fff;
@@ -1745,26 +1919,6 @@ watch(tab, (t) => {
 }
 .pool-search-clear:disabled {
   cursor: not-allowed;
-}
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-.filter {
-  border: 0;
-  background: #f3f4f6;
-  color: #5c6b7a;
-  border-radius: 999px;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.72rem;
-  cursor: pointer;
-  line-height: 1.4;
-}
-.filter.on {
-  background: var(--od-brand-soft, #eef2ff);
-  color: var(--primary);
-  font-weight: 600;
 }
 .rail-list {
   flex: 1;
@@ -2606,6 +2760,110 @@ textarea.ipt {
   justify-content: flex-end;
   gap: 0.4rem;
   margin-top: 0.35rem;
+}
+
+.catalog {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.catalog-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.title-block h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.title-block span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.spacer {
+  flex: 1;
+  min-width: 8px;
+}
+.search.bar-search {
+  width: min(280px, 40vw);
+}
+.table-wrap {
+  overflow: auto;
+  padding: 12px 16px 24px;
+}
+.catalog-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.catalog-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--muted);
+  background: #fafbfc;
+  border-bottom: 1px solid var(--line);
+}
+.catalog-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: middle;
+}
+.catalog-table tbody tr {
+  cursor: pointer;
+}
+.catalog-table tbody tr:hover {
+  background: #f7f9ff;
+}
+.catalog-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.catalog-table td.acts {
+  text-align: right;
+}
+.catalog-table td.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+.catalog-table .empty-cell {
+  text-align: center;
+  color: var(--muted);
+  padding: 48px 16px;
+  cursor: default;
+}
+.catalog-table .empty-cell .btn {
+  display: inline-flex;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.btn.ghost.back {
+  padding: 0 8px;
+  color: var(--muted);
+}
+.switcher {
+  height: 32px;
+  max-width: min(360px, 50vw);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  background: #fff;
 }
 
 @media (max-width: 900px) {

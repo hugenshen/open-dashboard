@@ -3,23 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>登录 · Open Dashboard 高保</title>
-  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <title>登录 · DataQ 高保</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';try{var b=localStorage.getItem('od.brand');if(b)document.documentElement.dataset.odBrand=b;}catch(e){}</script>
   <link rel="stylesheet" href="./shared/shell.css" />
   <link rel="stylesheet" href="./shared/auth.css" />
 </head>
 <body>
   <main class="auth-page">
     <section class="auth-rail">
-      <a class="auth-brand" href="./login.html"><i>OD</i><span>Open Dashboard</span></a>
+      <a class="auth-brand" href="./login.html"><img class="od-brand-mark" src="./shared/ip/od-ip-B1-otter-lower-left.png" width="36" height="36" alt="" /><span>DataQ</span></a>
+      <div class="auth-hero">
       <div class="auth-copy">
         <h1>用同一个身份进入不同工作区</h1>
         <p>登录后由 Java 建立 userId、当前 workspaceId 和有效权限；对话分析再把这些上下文交给 Harness 运行。</p>
       </div>
       <div class="auth-flow">
-        <div><b>身份</b><br />账号密码、企业 SSO 或外部网关登录。</div>
-        <div><b>工作区</b><br />只展示已加入的项目组空间。</div>
-        <div><b>权限</b><br />菜单、数据集、工具和知识召回都受服务端权限控制。</div>
+        <div><b>身份</b><span>账号密码、企业 SSO 或外部网关登录。</span></div>
+        <div><b>工作区</b><span>只展示已加入的项目组空间。</span></div>
+        <div><b>权限</b><span>菜单、数据集、工具和知识召回都受服务端权限控制。</span></div>
+      </div>
       </div>
     </section>
 

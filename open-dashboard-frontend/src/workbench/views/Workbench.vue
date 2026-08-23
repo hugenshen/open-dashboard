@@ -3,12 +3,9 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { datasourceApi, datasetApi, type DatasourceVO, type DatasetMetaVO } from '../../datasource/api'
 import { dashboardTreeApi } from '../../api/dashboard'
-import { reportApi } from '../../report/api/report'
 import { conversationApi, type ConversationVO } from '../../conversation/api'
 import type { BusiNodeVO, DashboardBarVO, PublishStatus } from '../../types/dashboard'
-import type { ReportMetaVO } from '../../report/types'
 import RecentDashCover, { type CoverDomain } from '../components/RecentDashCover.vue'
-import RecentReportIcon, { type ReportIconKind } from '../components/RecentReportIcon.vue'
 import { hasStoredPermission } from '../../api/http'
 
 const ASK_Q = 'od.ask.q'
@@ -19,7 +16,6 @@ const router = useRouter()
 const route = useRoute()
 
 const loading = ref(false)
-const creating = ref(false)
 const error = ref('')
 const toast = ref('')
 const ask = ref('')
@@ -27,8 +23,6 @@ const askInput = ref<HTMLInputElement | null>(null)
 
 const datasources = ref<DatasourceVO[]>([])
 const datasets = ref<DatasetMetaVO[]>([])
-const reports = ref<ReportMetaVO[]>([])
-const reportError = ref('')
 const dashTotal = ref(0)
 const dashBars = ref<DashboardBarVO[]>([])
 const folderById = ref<Record<string, string>>({})
@@ -50,13 +44,12 @@ const srcOk = computed(() => datasources.value.filter((s) => s.status === 'ok').
 const srcPending = computed(() => datasources.value.length - srcOk.value)
 const dirty = computed(() => dashBars.value.filter((d) => d.status === 'publishedWithDraft').length)
 const canManageDatasource = computed(() => hasStoredPermission('datasource:manage') || hasStoredPermission('dataset:manage'))
-const canManageWorkspace = computed(() => hasStoredPermission('workspace:admin') || hasStoredPermission('workspace:manage_member'))
 const todoCount = computed(() => dirty.value + (canManageDatasource.value ? srcPending.value : 0))
 
 const hello = computed(() => {
   const h = new Date().getHours()
   const part = h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好'
-  return emptyMode.value ? '欢迎使用 Open Dashboard' : `${part}，继续分析`
+  return emptyMode.value ? '欢迎使用 DataQ' : `${part}，继续分析`
 })
 const subtitle = computed(() =>
   emptyMode.value ? '连接业务数据，完成你的第一次分析' : '用一句话问数，或从最近看板接着看'
@@ -68,7 +61,10 @@ const lastSync = computed(() => {
     ...dashBars.value.map((d) => d.updateTime || 0)
   ].filter((t) => t > 0)
   if (!times.length) return ''
-  return new Date(Math.max(...times)).toLocaleString('zh-CN', {
+  const d = new Date(Math.max(...times))
+  const hm = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (d.toDateString() === new Date().toDateString()) return `今天 ${hm}`
+  return d.toLocaleString('zh-CN', {
     month: 'numeric',
     day: 'numeric',
     hour: '2-digit',
@@ -91,15 +87,6 @@ const showCreateCard = computed(() => {
   return n > 0 && n < DESKTOP_RECENT
 })
 
-const DESKTOP_RECENT_REPORTS = 6
-
-const recentReports = computed(() => {
-  if (emptyMode.value) return []
-  return [...reports.value]
-    .sort((a, b) => (b.updateTime || 0) - (a.updateTime || 0))
-    .slice(0, DESKTOP_RECENT_REPORTS)
-})
-
 const recentAsks = computed(() => {
   if (emptyMode.value) return []
   return [...conversations.value]
@@ -108,18 +95,61 @@ const recentAsks = computed(() => {
       return t && t !== '新对话'
     })
     .sort((a, b) => (b.updateTime || 0) - (a.updateTime || 0))
-    .slice(0, 5)
+    .slice(0, 3)
+})
+
+const continueAskTo = computed(() =>
+  recentAsks.value[0] ? `/conversations/${recentAsks.value[0].id}` : '/conversations'
+)
+
+type TodoItem = {
+  key: string
+  to?: string
+  mark: 'warn' | 'info'
+  strong: string
+  rest: string
+  ask?: string
+}
+
+const todos = computed<TodoItem[]>(() => {
+  if (emptyMode.value) return []
+  const items: TodoItem[] = []
+  if (dirty.value) {
+    items.push({
+      key: 'dirty',
+      to: '/dashboards',
+      mark: 'warn',
+      strong: `${dirty.value} 个看板`,
+      rest: '有未发布改动'
+    })
+  }
+  if (canManageDatasource.value && srcPending.value) {
+    items.push({
+      key: 'src',
+      to: '/datasources',
+      mark: 'warn',
+      strong: `${srcPending.value} 个数据源`,
+      rest: '待处理'
+    })
+  }
+  items.push({
+    key: 'try',
+    mark: 'info',
+    strong: '今年收入多少',
+    rest: '',
+    ask: '今年收入多少'
+  })
+  return items
 })
 
 const briefs = computed(() => {
   const items: Array<{ to: string; text: string }> = []
   if (dirty.value) items.push({ to: '/dashboards', text: `${dirty.value} 个看板有未发布改动` })
-  if (canManageDatasource.value && srcPending.value) items.push({ to: '/datasources', text: `${srcPending.value} 个数据源待处理` })
-  if (datasets.value.length && !items.length) {
-    items.push({ to: '/conversations', text: `已准备 ${datasets.value.length} 个数据集，可以直接问数` })
+  if (canManageDatasource.value && srcPending.value) {
+    items.push({ to: '/datasources', text: `${srcPending.value} 个数据源待处理` })
   }
-  if (reports.value.length && items.length < 2) {
-    items.push({ to: '/reports', text: '有在线报告可继续编辑' })
+  if (datasets.value.length && items.length < 2) {
+    items.push({ to: '/conversations', text: `已准备 ${datasets.value.length} 个数据集，可以直接问数` })
   }
   return items.slice(0, 2)
 })
@@ -142,17 +172,6 @@ function flattenDashboards(nodes: BusiNodeVO[], parentName = '未分组'): Array
     }
   }
   return out
-}
-
-function reportStatusLabel(s?: string) {
-  if (s === 'published') return '已发布'
-  if (s === 'publishedWithDraft') return '有未发布改动'
-  return '草稿'
-}
-
-function reportIconKind(r: ReportMetaVO): ReportIconKind {
-  if (r.status === 'published' || r.status === 'publishedWithDraft') return 'published'
-  return 'draft'
 }
 
 function formatShortTime(t?: number) {
@@ -195,15 +214,18 @@ function coverDomain(d: DashboardBarVO): CoverDomain {
   return hashDomain(d.id)
 }
 
+function askMeta(c: ConversationVO) {
+  return c.linkedDashboardId ? '已关联看板' : '会话结果 · 未写入看板'
+}
+
 async function load(opts?: { quiet?: boolean }) {
   loading.value = true
   error.value = ''
   try {
-    const [srcsR, dtsR, treeR, rptsR, convR] = await Promise.allSettled([
+    const [srcsR, dtsR, treeR, convR] = await Promise.allSettled([
       canManageDatasource.value ? datasourceApi.list() : Promise.resolve([] as DatasourceVO[]),
       datasetApi.listAskable(),
       dashboardTreeApi.tree({}),
-      reportApi.list(DESKTOP_RECENT_REPORTS),
       conversationApi.list(8)
     ])
 
@@ -217,14 +239,6 @@ async function load(opts?: { quiet?: boolean }) {
     else {
       datasets.value = []
       errs.push(dtsR.reason instanceof Error ? dtsR.reason.message : String(dtsR.reason))
-    }
-    if (rptsR.status === 'fulfilled') {
-      reports.value = Array.isArray(rptsR.value) ? rptsR.value : []
-      reportError.value = ''
-    } else {
-      reports.value = []
-      reportError.value = rptsR.reason instanceof Error ? rptsR.reason.message : String(rptsR.reason)
-      errs.push(`最近报告：${reportError.value}`)
     }
     if (convR.status === 'fulfilled') {
       conversations.value = Array.isArray(convR.value) ? convR.value : []
@@ -303,28 +317,25 @@ function goAsk(preset?: string) {
   void router.push({ path: '/conversations', query: { q, autorun: '1' } })
 }
 
-async function createDash() {
-  if (creating.value) return
-  creating.value = true
-  error.value = ''
-  try {
-    const node = await dashboardTreeApi.create({
-      pid: '0',
-      name: '未命名仪表盘',
-      nodeType: 'dashboard',
-      templateId: 'blank'
-    })
-    await router.push(`/dashboards/${node.id}/edit`)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    creating.value = false
+function onTodoClick(item: TodoItem, e: Event) {
+  if (item.ask) {
+    e.preventDefault()
+    goAsk(item.ask)
   }
+}
+
+function createDash() {
+  void router.push('/dashboards')
 }
 
 function onKey(e: KeyboardEvent) {
   const el = askInput.value
-  if (e.key === '/' && document.activeElement !== el && !(document.activeElement instanceof HTMLInputElement) && !(document.activeElement instanceof HTMLTextAreaElement)) {
+  if (
+    e.key === '/' &&
+    document.activeElement !== el &&
+    !(document.activeElement instanceof HTMLInputElement) &&
+    !(document.activeElement instanceof HTMLTextAreaElement)
+  ) {
     e.preventDefault()
     el?.focus()
   }
@@ -359,7 +370,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                 </template>
                 <template v-else>
                   <span class="wb-stat"><b>{{ dashTotal }}</b> 个仪表盘</span>
-                  <span class="wb-stat"><b>{{ datasets.length }}</b> 个可问数据</span>
+                  <span class="wb-stat"><b>{{ datasets.length }}</b> 个可问数据集</span>
                   <span v-if="canManageDatasource || dirty" class="wb-stat"><b>{{ todoCount }}</b> 项待处理</span>
                 </template>
               </div>
@@ -382,23 +393,69 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
               <button class="go" type="button" @click="goAsk()">{{ emptyMode ? '开始配置' : '问数' }}</button>
             </div>
             <div class="wb-examples">
-              <template v-if="!emptyMode && recentAsks.length">
-                <span>最近问数</span>
-                <button v-for="c in recentAsks" :key="c.id" type="button" @click="openAsk(c)">
-                  {{ c.title || '未命名对话' }}
-                </button>
-
-              </template>
-              <template v-else-if="!emptyMode && convError">
-                <span>最近问数</span>
-                <span class="miss">记录暂时读不到，点概览「刷新」重试</span>
-              </template>
-              <template v-else>
-                <span>试试</span>
-                <button v-for="q in EXAMPLES" :key="q" type="button" @click="goAsk(q)">{{ q }}</button>
-              </template>
+              <span>试试</span>
+              <button v-for="q in EXAMPLES" :key="q" type="button" @click="goAsk(q)">{{ q }}</button>
             </div>
           </div>
+
+          <section class="wb-block wb-common">
+            <div class="wb-block-hd"><h3>常用</h3></div>
+            <div class="wb-apps">
+              <router-link class="wb-app" to="/conversations">
+                <div class="icon c1">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+                  </svg>
+                </div>
+                <div class="label">对话分析</div>
+              </router-link>
+              <router-link class="wb-app" to="/dashboards">
+                <div class="icon c2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </div>
+                <div class="label">新建看板</div>
+              </router-link>
+              <router-link class="wb-app" to="/data-plaza">
+                <div class="icon c3">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 7h16l-1 13H5L4 7z" />
+                    <path d="M8 7a4 4 0 0 1 8 0" />
+                    <path d="M8 12h8M8 16h5" />
+                  </svg>
+                </div>
+                <div class="label">数据广场</div>
+              </router-link>
+              <router-link class="wb-app" to="/datasets">
+                <div class="icon c4">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 6h16M4 12h16M4 18h10" />
+                  </svg>
+                </div>
+                <div class="label">我的数据</div>
+              </router-link>
+              <router-link class="wb-app" to="/dashboards">
+                <div class="icon c5">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="9" rx="1.5" />
+                    <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                    <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                    <rect x="3" y="16" width="7" height="5" rx="1.5" />
+                  </svg>
+                </div>
+                <div class="label">仪表盘</div>
+              </router-link>
+              <router-link class="wb-app" to="/reports">
+                <div class="icon c6">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+                  </svg>
+                </div>
+                <div class="label">在线报告</div>
+              </router-link>
+            </div>
+          </section>
 
           <section class="wb-block" id="wbRecentSection">
             <div class="wb-block-hd">
@@ -424,7 +481,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                 </div>
                 <div class="wb-empty-actions">
                   <router-link class="primary" to="/datasources">连接数据源</router-link>
-                  <router-link to="/data-plaza">浏览数据广场</router-link>
                   <router-link to="/conversations">查看问数示例</router-link>
                 </div>
               </div>
@@ -459,7 +515,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
         </div>
 
         <aside class="wb-aside" aria-label="工作概览与最近活动">
-          <section class="wb-panel" id="wbOverviewPanel">
+          <section class="wb-panel wb-overview-panel" id="wbOverviewPanel">
             <div class="phd">
               <h4>今日概览</h4>
               <button class="link" type="button" :disabled="loading" @click="load()">
@@ -474,6 +530,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                   {{ emptyMode ? '尚未连接数据源' : srcPending ? `${srcPending} 个待处理` : '全部连接正常' }}
                 </small>
               </router-link>
+              <router-link v-else class="wb-kpi" to="/data-plaza">
+                <span>可问数据集</span>
+                <strong>{{ emptyMode ? 0 : datasets.length }}</strong>
+                <small>{{ emptyMode ? '连接数据后可问数' : datasets.length ? '可直接进入问数' : '暂无可问数据' }}</small>
+              </router-link>
               <router-link class="wb-kpi" to="/dashboards">
                 <span>待发布看板</span>
                 <strong>{{ emptyMode ? 0 : dirty }}</strong>
@@ -481,21 +542,13 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                   {{ emptyMode ? '暂无仪表盘' : dirty ? '存在未发布改动' : '没有待发布改动' }}
                 </small>
               </router-link>
-              <router-link class="wb-kpi" to="/data-plaza">
-                <span>数据广场</span>
-                <strong>{{ datasets.length }}</strong>
-                <small>{{ datasets.length ? '可直接进入问数' : '查看可申请资产' }}</small>
-              </router-link>
-              <router-link v-if="canManageWorkspace" class="wb-kpi" to="/workspace-admin">
-                <span>成员权限</span>
-                <strong>工作区</strong>
-                <small>用户组、角色、数据策略</small>
-              </router-link>
             </div>
             <div class="wb-health">
-              <span>
-                <i aria-hidden="true" :style="emptyMode ? { background: 'var(--od-faint)', boxShadow: 'none' } : undefined" />
-                {{ emptyMode ? '等待首次配置' : lastSync ? '数据已同步' : '暂无同步记录' }}
+              <span v-if="emptyMode">
+                <i class="faint" aria-hidden="true" />等待首次配置
+              </span>
+              <span v-else>
+                <i aria-hidden="true" />数据已同步
               </span>
               <b v-if="!emptyMode && lastSync">{{ lastSync }}</b>
             </div>
@@ -514,39 +567,64 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
             </div>
           </section>
 
-          <section class="wb-panel" id="wbRecentReportPanel">
+          <section class="wb-panel" id="wbTodoPanel">
+            <div class="phd"><h4>待处理</h4></div>
+            <template v-if="emptyMode || (!dirty && !(canManageDatasource && srcPending) && !todos.length)">
+              <div class="wb-empty-note">
+                <b>目前没有待处理事项</b>
+                完成数据连接后，异常和提醒会出现在这里
+              </div>
+            </template>
+            <template v-else>
+              <component
+                :is="item.to ? 'router-link' : 'button'"
+                v-for="item in todos"
+                :key="item.key"
+                class="wb-todo"
+                :to="item.to"
+                :type="item.to ? undefined : 'button'"
+                @click="onTodoClick(item, $event)"
+              >
+                <span class="mark" :class="item.mark" />
+                <span class="txt">
+                  <template v-if="item.ask">试问：<b>{{ item.strong }}</b></template>
+                  <template v-else><b>{{ item.strong }}</b> {{ item.rest }}</template>
+                </span>
+              </component>
+            </template>
+          </section>
+
+          <section class="wb-panel" id="wbRecentAskPanel">
             <div class="phd">
-              <h4>最近报告</h4>
-              <router-link v-if="recentReports.length" class="link" to="/reports">全部</router-link>
+              <h4>最近问数</h4>
+              <router-link v-if="!emptyMode && recentAsks.length" class="link" :to="continueAskTo">继续</router-link>
             </div>
-            <template v-if="reportError">
-              <div class="wb-empty-note">
-                <b>报告列表暂时读不到</b>
-                点上方「刷新」重试
-              </div>
-            </template>
-            <template v-else-if="emptyMode || !recentReports.length">
-              <div class="wb-empty-note">
-                <b>还没有报告</b>
-                从「在线报告」模块新建，近期编辑会出现在这里
-              </div>
-            </template>
-            <router-link
-              v-for="r in recentReports"
-              :key="r.id"
-              class="wb-row rpt-row"
-              :to="`/reports/${r.id}/edit`"
-            >
-              <RecentReportIcon :kind="reportIconKind(r)" />
-              <div class="body">
-                <div class="t">{{ r.name || '未命名报告' }}</div>
-                <div class="m">
-                  <span class="dot-st" :class="statusDot(r.status)" />
-                  {{ reportStatusLabel(r.status) }}
-                  <template v-if="r.updateTime"><span class="sep">·</span>{{ formatShortTime(r.updateTime) }}</template>
+            <div v-if="convError" class="wb-empty-note">
+              <b>问数记录暂时读不到</b>
+              点概览「刷新」重试
+            </div>
+            <div v-else-if="emptyMode || !recentAsks.length" class="wb-empty-note">
+              <b>还没有问数记录</b>
+              你的分析历史会保存在这里
+            </div>
+            <template v-else>
+              <router-link
+                v-for="c in recentAsks"
+                :key="c.id"
+                class="wb-row"
+                :to="`/conversations/${c.id}`"
+                @click.prevent="openAsk(c)"
+              >
+                <div class="av">问</div>
+                <div class="body">
+                  <div class="t">{{ c.title || '未命名对话' }}</div>
+                  <div class="m">{{ askMeta(c) }}</div>
                 </div>
-              </div>
-            </router-link>
+                <div v-if="c.updateTime" class="side">
+                  <div class="num">{{ formatShortTime(c.updateTime) }}</div>
+                </div>
+              </router-link>
+            </template>
           </section>
         </aside>
       </div>
@@ -560,25 +638,20 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   overflow: auto;
   background: var(--od-bg, #f6f7fb);
   color: var(--od-ink, #111827);
-  /* 常规电脑直接铺满一屏，尽量不出现右侧滚动条；少数据时用滚轮/触控仍可滚动 */
-  scrollbar-width: none;
-}
-.wb-stage::-webkit-scrollbar {
-  display: none;
 }
 .wb-home {
   max-width: none;
-  padding: 24px 40px 40px;
+  padding: 24px 32px 40px;
 }
 .wb-layout {
   display: grid;
   grid-template-columns: minmax(680px, 1.65fr) minmax(320px, 0.72fr);
   grid-template-areas:
     'hero overview'
-    'recent todo'
-    'recent reports';
+    'common todo'
+    'recent asks';
   column-gap: 24px;
-  row-gap: 18px;
+  row-gap: 22px;
   align-items: start;
 }
 .wb-main,
@@ -589,7 +662,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   grid-area: hero;
   max-width: none;
   margin: 0;
-  padding: 18px 24px 16px;
+  padding: 24px 28px 22px;
   border: 1px solid #dfe4f2;
   border-radius: 20px;
   background:
@@ -598,7 +671,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   box-shadow: 0 1px 2px rgba(17, 24, 39, 0.03);
 }
 .wb-greet {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 .hello {
   margin: 0;
@@ -608,7 +681,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   line-height: 1.2;
 }
 .sub {
-  margin-top: 8px;
+  margin-top: 10px;
   font-size: 15px;
   color: var(--od-muted, #4b5563);
   line-height: 1.6;
@@ -617,9 +690,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 13px;
   color: var(--od-muted, #4b5563);
+  letter-spacing: -0.01em;
 }
 .wb-stat {
   display: inline-flex;
@@ -647,7 +721,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 }
 .wb-search:focus-within {
   border-color: #6366f1;
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14), 0 4px 14px rgba(17, 24, 39, 0.07);
 }
 .wb-search .ico {
   width: 18px;
@@ -682,6 +756,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   font-weight: 650;
   cursor: pointer;
   font-family: inherit;
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.22);
 }
 .wb-search .go:hover {
   background: var(--od-brand-hover, #4338ca);
@@ -696,13 +771,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   font-size: 13px;
   color: var(--od-faint, #6b7280);
   align-self: center;
+  margin-right: 2px;
 }
 .wb-examples button {
   min-height: 30px;
-  max-width: 280px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   border: 1px solid #e1e5eb;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.72);
@@ -717,23 +789,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   border-color: #a5b4fc;
   background: #fff;
 }
-.wb-examples .more {
-  align-self: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--od-brand, #4f46e5);
-  text-decoration: none;
-  padding: 4px 6px;
-}
-.wb-examples .more:hover {
-  color: var(--od-ink, #111827);
-}
-.wb-examples .miss {
-  font-size: 13px;
-  color: var(--od-faint, #6b7280);
-}
 .wb-block {
   margin: 0;
+}
+.wb-common {
+  grid-area: common;
 }
 #wbRecentSection {
   grid-area: recent;
@@ -746,15 +806,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   grid-area: todo;
   align-self: stretch;
 }
-#wbRecentReportPanel {
-  grid-area: reports;
+#wbRecentAskPanel {
+  grid-area: asks;
   align-self: stretch;
 }
 .wb-block-hd {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 .wb-block-hd h3 {
   margin: 0;
@@ -780,6 +840,70 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 .phd .link:hover {
   color: var(--od-ink, #111827);
 }
+.wb-apps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 12px;
+}
+.wb-app {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 66px;
+  padding: 10px 12px;
+  border: 1px solid var(--od-line, #dfe3ea);
+  background: var(--od-card, #fff);
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+  font: inherit;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.03);
+  cursor: pointer;
+}
+.wb-app:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.06);
+  transform: translateY(-2px);
+}
+.wb-app .icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #eef2ff;
+  color: #4f46e5;
+  flex-shrink: 0;
+}
+.wb-app .icon svg {
+  width: 16px;
+  height: 16px;
+}
+.wb-app .icon.c2 {
+  background: #ecfdf5;
+  color: #047857;
+}
+.wb-app .icon.c3 {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.wb-app .icon.c4 {
+  background: #fff7ed;
+  color: #c2410c;
+}
+.wb-app .icon.c5 {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+.wb-app .icon.c6 {
+  background: #fdf2f8;
+  color: #be185d;
+}
+.wb-app .label {
+  font-size: 14px;
+  font-weight: 650;
+}
 .wb-dash-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -794,17 +918,20 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   border: 1px solid var(--od-line, #dfe3ea);
   color: inherit;
   text-decoration: none;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.03);
 }
 .wb-dash:hover {
   border-color: #a5b4fc;
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.08);
   transform: translateY(-3px);
 }
 .wb-dash .meta {
-  padding: 12px 14px 14px;
+  padding: 14px 16px 16px;
 }
 .wb-dash .name {
   font-size: 15px;
   font-weight: 680;
+  letter-spacing: -0.015em;
 }
 .wb-dash .desc {
   margin-top: 6px;
@@ -827,7 +954,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   background: #d97706;
 }
 .wb-dash-create {
-  min-height: 198px;
+  min-height: 189px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -843,6 +970,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 .wb-dash-create:hover {
   border-color: #818cf8;
   color: var(--od-brand, #4f46e5);
+  background: var(--od-brand-soft, #eef2ff);
 }
 .wb-dash-create i {
   width: 36px;
@@ -860,6 +988,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   border-radius: 14px;
   padding: 4px 6px 10px;
   border: 1px solid var(--od-line, #dfe3ea);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.03);
 }
 .phd {
   display: flex;
@@ -886,36 +1015,43 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 .wb-row:hover {
   background: #f7f7fb;
 }
-.wb-row.rpt-row {
-  gap: 11px;
-  min-height: 52px;
-  padding: 6px 12px;
-  border-radius: 10px;
+.wb-row .av {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: #eef2ff;
+  color: #4338ca;
+  flex-shrink: 0;
 }
 .wb-row .body {
   flex: 1;
   min-width: 0;
 }
 .wb-row .t {
-  font-size: 13.5px;
-  font-weight: 620;
-  letter-spacing: -0.02em;
-  line-height: 1.3;
+  font-size: 14px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .wb-row .m {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--od-faint, #6b7280);
   margin-top: 3px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  line-height: 1.3;
 }
-.wb-row .m .sep {
-  color: #c4c9d4;
+.wb-row .side {
+  flex-shrink: 0;
+  text-align: right;
+}
+.wb-row .side .num {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--od-muted, #4b5563);
+  font-variant-numeric: tabular-nums;
 }
 .wb-todo {
   display: flex;
@@ -928,6 +1064,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   width: calc(100% - 4px);
   text-decoration: none;
   color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
 }
 .wb-todo:hover {
   background: #f7f7fb;
@@ -983,8 +1124,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   display: block;
   margin-top: 6px;
   font-size: 24px;
+  line-height: 1.1;
   font-weight: 740;
   letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }
 .wb-kpi small {
   display: block;
@@ -1020,6 +1163,10 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   border-radius: 50%;
   background: #047857;
   box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.12);
+}
+.wb-health i.faint {
+  background: var(--od-faint, #6b7280);
+  box-shadow: none;
 }
 .wb-health b {
   color: var(--od-muted, #4b5563);
@@ -1093,6 +1240,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
   margin: 0;
   font-size: 20px;
   font-weight: 720;
+  letter-spacing: -0.025em;
 }
 .wb-empty-copy > p {
   margin-top: 9px;
@@ -1165,7 +1313,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 }
 .banner-err {
   margin: 0;
-  padding: 8px 40px;
+  padding: 8px 32px;
   background: #fff1f0;
   color: #cf1322;
   font-size: 13px;
@@ -1194,12 +1342,38 @@ html[data-od-theme='dark'] .wb-examples button {
   border-color: #353946;
   background: rgba(24, 27, 34, 0.72);
 }
+html[data-od-theme='dark'] .wb-stats b,
+html[data-od-theme='dark'] .wb-examples button:hover {
+  color: #c7d2fe;
+}
+html[data-od-theme='dark'] .wb-search {
+  border-color: #3d4250;
+}
+html[data-od-theme='dark'] .wb-app:hover,
 html[data-od-theme='dark'] .wb-row:hover,
 html[data-od-theme='dark'] .wb-todo:hover {
   background: #27272a;
 }
+html[data-od-theme='dark'] .wb-app .icon,
+html[data-od-theme='dark'] .wb-row .av {
+  background: #27272a;
+  color: #d4d4d8;
+}
 html[data-od-theme='dark'] .wb-kpi {
   background: #161920;
+}
+html[data-od-theme='dark'] .wb-kpi:hover {
+  background: rgba(99, 102, 241, 0.15);
+}
+html[data-od-theme='dark'] .wb-empty {
+  border-color: #3d4451;
+}
+html[data-od-theme='dark'] .wb-dash-create {
+  border-color: #3d4451;
+}
+html[data-od-theme='dark'] .wb-search .go {
+  background: #fafafa;
+  color: #18181b;
 }
 
 @media (max-width: 1180px) {
@@ -1208,12 +1382,16 @@ html[data-od-theme='dark'] .wb-kpi {
     grid-template-areas:
       'hero'
       'overview'
+      'common'
       'todo'
       'recent'
-      'reports';
+      'asks';
   }
 }
 @media (max-width: 960px) {
+  .wb-apps {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
   .wb-dash-grid {
     grid-template-columns: repeat(2, minmax(190px, 1fr));
   }
@@ -1223,11 +1401,21 @@ html[data-od-theme='dark'] .wb-kpi {
   .wb-empty {
     grid-template-columns: 1fr;
   }
+  .wb-empty-visual {
+    min-height: 140px;
+  }
+  .wb-hero {
+    padding: 24px;
+  }
   .wb-home {
     padding: 24px 20px 48px;
   }
 }
 @media (max-width: 560px) {
+  .wb-hero {
+    padding: 20px 16px;
+    border-radius: 16px;
+  }
   .wb-search {
     height: auto;
     min-height: 52px;
@@ -1237,9 +1425,13 @@ html[data-od-theme='dark'] .wb-kpi {
     width: 100%;
     margin-top: 4px;
   }
+  .wb-apps,
   .wb-dash-grid,
   .wb-kpis {
     grid-template-columns: 1fr;
+  }
+  .wb-empty {
+    padding: 20px;
   }
 }
 </style>

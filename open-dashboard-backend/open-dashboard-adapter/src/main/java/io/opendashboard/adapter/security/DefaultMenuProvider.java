@@ -37,7 +37,7 @@ public class DefaultMenuProvider implements MenuProvider {
         }
         if (principal.hasPermission("dataset:manage")) {
             items.add(new MenuItem("datasets", "数据集", "/datasets", "manage"));
-            items.add(new MenuItem("dimensions", "知识维护", "/dimensions", "manage"));
+            items.add(new MenuItem("dimensions", "知识库", "/knowledge", "manage"));
         }
         if (principal.hasPermission("workspace:admin") || principal.hasPermission("workspace:manage_member")) {
             items.add(new MenuItem("workspaceAdmin", "成员权限", "/workspace-admin", "manage"));

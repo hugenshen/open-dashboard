@@ -40,10 +40,12 @@ function hasCjk(text: string): boolean {
 export function humanizeFieldName(name: string): string {
   const raw = String(name || '').trim()
   if (!raw || hasCjk(raw)) return raw
-  const parts = raw.split(/[_\s]+/).filter(Boolean)
-  if (!parts.length) return raw
+  const snake = raw.includes('_')
+    ? raw.split(/[_\s]+/).filter(Boolean)
+    : raw.replace(/([a-z0-9])([A-Z])/g, '$1_$2').split(/[_\s]+/).filter(Boolean)
+  if (!snake.length) return raw
   const mapped: string[] = []
-  for (const part of parts) {
+  for (const part of snake) {
     const token = FIELD_TOKENS[part.toLowerCase()]
     if (!token) return raw
     mapped.push(token)

@@ -16,7 +16,7 @@ gates:
   acceptance: none
 architecture: docs/design/architecture.html
 contract: docs/design/openapi.yaml
-implementation: [opendashboard-harness/agent/user_memory.py, opendashboard-harness/agent/knowledge.py, opendashboard-harness/sqlbot/ask_context.py, opendashboard-harness/eval/, open-dashboard-frontend/src/dataset/views/DatasetManage.vue]
+implementation: [opendashboard-dsh-harness/packages/dsh-od-bi/src/ask-enrich.js, open-dashboard-frontend/src/dimension/views/DimensionManage.vue, open-dashboard-frontend/src/dataset/views/DatasetManage.vue]
 depends: [P004, P006, P008]
 ---
 
@@ -35,24 +35,24 @@ depends: [P004, P006, P008]
 | 原型 | 当前增量 [`knowledge.html`](../../prototypes/hi-fi/knowledge.html)；**尚未冻结快照** |
 | 怎么验收 | [acceptance.yaml](./acceptance.yaml) |
 | 评测 | [P004 harness-evaluation.md](../P004-conversation/harness-evaluation.md) · `opendashboard-harness/eval/` |
-| 代码落点 | `opendashboard-harness/agent/user_memory.py` · `knowledge.py` · `sqlbot/ask_context.py` · `GET/PUT /harness/v1/knowledge/{datasetId}` · `GET /harness/v1/memory` · 数据集页 `/datasets/{id}` 高频问法 · `/dimensions` 维度值 |
+| 代码落点 | `opendashboard-dsh-harness/packages/dsh-od-bi/src/ask-enrich.js`（`projectSemantic`）· `od_get_schema` · Java `KnowledgeService` · 管理页 `/knowledge`（`DimensionManage.vue`）· 数据集页 `/datasets/{id}` 高频问法 |
 | 相邻提案 | 运行时/评测 [P004](../P004-conversation/)；问数轨 [P006](../P006-ask-data/)；身份/askable [P008](../P008-permission-aware-workbench/)；工作区全景 [P009](../P009-workspace-governance/) |
-| 不要做 | 内置登录、完整工作空间/IAM 管理、跨工作区发布流、TableRAG、DGP、把未验收管理面写进 architecture.html |
+| 不要做 | 内置登录、完整工作空间/IAM 管理、跨工作区发布流、TableRAG、DGP、接入 Ossie 仓库/厂商 converter、把未验收高保五 Tab 写进 architecture.html |
 
 ## 波及
 
 | 列 | 内容 |
 |----|------|
 | 依赖 | P004 事件日志与 eval runner；P008 principal 贯穿 Harness |
-| 改动面 | Harness 记忆/知识、SQLBot few-shot 与维度值注入、数据集页高频问法、维度管理取值 |
-| 不改 | 未上线的一级「知识库」菜单不写进 architecture；SQLBot/DeerFlow 整仓；P005 洞察；P009 发布流 |
+| 改动面 | 问数 `od_get_schema.semantic` 投影、知识库管理入口、数据集页高频问法、维度/指标确认 |
+| 不改 | SQLBot/DeerFlow 整仓；P005 洞察；P009 发布流；Ossie YAML 主存储；跨表 Relationship |
 | 回归 | PR-MEM-01…06；PR-KB-UI-01…04；P006 PR-ASK-12 / PR-ASK-13 |
 
 ## 范围
 
 - **用户级记忆**：跨对话 facts（常用数据集、偏好），按 `workspaceId + userId` 隔离；注入有上限；不把聊天记录当记忆。分析师可在知识库「我的记忆」删除。
 - **数据集级知识**：术语 glossary + SQL 示例 + 已确认指标；生成 SQL 前按 `workspaceId + datasetId + 权限` 召回注入 prompt。
-- **管理面**：本切片金标准问法在数据集页「高频问法」维护；维度值在「维度管理」确认后由问数消费。一级「知识库」仍是后续收敛入口（高保 `knowledge.html`），不阻塞本切片注入。
+- **管理面**：管理端菜单「知识库」进入 `/knowledge`（`/dimensions` 重定向）；待确认 / 已启用指标·维度·同义词、金标准问法预览与试问。问法增改仍在数据集页「高频问法」。高保「我的记忆」Tab 未产品化，不阻塞注入。
 - **用同一 eval runner 证明**：术语能改字段映射；用户记忆互不可读。
 
 ## 非目标
@@ -61,6 +61,7 @@ depends: [P004, P006, P008]
 - mem0 / OpenViking / 模型 CRUD `memory_*` 工具
 - JoyAgent TableRAG、DGP、诊断 SOP（P005）
 - 资源级 ACL 表（治理补齐，P011+）
+- 接入 Apache Ossie 仓库、厂商 converter，或以 Ossie YAML 替代 Java 表作为知识主存储
 - 把问数结果行当知识库持久化
 
 ## 验收 ID
@@ -84,7 +85,8 @@ depends: [P004, P006, P008]
 
 | 日期 | 说明 |
 |------|------|
-| 2026-08-20 | 维度管理布局：默认选表、空态收成一块引导、有条目才出右侧取值详情 |
+| 2026-08-23 | 落地：管理端入口改为「知识库」`/knowledge`；问数 `od_get_schema` 增加 `semantic` 投影（已确认指标 expression / 维度枚举 / 金标准问法）。不接入 Ossie 仓库。高保记忆 Tab 仍未做。 |
+| 2026-08-22 | 维度管理：无待确认时默认「全部数据集」；标题不再永远显示 0 待确认 |
 | 2026-08-19 | 本切片：数据集页维护高频问法；confirmed 维度值进入 SQLBot。知识库一级入口仍是后续收敛，不阻塞问数准确率 |
 | 2026-08-19 | 管理面确认改为「知识库」：指标、词表、金标准问法和我的记忆统一在管理端入口展示；数据集页保留重新学习入口 |
 | 2026-08-19 | 与 P004/P009 边界收口：P010 承接跨会话记忆和知识库产品化；记忆召回至少按 `workspaceId + userId` 隔离 |

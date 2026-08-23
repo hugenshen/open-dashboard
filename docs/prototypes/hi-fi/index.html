@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Open Dashboard 高保入口</title>
-  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <title>DataQ 高保入口</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';try{var b=localStorage.getItem('od.brand');if(b)document.documentElement.dataset.odBrand=b;}catch(e){}</script>
   <link rel="stylesheet" href="./shared/shell.css" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -288,7 +288,7 @@
 <body>
   <main class="entry">
     <header class="entry-top">
-      <a class="brand" href="./index.html"><i>OD</i><span>Open Dashboard 高保入口</span></a>
+      <a class="brand" href="./index.html"><i>DQ</i><span>DataQ 高保入口</span></a>
       <div class="top-actions">
         <a class="btn" href="./register.html">注册</a>
         <a class="btn" href="./login.html">登录</a>
@@ -299,15 +299,14 @@
     <section class="entry-main">
       <div class="hero">
         <section class="hero-copy">
-          <div class="eyebrow">P009 / P010 · 工作区、用户体系、权限和知识记忆治理</div>
-          <h1>一个入口，看清用户端和管理端</h1>
-          <p>用户端负责数据发现、对话分析、仪表盘和报告消费；管理端负责工作区、成员、数据发布、知识、权限和审计。两端共用同一个登录态和当前工作区，AI 运行仍由 Harness 独立承接。</p>
+          <div class="eyebrow">P013 · 仪表盘模板市场 / 变量主题 / 多端即默认</div>
+          <h1>从模板开工，手机端不用再改造</h1>
+          <p>新建看板进入 DataEase 风模板市场：分类、封面、预览三端、一键应用。品牌色和明暗只改 CSS 变量。上一版高保已冻结为 <code>2026-08-23-pre-p013</code>。</p>
           <div class="hero-actions">
-            <a class="btn primary" href="./workbench.html">用户端 · 工作台</a>
+            <a class="btn primary" href="./dashboard.html#/templates">模板市场</a>
+            <a class="btn" href="./workbench.html">用户端 · 工作台</a>
             <a class="btn" href="./conversation.html">用户端 · 对话分析</a>
-            <a class="btn" href="./data-market.html">用户端 · 数据广场</a>
             <a class="btn" href="./workspace-admin.html">管理端 · 成员权限</a>
-            <a class="btn" href="./knowledge.html">管理端 · 知识库</a>
           </div>
         </section>
         <aside class="context">
@@ -332,6 +331,7 @@
             <a class="card" href="./workbench.html"><div><b>工作台</b><span>最近对话、我的仪表盘、常用入口和可问数据摘要。</span></div><em>打开</em></a>
             <a class="card" href="./data-market.html"><div><b>数据广场</b><span>按企业资产 / 我的资产发现、申请、添加到我的数据。</span></div><em>打开</em></a>
             <a class="card" href="./conversation.html"><div><b>对话分析</b><span>问数、生成看板、查看知识命中和权限解释。</span></div><em>打开</em></a>
+            <a class="card" href="./dashboard.html#/templates"><div><b>仪表盘模板</b><span>20+ 开箱稿面，预览 PC/平板/手机后一键应用。</span></div><em>打开</em></a>
             <a class="card" href="./dashboard.html"><div><b>仪表盘</b><span>浏览、编辑、分享当前工作区内有权限的看板。</span></div><em>打开</em></a>
             <a class="card" href="./report.html"><div><b>报告</b><span>消费和编辑经营报告，引用已授权图表。</span></div><em>打开</em></a>
           </div>

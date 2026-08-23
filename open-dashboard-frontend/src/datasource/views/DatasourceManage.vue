@@ -2,6 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { datasourceApi, datasetApi, type DatasourceVO, type TableItem } from '../api'
+import '../../shell/catalog.css'
+import '../../shell/studio.css'
+import { useCatalogPage } from '../../shell/useCatalogPage'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,6 +18,7 @@ const activeSchema = ref('')
 const listQuery = ref('')
 const tableQuery = ref('')
 const typeFilter = ref('all')
+const statusFilter = ref('all')
 const error = ref('')
 const toast = ref('')
 const loadingList = ref(false)
@@ -63,6 +67,15 @@ function typeShort(t: string) {
   return typeMeta[t]?.short || t.slice(0, 2).toUpperCase()
 }
 
+function typeStyle(type?: string) {
+  if (type === 'mysql' || type === 'mariadb') return { short: 'My', bg: 'linear-gradient(135deg,#3b82f6,#1d4ed8)' }
+  if (type === 'pg' || type === 'postgresql' || type === 'postgres') {
+    return { short: 'PG', bg: 'linear-gradient(135deg,#38bdf8,#0369a1)' }
+  }
+  if (type === 'demo') return { short: 'Demo', bg: 'linear-gradient(135deg,#94a3b8,#475569)' }
+  return { short: typeShort(type || 'DS'), bg: 'linear-gradient(135deg,#818cf8,#4f46e5)' }
+}
+
 function statusText(s: string) {
   if (s === 'ok') return '已连通'
   if (s === 'error') return '连接失败'
@@ -75,6 +88,16 @@ function endpoint(s: DatasourceVO) {
   return s.port ? `${host}:${s.port}` : host
 }
 
+function formatStamp(t?: number) {
+  if (!t) return '—'
+  return new Date(t).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 const typeKeys = computed(() => {
   const set = new Set(items.value.map((s) => s.type))
   return ['all', ...set]
@@ -84,9 +107,14 @@ const filtered = computed(() => {
   const q = listQuery.value.trim().toLowerCase()
   return items.value.filter((s) => {
     if (typeFilter.value !== 'all' && s.type !== typeFilter.value) return false
+    if (statusFilter.value !== 'all' && s.status !== statusFilter.value) return false
     if (!q) return true
+    const desc = typeof s.ext?.desc === 'string' ? s.ext.desc : ''
     return (
       s.name.toLowerCase().includes(q) ||
+      typeLabel(s.type).toLowerCase().includes(q) ||
+      s.type.toLowerCase().includes(q) ||
+      desc.toLowerCase().includes(q) ||
       (s.host || '').toLowerCase().includes(q) ||
       (s.dbName || '').toLowerCase().includes(q)
     )
@@ -94,10 +122,15 @@ const filtered = computed(() => {
 })
 
 const selected = computed(() => items.value.find((s) => s.id === selectedId.value) || null)
+const isDetail = computed(() => typeof route.params.id === 'string' && !!route.params.id)
 
 const usedDatasets = computed(() =>
   datasets.value.filter((d) => d.datasourceId === selected.value?.id)
 )
+
+function datasetCount(id: string) {
+  return datasets.value.filter((d) => d.datasourceId === id).length
+}
 
 const filteredTables = computed(() => {
   const q = tableQuery.value.trim().toLowerCase()
@@ -106,6 +139,19 @@ const filteredTables = computed(() => {
     (t) => t.name.toLowerCase().includes(q) || (t.comment || '').toLowerCase().includes(q)
   )
 })
+
+const {
+  page: tablePage,
+  pageCount: tablePageCount,
+  pageNumbers: tablePageNumbers,
+  paged: pagedTables,
+  rangeLabel: tableRangeLabel,
+  pageSize: tablePageSize,
+  resetPage: resetTablePage,
+  goPage: goTablePage,
+} = useCatalogPage(filteredTables)
+
+watch([tableQuery, selectedId, activeSchema], resetTablePage)
 
 const selectedIsPg = computed(() => {
   const t = selected.value?.type
@@ -137,12 +183,17 @@ async function load() {
     const [srcs, ds] = await Promise.all([datasourceApi.list(), datasetApi.list()])
     items.value = srcs
     datasets.value = ds
-    const routeId = typeof route.params.id === 'string' ? route.params.id : null
-    if (routeId && srcs.some((s) => s.id === routeId)) selectedId.value = routeId
-    else if (selectedId.value && srcs.some((s) => s.id === selectedId.value)) {
-      /* keep */
-    } else if (srcs.length) selectedId.value = srcs[0].id
-    else selectedId.value = null
+    const wanted = typeof route.params.id === 'string' ? route.params.id : ''
+    const id = srcs.some((s) => s.id === wanted) ? wanted : srcs[0]?.id || ''
+    if (!id) {
+      selectedId.value = null
+      return
+    }
+    if (wanted !== id) {
+      await router.replace(`/datasources/${id}`)
+      return
+    }
+    selectedId.value = id
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -183,8 +234,14 @@ async function loadTables(id: string) {
 async function selectSrc(id: string) {
   selectedId.value = id
   error.value = ''
-  router.replace(`/datasources/${id}`)
+  if (route.params.id !== id) await router.push(`/datasources/${id}`)
   await loadTables(id)
+}
+
+function goList() {
+  const first = items.value[0]?.id
+  if (first) void router.push(`/datasources/${first}`)
+  else void router.push('/datasources')
 }
 
 async function onSchemaChange() {
@@ -220,6 +277,26 @@ async function ping() {
       error.value = r.message || '连接失败'
       await load()
     }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    pinging.value = false
+  }
+}
+
+async function pingAll() {
+  pinging.value = true
+  error.value = ''
+  try {
+    let ok = 0
+    for (const s of items.value) {
+      if (!isJdbcType(s.type)) continue
+      const r = await datasourceApi.ping(s.id).catch(() => ({ ok: false }))
+      if (r.ok) ok += 1
+    }
+    await load()
+    if (selectedId.value) await loadTables(selectedId.value)
+    flash(`已检测 ${items.value.length} 个数据源 · ${ok} 个连通`)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -389,10 +466,8 @@ async function removeSrc() {
   if (!window.confirm(`确定删除「${selected.value.name}」？引用它的数据集不会自动删除。`)) return
   try {
     await datasourceApi.remove(selected.value.id)
-    selectedId.value = null
     await load()
-    if (selectedId.value) await selectSrc(selectedId.value)
-    else tables.value = []
+    goList()
     flash('已删除连接')
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -410,197 +485,259 @@ function goMakeDataset(tableName?: string) {
 
 onMounted(async () => {
   await load()
-  if (selectedId.value) await selectSrc(selectedId.value)
+  if (selectedId.value) await loadTables(selectedId.value)
 })
 
 watch(
   () => route.params.id,
   async (id) => {
-    if (typeof id === 'string' && id !== selectedId.value) await selectSrc(id)
+    if (typeof id === 'string' && id) {
+      if (id !== selectedId.value) await selectSrc(id)
+      return
+    }
+    if (items.value[0]) {
+      await router.replace(`/datasources/${items.value[0].id}`)
+      return
+    }
+    selectedId.value = null
+    tables.value = []
   }
 )
 </script>
 
 <template>
-  <div class="page">
+  <div class="page asset-studio">
     <div v-if="toast" class="toast" role="status">{{ toast }}</div>
     <p v-if="error && !showEditor" class="banner-err">{{ error }}</p>
 
-    <div class="layout">
-      <!-- 左：连接列表 -->
-      <aside class="rail">
-        <div class="rail-top">
-          <div class="rail-title">
-            <h1>数据源</h1>
-            <span>{{ items.length }}</span>
-          </div>
-          <button type="button" class="btn primary block" @click="openCreate">新建连接</button>
-          <input v-model="listQuery" class="search" placeholder="搜索名称 / 主机 / 库" />
-          <div class="filters">
-            <button
-              v-for="t in typeKeys"
-              :key="t"
-              type="button"
-              class="filter"
-              :class="{ on: typeFilter === t }"
-              @click="typeFilter = t"
-            >
-              {{ t === 'all' ? '全部' : typeLabel(t) }}
-            </button>
+    <div class="asset-body">
+      <aside class="asset-rail">
+        <div class="rail-head"><span>连接列表</span><span>{{ filtered.length }}</span></div>
+        <div class="rail-tools">
+          <label class="asset-search">
+            <span class="ico">⌕</span>
+            <input v-model="listQuery" type="search" placeholder="搜索名称、类型、备注" />
+          </label>
+          <div class="rail-tools-row">
+            <select v-model="typeFilter" class="rail-select" aria-label="类型">
+              <option v-for="t in typeKeys" :key="t" :value="t">{{ t === 'all' ? '全部类型' : typeLabel(t) }}</option>
+            </select>
+            <select v-model="statusFilter" class="rail-select" aria-label="状态">
+              <option value="all">全部状态</option>
+              <option value="ok">已连通</option>
+              <option value="error">连接失败</option>
+              <option value="unknown">未测通</option>
+            </select>
           </div>
         </div>
-
-        <div class="rail-list">
+        <div class="rail-scroll">
           <button
             v-for="s in filtered"
             :key="s.id"
             type="button"
-            class="src"
-            :class="{ on: selected?.id === s.id }"
+            class="asset-item"
+            :class="{ on: s.id === selectedId }"
             @click="selectSrc(s.id)"
           >
-            <span class="mark" :style="{ background: (typeMeta[s.type]?.color || '#4f46e5') + '18', color: typeMeta[s.type]?.color || '#4f46e5' }">
-              {{ typeShort(s.type) }}
-            </span>
-            <span class="src-body">
-              <span class="src-name">{{ s.name }}</span>
-              <span class="src-sub">{{ endpoint(s) }} · {{ s.dbName || '未选库' }}</span>
-            </span>
-            <span class="st" :class="s.status" :title="statusText(s.status)" />
+            <span class="type-badge" :style="{ background: typeStyle(s.type).bg }">{{ typeStyle(s.type).short }}</span>
+            <div class="meta">
+              <div class="name">{{ s.name }}</div>
+              <div class="desc">
+                <span class="status-dot" :class="s.status"></span>
+                <span>{{ typeLabel(s.type) }}</span>
+                <span>·</span>
+                <span>{{ statusText(s.status) }}</span>
+              </div>
+            </div>
           </button>
-          <div v-if="loadingList" class="muted pad">加载中…</div>
-          <div v-else-if="!filtered.length" class="muted pad">
-            {{ items.length ? '无匹配连接' : '还没有数据源，点上方新建' }}
+          <div v-if="!filtered.length" class="empty-illus">
+            <div class="big">⌀</div>
+            {{ items.length ? '无匹配连接' : '还没有数据源' }}
           </div>
         </div>
       </aside>
 
-      <!-- 右：当前连接 + 表 -->
-      <section v-if="selected" class="main">
-        <header class="head">
-          <div class="head-left">
-            <div class="title-row">
-              <h2>{{ selected.name }}</h2>
-              <span class="pill" :class="selected.status">{{ statusText(selected.status) }}</span>
-            </div>
-            <p class="ep">
-              <span>{{ typeLabel(selected.type) }}</span>
-              <span class="sep">·</span>
-              <code>{{ endpoint(selected) }}</code>
-              <span class="sep">·</span>
-              <code>{{ selected.dbName || '—' }}</code>
-              <template v-if="selected.schema">
-                <span class="sep">/</span>
-                <code>{{ selected.schema }}</code>
-              </template>
-              <template v-if="selected.username">
-                <span class="sep">·</span>
-                <span>{{ selected.username }}</span>
-              </template>
-            </p>
-          </div>
-          <div class="head-acts">
-            <button
-              v-if="selectedIsJdbc"
-              type="button"
-              class="btn"
-              :disabled="pinging"
-              @click="ping"
-            >
-              {{ pinging ? '测试中…' : '测试连接' }}
-            </button>
-            <button v-if="selectedIsJdbc" type="button" class="btn" @click="openEdit">编辑</button>
-            <button type="button" class="btn danger" @click="removeSrc">删除</button>
-          </div>
-        </header>
-
-        <div class="work">
-          <div class="tables-pane">
-            <div class="tool">
-              <div class="tool-left">
-                <h3>库表</h3>
-                <span v-if="selectedIsJdbc" class="count">{{ filteredTables.length }}{{ tableQuery ? ` / ${tables.length}` : '' }}</span>
-                <select
-                  v-if="selectedIsPg && schemas.length"
-                  v-model="activeSchema"
-                  class="sel"
-                  title="Schema"
-                  @change="onSchemaChange"
-                >
-                  <option v-for="s in schemas" :key="s" :value="s">{{ s }}</option>
-                </select>
-              </div>
-              <div v-if="selectedIsJdbc" class="tool-right">
-                <input v-model="tableQuery" class="search sm" placeholder="筛选表名" />
-                <button type="button" class="btn" :disabled="loadingTables" @click="selectedId && loadTables(selectedId)">
-                  刷新
-                </button>
-              </div>
-            </div>
-
-            <div v-if="!selectedIsJdbc" class="empty-box">
-              <p>演示模版数据源，不连真实库</p>
-              <p class="muted">
-                {{ (selected?.ext?.desc as string) || '供业务领域模版绑定 stub 数据集，无法列举库表。请改用「手册演示库」等 JDBC 连接。' }}
-              </p>
-            </div>
-            <div v-else-if="loadingTables" class="muted pad">正在拉取表清单…</div>
-            <div v-else-if="!tables.length" class="empty-box">
-              <p>没有拉到表</p>
-              <p class="muted">请先「测试连接」，或点「编辑」确认库名、Schema 与密码。</p>
-              <div class="empty-acts">
-                <button type="button" class="btn" @click="ping">测试连接</button>
-                <button type="button" class="btn primary" @click="openEdit">编辑连接</button>
-              </div>
-            </div>
-            <div v-else-if="!filteredTables.length" class="muted pad">无匹配表名</div>
-            <ul v-else class="table-list">
-              <li v-for="t in filteredTables" :key="t.name" class="table-row">
-                <div class="t-main">
-                  <div class="t-name">{{ t.name }}</div>
-                  <div class="t-meta">{{ t.comment || 'table' }}</div>
+      <div class="asset-main">
+        <div class="asset-bar">
+          <div class="spacer"></div>
+          <button type="button" class="btn" :disabled="pinging" @click="pingAll">全部检测</button>
+          <button type="button" class="btn primary" @click="openCreate">+ 新建连接</button>
+        </div>
+        <section class="asset-stage">
+        <template v-if="selected">
+          <div class="hero-card">
+            <div class="hero-top">
+              <span class="type-badge lg" :style="{ background: typeStyle(selected.type).bg }">{{ typeStyle(selected.type).short }}</span>
+              <div class="hero-copy">
+                <h2>{{ selected.name }}</h2>
+                <div class="sub">
+                  {{ typeof selected.ext?.desc === 'string' ? selected.ext.desc : typeLabel(selected.type) }} ·
+                  {{ statusText(selected.status) }} ·
+                  {{ selected.username || '未填用户' }}
                 </div>
-                <button type="button" class="btn primary sm" @click="goMakeDataset(t.name)">
-                  创建数据集
+              </div>
+              <div class="hero-actions">
+                <button v-if="selectedIsJdbc" type="button" class="btn" :disabled="pinging" @click="ping">
+                  {{ pinging ? '测试中…' : '测试连接' }}
                 </button>
-              </li>
-            </ul>
+                <button v-if="selectedIsJdbc" type="button" class="btn" :disabled="loadingTables" @click="loadTables(selected.id)">浏览结构</button>
+                <button v-if="selectedIsJdbc" type="button" class="btn" @click="openEdit">编辑</button>
+                <button type="button" class="btn" @click="removeSrc">删除</button>
+                <button type="button" class="btn primary" @click="goMakeDataset()">以此创建数据集</button>
+              </div>
+            </div>
+            <div class="metric-strip">
+              <div class="metric-cell">
+                <div class="k">引擎类型</div>
+                <div class="v" :style="{ color: typeMeta[selected.type]?.color || '#4f46e5' }">{{ typeLabel(selected.type) }}</div>
+                <div class="h">Connector</div>
+              </div>
+              <div class="metric-cell">
+                <div class="k">主机 / 入口</div>
+                <div class="v" style="font-size:13px">{{ endpoint(selected) }}</div>
+                <div class="h">Network</div>
+              </div>
+              <div class="metric-cell">
+                <div class="k">库 / Schema</div>
+                <div class="v">{{ selected.dbName || '—' }}{{ selected.schema ? ' / ' + selected.schema : '' }}</div>
+                <div class="h">Catalog</div>
+              </div>
+              <div class="metric-cell">
+                <div class="k">上次检测</div>
+                <div class="v" style="font-size:13px">{{ formatStamp(selected.updateTime) }}</div>
+                <div class="h">Health check</div>
+              </div>
+            </div>
           </div>
 
-          <aside class="side">
-            <div class="side-card">
-              <h4>下游数据集</h4>
-              <p class="muted tiny">{{ usedDatasets.length }} 个引用此连接</p>
-              <button
-                v-for="d in usedDatasets"
-                :key="d.id"
-                type="button"
-                class="ds-link"
-                @click="router.push(`/datasets/${d.id}`)"
-              >
-                <span class="ds-name">{{ d.name }}</span>
-                <span class="ds-sub">{{ d.tableName || '—' }}</span>
-              </button>
-              <p v-if="!usedDatasets.length" class="muted tiny pad-sm">从左侧表点「创建数据集」开始</p>
+          <div class="soft-panel">
+            <div class="phd">
+              <h3>连接属性</h3>
+              <span class="hint">结构化展示 · 非终端日志</span>
             </div>
-            <div class="side-card tip">
-              <h4>使用顺序</h4>
-              <ol>
-                <li>测通连接</li>
-                <li>选 Schema / 表</li>
-                <li>创建数据集</li>
-              </ol>
+            <div class="pbd">
+              <div class="kv-grid">
+                <div class="kv"><div class="kk">显示名</div><div class="vv">{{ selected.name }}</div></div>
+                <div class="kv"><div class="kk">类型</div><div class="vv">{{ typeLabel(selected.type) }}</div></div>
+                <div class="kv"><div class="kk">Host</div><div class="vv">{{ selected.host || '—' }}</div></div>
+                <div class="kv"><div class="kk">Port</div><div class="vv">{{ selected.port ?? '—' }}</div></div>
+                <div class="kv"><div class="kk">Database</div><div class="vv">{{ selected.dbName || '—' }}</div></div>
+                <div class="kv"><div class="kk">Schema</div><div class="vv">{{ selected.schema || '—' }}</div></div>
+                <div class="kv"><div class="kk">用户名</div><div class="vv">{{ selected.username || '—' }}</div></div>
+                <div class="kv"><div class="kk">引用数据集</div><div class="vv">{{ usedDatasets.length }} 个</div></div>
+              </div>
             </div>
-          </aside>
-        </div>
-      </section>
+          </div>
 
-      <section v-else class="main empty-main">
-        <div class="empty-box">
-          <p>选择左侧连接，或新建一个</p>
-          <button type="button" class="btn primary" @click="openCreate">新建连接</button>
+          <div class="soft-panel">
+            <div class="phd">
+              <h3>库表结构预览</h3>
+              <span class="hint">点击行可直接创建数据集 · 每页 {{ tablePageSize }} 条</span>
+              <select
+                v-if="selectedIsPg && schemas.length"
+                v-model="activeSchema"
+                class="asset-filter"
+                style="height:28px;margin-left:auto"
+                @change="onSchemaChange"
+              >
+                <option v-for="s in schemas" :key="s" :value="s">{{ s }}</option>
+              </select>
+              <input
+                v-if="selectedIsJdbc"
+                v-model="tableQuery"
+                class="asset-search"
+                style="width:180px;height:28px"
+                placeholder="筛选表名"
+              />
+              <button v-if="selectedIsJdbc" type="button" class="btn" :disabled="loadingTables" @click="loadTables(selected.id)">刷新</button>
+            </div>
+            <div class="pbd flush">
+              <div v-if="!selectedIsJdbc" class="empty-illus">
+                <div class="big">⌀</div>
+                演示模版数据源，不连真实库
+              </div>
+              <div v-else-if="loadingTables" class="empty-illus">正在拉取表清单…</div>
+              <div v-else-if="!tables.length" class="empty-illus">
+                <div class="big">▦</div>
+                没有拉到表，请先测试连接或编辑确认库名
+              </div>
+              <div v-else-if="!filteredTables.length" class="empty-illus">无匹配表名</div>
+              <table v-else class="schema-table">
+                <thead>
+                  <tr>
+                    <th>对象</th>
+                    <th>说明</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="t in pagedTables" :key="t.name" @click="goMakeDataset(t.name)">
+                    <td><b>{{ t.name }}</b></td>
+                    <td style="color:var(--as-muted)">{{ t.comment || '点此用这张表创建数据集' }}</td>
+                    <td>
+                      <button type="button" class="btn" @click.stop="goMakeDataset(t.name)">选用</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-if="filteredTables.length" class="catalog-pager">
+                <span class="pager-info">第 {{ tableRangeLabel }} 条，共 {{ filteredTables.length }} 张表 · 每页 {{ tablePageSize }} 条</span>
+                <button type="button" :disabled="tablePage <= 1" @click="goTablePage(tablePage - 1)">上一页</button>
+                <button
+                  v-for="n in tablePageNumbers"
+                  :key="n"
+                  type="button"
+                  :class="{ on: n === tablePage }"
+                  @click="goTablePage(n)"
+                >
+                  {{ n }}
+                </button>
+                <button type="button" :disabled="tablePage >= tablePageCount" @click="goTablePage(tablePage + 1)">下一页</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="soft-panel">
+            <div class="phd">
+              <h3>下游数据集</h3>
+              <span class="hint">{{ usedDatasets.length }} 个引用</span>
+            </div>
+            <div class="pbd">
+              <div v-if="usedDatasets.length" class="ref-grid">
+                <button
+                  v-for="d in usedDatasets"
+                  :key="d.id"
+                  type="button"
+                  class="ref-card"
+                  @click="router.push(`/datasets/${d.id}`)"
+                >
+                  <div class="rt">{{ d.name }}</div>
+                  <div class="rm">{{ d.tableName || d.folder || '—' }}</div>
+                  <div class="rf">
+                    <span class="mini-tag">{{ d.folder || '未分组' }}</span>
+                    <span class="mini-tag blue">{{ d.status || 'ready' }}</span>
+                  </div>
+                </button>
+              </div>
+              <div v-else class="empty-illus">
+                <div class="big">▦</div>
+                还没有数据集引用此连接
+                <div style="margin-top:10px">
+                  <button type="button" class="btn primary" @click="goMakeDataset()">以此创建第一个数据集</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <div v-else class="empty-illus">
+          <div class="big">⌀</div>
+          {{ loadingList ? '加载中…' : '还没有数据源，先新建一个连接' }}
+          <div v-if="!loadingList && !items.length" style="margin-top:12px">
+            <button type="button" class="btn primary" @click="openCreate">新建连接</button>
+          </div>
         </div>
       </section>
+      </div>
     </div>
 
     <!-- 新建 / 编辑：单页表单，测通后选库 -->
@@ -726,7 +863,7 @@ watch(
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 .rail {
   background: #fff;
@@ -800,25 +937,6 @@ watch(
 }
 .search.sm {
   width: 160px;
-}
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-.filter {
-  border: 0;
-  background: #f3f4f6;
-  color: #5c6b7a;
-  border-radius: 999px;
-  padding: 0.18rem 0.55rem;
-  font-size: 0.72rem;
-  cursor: pointer;
-}
-.filter.on {
-  background: var(--od-brand-soft, #eef2ff);
-  color: var(--primary);
-  font-weight: 600;
 }
 .rail-list {
   flex: 1;
@@ -1015,6 +1133,7 @@ watch(
   gap: 0.75rem;
   padding: 0.65rem 1rem;
   border-bottom: 1px solid #f0f2f5;
+  cursor: pointer;
 }
 .table-row:hover {
   background: #f7f9fc;
@@ -1233,6 +1352,119 @@ watch(
   margin-top: 0.85rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--line);
+}
+.catalog {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.catalog-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.title-block h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.title-block span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.spacer {
+  flex: 1;
+  min-width: 8px;
+}
+.search.bar-search {
+  width: min(280px, 40vw);
+}
+.table-wrap {
+  overflow: auto;
+  padding: 12px 16px 24px;
+}
+.catalog-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.catalog-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--muted);
+  background: #fafbfc;
+  border-bottom: 1px solid var(--line);
+}
+.catalog-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: middle;
+}
+.catalog-table tbody tr {
+  cursor: pointer;
+}
+.catalog-table tbody tr:hover {
+  background: #f7f9ff;
+}
+.catalog-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.catalog-table td.acts {
+  text-align: right;
+}
+.catalog-table .empty-cell {
+  text-align: center;
+  color: var(--muted);
+  padding: 48px 16px;
+  cursor: default;
+}
+.catalog-table .empty-cell .btn {
+  display: inline-flex;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.mark.sm {
+  width: 28px;
+  height: 28px;
+  font-size: 0.62rem;
+}
+.btn.ghost.back {
+  padding: 0 8px;
+  color: var(--muted);
+}
+.switcher {
+  height: 32px;
+  max-width: min(360px, 50vw);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  background: #fff;
+}
+.catalog-table td.muted {
+  color: var(--muted);
+  font-size: 12px;
 }
 @media (max-width: 960px) {
   .layout {

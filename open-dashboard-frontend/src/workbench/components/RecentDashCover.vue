@@ -95,7 +95,7 @@ defineProps<{
 
 <style scoped>
 .cover {
-  height: 100px;
+  height: 112px;
   position: relative;
   overflow: hidden;
   padding: 12px 14px;

@@ -14,10 +14,10 @@ body {
   background: var(--od-bg);
 }
 .auth-rail {
-  padding: 34px 36px;
+  padding: 40px 48px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  min-height: 100%;
   background:
     linear-gradient(135deg, rgba(238, 242, 255, .95), rgba(255, 255, 255, .74)),
     radial-gradient(circle at 12% 10%, rgba(79, 70, 229, .16), transparent 34%);
@@ -44,37 +44,45 @@ body {
   font-size: 11px;
   font-weight: 800;
 }
-.auth-copy {
-  margin-top: auto;
-  max-width: 520px;
+.auth-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 28px;
+  max-width: 440px;
+  min-height: 0;
+  padding: 32px 0;
 }
 .auth-copy h1 {
   font-size: 32px;
   font-weight: 780;
   letter-spacing: 0;
-  line-height: 1.18;
+  line-height: 1.25;
 }
 .auth-copy p {
   margin-top: 12px;
   color: var(--od-muted);
   font-size: 15px;
-  line-height: 1.65;
+  line-height: 1.7;
 }
 .auth-flow {
-  margin: 24px 0 auto;
   display: grid;
   gap: 10px;
 }
 .auth-flow div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding: 12px 14px;
   border: 1px solid rgba(79, 70, 229, .14);
   border-radius: 8px;
   background: rgba(255, 255, 255, .72);
   color: var(--od-muted);
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
-.auth-flow b { color: var(--od-ink); }
+.auth-flow b { color: var(--od-ink); font-size: 13px; }
 .auth-main {
   min-width: 0;
   display: flex;

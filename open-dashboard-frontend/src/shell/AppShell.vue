@@ -6,14 +6,19 @@ import type { WorkspaceVO } from '../api/auth'
 import { setAuthFromMe } from '../api/http'
 import { conversationApi } from '../conversation/api'
 import RailIcon from './RailIcon.vue'
+import DataQMark from './DataQMark.vue'
 import { plazaScope, setPlazaScope } from '../data-plaza/plazaScope'
 import {
   THEMES,
+  BRANDS,
   applyTheme,
+  applyBrand,
   readRailSlim,
   readTheme,
+  readBrand,
   writeRailSlim,
-  type OdTheme
+  type OdTheme,
+  type OdBrand
 } from './theme'
 import './app-shell.css'
 
@@ -29,6 +34,7 @@ const permissions = ref<string[]>([])
 const sqlbotEnabled = ref(false)
 const sqlbotOpen = ref(false)
 const theme = ref<OdTheme>(readTheme())
+const brand = ref<OdBrand>(readBrand())
 const userSlim = ref(readRailSlim())
 const themeOpen = ref(false)
 const accountOpen = ref(false)
@@ -64,7 +70,7 @@ const bodyMod = computed(() => {
   if (key === 'dashboards') return 'dashboard'
   if (key === 'reports') return 'report'
   if (key === 'workspaceAdmin') return 'dataset'
-  if (key === 'dimensions') return 'dataset'
+  if (key === 'dimensions' || key === 'knowledge') return 'knowledge'
   return 'workbench'
 })
 
@@ -123,6 +129,13 @@ function setTheme(id: OdTheme) {
   themeOpen.value = false
   const lab = THEMES.find((x) => x.id === id)?.label || ''
   flash('已切换 · ' + lab)
+}
+
+function setBrand(id: OdBrand) {
+  brand.value = id
+  applyBrand(id)
+  const lab = BRANDS.find((x) => x.id === id)?.label || ''
+  flash('品牌色 · ' + lab)
 }
 
 function toggleSlim() {
@@ -201,6 +214,7 @@ async function submitPassword() {
 
 onMounted(async () => {
   applyTheme(theme.value)
+  applyBrand(brand.value)
   document.addEventListener('click', onDocClick)
   document.addEventListener('keydown', onKey)
   window.addEventListener('od:sqlbot-set', onSqlbotSet)
@@ -264,9 +278,9 @@ watch(
 <template>
   <div class="od-app" :class="{ slim, 'is-editor': isEditor, 'is-conversation': isConversation }">
     <aside class="od-rail" aria-label="产品模块">
-      <router-link class="od-brand" to="/workbench" aria-label="Open Dashboard 首页">
-        <i>OD</i>
-        <span>Open Dashboard</span>
+      <router-link class="od-brand" to="/workbench" aria-label="DataQ 首页">
+        <DataQMark class="od-brand-mark" />
+        <span>DataQ</span>
       </router-link>
       <nav class="od-rail-nav">
         <div v-if="menuError" class="od-rail-err" :title="menuError">{{ menuError }}</div>
@@ -315,7 +329,7 @@ watch(
     <div class="od-col">
       <header class="od-top">
         <div class="od-top-start">
-          <div v-if="crumb && !isEditor && !isDataPlaza" class="od-crumb">{{ crumb }}</div>
+          <div v-if="crumb && !isEditor && !isDataPlaza && !isConversation" class="od-crumb">{{ crumb }}</div>
         </div>
         <nav v-if="isDataPlaza" class="od-plaza-scope" aria-label="资产分区">
           <button type="button" :class="{ on: plazaScope === 'mine' }" @click="setPlazaScope('mine')">
@@ -374,6 +388,16 @@ watch(
                 @click="setTheme(th.id)"
               >
                 {{ th.label }}
+              </button>
+              <button
+                v-for="br in BRANDS"
+                :key="br.id"
+                type="button"
+                :data-od-brand="br.id"
+                :aria-checked="brand === br.id ? 'true' : 'false'"
+                @click="setBrand(br.id)"
+              >
+                <i class="od-brand-dot" aria-hidden="true"></i>{{ br.label }}
               </button>
             </div>
           </div>

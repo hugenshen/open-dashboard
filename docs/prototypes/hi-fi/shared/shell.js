@@ -2,11 +2,18 @@
    菜单 / 顶栏 / 主题 的唯一来源。各模块 html 只放内容区，由本文件注入壳。 */
 (function () {
   const THEME_KEY = 'od.theme';
+  const BRAND_KEY = 'od.brand';
   const RAIL_KEY = 'od.rail.slim';
   const THEMES = [
     { id: 'light', label: '浅色' },
     { id: 'dark-rail', label: '深色侧栏' },
     { id: 'dark', label: '深色' }
+  ];
+  const BRANDS = [
+    { id: 'indigo', label: 'Indigo' },
+    { id: 'feishu', label: '飞书蓝' },
+    { id: 'tabler', label: 'Tabler' },
+    { id: 'teal', label: '青绿' }
   ];
 
   const ICO = {
@@ -72,13 +79,34 @@
         if (frame.contentDocument) frame.contentDocument.documentElement.dataset.odTheme = t;
       } catch (_) { /* cross-origin frames keep their own theme */ }
     });
-    qsa('[data-od-theme]').forEach((b) => {
+    qsa('#odThemePop [data-od-theme]').forEach((b) => {
       b.setAttribute('aria-checked', b.dataset.odTheme === t ? 'true' : 'false');
+    });
+  }
+
+  function currentBrand() {
+    const b = document.documentElement.dataset.odBrand;
+    if (BRANDS.some((x) => x.id === b)) return b;
+    return 'indigo';
+  }
+
+  function applyBrand(id) {
+    const b = BRANDS.some((x) => x.id === id) ? id : 'indigo';
+    document.documentElement.dataset.odBrand = b;
+    try { localStorage.setItem(BRAND_KEY, b); } catch (_) { /* ignore */ }
+    qsa('iframe').forEach((frame) => {
+      try {
+        if (frame.contentDocument) frame.contentDocument.documentElement.dataset.odBrand = b;
+      } catch (_) { /* ignore */ }
+    });
+    qsa('#odThemePop [data-od-brand]').forEach((el) => {
+      el.setAttribute('aria-checked', el.dataset.odBrand === b ? 'true' : 'false');
     });
   }
 
   try {
     applyTheme(localStorage.getItem(THEME_KEY) || 'light');
+    applyBrand(localStorage.getItem(BRAND_KEY) || 'indigo');
   } catch (_) {
     applyTheme('light');
   }
@@ -118,7 +146,7 @@
       });
     });
     return `<aside class="od-rail" id="odRail">
-    <a class="od-brand" href="./workbench.html"><i>OD</i><span>Open Dashboard</span></a>
+    <a class="od-brand" href="./workbench.html"><img class="od-brand-mark" src="./shared/ip/od-ip-B1-otter-lower-left.png" width="36" height="36" alt="" /><span>DataQ</span></a>
     <nav class="od-rail-nav" id="modNav" aria-label="产品模块">
       ${chunks.join('\n      ')}
     </nav>
@@ -244,7 +272,10 @@
         </svg>
       </button>
       <div class="od-pop" id="odThemePop">
+        <span class="od-pop-label">外观</span>
         ${THEMES.map((th) => `<button type="button" data-od-theme="${th.id}">${th.label}</button>`).join('')}
+        <span class="od-pop-label">品牌色</span>
+        ${BRANDS.map((br) => `<button type="button" data-od-brand="${br.id}"><i class="od-brand-dot" aria-hidden="true"></i>${br.label}</button>`).join('')}
       </div>`;
     const help = actions.querySelector('[data-od-act="help"]');
     if (help) actions.insertBefore(wrap, help.nextSibling);
@@ -267,7 +298,16 @@
         odToast('已切换 · ' + (lab ? lab.label : ''));
       };
     });
+    qsa('[data-od-brand]', pop).forEach((b) => {
+      b.onclick = () => {
+        applyBrand(b.dataset.odBrand);
+        pop.classList.remove('open');
+        const lab = BRANDS.find((x) => x.id === b.dataset.odBrand);
+        odToast('品牌色 · ' + (lab ? lab.label : ''));
+      };
+    });
     applyTheme(currentTheme());
+    applyBrand(currentBrand());
   }
 
   function bindChrome() {

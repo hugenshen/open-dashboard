@@ -24,7 +24,7 @@ defineProps<{ name: string }>()
       <path d="M8 8V5h8v3" />
       <path d="M9 13h6M9 17h4" />
     </template>
-    <template v-else-if="name === 'dimensions'">
+    <template v-else-if="name === 'dimensions' || name === 'knowledge'">
       <path d="M5 5h14v14H5z" />
       <path d="M9 5v14M5 10h14M5 15h14" />
     </template>

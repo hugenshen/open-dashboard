@@ -6,23 +6,25 @@
 
 | 文件 | 模块 | 状态 |
 |------|------|------|
-| `index.html` | 高保统一入口（登录、用户端、管理端、端到端链路） | in-progress · P009 / P010 |
-| `shared/shell.css` · `shared/shell.js` | 左栏 + 顶栏产品壳（各页统一引用） | current · P007 |
+| `index.html` | 高保统一入口（登录、用户端、管理端、模板市场） | in-progress · P009 / P010 / P013 |
+| `shared/shell.css` · `shared/shell.js` | 左栏 + 顶栏产品壳；P013 品牌色变量 | current · P007 / P013 |
 | `shared/auth.css` | 登录 / 注册 / 账号设置共用样式 | in-progress · P009 |
-| `shared/commercial.css` · `shared/commercial.js` | 数据源 / 数据集 / 仪表盘 / 报告 内核 | current |
+| `shared/commercial.css` · `shared/commercial.js` | 数据源 / 数据集 / 仪表盘 / 报告 内核 | current · P013 模板市场 |
+| `shared/page-templates.js` | 仪表盘页面模板目录（24 张） | current · P013 |
 | `login.html` | 登录、SSO 示意、忘记密码、退出后提示 | in-progress · P009 |
 | `register.html` | 注册、邀请码加入工作区、创建工作区 | in-progress · P009 |
 | `account-settings.html` | 账号设置、修改密码、登录安全、通知偏好 | in-progress · P009 |
-| `workbench.html` | 工作台 | current · P007 交互真相 |
-| `conversation.html` | 对话问数（产品壳 + 嵌入 workspace） | in-progress · P004 / P006 |
+| `workbench.html` | 工作台（「新建看板」进 `#/templates`） | current · P007 / P013 |
+| `conversation.html` | 对话问数（**左栏 = 与 workbench 同一套 od-rail**；内容区嵌 dsh 问数） | accepted · P011 |
+| `conversation-ask-dsh.html` | 问数交互面（仅右侧：dsh 对话 / 表图 Node；`embed=1` 供壳嵌入） | accepted · P011 |
 | `data-market.html` | 数据广场（用户端：企业资产 / 我的资产 / 可申请 / 申请中） | in-progress · P008 / P009 |
 | `datasource.html` | 数据源 | current |
 | `dataset.html` | 数据集 | current |
 | `knowledge.html` | 知识库（管理端：候选/指标/词表/问法/记忆） | in-progress · P010 |
 | `workspace-admin.html` | 成员权限（管理端：工作区/用户/角色/数据/工具/审计） | in-progress · P009 |
-| `dashboard.html` | 仪表盘列表 / 编辑器 / 预览 | current |
-| `report.html` | 报告列表 / 编辑器 | current |
-| `conversation-workspace.html` | 对话内页（`?embed=1` 嵌入 conversation.html） | in-progress |
+| `dashboard.html` | 仪表盘列表（表优先 + 点行进画布）/ **模板市场 `#/templates`** / 编辑器 / 预览 | current · P013 模板市场 |
+| `report.html` | 报告列表（表优先 + 点行进文档）/ 编辑器 | current · 列表交互增量 |
+| `conversation-workspace.html` | 旧自研对话壳（生成/对照）；问数主路径已迁 `conversation-ask-dsh.html`；定稿见 P006 快照 | reference · P004 / P006 |
 | `dashboard-commercial.html` | 旧 hash 入口，重定向到上列模块页 | compat |
 | `dashboard-feishu.html` | 飞书气质 | reference · 不驱动新交互 |
 
