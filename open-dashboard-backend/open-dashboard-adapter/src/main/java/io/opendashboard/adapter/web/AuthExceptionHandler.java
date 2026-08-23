@@ -1,6 +1,7 @@
 package io.opendashboard.adapter.web;
 
 import io.opendashboard.domain.exception.ForbiddenException;
+import io.opendashboard.domain.exception.ResourceForbiddenException;
 import io.opendashboard.domain.exception.UnauthorizedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +24,12 @@ public class AuthExceptionHandler {
     public ResponseEntity<Map<String, String>> forbidden(ForbiddenException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(Map.of("error", "forbidden", "message", e.getMessage()));
+    }
+
+    @ExceptionHandler(ResourceForbiddenException.class)
+    public ResponseEntity<Map<String, String>> resourceForbidden(ResourceForbiddenException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", "not_found", "message", "RESOURCE_FORBIDDEN"));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

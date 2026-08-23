@@ -2,6 +2,7 @@ package io.opendashboard.adapter.web;
 
 import io.opendashboard.application.AskableDatasetService;
 import io.opendashboard.application.DatasetService;
+import io.opendashboard.application.EffectiveAccessService;
 import io.opendashboard.domain.DatasetDtos.DatasetCreateRequest;
 import io.opendashboard.domain.DatasetDtos.DatasetDetailVO;
 import io.opendashboard.domain.DatasetDtos.DatasetFieldVO;
@@ -35,17 +36,20 @@ public class DatasetController {
 
     private final DatasetService service;
     private final AskableDatasetService askable;
+    private final EffectiveAccessService access;
     private final io.opendashboard.application.conversation.BiPlatformService bi;
     private final io.opendashboard.application.conversation.DatasetLearnJobs learnJobs;
 
     public DatasetController(
             DatasetService service,
             AskableDatasetService askable,
+            EffectiveAccessService access,
             io.opendashboard.application.conversation.BiPlatformService bi,
             io.opendashboard.application.conversation.DatasetLearnJobs learnJobs
     ) {
         this.service = service;
         this.askable = askable;
+        this.access = access;
         this.bi = bi;
         this.learnJobs = learnJobs;
     }
@@ -53,6 +57,7 @@ public class DatasetController {
     /** 字段自学习画像（角色/统计/采样），只读已落库统计，不打源库实时 probe。 */
     @GetMapping("/{id}/profile")
     public java.util.Map<String, Object> profile(@PathVariable String id) {
+        access.requireDatasetVisible(id);
         return bi.profileDatasetStats(id);
     }
 
@@ -108,6 +113,7 @@ public class DatasetController {
 
     @GetMapping("/{id}")
     public ResponseEntity<DatasetDetailVO> get(@PathVariable String id) {
+        access.requireDatasetVisible(id);
         return service.get(id).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -131,6 +137,7 @@ public class DatasetController {
 
     @PostMapping("/{id}/preview")
     public ResponseEntity<DatasetQueryResult> preview(@PathVariable String id) {
+        access.requireDatasetUse(id);
         return service.preview(id).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

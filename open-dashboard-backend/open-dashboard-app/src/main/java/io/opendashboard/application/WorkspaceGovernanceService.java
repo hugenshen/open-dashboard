@@ -3,6 +3,7 @@ package io.opendashboard.application;
 import io.opendashboard.domain.context.AuthPrincipal;
 import io.opendashboard.domain.exception.ForbiddenException;
 import io.opendashboard.domain.gateway.IdentityRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -27,9 +28,17 @@ public class WorkspaceGovernanceService {
     private final Set<String> addedAssets = ConcurrentHashMap.newKeySet();
     private final Map<String, DataRequestVO> requests = new ConcurrentHashMap<>();
     private final IdentityRepository identityRepository;
+    private final ObjectProvider<EffectiveAccessService> access;
+    private final ObjectProvider<DatasetPermissionService> permissions;
 
-    public WorkspaceGovernanceService(IdentityRepository identityRepository) {
+    public WorkspaceGovernanceService(
+            IdentityRepository identityRepository,
+            ObjectProvider<EffectiveAccessService> access,
+            ObjectProvider<DatasetPermissionService> permissions
+    ) {
         this.identityRepository = identityRepository;
+        this.access = access;
+        this.permissions = permissions;
         seedWorkspaces();
         seedSecurity();
         seedAssets();
@@ -90,6 +99,18 @@ public class WorkspaceGovernanceService {
 
     public List<WorkspaceMemberVO> members(String workspaceId, AuthPrincipal principal) {
         String current = visibleWorkspaceId(principal, workspaceId);
+        List<IdentityRepository.MemberRow> live = identityRepository.listMembers(current);
+        if (!live.isEmpty()) {
+            return live.stream()
+                    .map(m -> new WorkspaceMemberVO(
+                            m.userId(),
+                            m.displayName(),
+                            m.status() == null ? "active" : m.status(),
+                            List.of(),
+                            List.of(roleLabel(m.roleCode()))
+                    ))
+                    .toList();
+        }
         return members.getOrDefault(current, List.of()).stream()
                 .map(m -> new WorkspaceMemberVO(m.userId(), m.displayName(), m.status(), m.groups(), m.roles()))
                 .toList();
@@ -112,10 +133,13 @@ public class WorkspaceGovernanceService {
     }
 
     /**
-     * P008 askable sources: granted/askable datasets in workspaces the user can see.
-     * {@code source} maps plaza assets onto live {@code de_dataset} ids.
+     * Askable sources from resource ACL (plaza is a view, not the grant source).
      */
     public List<String> grantedAskableSources(AuthPrincipal principal) {
+        EffectiveAccessService acl = access.getIfAvailable();
+        if (acl != null) {
+            return List.copyOf(acl.grantedDatasetIds(principal));
+        }
         Set<String> visible = new LinkedHashSet<>(visibleWorkspaceIds(principal));
         return assets.stream()
                 .filter(a -> "dataset".equals(a.type()))
@@ -164,8 +188,18 @@ public class WorkspaceGovernanceService {
             throw new ForbiddenException("该资产当前无需申请或不可申请");
         }
         String key = requestKey(principal, asset.id());
+        DatasetPermissionService perms = permissions.getIfAvailable();
+        String persistedId = perms == null ? null : perms.recordRequest(
+                asset.workspaceId(),
+                asset.source() == null || asset.source().isBlank() ? asset.id() : asset.source(),
+                body.purpose() == null || body.purpose().isBlank() ? "用于业务分析" : body.purpose(),
+                body.requestedActions() == null || body.requestedActions().isEmpty()
+                        ? List.of("use")
+                        : body.requestedActions(),
+                principal
+        );
         return requests.computeIfAbsent(key, ignored -> new DataRequestVO(
-                "req-" + UUID.randomUUID().toString().substring(0, 8),
+                persistedId == null ? "req-" + UUID.randomUUID().toString().substring(0, 8) : persistedId,
                 asset.id(),
                 asset.name(),
                 asset.workspaceId(),
@@ -209,6 +243,11 @@ public class WorkspaceGovernanceService {
         boolean requested = requests.containsKey(requestKey(principal, seed.id()));
         boolean added = seed.addedByDefault() || addedAssets.contains(addKey(principal, seed.id()));
         String status = requested ? "pending" : seed.authStatus();
+        EffectiveAccessService acl = access.getIfAvailable();
+        if (acl != null && "dataset".equals(seed.type()) && seed.source() != null
+                && acl.canUseDataset(principal, seed.source())) {
+            status = "granted";
+        }
         List<String> actions = actions(seed, status, added);
         WorkspaceSeed workspace = workspaces.get(seed.workspaceId());
         return new DataAssetVO(
@@ -308,6 +347,14 @@ public class WorkspaceGovernanceService {
 
     private List<RoleSeed> roleSeeds(String workspaceId) {
         return roles.getOrDefault(workspaceId, roles.getOrDefault(AuthPrincipal.DEFAULT_WORKSPACE_ID, List.of()));
+    }
+
+    private static String roleLabel(String code) {
+        if ("platform_admin".equals(code) || "platform-admin".equals(code)) return "平台管理员";
+        if ("workspace_admin".equals(code) || "workspace-admin".equals(code)) return "工作区管理员";
+        if ("analyst".equals(code)) return "分析师";
+        if ("viewer".equals(code)) return "浏览者";
+        return code == null ? "" : code;
     }
 
     private static List<String> sorted(Set<String> values) {

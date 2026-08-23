@@ -63,6 +63,52 @@ export type DataRequestVO = {
   requestedActions: string[]
 }
 
+export type DatasetMemberOption = {
+  userId: string
+  displayName: string
+  username: string
+  roles: string[]
+}
+
+export type DatasetGrantVO = {
+  id: string
+  datasetId: string
+  subjectType: string
+  subjectId: string
+  subjectLabel: string
+  action: string
+}
+
+export type DatasetPolicyVO = {
+  id: string
+  datasetId: string
+  subjectType: string
+  subjectId: string
+  subjectLabel: string
+  kind: 'row' | 'column' | string
+  effect: string
+  predicate: Record<string, unknown>
+  enabled: boolean
+}
+
+export type DatasetPermissionBundle = {
+  datasets: Array<{ id: string; name: string; tableName: string }>
+  members: DatasetMemberOption[]
+  grants: DatasetGrantVO[]
+  policies: DatasetPolicyVO[]
+}
+
+export type DatasetGrantRequest = {
+  datasetId: string
+  subjectType?: 'user' | 'role' | 'group'
+  subjectId: string
+  action?: 'use' | 'manage' | 'owner'
+  rowField?: string
+  rowOp?: string
+  rowValue?: string
+  hideColumns?: string[]
+}
+
 export type DataPlazaVO = {
   currentWorkspace: WorkspaceVO
   spaces: DataSpaceVO[]
@@ -85,5 +131,15 @@ export const workspaceApi = {
   requestDataset: (
     workspaceId: string,
     data: { assetId: string; purpose: string; expireDays?: number; requestedActions?: string[] }
-  ) => apiFetch<DataRequestVO>(`/workspaces/${workspaceId}/dataset-requests`, { method: 'POST', data })
+  ) => apiFetch<DataRequestVO>(`/workspaces/${workspaceId}/dataset-requests`, { method: 'POST', data }),
+  datasetPermissions: (workspaceId: string) =>
+    apiFetch<DatasetPermissionBundle>(`/workspaces/${workspaceId}/dataset-permissions`),
+  grantDataset: (workspaceId: string, data: DatasetGrantRequest) =>
+    apiFetch<DatasetGrantVO>(`/workspaces/${workspaceId}/dataset-permissions/grants`, { method: 'POST', data }),
+  deleteGrant: (workspaceId: string, grantId: string) =>
+    apiFetch<void>(`/workspaces/${workspaceId}/dataset-permissions/grants/${grantId}`, { method: 'DELETE' }),
+  deletePolicy: (workspaceId: string, policyId: string) =>
+    apiFetch<void>(`/workspaces/${workspaceId}/dataset-permissions/policies/${policyId}`, { method: 'DELETE' }),
+  approveRequest: (workspaceId: string, requestId: string) =>
+    apiFetch<DatasetGrantVO>(`/workspaces/${workspaceId}/dataset-requests/${requestId}/approve`, { method: 'POST' })
 }

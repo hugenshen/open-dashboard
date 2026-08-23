@@ -51,6 +51,8 @@ public class IdentityService {
         repo.ensureSeedMembership("demo", "workspace-finance", "platform_admin");
         repo.ensureSeedMembership("wsadmin", AuthPrincipal.DEFAULT_WORKSPACE_ID, "workspace_admin");
         repo.ensureSeedMembership("wsadmin", "workspace-east", "workspace_admin");
+        repo.ensureSeedMembership("analyst", AuthPrincipal.DEFAULT_WORKSPACE_ID, "analyst");
+        repo.ensureSeedMembership("analyst", "workspace-east", "analyst");
     }
 
     public LoginResult login(LoginRequest req, String userAgent) {

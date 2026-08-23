@@ -6,6 +6,8 @@ import io.opendashboard.domain.CatalogDtos.DashboardChartCatalogItem;
 import io.opendashboard.domain.CatalogDtos.DatasetCatalogItem;
 import io.opendashboard.domain.DashboardDtos.ChartViewVO;
 import io.opendashboard.domain.DashboardDtos.DashboardDetailVO;
+import io.opendashboard.domain.context.AuthContext;
+import io.opendashboard.domain.context.AuthPrincipal;
 import io.opendashboard.domain.gateway.DashboardGateway;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class CatalogService {
@@ -20,22 +23,25 @@ public class CatalogService {
     private final ObjectProvider<DashboardGateway> dashboardRepository;
     private final DatasetService datasetService;
     private final DashboardAppService dashboardAppService;
+    private final ObjectProvider<EffectiveAccessService> access;
 
     public CatalogService(
             ObjectProvider<DashboardGateway> dashboardRepository,
             DatasetService datasetService,
-            DashboardAppService dashboardAppService
+            DashboardAppService dashboardAppService,
+            ObjectProvider<EffectiveAccessService> access
     ) {
         this.dashboardRepository = dashboardRepository;
         this.datasetService = datasetService;
         this.dashboardAppService = dashboardAppService;
+        this.access = access;
     }
 
     public CatalogBundle catalog() {
         List<DatasetCatalogItem> datasets = datasetService.catalog();
         DashboardGateway repo = dashboardRepository.getIfAvailable();
         if (repo != null) {
-            return new CatalogBundle(repo.listDashboardCatalog(), datasets);
+            return new CatalogBundle(visibleDashboards(repo.listDashboardCatalog()), datasets);
         }
         List<DashboardCatalogItem> dashboards = new ArrayList<>();
         for (var node : dashboardAppService.tree()) {
@@ -49,6 +55,18 @@ public class CatalogService {
             dashboards.add(new DashboardCatalogItem(node.id(), node.name(), charts));
         }
         return new CatalogBundle(dashboards, datasets);
+    }
+
+    private List<DashboardCatalogItem> visibleDashboards(List<DashboardCatalogItem> all) {
+        AuthPrincipal principal = AuthContext.get();
+        EffectiveAccessService acl = access.getIfAvailable();
+        if (acl == null) return all;
+        if (principal == null) return List.of();
+        if (EffectiveAccessService.isWorkspaceAdmin(principal) || principal.hasPermission("dashboard:manage")) {
+            return all;
+        }
+        Set<String> allowed = acl.grantedDashboardIds(principal);
+        return all.stream().filter(d -> allowed.contains(d.id())).toList();
     }
 
     public Map<String, Object> resolveChartEncode(String dashboardId, String chartId, String view) {

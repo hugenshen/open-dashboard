@@ -38,4 +38,13 @@ public interface DataSourcePort {
     );
 
     DatasetQueryResult executeSql(ConnectionSpec spec, String sql, int maxRows);
+
+    /** Best-effort cancel of in-flight warehouse statements for owner (blank = all). */
+    default int cancelLiveQueries(String owner) {
+        return 0;
+    }
+
+    default Map<String, Object> liveQueryStats() {
+        return Map.of();
+    }
 }

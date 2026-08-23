@@ -1,7 +1,7 @@
 package io.opendashboard.infrastructure.persistence;
 
 import io.opendashboard.domain.gateway.IdentityRepository;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-@ConditionalOnBean(JdbcTemplate.class)
+@Profile("!stub")
 public class JdbcIdentityRepository implements IdentityRepository {
 
     private final JdbcTemplate jdbc;
@@ -174,6 +174,35 @@ public class JdbcIdentityRepository implements IdentityRepository {
                   AND status = 'active'
                 ORDER BY workspace_id
                 """, (rs, i) -> rs.getString("workspace_id"), userId);
+    }
+
+    @Override
+    public List<String> rolesForUser(String userId, String workspaceId) {
+        return jdbc.query("""
+                SELECT role_code
+                FROM od_workspace_member
+                WHERE user_id = ?
+                  AND workspace_id = ?
+                  AND status = 'active'
+                ORDER BY role_code
+                """, (rs, i) -> rs.getString("role_code"), userId, workspaceId);
+    }
+
+    @Override
+    public List<MemberRow> listMembers(String workspaceId) {
+        return jdbc.query("""
+                SELECT u.id, u.username, u.display_name, wm.role_code, wm.status
+                FROM od_workspace_member wm
+                JOIN od_user_account u ON u.id = wm.user_id
+                WHERE wm.workspace_id = ?
+                ORDER BY u.display_name, u.username
+                """, (rs, i) -> new MemberRow(
+                rs.getString("id"),
+                rs.getString("username"),
+                rs.getString("display_name"),
+                rs.getString("role_code"),
+                rs.getString("status")
+        ), workspaceId);
     }
 
     @Override

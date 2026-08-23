@@ -1,6 +1,5 @@
 package io.opendashboard.application;
 
-import io.opendashboard.application.conversation.FieldSemantics;
 import io.opendashboard.application.conversation.ReadSqlGuard;
 import io.opendashboard.domain.DatasetDtos.DatasetDetailVO;
 import io.opendashboard.domain.QueryDtos.ChartQueryRequest;
@@ -21,9 +20,43 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class StubQueryService {
+
+    private static final Pattern OD_SAMPLE = Pattern.compile(
+            "/\\*\\s*od_sample\\s+est=(-?\\d+)\\s+n=(\\d+)\\s*\\*/",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern OD_SCALED = Pattern.compile(
+            "/\\*\\s*scaled\\s+x([0-9.]+)\\s*\\*/",
+            Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Parse sampling markers from SQL comments into chart/sql {@code extra}.
+     * Preview-grade aggregates on large tables carry {@code od_sample}/{@code scaled}.
+     */
+    public static void putSampleMeta(Map<String, Object> extra, String sql) {
+        if (extra == null || sql == null || sql.isBlank()) return;
+        Matcher sample = OD_SAMPLE.matcher(sql);
+        if (sample.find()) {
+            extra.put("sampled", true);
+            try {
+                extra.put("estRows", Long.parseLong(sample.group(1)));
+            } catch (NumberFormatException ignored) { /* keep sampled */ }
+            try {
+                extra.put("sampleN", Integer.parseInt(sample.group(2)));
+            } catch (NumberFormatException ignored) { /* keep sampled */ }
+        }
+        Matcher scaled = OD_SCALED.matcher(sql);
+        if (scaled.find()) {
+            extra.put("sampled", true);
+            try {
+                extra.put("scaleFactor", Double.parseDouble(scaled.group(1)));
+            } catch (NumberFormatException ignored) { /* keep sampled */ }
+        }
+    }
 
     private final ObjectProvider<CatalogService> catalogService;
     private final ObjectProvider<DatasetService> datasetService;
@@ -31,6 +64,7 @@ public class StubQueryService {
     private final DataSourcePort jdbc;
     private final boolean stubQuery;
     private final FileTableStore fileTables;
+    private final QueryGuard queryGuard;
 
     public StubQueryService(
             ObjectProvider<CatalogService> catalogService,
@@ -38,6 +72,7 @@ public class StubQueryService {
             ObjectProvider<DatasourceService> datasourceService,
             DataSourcePort jdbc,
             FileTableStore fileTables,
+            QueryGuard queryGuard,
             @Value("${opendashboard.stub-query:true}") boolean stubQuery
     ) {
         this.catalogService = catalogService;
@@ -45,19 +80,30 @@ public class StubQueryService {
         this.datasourceService = datasourceService;
         this.jdbc = jdbc;
         this.fileTables = fileTables;
+        this.queryGuard = queryGuard;
         this.stubQuery = stubQuery;
     }
 
+    /** Propagate user stop / agent abort to in-flight JDBC statements. */
+    public int cancelLiveQueries(String owner) {
+        return jdbc.cancelLiveQueries(owner);
+    }
+
+    public Map<String, Object> liveQueryStats() {
+        return jdbc.liveQueryStats();
+    }
+
     public DatasetQueryResult execute(DatasetQueryRequest request) {
-        String datasetId = request.datasetId() == null ? "" : request.datasetId();
-        DatasetQueryResult imported = fileTables.query(request);
-        if (imported != null) return imported;
-        DatasetQueryResult live = tryLive(request);
+        DatasetQueryRequest gated = queryGuard.applyToRequest(request);
+        String datasetId = gated.datasetId() == null ? "" : gated.datasetId();
+        DatasetQueryResult imported = fileTables.query(gated);
+        if (imported != null) return queryGuard.stripHidden(datasetId, imported);
+        DatasetQueryResult live = tryLive(gated);
         if (live != null && !isLiveQueryFailed(live)) {
-            return live;
+            return queryGuard.stripHidden(datasetId, live);
         }
         if (!stubQuery) {
-            if (live != null) return live;
+            if (live != null) return queryGuard.stripHidden(datasetId, live);
             // Never invent demo rows when stub-query is off — return empty with honest SQL note.
             long start = System.currentTimeMillis();
             return new DatasetQueryResult(
@@ -68,11 +114,11 @@ public class StubQueryService {
                     System.currentTimeMillis() - start
             );
         }
-        DatasetQueryResult stub = stubExecute(request);
+        DatasetQueryResult stub = stubExecute(gated);
         if (live != null && (stub.rows() == null || stub.rows().isEmpty()) && !hasStubRows(datasetId)) {
-            return live;
+            return queryGuard.stripHidden(datasetId, live);
         }
-        return stub;
+        return queryGuard.stripHidden(datasetId, stub);
     }
 
     private static boolean isLiveQueryFailed(DatasetQueryResult result) {
@@ -111,8 +157,19 @@ public class StubQueryService {
                     measures.add(new Agg(String.valueOf(f), agg, alias));
                 }
             }
-            int limit = request.limit() == null ? 500 : request.limit();
+            int limit = request.limit() == null || request.limit() <= 0
+                    ? 1000
+                    : Math.min(request.limit(), 1000);
             return jdbc.queryTable(spec, table, dims, measures, request.columns(), request.filters(), limit);
+        } catch (IllegalStateException e) {
+            String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            return new DatasetQueryResult(
+                    List.of(),
+                    List.of(),
+                    false,
+                    "-- live query blocked: " + msg,
+                    0
+            );
         } catch (Exception e) {
             String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             return new DatasetQueryResult(
@@ -127,17 +184,17 @@ public class StubQueryService {
 
     /** SQLBot Ask-3: execute a harness-validated SELECT against the dataset's physical table. */
     public DatasetQueryResult executeReadSql(String datasetId, String sql, Integer limit) {
-        String safe = ReadSqlGuard.requireSelect(sql);
+        String safe = queryGuard.wrapSql(datasetId, ReadSqlGuard.requireSelect(sql));
         if (fileTables.has(datasetId)) {
             DatasetQueryResult landed = fileTables.scan(datasetId, limit);
             if (landed != null) {
-                return new DatasetQueryResult(
+                return queryGuard.stripHidden(datasetId, new DatasetQueryResult(
                         landed.columns(),
                         landed.rows(),
                         landed.truncated(),
                         safe,
                         landed.elapsedMs()
-                );
+                ));
             }
         }
         DatasetService dsSvc = datasetService.getIfAvailable();
@@ -162,8 +219,8 @@ public class StubQueryService {
         if (!safe.toLowerCase().contains(ident)) {
             throw new IllegalArgumentException("SQL 必须查询当前数据集表: " + table);
         }
-        int lim = limit == null ? 500 : limit;
-        return jdbc.executeSql(spec, safe, lim);
+        int lim = limit == null || limit <= 0 ? 1000 : Math.min(limit, 1000);
+        return queryGuard.stripHidden(datasetId, jdbc.executeSql(spec, safe, lim));
     }
 
     private DatasetQueryResult stubExecute(DatasetQueryRequest request) {
@@ -355,6 +412,7 @@ public class StubQueryService {
     }
 
     public ChartQueryResult query(ChartQueryRequest request) {
+        queryGuard.requireDashboardView(request.dashboardId());
         Map<String, Object> inline = request.inline();
         String datasetId = null;
         String chartType = "bar";
@@ -409,40 +467,17 @@ public class StubQueryService {
                 ? List.of()
                 : List.of(Map.of("field", category));
         Map<String, Object> filters = extractFilters(inline, encMap(inline), request.context());
+        int rowLimit = chartResultLimit(inline);
         DatasetQueryRequest dsReq = new DatasetQueryRequest(
                 datasetId,
                 dims,
                 List.of(Map.of("field", value, "agg", agg)),
                 null,
                 filters,
-                100,
+                rowLimit,
                 Map.of("includeSql", true)
         );
         DatasetQueryResult table = execute(dsReq);
-        String fallbackFrom = null;
-        String fallbackTo = null;
-        String fallbackReason = null;
-        if (shouldFallbackIncome(table, value)) {
-            String fallback = amountFallbackField(datasetId, value);
-            if (fallback != null) {
-                DatasetQueryResult retried = execute(new DatasetQueryRequest(
-                        datasetId,
-                        dims,
-                        List.of(Map.of("field", fallback, "agg", agg)),
-                        null,
-                        filters,
-                        100,
-                        Map.of("includeSql", true)
-                ));
-                if (retried != null && retried.rows() != null && !retried.rows().isEmpty()) {
-                    fallbackFrom = value;
-                    fallbackTo = fallback;
-                    fallbackReason = table.sql();
-                    value = fallback;
-                    table = retried;
-                }
-            }
-        }
         List<FieldMeta> fields = (table.columns() == null ? List.<ColumnMeta>of() : table.columns()).stream()
                 .map(c -> new FieldMeta(c.name(), c.dataType()))
                 .toList();
@@ -466,16 +501,16 @@ public class StubQueryService {
         Map<String, Object> extra = new HashMap<>();
         extra.put("stub", table.sql() != null && table.sql().startsWith("-- stub"));
         extra.put("sql", table.sql());
+        putSampleMeta(extra, table.sql());
+        if (table.sql() != null && (table.sql().startsWith("-- live query") || table.sql().contains("超时") || table.sql().contains("繁忙"))) {
+            extra.put("error", table.sql());
+            extra.put("timedOut", table.sql().contains("超时") || table.sql().toLowerCase().contains("timeout"));
+        }
         extra.put("chartType", chartType);
         extra.put("chartId", request.chartId() == null ? "" : request.chartId());
         extra.put("dashboardId", request.dashboardId() == null ? "" : request.dashboardId());
         extra.put("inline", inline != null);
         if (filters != null && !filters.isEmpty()) extra.put("filters", filters);
-        if (fallbackTo != null) {
-            extra.put("fallbackFrom", fallbackFrom);
-            extra.put("fallbackTo", fallbackTo);
-            extra.put("fallbackReason", fallbackReason);
-        }
 
         if ("kpi".equals(chartType)) {
             double kpi = aggregate(data, agg);
@@ -512,11 +547,34 @@ public class StubQueryService {
         return out;
     }
 
+    /** Cap chart series/detail rows; default 1000 to avoid unbounded GROUP BY result sets. */
+    private static int chartResultLimit(Map<String, Object> inline) {
+        Object raw = null;
+        if (inline != null) {
+            if (inline.get("resultLimit") != null) raw = inline.get("resultLimit");
+            else if (inline.get("encode") instanceof Map<?, ?> enc && enc.get("resultLimit") != null) {
+                raw = enc.get("resultLimit");
+            }
+        }
+        int n = 1000;
+        if (raw instanceof Number num) n = num.intValue();
+        else if (raw != null) {
+            try {
+                n = Integer.parseInt(String.valueOf(raw));
+            } catch (NumberFormatException ignored) {
+                n = 1000;
+            }
+        }
+        if (n <= 0) n = 1000;
+        return Math.min(n, 1000);
+    }
+
     private static void applyEncodeSlot(String[] out, Map<?, ?> m) {
         if (m == null) return;
         Object ds = m.get("datasetId");
-        Object cat = m.get("category");
-        Object val = m.get("value");
+        // Accept x/y aliases from conversation tools (P011 od_run_query).
+        Object cat = m.get("category") != null ? m.get("category") : m.get("x");
+        Object val = m.get("value") != null ? m.get("value") : m.get("y");
         Object agg = m.get("agg");
         if (ds != null && !String.valueOf(ds).isBlank()) out[0] = String.valueOf(ds);
         if (cat != null && !String.valueOf(cat).isBlank() && !(cat instanceof List<?>)) out[1] = String.valueOf(cat);
@@ -526,6 +584,11 @@ public class StubQueryService {
         if (val != null && !String.valueOf(val).isBlank() && !(val instanceof List<?>)) out[2] = String.valueOf(val);
         if (val instanceof List<?> list && !list.isEmpty() && list.getFirst() != null) {
             out[2] = String.valueOf(list.getFirst());
+        }
+        // Dim-only distribution → COUNT on the category field
+        if (out[1] != null && (out[2] == null || out[2].isBlank())) {
+            out[2] = out[1];
+            if (out[3] == null || out[3].isBlank()) out[3] = "COUNT";
         }
         if (agg != null && !String.valueOf(agg).isBlank()) out[3] = String.valueOf(agg);
     }
@@ -591,20 +654,6 @@ public class StubQueryService {
     private static Map<?, ?> encMap(Map<String, Object> inline) {
         if (inline == null) return Map.of();
         return inline.get("encode") instanceof Map<?, ?> m ? m : Map.of();
-    }
-
-    private static boolean shouldFallbackIncome(DatasetQueryResult table, String value) {
-        if (table == null || !FieldSemantics.looksIncomeMeasure(value)) return false;
-        boolean empty = table.rows() == null || table.rows().isEmpty();
-        return empty && FieldSemantics.queryFailed(table.sql());
-    }
-
-    private String amountFallbackField(String datasetId, String currentValue) {
-        DatasetService dsSvc = datasetService.getIfAvailable();
-        if (dsSvc == null || datasetId == null) return null;
-        DatasetDetailVO detail = dsSvc.get(datasetId).orElse(null);
-        if (detail == null) return null;
-        return FieldSemantics.findAmountFallback(detail.fields(), currentValue);
     }
 
     private static Map<String, Object> castFilterMap(Map<?, ?> raw) {

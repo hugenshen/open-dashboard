@@ -5,7 +5,7 @@ status: accepted
 milestone: v0.5
 date: 2026-08-17
 acceptance: docs/proposals/P008-permission-aware-workbench/acceptance.yaml
-design: [docs/proposals/P008-permission-aware-workbench/design.md]
+design: [docs/proposals/P008-permission-aware-workbench/design.md, docs/proposals/P008-permission-aware-workbench/permission-design-brief.html]
 prototype: docs/prototypes/hi-fi/data-market.html
 gates:
   proposal: accepted
@@ -21,19 +21,20 @@ depends: [P003, P006, P007]
 
 ## 开发入口
 
-权限边界已确认。身份贯穿、`GET /api/dataset/askable`、拒绝 body.userId、会话 owner 隔离已用 `scripts/e2e-auth-ask.sh` 跑通。用户端数据广场已完成高保并落 Vue/Java 第一版。工作台「我的资源」、仪表盘双重 ACL、静态报告独立查看仍未做。
+权限边界已确认。身份贯穿、askable、公开 chartQuery、ACL 表、QueryGuard 行列注入、管理端数据权限已编码。工作台「我的资源」分组与匿名分享静态化仍未做。
 
 | 你要 | 去看 |
 |------|------|
 | 已确认原则 | 本文 §2 |
-| 详细设计 | [design.md](./design.md)（有效权限、IA、建议契约、静态稿迁移、分期） |
+| **问数/看盘怎么做（改动前真实闸门 · 四层 · QueryGuard · 分期）** | [permission-design-brief.html](./permission-design-brief.html) |
+| 详细设计摘要 | [design.md](./design.md)（公式、表、API、QueryGuard） |
 | 怎么验收 | [acceptance.yaml](./acceptance.yaml) |
 | 工作台壳层 | [P007 冻结快照](../../prototypes/snapshots/2026-08-17-p007-app-shell-final/)（只提供壳，不含本提案 IA） |
 | 数据广场高保 | [`data-market.html`](../../prototypes/hi-fi/data-market.html)（当前增量，未冻结） |
-| 契约 | 实现分支先更新 [`openapi.yaml`](../../design/openapi.yaml)；路径见 design §3，现网尚不存在 |
+| 契约 | [`openapi.yaml`](../../design/openapi.yaml) 已含 dataset-permissions / chartQuery 闸 |
 | 依赖 | P003 报告模型、P006 问数、P007 壳层 |
 | 端到端 | [`scripts/e2e-auth-ask.sh`](../../../scripts/e2e-auth-ask.sh)（Java :8082 + Harness :8091） |
-| 当前范围 | PR-ACL-04 / PR-ACL-08 / PR-ACL-09 已编码并有 e2e 证据；工作台「我的资源」与仪表盘/报告 ACL 仍未冻结 |
+| 当前范围 | PR-ACL-04/08/09/10/11 与行列 QueryGuard 已编码；**新注册 analyst 不再继承 V18 角色全量 ACL**（V19 收到 `u_analyst`，树/详情/目录按实例 ACL 过滤）。工作台「我的/共享」IA（PR-ACL-05/06/07）与匿名分享静态化（D）未做 |
 
 ## 波及
 
@@ -60,6 +61,7 @@ depends: [P003, P006, P007]
 ### 2.1 仪表盘复用数据集权限
 
 - 仪表盘访问必须同时满足资源 ACL（owner / manage / edit / view）和其引用数据集的 `dataset:use`。
+- `dashboard:view` / `dataset:use` 是 L1 能力码，不是全量资产授权。新注册默认 `role=analyst` 只获得进模块的能力；看不到他人创建的盘和数据集，除非被授予实例 ACL（创建者自动 owner）。
 - 用户有仪表盘 ACL、但任一必需数据集已失去 `use` 时，不得打开或预览数据。
 - 工作台可显示不含业务数据的“权限已失效”元数据卡，用于解释资源为何不可用；禁止返回缩略数据、指标值或查询结果。
 - 仪表盘权限不反向授予数据集权限。
@@ -175,10 +177,12 @@ depends: [P003, P006, P007]
 | PR-ACL-07 | 无权限空状态 |
 | PR-ACL-08 | 客户端不能声明 user_id |
 | PR-ACL-09 | 用户端数据广场可发现和申请数据 |
+| PR-ACL-10 | 资源实例 ACL 落库，广场不再当权限源 |
+| PR-ACL-11 | 公开 chartQuery / 导出与问数同一出数闸 |
 
 ## 8. 实现与交付映射
 
-- 当前状态：权限边界已确认；**身份贯穿与 askable API 已编码（wip）**；用户端数据广场高保和 `/data-plaza` 第一版已补，工作台「我的/共享」高保和资源 ACL 表尚未开始。
+- 当前状态：权限边界已确认；**身份贯穿与 askable API 已编码（wip）**；用户端数据广场高保和 `/data-plaza` 第一版已补。资源 ACL 表、公开 chartQuery 数据集闸、行列注入、工作台「我的/共享」尚未开始。怎么做见 [permission-design-brief.html](./permission-design-brief.html)。
 - 依赖：P003 报告发布模型、P006 问数、P007 工作台壳层。
 - 实现后必须同步：OpenAPI → FE/BE → `architecture.html` → 验收 → `requirements.md`。
 - 在 `gates.acceptance: passed` 前不得把本提案能力写入已交付基线。
@@ -203,3 +207,4 @@ depends: [P003, P006, P007]
 | 2026-08-21 | 对齐 Quick BI：顶栏居中「我的 / 企业」由 AppShell 渲染并与数据广场共享状态；去掉不可靠的 Teleport |
 | 2026-08-21 | 放大优选搜索框；列表名称区去掉标签堆叠，状态改为轻量文字样式 |
 | 2026-08-21 | 去掉企业侧全部/已获权/可申请筛选条；「我的」下已添加/申请中改到工具栏右上角 |
+| 2026-08-22 | 对照主流 BI/问数与 refs：问数不是独立权限域。落详细设计 [permission-design-brief.html](./permission-design-brief.html)：公开 chartQuery 必须与 askable 同闸；删 askable live[0] 回落；ACL 表 + Java QueryGuard 注入 RLS/CLS；匿名分享默认静态、禁止发布者凭证。不新开问数权限码 |

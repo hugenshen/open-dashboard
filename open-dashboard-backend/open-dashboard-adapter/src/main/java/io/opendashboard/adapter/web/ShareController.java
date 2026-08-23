@@ -2,6 +2,7 @@ package io.opendashboard.adapter.web;
 
 import io.opendashboard.application.ChartExportHelper;
 import io.opendashboard.application.DashboardAppService;
+import io.opendashboard.application.QueryGuard;
 import io.opendashboard.application.StubQueryService;
 import io.opendashboard.domain.DashboardDtos.DashboardShareVO;
 import io.opendashboard.domain.DashboardDtos.ShareViewVO;
@@ -58,7 +59,7 @@ public class ShareController {
                 request.inline(),
                 request.context() == null ? Map.of() : request.context()
         );
-        return ResponseEntity.ok(stubQueryService.query(bound));
+        return ResponseEntity.ok(QueryGuard.bypass(() -> stubQueryService.query(bound)));
     }
 
     @PostMapping("/{token}/export")
@@ -81,7 +82,7 @@ public class ShareController {
                 null,
                 Map.of("filters", java.util.List.of(), "linkages", java.util.List.of())
         );
-        ChartQueryResult result = stubQueryService.query(req);
+        ChartQueryResult result = QueryGuard.bypass(() -> stubQueryService.query(req));
         byte[] csv = ChartExportHelper.toCsvBytes(result);
         String filename = "chart-" + chartId + ".csv";
         return ResponseEntity.ok()

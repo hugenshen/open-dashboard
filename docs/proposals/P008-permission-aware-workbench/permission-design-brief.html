@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>P008 · 问数与仪表盘权限详细设计</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --ink: #1f2329;
+      --muted: #646a73;
+      --line: #e5e6eb;
+      --card: #ffffff;
+      --brand: #3370ff;
+      --brand-soft: #e8f0ff;
+      --ok: #047857;
+      --ok-bg: #ecfdf5;
+      --warn: #c2410c;
+      --warn-bg: #fff7ed;
+      --bad: #b91c1c;
+      --bad-bg: #fef2f2;
+      --mono: "SF Mono", "JetBrains Mono", "Menlo", monospace;
+      --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(900px 420px at 0% -5%, #dbe7ff 0%, transparent 55%),
+        radial-gradient(700px 360px at 100% 0%, #e8eef5 0%, transparent 50%),
+        var(--bg);
+      line-height: 1.65;
+    }
+    .layout {
+      display: flex;
+      align-items: flex-start;
+      max-width: 1280px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+    nav.side {
+      position: sticky;
+      top: 0;
+      flex: 0 0 220px;
+      width: 220px;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 1.25rem 0.85rem 2rem 1rem;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+      z-index: 5;
+    }
+    nav.side .side-brand {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--brand);
+      margin: 0 0 0.35rem;
+    }
+    nav.side .side-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      margin: 0 0 0.85rem;
+      line-height: 1.35;
+      color: var(--ink);
+    }
+    nav.side a {
+      display: block;
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.35;
+      padding: 0.4rem 0.55rem;
+      border-radius: 6px;
+      margin-bottom: 2px;
+      border-left: 2px solid transparent;
+    }
+    nav.side a:hover { color: var(--ink); background: var(--brand-soft); }
+    nav.side a.active {
+      color: #1d4ed8;
+      background: var(--brand-soft);
+      border-left-color: var(--brand);
+      font-weight: 650;
+    }
+    nav.side a.ext { color: var(--brand); font-weight: 600; }
+    nav.side .side-group {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #94a3b8;
+      letter-spacing: 0.04em;
+      margin: 0.85rem 0 0.35rem 0.55rem;
+      text-transform: uppercase;
+    }
+    .wrap {
+      flex: 1;
+      min-width: 0;
+      max-width: 960px;
+      margin: 0;
+      padding: 2.25rem 1.5rem 4rem;
+    }
+    @media (max-width: 960px) {
+      .layout { display: block; }
+      nav.side {
+        position: relative;
+        width: auto;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 1rem 1.15rem;
+      }
+      nav.side .side-nav-list { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+      nav.side a { border-left: 0; padding: 0.35rem 0.55rem; }
+      nav.side .side-group { display: none; }
+      .wrap { padding: 1.5rem 1.15rem 3rem; max-width: none; }
+    }
+    header {
+      margin-bottom: 1.75rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      color: var(--brand);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin: 0 0 0.45rem;
+    }
+    h1 {
+      font-size: clamp(1.55rem, 3.5vw, 2.05rem);
+      font-weight: 700;
+      line-height: 1.3;
+      margin: 0 0 0.65rem;
+    }
+    .lead { color: var(--muted); margin: 0; max-width: 48rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    .pill {
+      display: inline-flex; align-items: center;
+      height: 26px; padding: 0 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+      background: var(--brand-soft); color: #1d4ed8;
+    }
+    .pill.muted { background: #eef0f3; color: var(--muted); }
+    .pill.ok { background: var(--ok-bg); color: var(--ok); }
+    .pill.warn { background: var(--warn-bg); color: var(--warn); }
+    h2 {
+      font-size: 1.22rem;
+      margin: 2.35rem 0 0.75rem;
+      padding-top: 0.85rem;
+      border-top: 1px solid var(--line);
+    }
+    h3 { font-size: 1.02rem; margin: 1.35rem 0 0.5rem; }
+    h4 { font-size: 0.95rem; margin: 1rem 0 0.4rem; color: var(--muted); }
+    a { color: var(--brand); }
+    .muted { color: var(--muted); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+    }
+    .card.before { border-color: #fecaca; background: linear-gradient(180deg, #fff 0%, var(--bad-bg) 160%); }
+    .card.after { border-color: #a7f3d0; background: linear-gradient(180deg, #fff 0%, var(--ok-bg) 160%); }
+    .card h3 { margin-top: 0; }
+    .tag {
+      display: inline-block;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+      padding: 2px 8px; border-radius: 4px; margin-bottom: 0.5rem;
+    }
+    .tag.bad { background: #fee2e2; color: var(--bad); }
+    .tag.ok { background: #d1fae5; color: var(--ok); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+    @media (max-width: 780px) { .grid-2 { grid-template-columns: 1fr; } }
+    table {
+      width: 100%; border-collapse: collapse; font-size: 0.9rem;
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 10px; overflow: hidden; margin: 0.75rem 0 1rem;
+    }
+    th, td {
+      text-align: left; padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--line); vertical-align: top;
+    }
+    th { background: #f7f8fa; font-weight: 650; font-size: 0.82rem; color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+    code {
+      font-family: var(--mono); font-size: 0.84em;
+      background: #f1f3f5; padding: 0.1em 0.35em; border-radius: 4px;
+    }
+    pre {
+      font-family: var(--mono); font-size: 0.78rem; line-height: 1.5;
+      background: #0f172a; color: #e2e8f0;
+      padding: 1rem 1.1rem; border-radius: 10px; overflow-x: auto;
+      margin: 0.75rem 0 1rem;
+    }
+    pre .c { color: #94a3b8; }
+    pre .k { color: #7dd3fc; }
+    pre .g { color: #86efac; }
+    pre .r { color: #fca5a5; }
+    .g { color: var(--ok); font-weight: 650; }
+    .r { color: var(--bad); }
+    .flow {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+      margin: 0.75rem 0 1rem;
+    }
+    .flow .step {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 8px; padding: 0.45rem 0.7rem;
+      font-size: 0.82rem; font-weight: 600;
+    }
+    .flow .step.hot { border-color: #93c5fd; background: var(--brand-soft); color: #1d4ed8; }
+    .flow .step.fix { border-color: #86efac; background: var(--ok-bg); color: var(--ok); }
+    .flow .step.bad { border-color: #fecaca; background: var(--bad-bg); color: var(--bad); }
+    .flow .arrow { color: var(--muted); font-size: 0.85rem; }
+    .callout {
+      border-left: 3px solid var(--brand);
+      background: var(--brand-soft);
+      padding: 0.75rem 1rem;
+      border-radius: 0 8px 8px 0;
+      margin: 1rem 0;
+      font-size: 0.92rem;
+    }
+    .callout.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+    .callout strong { display: block; margin-bottom: 0.2rem; }
+    .layers { display: grid; grid-template-columns: 1fr; gap: 0.85rem; margin: 1rem 0; }
+    .layer {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 12px; padding: 1rem 1.15rem; border-left: 4px solid var(--brand);
+    }
+    .layer.L0 { border-left-color: #64748b; }
+    .layer.L1 { border-left-color: #2563eb; }
+    .layer.L2 { border-left-color: #059669; }
+    .layer.L3 { border-left-color: #d97706; }
+    .layer .layer-id {
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--muted); margin: 0 0 0.25rem;
+    }
+    .layer h3 { margin: 0 0 0.45rem; font-size: 1.05rem; }
+    .layer .who { font-size: 0.82rem; color: var(--muted); margin: 0 0 0.65rem; }
+    .layer dl {
+      margin: 0; display: grid; grid-template-columns: 5.5rem 1fr;
+      gap: 0.35rem 0.75rem; font-size: 0.88rem;
+    }
+    .layer dt { color: var(--muted); font-weight: 650; }
+    .layer dd { margin: 0; }
+    .stage-card {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 12px; padding: 1rem 1.15rem; margin: 1rem 0;
+    }
+    .stage-card .io {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem;
+      margin: 0.65rem 0; font-size: 0.88rem;
+    }
+    @media (max-width: 780px) { .stage-card .io { grid-template-columns: 1fr; } }
+    .stage-card .io div { background: #f7f8fa; border-radius: 8px; padding: 0.55rem 0.7rem; }
+    .stage-card .io strong { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.2rem; }
+    .badge {
+      display: inline-block; font-size: 11px; font-weight: 700;
+      padding: 2px 8px; border-radius: 4px; letter-spacing: 0.02em;
+    }
+    .badge.det { background: #ecfdf5; color: #047857; }
+    .badge.llm { background: #eef2ff; color: #4338ca; }
+    .badge.mix { background: #fff7ed; color: #c2410c; }
+    .badge.human { background: #f1f5f9; color: #475569; }
+    ul.tight li { margin: 0.25rem 0; }
+    footer {
+      margin-top: 2.5rem; padding-top: 1rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted); font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+  <nav class="side" aria-label="文档导航">
+    <p class="side-brand">P008 · ACL / ASK</p>
+    <p class="side-title">问数与仪表盘权限</p>
+    <div class="side-nav-list">
+      <p class="side-group">问题与改动前</p>
+      <a href="#bg">1. 背景与问题</a>
+      <a href="#before">2. 改动前流程</a>
+      <a href="#before-ask">　· 问数闸门</a>
+      <a href="#before-board">　· 看盘出数</a>
+      <a href="#before-share">　· 分享</a>
+      <a href="#before-industry">　· 业界对照</a>
+      <p class="side-group">怎么做</p>
+      <a href="#pillars">3. 四层模型</a>
+      <a href="#decide">4. 判定公式</a>
+      <a href="#ask-flow">5. 问数流水线</a>
+      <a href="#board-flow">6. 看盘 / 出板流水线</a>
+      <a href="#query-gate">7. 查询闸（RLS/CLS）</a>
+      <a href="#model">8. 表与有效权限</a>
+      <a href="#api">9. API 与错误码</a>
+      <p class="side-group">对照与落地</p>
+      <a href="#after">10. 改动后路径</a>
+      <a href="#diff">11. 前后对比</a>
+      <a href="#boundary">12. 代码边界</a>
+      <a href="#phases">13. 交付分期</a>
+      <a href="#verify">14. 怎么验收</a>
+      <a href="#refs">15. 关联</a>
+      <a class="ext" href="./design.md">design.md</a>
+      <a class="ext" href="./README.md">提案入口</a>
+    </div>
+  </nav>
+  <div class="wrap">
+    <header>
+      <p class="eyebrow">P008 · PERMISSION / ASK / DASHBOARD</p>
+      <h1>问数与仪表盘权限 · 详细设计</h1>
+      <p class="lead">
+        问数不是独立权限域，而是数据集权限上的消费面。
+        作品 ACL 管「这张盘谁能打开」；数据 ACL + 行列策略管「能看见哪几行几列」。
+        两面相交才出数。公开 <code>chartQuery</code> 与对话 internal 查询必须走同一闸。
+      </p>
+      <div class="meta">
+        <span class="pill">提案 P008</span>
+        <span class="pill warn">设计稿 · 未编码 ACL 表 / RLS</span>
+        <span class="pill muted">2026-08-22</span>
+        <span class="pill muted">对照 P012 brief §2 改动前写法</span>
+      </div>
+    </header>
+
+    <section id="bg">
+      <h2>1. 背景与问题</h2>
+      <p>
+        P008 已确认消费原则，P009 已确认工作区与四层收敛。
+        代码停在「角色权限码 + 内存广场 grant + askable 列表」。
+        问数和质量闸（P012）已经按 askable 收口；<strong>看盘出数没有接到同一闸</strong>。
+      </p>
+      <table>
+        <thead>
+          <tr><th>现象</th><th>用户感受</th><th>根因</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>分析师 askable 匹配失败会落到「第一个 live 数据集」</td>
+            <td>问到不该问的表</td>
+            <td><code>AskableDatasetService.listAskable</code> 回落</td>
+          </tr>
+          <tr>
+            <td>登录即可 <code>POST /api/chartQuery/query</code></td>
+            <td>会看盘的人也能打任意 datasetId</td>
+            <td>公开查询只 <code>@RequireAuth</code>，不验 dataset:use / 看板 ACL</td>
+          </tr>
+          <tr>
+            <td>广场 grant 是内存种子</td>
+            <td>申请通过不能变成真授权</td>
+            <td>无 <code>od_resource_acl</code>；审批不写库</td>
+          </tr>
+          <tr>
+            <td>高保「华东行权限」只是文案</td>
+            <td>问数和出图都看不到行被裁</td>
+            <td>无 <code>od_data_policy</code>；Java 不注入 WHERE</td>
+          </tr>
+          <tr>
+            <td>viewer 有 <code>dashboard:view</code> 能力码</td>
+            <td>菜单能进仪表盘，但实例谁能看未定义</td>
+            <td>能力 RBAC ≠ 资源 ACL</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <strong>已确认决策（调研 + P008 §2）</strong>
+        不新开问数权限码；不让分享盘反向授数；行列由 Java 确定性注入，禁止 LLM 改写权限 SQL；
+        用户端不展示工作区；dsh 不持有 DB 密码。RLS 验收 ID 仍在 P009 <code>PR-WS-05</code>，实现按本文闸门接到同一服务。
+      </div>
+    </section>
+
+    <section id="before">
+      <h2>2. 改动前流程（问数 · 看盘 · 业界）</h2>
+      <p>
+        「改动前」= <strong>P011/P012 已上对话质量闸、P008 askable 已编码、资源 ACL 表尚未落地</strong> 的真实双轨。
+        目标态见 <a href="#ask-flow">§5</a> / <a href="#board-flow">§6</a>。
+      </p>
+
+      <h3>2.0 双入口现状总览</h3>
+      <pre><span class="c">同一登录态 OD_SESSION · 同一 AuthPrincipal</span>
+        │
+        ├── <span class="k">问数 /ask · 出板 /board</span>（dsh）
+        │     FE → dsh Host → Java <span class="g">/api/internal/bi/*</span>
+        │     list/schema/query/sql/apply 均 <span class="g">askable.requireAskable</span>
+        │
+        └── <span class="k">仪表盘编辑器 / 分享观看</span>
+              FE → Java <span class="r">/api/chartQuery/query</span>
+              只要求已登录 · <span class="r">不验数据集 · 不验看板实例 · 不注入 RLS</span></pre>
+
+      <h3 id="before-ask">2.1 问数现状闸门（/ask · 已编码）</h3>
+      <p class="muted" style="margin-top:0">
+        协议 <code>commands.js</code>；工具 <code>dsh-od-bi</code>；Java
+        <code>AskableDatasetService</code> + <code>BiPlatformService</code>。
+      </p>
+      <div class="flow">
+        <span class="step">用户 /ask</span>
+        <span class="arrow">→</span>
+        <span class="step">od_list_datasets</span>
+        <span class="arrow">→</span>
+        <span class="step hot">internal /datasets</span>
+        <span class="arrow">→</span>
+        <span class="step hot">requireAskable</span>
+        <span class="arrow">→</span>
+        <span class="step">od_run_query | od_run_sql</span>
+        <span class="arrow">→</span>
+        <span class="step fix">sql-guard（dsh）</span>
+        <span class="arrow">→</span>
+        <span class="step">会话卡</span>
+      </div>
+      <pre><span class="c"># 问数端到端（改动前 / 现状）</span>
+① 身份        OD_SESSION → AuthPrincipal（禁止 body.userId，PR-ACL-08 pass）
+② 能力        conversation:use ∩ (dataset:use | dataset:manage)
+③ 集合        GET /api/dataset/askable
+   · 管理员 / dataset:manage：全部 live
+   · 分析师：广场 seed 里 actions 含 ask 的 source
+   · <span class="r">匹配空且 seed 非空 → 回落 live.get(0)</span>
+④ 装载        od_get_schema：Java schema 后再 requireAskable
+⑤ 执行
+   · od_run_query → internal /query/dataset → requireAskable → QuerySpec
+   · od_run_sql   → dsh sql-guard（只读 + FROM 表白名单）
+                  → internal /query/sql → <span class="g">再 requireAskable</span>
+                  → <span class="r">无 RLS/CLS</span>
+⑥ 出板写入    apply-patch：askable 校验引用数据集；写闸 dashboard:manage 未做（PR-WS-06）</pre>
+
+      <div class="grid-2">
+        <div class="card before">
+          <span class="tag ok">问数已有</span>
+          <h3>身份贯穿、三入口集合、只读闸</h3>
+          <ul class="tight">
+            <li>工作台 / 对话 / internal 共用 askable</li>
+            <li>客户端不能声明 userId</li>
+            <li>dsh sql-guard：禁写、禁多语句、表名 ⊆ 允许集</li>
+            <li>Java internal 不信任模型自报 datasetId</li>
+          </ul>
+        </div>
+        <div class="card before">
+          <span class="tag bad">问数短板</span>
+          <h3>集合是角色+种子，不是实例 ACL</h3>
+          <ul class="tight">
+            <li>无 <code>od_resource_acl</code>，use 是角色码</li>
+            <li>匹配失败回落第一张 live 表</li>
+            <li>schema/sample 不裁列，SQL 不注入行过滤</li>
+            <li>广场申请通过只改内存 status，不写权限事实</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 id="before-board">2.2 看盘 / 出板改动前</h3>
+      <div class="flow">
+        <span class="step">打开盘</span>
+        <span class="arrow">→</span>
+        <span class="step">GET /api/dashboard/{id}</span>
+        <span class="arrow">→</span>
+        <span class="step bad">无实例 ACL</span>
+        <span class="arrow">→</span>
+        <span class="step">chartQuery</span>
+        <span class="arrow">→</span>
+        <span class="step bad">只 RequireAuth</span>
+        <span class="arrow">→</span>
+        <span class="step">出数</span>
+      </div>
+      <pre><span class="c"># 看盘出数（改动前）</span>
+打开编辑器
+  → DashboardController 多数写接口要 dashboard:manage（能力码）
+  → 读盘 / 预览 <span class="r">没有「这张盘是否授权给你」</span>
+  → POST /api/chartQuery/query
+       @RequireAuth
+       StubQueryService.query(request)   <span class="r">不读 AskableDatasetService</span>
+       请求体里的 datasetId / encode 即查询边界
+
+匿名分享
+  → ShareController /{token}/chartQuery
+       链有效即出数 · <span class="r">观看者身份与 RLS 未定义</span></pre>
+
+      <div class="grid-2">
+        <div class="card before">
+          <span class="tag bad">改动前 · 作品</span>
+          <h3>能力码当实例权</h3>
+          <ul class="tight">
+            <li>有 <code>dashboard:view</code> 就能进模块</li>
+            <li>没有 owner / shared-with-me</li>
+            <li>多数据集盘无法标 unavailable</li>
+          </ul>
+        </div>
+        <div class="card before">
+          <span class="tag bad">改动前 · 出数</span>
+          <h3>编辑器绕过问数闸</h3>
+          <ul class="tight">
+            <li>internal 查询有 askable，公开 chartQuery 没有</li>
+            <li>导出 CSV 走同一 query，同样无数据集闸</li>
+            <li>P012 质量闸不解决越权</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 id="before-share">2.3 分享现状</h3>
+      <p>
+        已发布看板可匿名 Token 观看并按「权限」导出 CSV（architecture 已交付表述）。
+        改动前这条链<strong>不经过观看者的 dataset:use</strong>，等价于用发布内容直接出数。
+        Databricks Genie 的「embedded / 发布者凭证」就是同类漏洞：观众能问到图上没画的列。
+      </p>
+
+      <h3 id="before-industry">2.4 业界怎么拆这两面（对照改动前）</h3>
+      <table>
+        <thead>
+          <tr><th>环节</th><th>Quick BI</th><th>Metabase</th><th>Looker / PBI</th><th>DataEase→SQLBot</th><th>OD 现状</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>作品权限</td>
+            <td>仪表板编辑/使用/查看</td>
+            <td>Collection</td>
+            <td>Workspace 角色 / Explore</td>
+            <td>资源权重 READ/MANAGE</td>
+            <td>只有能力码</td>
+          </tr>
+          <tr>
+            <td>数据权限</td>
+            <td>数据集使用 + 行列</td>
+            <td>View data / sandbox / blocked</td>
+            <td>模型 RLS / access_filter</td>
+            <td>数据集 ACL ∩ 行列进 SQL</td>
+            <td><span class="ok">问数 askable</span>；看盘无</td>
+          </tr>
+          <tr>
+            <td>问数怎么接</td>
+            <td>功能开关 ∩ 数据集使用</td>
+            <td>query builder 走 data perm</td>
+            <td>Ask 继承语义层</td>
+            <td>宿主算完再下发 schema</td>
+            <td><span class="ok">askable ∩ sql-guard</span></td>
+          </tr>
+          <tr>
+            <td>看盘出数</td>
+            <td>作品权 ∩ 数据集使用 ∩ 行列</td>
+            <td>collection ∩ data（Blocked 覆盖）</td>
+            <td>每查询注入谓词</td>
+            <td>PermissionManage 同源</td>
+            <td><span class="r">登录即可 chartQuery</span></td>
+          </tr>
+          <tr>
+            <td>反向授权</td>
+            <td>使用 ≠ 编辑；盘不授数据集</td>
+            <td>明确拆开</td>
+            <td>盘不扩大模型权</td>
+            <td>盘 ACL 不授 DS</td>
+            <td>原则已写，代码未拦</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre><span class="c"># 业界共识（几乎所有 ChatBI + 现代 BI）</span>
+能力入口 → 对象 ACL → 数据集 use → 每次查询注入 RLS/CLS
+问数只是左侧入口；chartQuery / 导出 / 嵌入必须同一谓词
+<span class="r">OD 改动前：左侧问数已像 ChatBI；右侧出数仍像「能登录就能查」</span></pre>
+      <div class="callout">
+        <strong>一句话</strong>
+        改动前问数已经是「业界 ChatBI 形状」；看盘出数是「登录即查询」。
+        本文要做的不是重造问数壳，而是<strong>把数据集实例 ACL + 行列策略做成唯一出数闸</strong>，问数和 chartQuery 都吃它。
+      </div>
+    </section>
+
+    <section id="pillars">
+      <h2>3. 改造方案 · 四层（明确定义）</h2>
+      <p>
+        与 P012 三大流程相同：这是<strong>能力分层</strong>，不是新运行时。
+        权限事实只在 Java；dsh 只消费授权快照并在工具层再拦一次。
+      </p>
+      <p style="margin:0.5rem 0">
+        <span class="badge det">确定性</span> 规则/SQL 注入 ·
+        <span class="badge llm">LLM</span> 不可扩大权限 ·
+        <span class="badge mix">混合</span> 工具装配+执行 ·
+        <span class="badge human">人工</span> 审批/授权
+      </p>
+
+      <div class="layers">
+        <article class="layer L0">
+          <p class="layer-id">L0 · IDENTITY</p>
+          <h3>身份与工作区成员</h3>
+          <p class="who">对标：DataEase oid 进 token · DeerFlow 禁止客户端声明 owner · OD 会话 Cookie</p>
+          <dl>
+            <dt>做什么</dt>
+            <dd>principal.userId / workspaceId 只来自会话。用户端不切换工作区；管理端才切治理范围。</dd>
+            <dt>落点</dt>
+            <dd><code>OD_SESSION</code>、<code>od_workspace_member</code>、<code>AuthContext</code>。internal 调用另加 <code>X-OD-Internal-Token</code> + 用户头，不能单靠内部令牌放大。</dd>
+            <dt>不做</dt>
+            <dd>完整 IAM / SAML（P009 非目标）。不把工作区做成用户端入口。</dd>
+          </dl>
+        </article>
+        <article class="layer L1">
+          <p class="layer-id">L1 · CAPABILITY</p>
+          <h3>能力 RBAC（入口开关）</h3>
+          <p class="who">对标：Quick BI 组织/空间角色 · OD <code>od_permission</code></p>
+          <dl>
+            <dt>做什么</dt>
+            <dd>能不能进问数、建盘、管数据集。不回答「哪一张表」。</dd>
+            <dt>落点</dt>
+            <dd>已有码：<code>conversation:use</code>、<code>dashboard:view|manage</code>、<code>dataset:use|manage</code>、<code>report:view|manage</code>。菜单继续服务端过滤。</dd>
+            <dt>不做</dt>
+            <dd>不新增 <code>ask:dataset</code> 一类第三套码。问数能力 = <code>conversation:use</code>。</dd>
+          </dl>
+        </article>
+        <article class="layer L2">
+          <p class="layer-id">L2 · RESOURCE ACL</p>
+          <h3>资源实例 ACL</h3>
+          <p class="who">对标：DataEase per_auth_busi_* · Metabase collection · Quick BI 协同授权</p>
+          <dl>
+            <dt>做什么</dt>
+            <dd>哪一张盘 / 哪一份报告 / 哪一个数据集。主体 = 用户 | 用户组 | 角色。</dd>
+            <dt>落点</dt>
+            <dd>新表 <code>od_resource_acl</code>。数据集动作 <code>use | manage | owner</code>；盘/报告 <code>view | edit | manage | owner</code>。广场「已获权」是 ACL 的视图，不再是第二真相。</dd>
+            <dt>不做</dt>
+            <dd>不学 DataEase 1/7/9 权重。不把文件夹权限当第一期范围（可后加继承）。</dd>
+          </dl>
+        </article>
+        <article class="layer L3">
+          <p class="layer-id">L3 · DATA POLICY</p>
+          <h3>行列策略（挂数据集）</h3>
+          <p class="who">对标：Looker access_filter · Power BI RLS · Quick BI 行列 · DataEase PermissionManage</p>
+          <dl>
+            <dt>做什么</dt>
+            <dd>每次查询注入行谓词、裁列/脱敏。问数、chartQuery、导出、出板 probe 同源。</dd>
+            <dt>落点</dt>
+            <dd>新表 <code>od_data_policy</code>。<code>QueryGuard.apply(principal, datasetId, spec|sql)</code> 在 Java 执行前跑。schema 下发前先 CLS。</dd>
+            <dt>不做</dt>
+            <dd>不让 dsh/LLM 改写带权限 SQL（SQLBot xpack 反面）。本期不做仓内原生 RLS 透传。</dd>
+          </dl>
+        </article>
+      </div>
+    </section>
+
+    <section id="decide">
+      <h2>4. 判定公式（实现必须按此相交）</h2>
+      <pre><span class="c"># 有效动作（Java EffectiveAccessService，唯一实现）</span>
+ask.consume(ds) =
+    member(ws)
+    ∩ conversation:use
+    ∩ acl(dataset, ds) ∈ {use, manage, owner}
+    ∩ dataset.live
+    ∩ data_policy(ds)          <span class="c"># 执行时注入，不是列表过滤器</span>
+
+dashboard.view(board) =
+    member(ws) ∩ acl(dashboard, board) ∈ {view, edit, manage, owner}
+
+dashboard.consume(board) =
+    dashboard.view(board)
+    ∩ ∀ required ds: acl(dataset, ds) ∈ {use, manage, owner}
+    ∩ 每次 chartQuery 再 apply data_policy(ds)
+
+dashboard.write(board) =
+    dashboard:manage                         <span class="c"># 能力</span>
+    ∩ acl(dashboard, board) ∈ {edit, manage, owner}   <span class="c"># 实例；新建则 create</span>
+    ∩ 引用数据集均 ask.consume 的数据面（use）
+
+report.viewStatic = acl(report) ∈ {view…}    <span class="c"># 不查数</span>
+report.refreshOrAsk = viewStatic ∩ 相关 ds 的 ask.consume 数据面
+
+accessState:
+  forbidden    无作品 ACL          → 列表不可见（404，不暴露存在性）
+  unavailable  有作品 ACL，缺 ds use → 元数据卡，无 KPI/缩略图
+  available    两面都过            → 可出数</pre>
+      <table>
+        <thead>
+          <tr><th>动作</th><th>L1 能力</th><th>L2 作品</th><th>L2 数据集</th><th>L3 行列</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>问一句数</td><td>conversation:use</td><td>—</td><td>use</td><td>注入</td></tr>
+          <tr><td>打开盘（无数据）</td><td>dashboard:view</td><td>view+</td><td>—</td><td>—</td></tr>
+          <tr><td>盘内出数 / 导出</td><td>dashboard:view</td><td>view+</td><td>每个图 use</td><td>注入</td></tr>
+          <tr><td>/board 落 draft</td><td>dashboard:manage</td><td>edit+ / create</td><td>use</td><td>规划可见 CLS 后字段</td></tr>
+          <tr><td>读已发布报告</td><td>report:view</td><td>view+</td><td>不需要</td><td>不查</td></tr>
+          <tr><td>报告继续问数</td><td>conversation:use</td><td>—</td><td>use</td><td>注入</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <strong>禁止反向授权</strong>
+        把盘 share 给某人 ≠ 写入 dataset ACL。
+        把报告 view 给某人 ≠ 进入 askable。
+        这是 Metabase Blocked 与 P008 §2.1/2.2 的同一句话。
+      </div>
+    </section>
+
+    <section id="ask-flow">
+      <h2>5. 问数流水线（目标态）</h2>
+      <div class="flow">
+        <span class="step">/ask</span>
+        <span class="arrow">→</span>
+        <span class="step fix">askable = ACL.use</span>
+        <span class="arrow">→</span>
+        <span class="step fix">schema 先 CLS</span>
+        <span class="arrow">→</span>
+        <span class="step hot">LLM 填 query / SQL</span>
+        <span class="arrow">→</span>
+        <span class="step fix">sql-guard + Java QueryGuard</span>
+        <span class="arrow">→</span>
+        <span class="step">会话卡</span>
+      </div>
+      <pre><span class="c">用户：「/ask 华东各门店销售额」</span>
+        │
+        ▼
+┌──────────────────────────────────────────────────────────┐
+│ <span class="k">A1 列表</span>  <span class="g">[确定性]</span>                                         │
+│  od_list_datasets → GET internal /datasets                │
+│  = EffectiveAccess.askableIds()  <span class="r">禁止 live.get(0) 回落</span>   │
+└──────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────┐
+│ <span class="k">A2 装载</span>  <span class="g">[确定性]</span>                                         │
+│  requireAskable(id)                                       │
+│  fields' = CLS.drop|mask(fields)                          │
+│  sample' = 投影 fields'；行已按 RLS 过滤（≤3）            │
+│  模型看不见被禁列名                                       │
+└──────────────────────────────────────────────────────────┘
+        │
+        ├──── od_run_query ────┬──── od_run_sql ────
+        ▼                      ▼
+  QuerySpec + 注入 filters   dsh sql-guard
+                             Java 再：表白名单 = 该数据集物理表
+                             外包 SELECT * FROM (sql) t WHERE rls
+        │
+        ▼
+  结果再投影 CLS；insight 不得含被禁列原值
+  <span class="r">禁止写 DashboardPatch</span></pre>
+
+      <div class="stage-card">
+        <div class="io">
+          <div>
+            <strong>输入</strong>
+            会话身份、用户原话、可选 datasetId（必须 ∈ askable）
+          </div>
+          <div>
+            <strong>输出</strong>
+            表/临时图会话卡 + 策略摘要（用了哪张表、命中哪条 row policy id）
+          </div>
+        </div>
+        <p class="muted" style="margin:0">P012 质量闸（agg / Goal）在本闸<strong>之后</strong>。无权限的字段根本进不了 schema，模型无法 SUM 被禁列。</p>
+      </div>
+    </section>
+
+    <section id="board-flow">
+      <h2>6. 看盘 / 出板流水线（目标态）</h2>
+      <h3>6.1 打开已有盘并出数</h3>
+      <pre><span class="c">打开 /dashboards/{id}</span>
+        │
+        ▼
+GET 元数据
+  → 无 ACL：<span class="k">404</span>（不 403，避免探测）          <span class="c">DeerFlow 同款</span>
+  → 有 ACL、缺某 ds use：200 + accessState=unavailable
+       组件树可回，encode 保留，<span class="r">禁止带 result / KPI 缓存</span>
+        │
+        ▼
+每个图 POST /api/chartQuery/query
+  → 必须带 dashboardId + chartId 或服务端从盘定义取 datasetId
+  → <span class="r">拒绝「只传 datasetId 的匿名查询」作为登录用户主路径</span>
+  → view(board) ∩ use(ds) ∩ QueryGuard.apply
+        │
+        ▼
+导出 CSV = 同一 query 闸，不得另开后门</pre>
+
+      <h3>6.2 对话生成看板</h3>
+      <div class="flow">
+        <span class="step">/board</span>
+        <span class="arrow">→</span>
+        <span class="step fix">askable 列表</span>
+        <span class="arrow">→</span>
+        <span class="step">plan_charts（CLS 后字段）</span>
+        <span class="arrow">→</span>
+        <span class="step human">用户确认</span>
+        <span class="arrow">→</span>
+        <span class="step hot">generate_board</span>
+        <span class="arrow">→</span>
+        <span class="step fix">apply：write ∩ use</span>
+      </div>
+      <pre><span class="c"># 生成写入分两段（PR-WS-06）</span>
+能 plan  ≠  能 apply
+plan / generate 读路径：只要 ask.consume(ds)（生成建议）
+apply-patch：
+  无 boardId → 需要 dashboard:manage 且在当前 ws 创建
+  有 boardId → acl edit+ 且 dashboard:manage
+  引用的每个 datasetId 必须 use
+  失败码 DASHBOARD_WRITE_FORBIDDEN，已发布版本不动</pre>
+
+      <h3>6.3 分享（分期 D，先锁语义）</h3>
+      <table>
+        <thead>
+          <tr><th>模式</th><th>身份</th><th>出数</th><th>问数</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>登录用户打开分享</td>
+            <td>观看者 principal</td>
+            <td>仍要观看者 dataset:use + RLS</td>
+            <td>仅当观看者 conversation:use ∩ use(ds)</td>
+          </tr>
+          <tr>
+            <td>匿名 Token（本期默认）</td>
+            <td>share principal</td>
+            <td><strong>只读已发布静态快照</strong>，或显式「分享时冻结的 dataset 授权 + 命名策略」</td>
+            <td><span class="r">关闭</span>：匿名链不得 /ask</td>
+          </tr>
+          <tr>
+            <td>禁止</td>
+            <td>发布者凭证</td>
+            <td>用作者账号查数给观众</td>
+            <td>Genie embedded credentials</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="query-gate">
+      <h2>7. 查询闸 · QueryGuard（唯一出数实现）</h2>
+      <p>
+        所有出数：<code>chartQuery</code>、<code>datasetQuery</code>、internal <code>/query/*</code>、CSV 导出、问数 sample。
+        dsh <code>sql-guard.js</code> 只是第一道（只读 + 表名）；<strong>权威在 Java</strong>。
+      </p>
+      <pre><span class="c">function query(principal, datasetId, specOrSql):</span>
+  assert askable 数据面：acl.use(datasetId)     <span class="c">// 看盘路径先过 dashboard.view</span>
+  ds = loadDataset(datasetId)                   <span class="c">// 必须同 workspace</span>
+  policy = loadPolicies(principal, datasetId)   <span class="c">// user ∪ group ∪ role，user 覆盖 role</span>
+  fields = CLS.project(ds.fields, policy.columns)
+  if spec:                                      <span class="c">// QuerySpec / encode</span>
+      spec.fields = intersect(spec.fields, fields)
+      spec.filters = AND(spec.filters, policy.rowTree.bind(principal.attrs))
+      return exec(spec)
+  if sql:
+      checkSqlRead(sql)                         <span class="c">// 与 dsh 同规则，Java 再执行一遍</span>
+      tables ⊆ { ds.tableName } ∪ ds.allowedJoins
+      wrapped = SELECT fields... FROM (sql) t WHERE rowSql(policy, principal)
+      return exec(wrapped)
+  <span class="r">never</span>: LLM.rewrite(sql, "add WHERE region=华东")</pre>
+
+      <h3>行策略形状</h3>
+      <pre>{
+  "kind": "row",
+  "subject": { "type": "group", "id": "g-east" },
+  "predicate": {
+    "and": [
+      { "field": "region", "op": "eq", "valueFrom": "user.attrs.region" }
+    ]
+  }
+}
+<span class="c"># valueFrom 只允许白名单：user.id / user.email / user.attrs.* （工作区成员扩展属性）</span>
+<span class="c"># 字面量只允许管理员配置的枚举，禁止自由 SQL 片段</span></pre>
+
+      <h3>列策略</h3>
+      <table>
+        <thead>
+          <tr><th>effect</th><th>schema</th><th>结果行</th><th>问数</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>hide</td><td>字段不出现</td><td>无该列</td><td>模型不可引用；引用则 DATASET_COLUMN_FORBIDDEN</td></tr>
+          <tr><td>mask</td><td>字段在，标注 masked</td><td>按规则替换（手机号等）</td><td>可聚合不可出明文</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <strong>结构化查询优先</strong>
+        问数主路径继续 <code>od_run_query</code>（QuerySpec）。
+        <code>od_run_sql</code> 必须外包 + 表白名单；解析失败则拒绝，不降级裸跑。
+        这是 SQLBot「生成后再校验表名」加上 DataEase「行列进 SQL」，减去 LLM 改写。
+      </div>
+    </section>
+
+    <section id="model">
+      <h2>8. 表、主体、有效权限算法</h2>
+      <h3>8.1 新增表（Flyway，与 V15 并列）</h3>
+      <pre><span class="c">-- 资源实例 ACL。workspace_id 冗余便于隔离扫描。</span>
+od_resource_acl (
+  id, workspace_id,
+  resource_type,          <span class="c">-- dataset | dashboard | report | conversation</span>
+  resource_id,
+  subject_type,           <span class="c">-- user | group | role</span>
+  subject_id,
+  action,                 <span class="c">-- dataset: use|manage|owner</span>
+                          <span class="c">-- dashboard/report: view|edit|manage|owner</span>
+  created_at, created_by,
+  UNIQUE (workspace_id, resource_type, resource_id, subject_type, subject_id, action)
+)
+
+od_data_policy (
+  id, workspace_id, dataset_id,
+  kind,                   <span class="c">-- row | column</span>
+  subject_type, subject_id,
+  effect,                 <span class="c">-- filter | hide | mask</span>
+  predicate_json,         <span class="c">-- 行：字段树；列：column+maskRule</span>
+  enabled bool,
+  created_at, updated_at
+)
+
+<span class="c">-- 广场申请落地后写 ACL，不再把 pending 当权限</span>
+od_dataset_request (
+  id, workspace_id, dataset_id, applicant_id,
+  purpose, expire_at, requested_actions,  <span class="c">-- 通常 [use]</span>
+  status,                                 <span class="c">-- pending|approved|denied</span>
+  decided_by, decided_at
+)</pre>
+
+      <h3>8.2 主体合并</h3>
+      <pre>subjects(principal, ws) =
+    { user: principal.id }
+  ∪ { group: g.id | g ∋ principal, g.workspace = ws }
+  ∪ { role: r.code | membership(principal, ws, r) }
+
+actions(type, id) =
+    { owner }  if creator = principal          <span class="c"># 创建即 owner 行</span>
+  ∪ ACL rows matching any subject
+  ∪ { manage… } if workspace:admin 且资源 ∈ ws   <span class="c"># 组织管理员短路，对标 DataEase pid=0</span>
+  <span class="c"># 平台管理员 platform:admin 跨 ws 仅管理端；用户端问数仍按各 ws ACL，避免超管默认问到所有业务表</span>
+
+<span class="c"># 撤销：删 ACL 行。QueryGuard / askable 不读 &gt;30s 缓存；进程内 Caffeine TTL≤5s，写路径主动 invalidate。</span></pre>
+
+      <h3>8.3 广场不再是权限源</h3>
+      <p>
+        改动前 <code>WorkspaceGovernanceService</code> 用 <code>AssetSeed.status=granted</code> 决定 <code>actions.contains("ask")</code>。
+        改动后：
+      </p>
+      <ul class="tight">
+        <li>企业资产列表 = 当前用户可见工作区内、已发布、且（已 use <em>或</em> 标为可申请）的数据集摘要</li>
+        <li>未获权：名称、负责人、敏感级、申请条件；<span class="r">无 schema、无 sample、无 datasetId 可被拼进 query</span>（可有不透明 assetId）</li>
+        <li>「添加到我的数据」= 已有 use 的书签，不授新权</li>
+        <li>审批通过 = <code>INSERT od_resource_acl action=use</code> + 可选 data_policy 模板</li>
+      </ul>
+    </section>
+
+    <section id="api">
+      <h2>9. API 与错误码（实现分支写进 OpenAPI）</h2>
+      <p class="muted">现网尚无下列 ACL 写接口。跨端同一 PR 先改 <code>docs/design/openapi.yaml</code> 再改 FE/BE。</p>
+      <table>
+        <thead>
+          <tr><th>路径</th><th>闸</th><th>变化</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET /api/dataset/askable</code></td>
+            <td>conversation:use</td>
+            <td>改为 ACL.use 列表；删除 live.get(0) 回落</td>
+          </tr>
+          <tr>
+            <td><code>POST /api/chartQuery/query</code></td>
+            <td>登录 + consume(board) 或 use(ds)</td>
+            <td><strong>必须</strong>走 QueryGuard；登录用户主路径要求 dashboardId</td>
+          </tr>
+          <tr>
+            <td><code>POST /api/chartQuery/export</code></td>
+            <td>同 query</td>
+            <td>禁止无闸导出</td>
+          </tr>
+          <tr>
+            <td><code>GET /api/internal/bi/datasets</code></td>
+            <td>internal token + principal</td>
+            <td>继续 askable；集合改 ACL</td>
+          </tr>
+          <tr>
+            <td><code>POST /api/internal/bi/query/sql</code></td>
+            <td>askable + QueryGuard</td>
+            <td>Java 重复 sql-guard + RLS wrap</td>
+          </tr>
+          <tr>
+            <td><code>POST /api/internal/bi/dashboards/{id}/apply-patch</code></td>
+            <td>write ∩ use</td>
+            <td>补 PR-WS-06</td>
+          </tr>
+          <tr>
+            <td><code>GET /api/workbench/summary</code></td>
+            <td>登录</td>
+            <td>my / shared / askable / todos；unavailable 无业务数据</td>
+          </tr>
+          <tr>
+            <td><code>POST /api/workspaces/{id}/acl</code></td>
+            <td>workspace:manage_member 或资源 manage</td>
+            <td>写 ACL；双向：对象→资源 / 资源→对象</td>
+          </tr>
+          <tr>
+            <td>广场 add / request</td>
+            <td>已有</td>
+            <td>request 落 <code>od_dataset_request</code>；approve 写 ACL</td>
+          </tr>
+        </tbody>
+      </table>
+      <table>
+        <thead>
+          <tr><th>码</th><th>HTTP</th><th>场景</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>RESOURCE_FORBIDDEN</code></td><td>404</td><td>无作品 ACL（对外不暴露存在）</td></tr>
+          <tr><td><code>DATASET_UNAVAILABLE</code></td><td>403</td><td>有盘无数据集 use</td></tr>
+          <tr><td><code>DATASET_COLUMN_FORBIDDEN</code></td><td>403</td><td>SQL/encode 引用 hide 列</td></tr>
+          <tr><td><code>DASHBOARD_WRITE_FORBIDDEN</code></td><td>403</td><td>能问不能写盘</td></tr>
+          <tr><td><code>POLICY_BIND_FAILED</code></td><td>403</td><td>行变量解析失败则拒绝，不裸跑</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="after">
+      <h2>10. 改动后产品路径</h2>
+      <pre><span class="c">同一 principal</span>
+        │
+        ├── 问数 /ask · 出板 plan
+        │     askable(ACL.use) → CLS schema → 闸后执行
+        │
+        ├── 出板 apply
+        │     write(board) ∩ use(ds) → draft
+        │
+        └── 打开盘 / 导出
+              view(board) ∩ use(ds) → 同一 QueryGuard
+              unavailable 只出元数据卡</pre>
+      <div class="grid-2">
+        <div class="card after">
+          <span class="tag ok">改动后 · 问数</span>
+          <h3>列表即授权实例</h3>
+          <ul class="tight">
+            <li>无回落第一张表</li>
+            <li>模型看不到禁列</li>
+            <li>华东策略在 Java WHERE，不在 prompt</li>
+          </ul>
+        </div>
+        <div class="card after">
+          <span class="tag ok">改动后 · 看盘</span>
+          <h3>与问数同一出数闸</h3>
+          <ul class="tight">
+            <li>chartQuery 不再「登录即可」</li>
+            <li>缺数据权的盘可出现在「共享给我」但不出数</li>
+            <li>匿名分享默认静态，不问数</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="diff">
+      <h2>11. 前后对比</h2>
+      <table>
+        <thead>
+          <tr><th>项</th><th>改动前</th><th>改动后</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>askable 来源</td>
+            <td>角色码 ∩ 内存广场 ± 回落 live[0]</td>
+            <td><code>od_resource_acl.use</code>，空集就是空集</td>
+          </tr>
+          <tr>
+            <td>公开 chartQuery</td>
+            <td>@RequireAuth</td>
+            <td>view(board) ∩ use(ds) ∩ QueryGuard</td>
+          </tr>
+          <tr>
+            <td>internal query</td>
+            <td>requireAskable</td>
+            <td>同一 EffectiveAccess + QueryGuard</td>
+          </tr>
+          <tr>
+            <td>行列</td>
+            <td>高保文案</td>
+            <td>Java 注入；schema 先裁</td>
+          </tr>
+          <tr>
+            <td>广场申请</td>
+            <td>内存 pending</td>
+            <td>approve → ACL 行</td>
+          </tr>
+          <tr>
+            <td>出板 apply</td>
+            <td>有数据集即可写（写闸未做）</td>
+            <td>dashboard write ∩ dataset use</td>
+          </tr>
+          <tr>
+            <td>权限 SQL</td>
+            <td>—</td>
+            <td>禁止 LLM 改写</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="boundary">
+      <h2>12. 代码边界</h2>
+      <table>
+        <thead>
+          <tr><th>层</th><th>改</th><th>不改</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Java 新</td>
+            <td><code>EffectiveAccessService</code> <code>QueryGuard</code>；Flyway ACL/policy/request；广场改读 ACL</td>
+            <td>另起权限微服务</td>
+          </tr>
+          <tr>
+            <td>Java 闸</td>
+            <td><code>ChartQueryController</code> / export / <code>ShareController</code> / <code>BiInternalController</code> 全部进 QueryGuard</td>
+            <td>P012 规划词典、Goal 提示词</td>
+          </tr>
+          <tr>
+            <td>Askable</td>
+            <td>删 live.get(0)；list = ACL</td>
+            <td>三入口分叉计算</td>
+          </tr>
+          <tr>
+            <td>dsh</td>
+            <td>工具仍调 internal；schema 已是裁切后字段；sql-guard 保留作第一道</td>
+            <td>不在 Node 里实现 RLS；不回传 JDBC 密码</td>
+          </tr>
+          <tr>
+            <td>FE</td>
+            <td>工作台 my/shared；盘 unavailable 卡；chartQuery 带 dashboardId</td>
+            <td>用户端工作区切换；前端当鉴权真相</td>
+          </tr>
+          <tr>
+            <td>契约</td>
+            <td>实现 PR 先改 openapi.yaml</td>
+            <td>提前把未实现接口写进 architecture.html</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>关键现文件</h3>
+      <ul class="tight">
+        <li><code>AskableDatasetService.java</code> — 改集合算法、删回落</li>
+        <li><code>ChartQueryController.java</code> — 今日无数据集闸，必须接 QueryGuard</li>
+        <li><code>BiPlatformService.java</code> — internal 已 requireAskable，改为调用 EffectiveAccess</li>
+        <li><code>WorkspaceGovernanceService.java</code> — 去掉 AssetSeed 当授权真相</li>
+        <li><code>opendashboard-dsh-harness/packages/dsh-od-bi/src/sql-guard.js</code> — 保留，不替代 Java</li>
+        <li><code>dsh-od-bi/src/index.js</code> <code>od_list_datasets</code> — 继续 GET internal /datasets</li>
+      </ul>
+    </section>
+
+    <section id="phases">
+      <h2>13. 交付分期</h2>
+      <p>不新开 Pxxx。P008 做消费闸与 ACL；P009 做策略管理面与 <code>PR-WS-05/06</code>。P012 只消费授权上下文。</p>
+      <table>
+        <thead>
+          <tr><th>阶段</th><th>做什么</th><th>验收</th><th>不做完不能进入下一阶段</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>B0</strong></td>
+            <td>删 askable <code>live.get(0)</code> 回落；公开 chartQuery 先接到 <code>requireAskable</code>（能力+现有集合）</td>
+            <td>PR-ACL-04 不回退；新增：未授权 datasetId 的 chartQuery=403</td>
+            <td>这是止血，可单独先合</td>
+          </tr>
+          <tr>
+            <td><strong>B1</strong></td>
+            <td>Flyway ACL 表；创建资源写 owner；广场 approve 写 use；EffectiveAccess</td>
+            <td>PR-ACL-10 · PR-WS-03</td>
+            <td>无表不谈 RLS</td>
+          </tr>
+          <tr>
+            <td><strong>B2</strong></td>
+            <td>askable = ACL.use；工作台 my/shared；unavailable 卡</td>
+            <td>PR-ACL-01 · 05 · 06 · 07</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td><strong>B3</strong></td>
+            <td>chartQuery 强制 dashboardId 主路径；双重权限出数；apply 写闸</td>
+            <td>PR-ACL-01 · PR-WS-06</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td><strong>C</strong></td>
+            <td>data_policy + QueryGuard 注入；schema CLS；问数与出图同源</td>
+            <td>PR-WS-05</td>
+            <td>管理面可后做，执行闸不能后做</td>
+          </tr>
+          <tr>
+            <td><strong>D</strong></td>
+            <td>匿名分享默认静态快照；禁止发布者凭证问数</td>
+            <td>新 ID 或治理补齐提案</td>
+            <td>不阻塞 B/C</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>建议开工顺序</strong>
+        B0（止血 chartQuery + 删回落）→ B1 表 → B3 出数双重闸（产品风险最大）→ B2 工作台 IA → C 行列。
+        工作台「我的/共享」可以高保并行，但闸门不能等 UI。
+      </div>
+    </section>
+
+    <section id="verify">
+      <h2>14. 怎么验收</h2>
+      <p>判据仍以各提案 <code>acceptance.yaml</code> 为准。本文补充可复现矩阵：</p>
+      <pre><span class="c">三角色 × 三动作（必须脚本化，扩 e2e-auth-ask.sh）</span>
+账号     问数 ds_fin     打开经营周报     chartQuery ds_fin 无 boardId
+admin    200            available        403（禁止裸 dataset 主路径）或仅 manage 允许
+analyst  按 ACL          按 ACL           403
+viewer   403 无 conversation:use
+         盘 view 但无 use → 盘 unavailable，chartQuery 403 无行
+
+行列：east 组用户问「全国销售额」→ SQL/filters 含 region=华东；结果无华南行
+列：hide phone → schema 无该字段；run_sql SELECT phone → 403
+撤销 use 后 5s 内 askable 消失，进行中 query 下一跳失败
+跨 ws 猜 datasetId → 404/403 且无样例行</pre>
+    </section>
+
+    <section id="refs">
+      <h2>15. 关联文档</h2>
+      <ul>
+        <li><a href="./README.md">P008 README</a> · 开发入口 · 已确认原则</li>
+        <li><a href="./design.md">P008 design.md</a> · 公式与契约摘要</li>
+        <li><a href="./acceptance.yaml">P008 acceptance.yaml</a> · PR-ACL-*</li>
+        <li><a href="../P009-workspace-governance/design.md">P009 design.md</a> · 工作区 IAM / PR-WS-05 RLS</li>
+        <li><a href="../P012-ask-gen-quality/quality-upgrade-brief.html#before">P012 brief §2 改动前</a> · 问数/出板质量流水线（权限闸在其之前）</li>
+        <li><a href="../../design/architecture.html">architecture.html</a> · 只写已实现；本文落地并验证后再回写</li>
+        <li>refs：<code>dataease</code> PermissionManage / SQLBot 下发；<code>sqlbot</code> oid+表白名单+禁写；<code>deer-flow</code> 工具先过滤；JoyAgent 无 IAM 不照搬</li>
+      </ul>
+    </section>
+
+    <footer>
+      文档归属提案 P008 · 文件
+      <code>docs/proposals/P008-permission-aware-workbench/permission-design-brief.html</code>
+      · 原则以 README §2 为准 · 实现以 QueryGuard + ACL 表与 acceptance 为准 · 未验收不得写入 requirements。
+    </footer>
+  </div>
+  </div>
+  <script>
+    (function () {
+      const links = [...document.querySelectorAll('nav.side a[href^="#"]')]
+      const map = links.map((a) => {
+        const id = a.getAttribute('href').slice(1)
+        return { a, el: document.getElementById(id) }
+      }).filter((x) => x.el)
+      function sync() {
+        let cur = map[0]
+        const y = window.scrollY + 96
+        for (const item of map) {
+          if (item.el.offsetTop <= y) cur = item
+        }
+        links.forEach((a) => a.classList.remove('active'))
+        if (cur) cur.a.classList.add('active')
+      }
+      window.addEventListener('scroll', sync, { passive: true })
+      sync()
+    })()
+  </script>
+</body>
+</html>

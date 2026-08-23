@@ -27,6 +27,10 @@ public interface IdentityRepository {
 
     List<String> workspacesForUser(String userId);
 
+    List<String> rolesForUser(String userId, String workspaceId);
+
+    List<MemberRow> listMembers(String workspaceId);
+
     Optional<AuthSession> sessionByHash(String tokenHash);
 
     void createSession(AuthSession session);
@@ -50,6 +54,14 @@ public interface IdentityRepository {
             String username,
             String displayName,
             String email,
+            String status
+    ) {}
+
+    record MemberRow(
+            String userId,
+            String username,
+            String displayName,
+            String roleCode,
             String status
     ) {}
 

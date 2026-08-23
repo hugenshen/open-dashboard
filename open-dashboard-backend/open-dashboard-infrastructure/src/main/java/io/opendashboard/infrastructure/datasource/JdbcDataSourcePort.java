@@ -34,14 +34,36 @@ public class JdbcDataSourcePort implements DataSourcePort {
 
 
     private static final Pattern IDENT = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
+    /** Default row cap for live queries — avoid unbounded full-table fetches. */
+    private static final int DEFAULT_QUERY_LIMIT = 1000;
     private static final int HARD_MAX_ROWS = 5000;
+    private static final Pattern HAS_TRAILING_LIMIT = Pattern.compile(
+            "(?is)\\blimit\\s+\\d+(\\s*,\\s*\\d+)?(\\s+offset\\s+\\d+)?\\s*$"
+    );
 
     private final int queryTimeoutSec;
+    /** When estimated table rows exceed this, aggregate over a sample subquery (not full scan). */
+    private final long aggSampleThreshold;
+    /** Inner LIMIT for sample-then-aggregate on large tables. */
+    private final int aggSampleRows;
+    private final LiveQueryGuard liveQueries;
+    private final java.util.concurrent.ScheduledExecutorService cancelWatch =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "od-jdbc-cancel-watch");
+                t.setDaemon(true);
+                return t;
+            });
 
     public JdbcDataSourcePort(
-            @Value("${opendashboard.query.timeout-sec:60}") int queryTimeoutSec
+            @Value("${opendashboard.query.timeout-sec:15}") int queryTimeoutSec,
+            @Value("${opendashboard.query.agg-sample-threshold:100000}") long aggSampleThreshold,
+            @Value("${opendashboard.query.agg-sample-rows:50000}") int aggSampleRows,
+            LiveQueryGuard liveQueries
     ) {
-        this.queryTimeoutSec = Math.max(8, queryTimeoutSec);
+        this.queryTimeoutSec = Math.max(3, queryTimeoutSec);
+        this.aggSampleThreshold = Math.max(0L, aggSampleThreshold);
+        this.aggSampleRows = Math.max(0, aggSampleRows);
+        this.liveQueries = liveQueries;
     }
 
     public PingResult ping(ConnectionSpec spec) {
@@ -183,6 +205,7 @@ public class JdbcDataSourcePort implements DataSourcePort {
     /**
      * Simple aggregation / detail query for a physical table.
      * dimensions + measures → GROUP BY; otherwise SELECT columns or *.
+     * Large tables: sample-then-aggregate so GROUP BY / COUNT does not full-scan.
      */
     public DatasetQueryResult queryTable(
             ConnectionSpec spec,
@@ -195,19 +218,21 @@ public class JdbcDataSourcePort implements DataSourcePort {
     ) {
         requireDb(spec);
         requireIdent(table, "表名");
-        int lim = clampLimit(limit, 500);
+        int lim = clampLimit(limit, DEFAULT_QUERY_LIMIT);
         String qTable = qualify(spec, table);
         String where = compileWhere(spec, filters);
         String sql;
         if (measures != null && !measures.isEmpty()) {
-            List<String> select = new ArrayList<>();
+            List<String> outerSelect = new ArrayList<>();
             List<String> group = new ArrayList<>();
+            List<String> sampleCols = new ArrayList<>();
             if (dimensions != null) {
                 for (String d : dimensions) {
                     requireIdent(d, "维度字段");
                     String q = quote(spec, d);
-                    select.add(q);
+                    outerSelect.add(q);
                     group.add(q);
+                    if (!sampleCols.contains(q)) sampleCols.add(q);
                 }
             }
             for (Agg m : measures) {
@@ -216,13 +241,34 @@ public class JdbcDataSourcePort implements DataSourcePort {
                 String agg = normalizeAgg(m.agg());
                 String alias = m.alias() == null || m.alias().isBlank() ? m.field() : m.alias();
                 requireIdent(alias, "别名");
-                if ("RAW".equals(agg)) select.add(q + " AS " + quote(spec, alias));
-                else select.add(agg + "(" + q + ") AS " + quote(spec, alias));
+                if ("RAW".equals(agg)) outerSelect.add(q + " AS " + quote(spec, alias));
+                else outerSelect.add(agg + "(" + q + ") AS " + quote(spec, alias));
+                if (!sampleCols.contains(q)) sampleCols.add(q);
             }
-            sql = "SELECT " + String.join(", ", select) + " FROM " + qTable;
+            String from = qTable;
+            long est = estimateTableRows(spec, table);
+            boolean sample = shouldSampleAggregate(est);
+            int sampleN = Math.max(1000, aggSampleRows);
+            if (sample && !sampleCols.isEmpty()) {
+                String inner = "SELECT " + String.join(", ", sampleCols) + " FROM " + qTable;
+                if (!where.isBlank()) inner += " WHERE " + where;
+                inner += " LIMIT " + sampleN;
+                from = "(" + inner + ") _od_sample";
+                where = ""; // already applied inside sample
+            }
+            sql = "SELECT " + String.join(", ", outerSelect) + " FROM " + from;
             if (!where.isBlank()) sql += " WHERE " + where;
             if (!group.isEmpty()) sql += " GROUP BY " + String.join(", ", group);
             sql += " LIMIT " + lim;
+            if (sample) {
+                sql = "/* od_sample est=" + est + " n=" + sampleN + " */ " + sql;
+            }
+            DatasetQueryResult raw = executeSql(spec, sql, lim);
+            if (sample && est > sampleN) {
+                double factor = (double) est / (double) sampleN;
+                return scaleSampledAggregates(raw, measures, factor, est, sampleN);
+            }
+            return raw;
         } else if (columns != null && !columns.isEmpty()) {
             List<String> cols = new ArrayList<>();
             for (String col : columns) {
@@ -238,6 +284,109 @@ public class JdbcDataSourcePort implements DataSourcePort {
             sql += " LIMIT " + lim;
         }
         return executeSql(spec, sql, lim);
+    }
+
+    /**
+     * Scale COUNT/SUM from a fixed-size sample toward estimated full-table totals.
+     * AVG/MAX/MIN/RAW left unchanged. First-N sample is biased; this is preview-grade.
+     */
+    private static DatasetQueryResult scaleSampledAggregates(
+            DatasetQueryResult raw,
+            List<Agg> measures,
+            double factor,
+            long estRows,
+            int sampleN
+    ) {
+        if (raw == null || raw.rows() == null || raw.rows().isEmpty() || factor <= 1.0) return raw;
+        java.util.Set<String> scaleAliases = new java.util.HashSet<>();
+        for (Agg m : measures) {
+            String agg = normalizeAgg(m.agg());
+            if (!"COUNT".equals(agg) && !"SUM".equals(agg)) continue;
+            String alias = m.alias() == null || m.alias().isBlank() ? m.field() : m.alias();
+            scaleAliases.add(alias.toLowerCase(Locale.ROOT));
+        }
+        if (scaleAliases.isEmpty()) return raw;
+        List<ColumnMeta> cols = raw.columns() == null ? List.of() : raw.columns();
+        List<Integer> idxs = new ArrayList<>();
+        for (int i = 0; i < cols.size(); i++) {
+            String name = cols.get(i).name();
+            if (name != null && scaleAliases.contains(name.toLowerCase(Locale.ROOT))) idxs.add(i);
+        }
+        if (idxs.isEmpty()) return raw;
+        List<List<Object>> scaled = new ArrayList<>(raw.rows().size());
+        for (List<Object> row : raw.rows()) {
+            if (row == null) {
+                scaled.add(null);
+                continue;
+            }
+            List<Object> copy = new ArrayList<>(row);
+            for (int i : idxs) {
+                if (i >= copy.size()) continue;
+                Object v = copy.get(i);
+                if (v instanceof Number n) {
+                    double x = n.doubleValue() * factor;
+                    // COUNT/SUM preview: round to long so chart series stay integer-ish
+                    copy.set(i, Math.round(x));
+                }
+            }
+            scaled.add(copy);
+        }
+        String base = raw.sql() == null ? "" : raw.sql();
+        String sql = base
+                + " /* scaled x" + String.format(Locale.ROOT, "%.3f", factor)
+                + " est=" + estRows + " n=" + sampleN + " */";
+        return new DatasetQueryResult(cols, scaled, raw.truncated(), sql, raw.elapsedMs());
+    }
+
+    private boolean shouldSampleAggregate(long estimatedRows) {
+        if (aggSampleRows <= 0 || aggSampleThreshold <= 0) return false;
+        // Unknown size (-1): still sample — safer for conversation / unknown warehouses.
+        if (estimatedRows < 0) return true;
+        return estimatedRows >= aggSampleThreshold;
+    }
+
+    /** Best-effort row estimate; -1 when unavailable. */
+    long estimateTableRows(ConnectionSpec spec, String table) {
+        try {
+            String type = spec.normalizedType();
+            try (Connection c = open(spec)) {
+                if ("mysql".equals(type)) {
+                    try (PreparedStatement ps = c.prepareStatement(
+                            "SELECT TABLE_ROWS FROM information_schema.TABLES "
+                                    + "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?")) {
+                        ps.setString(1, spec.dbName());
+                        ps.setString(2, table);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            if (rs.next()) {
+                                long n = rs.getLong(1);
+                                return rs.wasNull() ? -1L : n;
+                            }
+                        }
+                    }
+                } else if ("postgresql".equals(type)) {
+                    String schema = "public";
+                    String name = table;
+                    int dot = table.indexOf('.');
+                    if (dot > 0) {
+                        schema = table.substring(0, dot);
+                        name = table.substring(dot + 1);
+                    }
+                    try (PreparedStatement ps = c.prepareStatement(
+                            "SELECT COALESCE(c.reltuples, -1)::bigint FROM pg_class c "
+                                    + "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                                    + "WHERE n.nspname = ? AND c.relname = ?")) {
+                        ps.setString(1, schema);
+                        ps.setString(2, name);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            if (rs.next()) return rs.getLong(1);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            return -1L;
+        }
+        return -1L;
     }
 
     /** Filter AST from encode.filters and chartQuery.context.filters (query-bar). */
@@ -299,12 +448,27 @@ public class JdbcDataSourcePort implements DataSourcePort {
 
     public DatasetQueryResult executeSql(ConnectionSpec spec, String sql, int maxRows) {
         long start = System.currentTimeMillis();
-        int lim = clampLimit(maxRows, 500);
+        int lim = clampLimit(maxRows, DEFAULT_QUERY_LIMIT);
+        String bounded = ensureLimit(sql, lim);
+        liveQueries.acquire();
+        String handleId = null;
+        java.util.concurrent.ScheduledFuture<?> watchdog = null;
         try (Connection c = open(spec);
              Statement st = c.createStatement()) {
+            applyServerQueryTimeout(c, spec);
             st.setQueryTimeout(queryTimeoutSec);
             st.setMaxRows(lim + 1);
-            try (ResultSet rs = st.executeQuery(sql)) {
+            String owner = currentOwner();
+            handleId = liveQueries.register(owner, st);
+            final Statement cancelTarget = st;
+            watchdog = cancelWatch.schedule(() -> {
+                try {
+                    if (!cancelTarget.isClosed()) cancelTarget.cancel();
+                } catch (Exception ignored) {
+                    // best-effort hard stop
+                }
+            }, queryTimeoutSec, java.util.concurrent.TimeUnit.SECONDS);
+            try (ResultSet rs = st.executeQuery(bounded)) {
                 ResultSetMetaData md = rs.getMetaData();
                 int n = md.getColumnCount();
                 List<ColumnMeta> cols = new ArrayList<>();
@@ -325,13 +489,60 @@ public class JdbcDataSourcePort implements DataSourcePort {
                     }
                     rows.add(row);
                 }
-                return new DatasetQueryResult(cols, rows, truncated, sql, System.currentTimeMillis() - start);
+                return new DatasetQueryResult(cols, rows, truncated, bounded, System.currentTimeMillis() - start);
             }
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("执行 SQL 失败: " + rootMessage(e), e);
+            String msg = rootMessage(e);
+            if (isTimeoutOrCancel(msg)) {
+                throw new IllegalStateException("查询超时或已停止（≤" + queryTimeoutSec + "s）: " + msg, e);
+            }
+            throw new IllegalStateException("执行 SQL 失败: " + msg, e);
+        } finally {
+            if (watchdog != null) watchdog.cancel(false);
+            liveQueries.unregister(handleId);
+            liveQueries.release();
         }
+    }
+
+    /** MySQL max_execution_time / PG statement_timeout — kills work on the server, not only the driver. */
+    private void applyServerQueryTimeout(Connection c, ConnectionSpec spec) {
+        int ms = queryTimeoutSec * 1000;
+        try (Statement st = c.createStatement()) {
+            if ("mysql".equals(spec.normalizedType())) {
+                // MySQL 5.7.8+: SELECT-only; unit is milliseconds.
+                st.execute("SET SESSION max_execution_time = " + ms);
+            } else if ("postgresql".equals(spec.normalizedType())) {
+                st.execute("SET statement_timeout TO '" + ms + "ms'");
+            }
+        } catch (Exception ignored) {
+            // older engines / permissions — JDBC timeout + watchdog still apply
+        }
+    }
+
+    private static String currentOwner() {
+        try {
+            return io.opendashboard.domain.context.AuthContext.userIdOr("");
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private static boolean isTimeoutOrCancel(String msg) {
+        if (msg == null) return false;
+        String m = msg.toLowerCase(Locale.ROOT);
+        return m.contains("timeout") || m.contains("timed out") || m.contains("cancel")
+                || m.contains("interrupted") || m.contains("max_execution_time")
+                || m.contains("statement_timeout") || m.contains("query execution was interrupted");
+    }
+
+    /** Append LIMIT when the statement has none, so the DB stops early on SELECT *. */
+    static String ensureLimit(String sql, int lim) {
+        String s = sql == null ? "" : sql.trim();
+        if (s.endsWith(";")) s = s.substring(0, s.length() - 1).trim();
+        if (s.isEmpty() || HAS_TRAILING_LIMIT.matcher(s).find()) return s;
+        return s + " LIMIT " + lim;
     }
 
     public Connection open(ConnectionSpec spec) throws Exception {
@@ -377,6 +588,16 @@ public class JdbcDataSourcePort implements DataSourcePort {
             }
         }
         return c;
+    }
+
+    @Override
+    public int cancelLiveQueries(String owner) {
+        return liveQueries.cancelByOwner(owner == null ? "" : owner);
+    }
+
+    @Override
+    public Map<String, Object> liveQueryStats() {
+        return liveQueries.snapshot();
     }
 
     private String qualify(ConnectionSpec spec, String table) {

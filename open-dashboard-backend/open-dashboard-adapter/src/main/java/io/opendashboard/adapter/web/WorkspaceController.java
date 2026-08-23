@@ -1,15 +1,20 @@
 package io.opendashboard.adapter.web;
 
 import io.opendashboard.adapter.security.RequireAuth;
+import io.opendashboard.application.DatasetPermissionService;
 import io.opendashboard.application.WorkspaceGovernanceService;
+import io.opendashboard.domain.DatasetPermissionDtos.GrantRequest;
 import io.opendashboard.domain.context.AuthContext;
 import io.opendashboard.domain.context.AuthPrincipal;
 import io.opendashboard.domain.exception.UnauthorizedException;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -20,9 +25,11 @@ import java.util.List;
 public class WorkspaceController {
 
     private final WorkspaceGovernanceService service;
+    private final DatasetPermissionService permissions;
 
-    public WorkspaceController(WorkspaceGovernanceService service) {
+    public WorkspaceController(WorkspaceGovernanceService service, DatasetPermissionService permissions) {
         this.service = service;
+        this.permissions = permissions;
     }
 
     @GetMapping
@@ -85,6 +92,59 @@ public class WorkspaceController {
             @RequestBody WorkspaceGovernanceService.DataRequestCreateRequest request
     ) {
         return service.requestAccess(workspaceId, request, principal());
+    }
+
+    @GetMapping("/{workspaceId}/dataset-permissions")
+    public io.opendashboard.domain.DatasetPermissionDtos.DatasetPermissionBundle datasetPermissions(
+            @PathVariable String workspaceId
+    ) {
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        return permissions.bundle(workspaceId, principal);
+    }
+
+    @PostMapping("/{workspaceId}/dataset-permissions/grants")
+    public io.opendashboard.domain.DatasetPermissionDtos.GrantVO grantDataset(
+            @PathVariable String workspaceId,
+            @RequestBody GrantRequest request
+    ) {
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        return permissions.grant(workspaceId, request, principal);
+    }
+
+    @DeleteMapping("/{workspaceId}/dataset-permissions/grants/{grantId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteGrant(@PathVariable String workspaceId, @PathVariable String grantId) {
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        permissions.deleteGrant(workspaceId, grantId, principal);
+    }
+
+    @DeleteMapping("/{workspaceId}/dataset-permissions/policies/{policyId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletePolicy(@PathVariable String workspaceId, @PathVariable String policyId) {
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        permissions.deletePolicy(workspaceId, policyId, principal);
+    }
+
+    @PostMapping("/{workspaceId}/dataset-requests/{requestId}/approve")
+    public io.opendashboard.domain.DatasetPermissionDtos.GrantVO approveRequest(
+            @PathVariable String workspaceId,
+            @PathVariable String requestId
+    ) {
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        return permissions.approveRequest(workspaceId, requestId, principal);
+    }
+
+    @PostMapping("/{workspaceId}/dataset-requests/{requestId}/reject")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void rejectRequest(@PathVariable String workspaceId, @PathVariable String requestId) {
+        AuthPrincipal principal = principal();
+        requireWorkspaceAdmin(principal);
+        permissions.rejectRequest(workspaceId, requestId, principal);
     }
 
     private static AuthPrincipal principal() {

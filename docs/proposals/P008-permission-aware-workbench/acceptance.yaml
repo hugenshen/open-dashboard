@@ -99,3 +99,25 @@ items:
     status: pass
     blocker_of_done: true
     requirements_target: PR-ACL-09
+  - id: PR-ACL-10
+    title: 资源实例 ACL 落库
+    gate: code
+    criterion: 数据集/仪表盘/报告授权写入 od_resource_acl；广场 approve 写 dataset use；AskableDatasetService 不再用内存 AssetSeed 或 live.get(0) 回落。
+    method: api
+    command_or_path: Flyway od_resource_acl · GET /api/dataset/askable · 广场 dataset-requests approve
+    expected: 无 ACL.use 的 live 数据集不出现在 askable；匹配失败返回空列表而非第一张表；撤销 use 后短 TTL 内查询 403。
+    evidence: "2026-08-23：V19 撤销 role=analyst 全量 ACL 并复制到 u_analyst。新注册用户 POST /dashboardTree/tree=[]、GET /dashboard/1→404 RESOURCE_FORBIDDEN、GET /dataset=[]、catalog dash/ds=0；演示 analyst/demo 仍 71 盘 / 10 集。报告实例 ACL 未做。"
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-10
+  - id: PR-ACL-11
+    title: 公开 chartQuery 与问数同一出数闸
+    gate: code
+    criterion: POST /api/chartQuery/query 与 /export 对登录用户校验作品 ACL∩数据集 use（主路径带 dashboardId），并与 internal /query/* 共用 QueryGuard；仅登录不得凭任意 datasetId 出数。
+    method: api
+    command_or_path: POST /api/chartQuery/query · POST /api/internal/bi/query/dataset
+    expected: viewer 无数据集 use 时 chartQuery 不返回业务行；analyst 无某盘 ACL 时该盘 404；internal 与公开闸同一 EffectiveAccess。
+    evidence: "2026-08-23：新注册用户 POST /api/chartQuery/query {dashboardId:1,chartId:101}→404 RESOURCE_FORBIDDEN；演示 analyst 同请求 200。"
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-11

@@ -102,6 +102,32 @@ public class InMemoryIdentityRepository implements IdentityRepository {
     }
 
     @Override
+    public List<String> rolesForUser(String userId, String workspaceId) {
+        List<String> out = new ArrayList<>();
+        for (String entry : workspaceRolesByUser.getOrDefault(userId, Set.of())) {
+            String[] parts = entry.split("\\|", 2);
+            if (parts.length == 2 && workspaceId.equals(parts[0])) out.add(parts[1]);
+        }
+        return out;
+    }
+
+    @Override
+    public List<MemberRow> listMembers(String workspaceId) {
+        List<MemberRow> out = new ArrayList<>();
+        workspaceRolesByUser.forEach((userId, entries) -> {
+            UserAccount user = usersById.get(userId);
+            if (user == null) return;
+            for (String entry : entries) {
+                String[] parts = entry.split("\\|", 2);
+                if (parts.length == 2 && workspaceId.equals(parts[0])) {
+                    out.add(new MemberRow(user.id(), user.username(), user.displayName(), parts[1], "active"));
+                }
+            }
+        });
+        return out;
+    }
+
+    @Override
     public Optional<AuthSession> sessionByHash(String tokenHash) {
         return Optional.ofNullable(sessions.get(tokenHash));
     }

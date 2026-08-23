@@ -1,6 +1,7 @@
 # P008 · 权限感知工作台详细设计
 
 > 状态：工作台「我的/共享」IA 尚未实现。**身份贯穿与 `GET /api/dataset/askable` 已编码（code: wip）**。验收前不把本提案写入 [`architecture.html`](../../design/architecture.html)。  
+> 人读主文（改动前闸门、四层、QueryGuard、分期）：[permission-design-brief.html](./permission-design-brief.html)  
 > 需求与原则：[README](./README.md) §2 · 验收：[acceptance.yaml](./acceptance.yaml)  
 > 壳层对照：[P007 冻结快照](../../prototypes/snapshots/2026-08-17-p007-app-shell-final/)（只提供壳，不含本提案 IA）
 
@@ -96,9 +97,47 @@ P003 当前以 live 图为主。P008 不能原地把 view 改成静态。
 
 ## 5. 分期
 
-1. 高保增量（PR-ACL-05）
-2. OpenAPI + Java askable + 身份贯穿（PR-ACL-04 / PR-ACL-08）：Auth SPI principal 经 `X-User-Id` / `X-User-Perms` 传到 Harness 与 `/api/internal/bi/*`。请求体不得声明 `userId`/`ownerId`。`GET /api/dataset/askable` 为三入口唯一可问集合。资源级 ACL 表仍归治理立项（P011+）。
-3. Vue 工作台、对话、SQLBot 接同一 askable API（覆盖 PR-ACL-04、PR-CONV-08、PR-ASK-07）
-4. 同步 `architecture.html`；验收后再写 `requirements.md`
+已完成：身份贯穿 + askable API + 广场第一版（PR-ACL-04 / 08 / 09）。
 
-依赖：P007 产品壳、P006 问数轨、P003 报告模型。Auth SPI 已有，缺资源级 ACL 表（见 [路线图 · 治理补齐](../../product/roadmap/in-progress/)）。
+后续按 [brief §13](./permission-design-brief.html#phases)，**ACL 表在本提案落地，不再推到「治理补齐 / P011+」**：
+
+0. **B0 止血**：删除 `AskableDatasetService` 回落 `live.get(0)`；公开 `POST /api/chartQuery/query` 与 export 接到同一 `QueryGuard`（PR-ACL-11）。**已编码。**
+1. **B1 表**：`od_resource_acl` / `od_dataset_request`；创建写 owner；广场 approve 写 `use`（PR-ACL-10、PR-WS-03）。**已编码。**
+2. **B2 IA**：工作台 my/shared；unavailable 元数据卡（PR-ACL-05/06/07）。未编码。
+3. **B3 双重出数 + 写闸**：chartQuery 带 dashboardId 时验盘 ACL；apply 要实例 edit（PR-ACL-01、PR-WS-06）。**已编码。**
+4. **C 行列**：`od_data_policy` + Java `QueryGuard` 注入；schema 先 CLS。**已编码。** 验收 ID 在 P009 `PR-WS-05`。
+5. **D 分享**：匿名默认静态快照；禁止发布者凭证问数。不阻塞 B/C。未编码（分享路径暂 bypass QueryGuard）。
+
+依赖：P007 产品壳、P006 问数轨、P003 报告模型。OpenAPI 与实现同 PR。
+
+## 6. 有效权限服务与查询闸
+
+唯一实现类（名称可微调，职责不可拆成问数一份、看盘一份）：
+
+- `EffectiveAccessService`：算 `askableIds`、`actions(type,id)`、`accessState(dashboard)`。
+- `QueryGuard`：在 `chartQuery` / `datasetQuery` / internal `/query/*` / CSV 前 `apply(principal, datasetId, spec|sql)`。
+
+判定公式见本文 §1 与 brief §4。SQL 路径：Java 再跑只读检查 + 表白名单 + `SELECT projected FROM (user_sql) t WHERE rls`。禁止 LLM 改写权限 SQL。
+
+## 7. 数据模型
+
+```text
+od_resource_acl (workspace_id, resource_type, resource_id, subject_type, subject_id, action)
+od_data_policy  (workspace_id, dataset_id, kind, subject, effect, predicate_json, enabled)
+od_dataset_request (… status pending|approved|denied)  -- approve 写 ACL，不把 pending 当权
+```
+
+`resource_type`：`dataset | dashboard | report | conversation`。  
+数据集 `action`：`use | manage | owner`。盘/报告：`view | edit | manage | owner`。  
+主体：`user | group | role`。工作区管理员对本 ws 资源短路 manage。  
+广场是 ACL 的视图，不再用内存 `AssetSeed.status` 当授权真相。
+
+## 8. 契约增量
+
+实现分支写入 OpenAPI（现网无 ACL 写接口）：
+
+- `GET /api/dataset/askable`：集合改为实例 `use`，空集不得回落。
+- `POST /api/chartQuery/query` 与 `/export`：登录用户主路径要求 `dashboardId`；双重权限 + QueryGuard。
+- `GET /api/workbench/summary`：my / shared / askable / todos。
+- `POST /api/workspaces/{id}/acl`：写实例授权。
+- 错误码：`RESOURCE_FORBIDDEN`（对外 404）、`DATASET_UNAVAILABLE`、`DATASET_COLUMN_FORBIDDEN`、`DASHBOARD_WRITE_FORBIDDEN`、`POLICY_BIND_FAILED`。

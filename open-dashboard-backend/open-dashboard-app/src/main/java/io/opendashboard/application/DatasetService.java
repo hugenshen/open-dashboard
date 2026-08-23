@@ -30,6 +30,8 @@ public class DatasetService {
     private final FileTableStore fileTables;
     private final ObjectProvider<io.opendashboard.application.conversation.DatasetProfileLearner> learner;
     private final ObjectProvider<io.opendashboard.application.conversation.FieldLearnReviewer> fieldReviewer;
+    private final ObjectProvider<DatasetPermissionService> permissions;
+    private final ObjectProvider<EffectiveAccessService> access;
     private final ConcurrentHashMap<String, DatasetDetailVO> mem = new ConcurrentHashMap<>();
     private final java.util.concurrent.ExecutorService learnExecutor =
             java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
@@ -44,7 +46,9 @@ public class DatasetService {
             StubQueryService stubQueryService,
             FileTableStore fileTables,
             ObjectProvider<io.opendashboard.application.conversation.DatasetProfileLearner> learner,
-            ObjectProvider<io.opendashboard.application.conversation.FieldLearnReviewer> fieldReviewer
+            ObjectProvider<io.opendashboard.application.conversation.FieldLearnReviewer> fieldReviewer,
+            ObjectProvider<DatasetPermissionService> permissions,
+            ObjectProvider<EffectiveAccessService> access
     ) {
         this.repository = repository;
         this.datasourceService = datasourceService;
@@ -52,6 +56,8 @@ public class DatasetService {
         this.fileTables = fileTables;
         this.learner = learner;
         this.fieldReviewer = fieldReviewer;
+        this.permissions = permissions;
+        this.access = access;
         seedTemplateDemoDatasets();
     }
 
@@ -101,8 +107,20 @@ public class DatasetService {
 
     public List<DatasetMetaVO> list() {
         DatasetGateway repo = repository.getIfAvailable();
-        if (repo != null) return repo.list();
-        return mem.values().stream().map(DatasetDetailVO::meta).toList();
+        List<DatasetMetaVO> all = repo != null
+                ? repo.list()
+                : mem.values().stream().map(DatasetDetailVO::meta).toList();
+        return visibleDatasets(all);
+    }
+
+    private List<DatasetMetaVO> visibleDatasets(List<DatasetMetaVO> all) {
+        AuthPrincipal principal = AuthContext.get();
+        EffectiveAccessService acl = access.getIfAvailable();
+        if (acl == null) return all;
+        if (principal == null) return List.of();
+        if (EffectiveAccessService.isDataAdmin(principal)) return all;
+        java.util.Set<String> allowed = acl.grantedDatasetIds(principal);
+        return all.stream().filter(d -> allowed.contains(d.id())).toList();
     }
 
     public Optional<DatasetDetailVO> get(String id) {
@@ -131,6 +149,10 @@ public class DatasetService {
                     req.fields() == null ? List.of() : req.fields()
             );
             mem.put(id, detail);
+        }
+        DatasetPermissionService acl = permissions.getIfAvailable();
+        if (acl != null) {
+            acl.grantOwner("dataset", detail.meta().id(), AuthContext.get());
         }
         triggerLearn(detail.meta().id());
         return detail;
@@ -237,17 +259,27 @@ public class DatasetService {
 
     public List<DatasetCatalogItem> catalog() {
         DatasetGateway repo = repository.getIfAvailable();
-        if (repo != null) return repo.listCatalog();
-        List<DatasetCatalogItem> out = new ArrayList<>();
-        for (DatasetDetailVO d : mem.values()) {
-            out.add(new DatasetCatalogItem(
-                    d.meta().id(),
-                    d.meta().name(),
-                    d.fields().stream()
-                            .map(f -> new DatasetFieldItem(f.name(), f.label(), f.group()))
-                            .toList()
-            ));
+        List<DatasetCatalogItem> all;
+        if (repo != null) {
+            all = repo.listCatalog();
+        } else {
+            all = new ArrayList<>();
+            for (DatasetDetailVO d : mem.values()) {
+                all.add(new DatasetCatalogItem(
+                        d.meta().id(),
+                        d.meta().name(),
+                        d.fields().stream()
+                                .map(f -> new DatasetFieldItem(f.name(), f.label(), f.group()))
+                                .toList()
+                ));
+            }
         }
-        return out;
+        AuthPrincipal principal = AuthContext.get();
+        EffectiveAccessService acl = access.getIfAvailable();
+        if (acl == null) return all;
+        if (principal == null) return List.of();
+        if (EffectiveAccessService.isDataAdmin(principal)) return all;
+        java.util.Set<String> allowed = acl.grantedDatasetIds(principal);
+        return all.stream().filter(d -> allowed.contains(d.id())).toList();
     }
 }
