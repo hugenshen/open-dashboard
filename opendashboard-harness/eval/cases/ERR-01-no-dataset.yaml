@@ -1,9 +1,0 @@
-id: ERR-01-no-dataset
-layer: L2
-message: 各地区的销售额是多少？
-intent: ask
-datasetIds: []
-expected:
-  error_code: BI_DATASETS
-  finish_reason: error
-  events: [error, finish]

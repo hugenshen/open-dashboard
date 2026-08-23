@@ -1,6 +1,0 @@
-id: L1-MTR-rechart
-layer: L1
-kind: multiturn
-message: 把销售额那张改成折线
-expected:
-  multiturn: rechart

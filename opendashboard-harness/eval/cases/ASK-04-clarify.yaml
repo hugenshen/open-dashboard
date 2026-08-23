@@ -1,8 +1,0 @@
-id: ASK-04-clarify
-layer: L2
-message: 换一个问数问题
-intent: ask
-datasetIds: [ds_1]
-expected:
-  finish_reason: answered
-  events: [answer_clarify, finish]

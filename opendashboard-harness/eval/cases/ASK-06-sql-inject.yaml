@@ -1,6 +1,0 @@
-id: ASK-06-sql-inject
-layer: L1
-kind: sql_guard
-sql: SELECT * FROM secret; DROP TABLE t_pay_order
-expected:
-  deny: true

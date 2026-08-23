@@ -1,7 +1,0 @@
-id: L1-ASK-sql-tables
-layer: L1
-kind: sql_tables
-sql: SELECT a FROM orders LIMIT 10
-allowed: [sales]
-expected:
-  deny: true

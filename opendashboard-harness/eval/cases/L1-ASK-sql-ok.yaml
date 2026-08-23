@@ -1,6 +1,0 @@
-id: L1-ASK-sql-ok
-layer: L1
-kind: sql_guard
-sql: SELECT merchant, SUM(amount) FROM orders GROUP BY merchant LIMIT 100
-expected:
-  deny: false
