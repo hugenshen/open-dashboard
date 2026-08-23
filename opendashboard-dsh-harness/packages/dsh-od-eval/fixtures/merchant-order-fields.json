@@ -1,0 +1,13 @@
+{
+  "name": "merchant-order",
+  "fields": [
+    { "name": "PayOrderId", "label": "支付订单号", "group": "dim", "role": "id", "dataType": "STRING" },
+    { "name": "MchId", "label": "商户ID", "group": "quota", "role": "id", "dataType": "DECIMAL" },
+    { "name": "MchType", "label": "商户类型:1-平台", "group": "quota", "role": "dim", "dataType": "DECIMAL", "distinctCount": 3 },
+    { "name": "Status", "label": "支付状态,0-订单生成", "group": "quota", "role": "dim", "dataType": "DECIMAL", "distinctCount": 4 },
+    { "name": "Amount", "label": "支付金额,单位分", "group": "quota", "role": "measure", "dataType": "DECIMAL" },
+    { "name": "MchIncome", "label": "商户入账,单位分", "group": "quota", "role": "measure", "dataType": "DECIMAL" },
+    { "name": "FeeRate", "label": "商户费率", "group": "quota", "role": "measure", "dataType": "DECIMAL" },
+    { "name": "CreateTime", "label": "创建时间", "group": "dim", "role": "time", "dataType": "TIME" }
+  ]
+}

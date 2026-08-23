@@ -31,7 +31,7 @@ chmod +x scripts/*.sh
 
 - [后端](open-dashboard-backend/deploy.md)
 - [前端](open-dashboard-frontend/deploy.md)
-- [对话 Harness](opendashboard-harness/deploy.md)
+- [对话 Agent（dsh）](opendashboard-dsh-harness/README.md)
 
 ## 技术栈
 
@@ -105,7 +105,7 @@ open-dashboard/
 | [docs/process.md](docs/process.md) | 协作规范正文 |
 | [open-dashboard-backend/deploy.md](open-dashboard-backend/deploy.md) | 后端本地运行与 Docker |
 | [open-dashboard-frontend/deploy.md](open-dashboard-frontend/deploy.md) | 前端本地运行与 Docker |
-| [opendashboard-harness/deploy.md](opendashboard-harness/deploy.md) | 对话 Harness 本地运行 |
+| [opendashboard-dsh-harness/README.md](opendashboard-dsh-harness/README.md) | 对话 Agent（dsh）本地运行 |
 | [docs/user-manual/index.html](docs/user-manual/index.html) | 终端用户手册（在线 `/help/`，顶栏「帮助」） |
 
 ## 设计要点（摘要）

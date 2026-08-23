@@ -1,0 +1,8 @@
+{
+  "id": "ASK-GUARD-04",
+  "track": "ask",
+  "stage": "guard",
+  "dataset": { "table": "t" },
+  "input": { "sql": "SELECT 1; DROP TABLE t", "table": "t" },
+  "expect": { "allow": false }
+}

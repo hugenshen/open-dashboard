@@ -1,0 +1,8 @@
+{
+  "id": "ASK-GUARD-03",
+  "track": "ask",
+  "stage": "guard",
+  "dataset": { "table": "sales_detail" },
+  "input": { "sql": "SELECT * FROM sales_detail JOIN secret s ON 1=1", "table": "sales_detail" },
+  "expect": { "allow": false }
+}

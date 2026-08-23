@@ -1,0 +1,20 @@
+{
+  "name": "opendashboard-dsh-harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open Dashboard conversation Agent surface on DeepSeek Harness (P011)",
+  "packageManager": "pnpm@11.13.1",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "start": "./start.sh",
+    "test": "node --test packages/dsh-od-bi/src/sql-guard.test.js packages/dsh-od-bi/src/gen-board.test.js packages/dsh-od-bi/src/ask-enrich.test.js packages/dsh-od-bi/src/knowledge-merge.test.js packages/dsh-od-bi/src/goal-planner.test.js packages/dsh-od-bi/src/answer-meta.test.js packages/dsh-od-eval/src/result-set.test.js packages/dsh-od-eval/src/runner.test.js",
+    "eval": "node packages/dsh-od-eval/src/cli.js",
+    "dump-config": "DSH_HOME=\"$PWD/dsh-home\" ./node_modules/.bin/dsh --profile od-conversation --dump-config"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh": "0.1.1-rc.2",
+    "typescript": "^5.9.2"
+  }
+}

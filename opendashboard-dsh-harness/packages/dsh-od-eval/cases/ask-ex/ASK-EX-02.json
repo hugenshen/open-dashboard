@@ -1,0 +1,11 @@
+{
+  "id": "ASK-EX-02",
+  "track": "ask",
+  "stage": "ex",
+  "input": {},
+  "expect": {
+    "goldRows": [{ "Status": 2, "Amount": 200 }],
+    "predRows": [{ "Status": 2, "Amount": 999 }],
+    "match": false
+  }
+}

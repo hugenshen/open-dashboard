@@ -1,0 +1,23 @@
+{
+  "name": "@opendashboard/dsh-od-nodes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OD Conversation Nodes (answer table) for dsh Web",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-commands"
+      ]
+    }
+  }
+}

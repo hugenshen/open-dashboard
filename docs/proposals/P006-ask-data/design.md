@@ -219,7 +219,7 @@ Java public `/api/conversations/{id}/runs/{runId}/adopt` 从公开契约与 Cont
 |------|------|
 | 问数 | SQLBot 管道 `sqlbot/`（LLM SQL + 只读执行）；失败回退 `od_run_query` encode |
 | 解读 / 报告 | harness skills + `od_import_report` 写 Java |
-| 仪表盘生成 | DeerFlow planner：`write_todos` → profile → `od_plan_charts` → `od_review_charts`（layout 再跑）→ layout → `od_emit_patch` |
+| 仪表盘生成 | **现行（P011+）**：`od_generate_board` one-shot。质检见 [P012](../P012-ask-gen-quality/)（内置 review，无 `od_review_charts` 工具）。下文 DeerFlow 五步为迁 dsh 前对照 |
 | 沙箱 Python | DeerFlow sandbox（分析用）；落看板必须再 emit_patch |
 
 **结论：** 编排与模型在 DeerFlow；看板/权限/取数真相在 Java。不在 Java 保留第二套 Agent。

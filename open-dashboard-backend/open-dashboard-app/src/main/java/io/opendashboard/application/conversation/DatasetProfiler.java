@@ -19,10 +19,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Compact dataset features for the Lead Agent planner (no LLM).
- * Probes a few encodes so the agent can skip empty charts.
- * Field roles come from self-learning profile (de_dataset_field_profile) when
- * present (stats-first deterministic gate); keyword roleOf is the fallback.
+ * Compact dataset features for the planner (no LLM).
+ * Field roles come from learned profile when present; else schema group / JDBC type.
  */
 @Component
 public class DatasetProfiler {
@@ -69,7 +67,7 @@ public class DatasetProfiler {
         List<DatasetFieldVO> measures = new ArrayList<>();
         List<DatasetFieldVO> dims = new ArrayList<>();
         List<DatasetFieldVO> times = new ArrayList<>();
-        // 已学习的角色（统计判定）优先；无则回退现场关键词判定
+        // Learned stats first; else schema group / JDBC type.
         Map<String, FieldProfileVO> stats = loadFieldStats(datasetId);
         Map<String, String> learned = learnedRolesFrom(stats);
         if (detail.fields() != null) {
@@ -82,7 +80,7 @@ public class DatasetProfiler {
                 row.put("dataType", f.dataType());
                 row.put("role", role);
                 FieldProfileVO p = stats.get(f.name());
-                String src = "naming";
+                String src = "schema";
                 if (p != null && p.roleSource() != null && !p.roleSource().isBlank()) {
                     src = p.roleSource();
                 } else if (learned.containsKey(f.name())) {
@@ -107,9 +105,7 @@ public class DatasetProfiler {
             }
         }
 
-        dims.sort((a, b) -> Integer.compare(dimScore(b), dimScore(a)));
-        measures.sort((a, b) -> Integer.compare(measureScore(b), measureScore(a)));
-        times.sort((a, b) -> Integer.compare(timeScore(b), timeScore(a)));
+        // Schema order only — no business-word ranking.
 
         out.put("ok", true);
         out.put("datasetId", datasetId);
@@ -174,7 +170,7 @@ public class DatasetProfiler {
         out.put("empty", empty);
         out.put("liveRowHint", liveRows);
         if (FieldSemantics.queryFailed(sqlNote) || sqlNote.startsWith("-- live")) {
-            out.put("hint", "部分实时聚合超时或失败（不一定是没数据）。优先用已探活字段；商户维用 MchId，入账失败时回退支付金额 Amount。");
+            out.put("hint", "部分实时聚合超时或失败（不一定是没数据）。优先用已探活字段。");
         } else if (empty) {
             out.put("hint", "探测查询无有效行，不要用空 encode 写看板。");
         }
@@ -262,14 +258,7 @@ public class DatasetProfiler {
         }
         for (DatasetFieldVO d : dims) {
             if (out.size() >= 3) break;
-            String n = d.name().toLowerCase(Locale.ROOT);
-            String l = display(d);
-            boolean skip = n.contains("late") || l.contains("最终");
-            boolean pick = n.contains("status") || l.contains("状态")
-                    || n.contains("channel") || l.contains("渠道")
-                    || n.contains("region") || l.contains("区域");
-            if (skip || !pick) continue;
-            out.add(Map.of("name", d.name(), "label", l, "kind", "select"));
+            out.add(Map.of("name", d.name(), "label", display(d), "kind", "select"));
         }
         return out;
     }
@@ -308,103 +297,39 @@ public class DatasetProfiler {
         }
     }
 
-    static String roleOf(DatasetFieldVO f) {
+    /**
+     * Fallback role from dataset schema group + JDBC type. Learned profile wins when present.
+     */
+    public static String roleOf(DatasetFieldVO f) {
         if (f == null || f.name() == null) return "junk";
-        String n = f.name().toLowerCase(Locale.ROOT);
-        String l = f.label() == null ? "" : f.label();
-        if (n.contains("url") || n.contains("msg") || n.contains("extra") || n.contains("param")
-                || n.contains("email") || n.contains("safekey") || n.contains("errcode") || n.contains("errmsg")
-                || n.contains("ip") || n.equals("body") || n.equals("subject")
-                || n.contains("attach") || n.contains("notify") || n.contains("player")
-                || n.contains("orderno") || n.contains("order_no")
-                || (n.contains("order") && (n.contains("id") || n.endsWith("no")))) {
-            return "junk";
-        }
         if (isTimeField(f)) return "time";
-        if (isStatusLike(f)) return "dim";
-        if (FieldSemantics.isBusinessEntityId(f)) return "dim";
-        if ("quota".equalsIgnoreCase(f.group())
-                && !n.equals("id") && !n.equals("pid") && !n.equals("version")
-                && !n.endsWith("id") && measureScore(f) >= 20) {
+        String g = f.group() == null ? "" : f.group().toLowerCase(Locale.ROOT);
+        if (g.equals("q") || g.equals("quota") || g.equals("measure")) return "measure";
+        if (g.equals("d") || g.equals("dim") || g.equals("dimension")) return "dim";
+        if (g.equals("t") || g.equals("time")) return "time";
+        String dt = f.dataType() == null ? "" : f.dataType().toUpperCase(Locale.ROOT);
+        if (dt.contains("INT") || dt.contains("DECIMAL") || dt.contains("NUMERIC")
+                || dt.contains("FLOAT") || dt.contains("DOUBLE") || dt.contains("LONG")) {
             return "measure";
         }
-        if ("dim".equalsIgnoreCase(f.group()) && (!n.endsWith("id") || FieldSemantics.isBusinessEntityId(f))) {
-            return "dim";
-        }
+        if (dt.contains("CHAR") || dt.contains("TEXT") || dt.contains("STRING")) return "dim";
         return "junk";
     }
 
     private static boolean isTimeField(DatasetFieldVO f) {
-        if (f == null || f.name() == null) return false;
-        String n = f.name().toLowerCase(Locale.ROOT);
-        String l = f.label() == null ? "" : f.label();
+        if (f == null) return false;
+        String g = f.group() == null ? "" : f.group().toLowerCase(Locale.ROOT);
+        if (g.equals("t") || g.equals("time")) return true;
         String dt = f.dataType() == null ? "" : f.dataType().toUpperCase(Locale.ROOT);
-        if (n.contains("expire") || n.contains("fail") || l.contains("失效")) return false;
-        if (n.equals("day") || n.equals("month") || l.contains("日期") || l.contains("月份")
-                || l.contains("时间") || n.contains("createtime") || n.contains("paysucc")
-                || n.endsWith("time")) {
-            return true;
-        }
         return dt.contains("DATE") || dt.contains("TIME") || dt.contains("TIMESTAMP");
-    }
-
-    private static int dimScore(DatasetFieldVO f) {
-        if (f == null || f.name() == null) return -100;
-        String n = f.name().toLowerCase(Locale.ROOT);
-        String l = f.label() == null ? "" : f.label();
-        int score = 10;
-        if (n.contains("status") || l.contains("状态")) score += 50;
-        if (n.contains("region") || l.contains("区域")) score += 40;
-        if (n.contains("channel") || l.contains("渠道")) score += 30;
-        if (n.contains("product") || l.contains("产品")) score += 25;
-        if (FieldSemantics.isBusinessEntityId(f)) score += 45;
-        else if (n.endsWith("id") || n.contains("appid")) score -= 40;
-        return score;
-    }
-
-    private static int timeScore(DatasetFieldVO f) {
-        String n = f.name().toLowerCase(Locale.ROOT);
-        if (n.contains("create")) return 40;
-        if (n.equals("day") || n.equals("month")) return 30;
-        if (n.contains("paysucc")) return 10;
-        if (n.contains("update")) return 5;
-        return 1;
-    }
-
-    private static boolean isStatusLike(DatasetFieldVO f) {
-        if (f == null || f.name() == null) return false;
-        String n = f.name().toLowerCase(Locale.ROOT);
-        String l = f.label() == null ? "" : f.label();
-        return n.contains("status") || l.contains("状态") || n.contains("channeltype")
-                || l.contains("渠道类型") || (n.contains("type") && l.contains("类型"));
-    }
-
-    private static int measureScore(DatasetFieldVO f) {
-        if (f == null || f.name() == null) return -100;
-        String n = f.name().toLowerCase(Locale.ROOT);
-        String l = f.label() == null ? "" : f.label();
-        int score = "quota".equalsIgnoreCase(f.group()) ? 10 : -20;
-        if (n.contains("amount") || l.contains("金额") || l.contains("销售额")) score += 80;
-        if (n.contains("income") || l.contains("入账") || l.contains("收入")) score += 70;
-        if (n.contains("profit") || l.contains("利润")) score += 65;
-        if (n.contains("qty") || l.contains("数量") || l.contains("销量")) score += 50;
-        if (n.contains("rate") || l.contains("率")) score += 15;
-        if (n.endsWith("id") || n.contains("status") || l.contains("状态")) score -= 80;
-        return score;
     }
 
     private static DatasetFieldVO pickMeasure(List<DatasetFieldVO> measures) {
         if (measures == null || measures.isEmpty()) return null;
-        return measures.stream()
-                .max((a, b) -> Integer.compare(measureScore(a), measureScore(b)))
-                .filter(f -> measureScore(f) >= 20)
-                .orElse(measures.getFirst());
+        return measures.getFirst();
     }
 
-    private static String suggestedAgg(DatasetFieldVO f) {
-        String n = f.name().toLowerCase(Locale.ROOT);
-        String l = f.label() == null ? "" : f.label();
-        if (n.contains("rate") || l.contains("率")) return "AVG";
+    private static String suggestedAgg(DatasetFieldVO ignored) {
         return "SUM";
     }
 

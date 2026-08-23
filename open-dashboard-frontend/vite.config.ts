@@ -64,22 +64,34 @@ export default defineConfig({
         target: process.env.OD_API_PROXY || 'http://127.0.0.1:8082',
         changeOrigin: true
       },
-      // Pi harness: FE talks to Agent runtime directly (not via Java conversation runs)
-      '/harness': {
-        target: process.env.OD_HARNESS_PROXY || 'http://127.0.0.1:8091',
+      // P011: dsh HTML uses absolute /plugins + /assets (not under /dsh/).
+      // When iframe loads /dsh/ from the Vite origin, those URLs hit :5173 and must
+      // be proxied to the dsh process or the conversation page is blank.
+      '/plugins': {
+        target: process.env.OD_DSH_PROXY || 'http://127.0.0.1:3090',
         changeOrigin: true,
-        timeout: 0,
-        proxyTimeout: 0,
-        rewrite: (path) => path.replace(/^\/harness/, ''),
-        configure(proxy) {
-          proxy.on('proxyRes', (proxyRes, req) => {
-            const type = String(proxyRes.headers['content-type'] || '')
-            if ((req.url || '').includes('/runs') && type.includes('text/event-stream')) {
-              proxyRes.headers['cache-control'] = 'no-cache, no-transform'
-              proxyRes.headers['x-accel-buffering'] = 'no'
-            }
-          })
-        }
+        ws: true
+      },
+      '/assets': {
+        target: process.env.OD_DSH_PROXY || 'http://127.0.0.1:3090',
+        changeOrigin: true
+      },
+      '/manifest.webmanifest': {
+        target: process.env.OD_DSH_PROXY || 'http://127.0.0.1:3090',
+        changeOrigin: true
+      },
+      // Only /od/* (bridge). Do NOT use '/od' — it also swallows public
+      // files like /od-ip-B1-otter-lower-left.png and 404s them on dsh.
+      '/od/': {
+        target: process.env.OD_DSH_PROXY || 'http://127.0.0.1:3090',
+        changeOrigin: true
+      },
+      // P011: DeepSeek Harness Web shell (HTML entry)
+      '/dsh': {
+        target: process.env.OD_DSH_PROXY || 'http://127.0.0.1:3090',
+        changeOrigin: true,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/dsh/, '')
       }
     }
   }

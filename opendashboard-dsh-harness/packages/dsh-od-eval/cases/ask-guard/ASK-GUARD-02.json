@@ -1,0 +1,8 @@
+{
+  "id": "ASK-GUARD-02",
+  "track": "ask",
+  "stage": "guard",
+  "dataset": { "table": "sales_detail" },
+  "input": { "sql": "INSERT INTO sales_detail VALUES (1)", "table": "sales_detail" },
+  "expect": { "allow": false }
+}

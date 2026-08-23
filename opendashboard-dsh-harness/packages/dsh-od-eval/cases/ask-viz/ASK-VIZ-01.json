@@ -1,0 +1,15 @@
+{
+  "id": "ASK-VIZ-01",
+  "track": "ask",
+  "stage": "viz",
+  "input": {
+    "fields": ["Status", "Amount"],
+    "rows": [
+      { "Status": 0, "Amount": 1 },
+      { "Status": 2, "Amount": 2 },
+      { "Status": 3, "Amount": 3 }
+    ],
+    "requested": "auto"
+  },
+  "expect": { "chartType": "pie" }
+}

@@ -30,14 +30,22 @@ opendashboard:
   # When true, query endpoints return stub ResultTable without a live warehouse
   stub-query: true
   query:
-    timeout-sec: 60
+    # Hard stop for live warehouse SQL (JDBC + MySQL max_execution_time / PG statement_timeout)
+    timeout-sec: 15
+    max-concurrent: 3
+    acquire-wait-ms: 2000
+    # Aggregate (GROUP BY / COUNT) on tables larger than this: sample then aggregate
+    # (avoids full scans on multi-million-row fact tables). 0 disables sampling.
+    agg-sample-threshold: 100000
+    agg-sample-rows: 50000
   file-import:
     dir: ${user.home}/.opendashboard/file-datasets
   conversation:
     enabled: false
+    # Legacy proxy to deleted Python harness (unused after P011 M4). Agent is opendashboard-dsh-harness.
     harness:
       mode: deerflow
-      base-url: http://127.0.0.1:8091
+      base-url: http://127.0.0.1:3090
       internal-token: od-dev-internal
       timeout-ms: 180000
     llm:

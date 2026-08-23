@@ -1,0 +1,27 @@
+{
+  "name": "@opendashboard/dsh-od-bi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OD BI tools for dsh (od_list_datasets, od_run_query, …)",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./gen-board": "./src/gen-board.js",
+    "./sql-guard": "./src/sql-guard.js",
+    "./ask-enrich": "./src/ask-enrich.js",
+    "./knowledge-merge": "./src/knowledge-merge.js",
+    "./goal-planner": "./src/goal-planner.js",
+    "./quality-cases": "./src/quality-cases.js",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-llm": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.1.1-rc.2",
+    "@opendashboard/dsh-od-auth": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "0.1.1-rc.2"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "BOARD-LAYOUT-S1-01",
+  "track": "board",
+  "stage": "layout",
+  "pr": "PR-QG-04",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": { "message": "按支付状态看入账", "title": "商户订单看板" },
+  "expect": {
+    "minComponents": 3,
+    "maxQueryBars": 1
+  }
+}

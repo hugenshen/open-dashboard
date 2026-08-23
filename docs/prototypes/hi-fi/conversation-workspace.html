@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>对话分析 · 高保（对齐 marmos · Open Dashboard）</title>
+  <title>对话分析 · 高保（旧壳 · 已定稿快照）</title>
+  <!-- 问数自研壳已冻结：docs/prototypes/snapshots/2026-08-21-p006-ask-data/
+       问数主路径新高保：conversation-ask-dsh.html（P011） -->
   <script>
     (function () {
       const apply = () => {
@@ -1044,7 +1046,7 @@
     <!-- 产品壳：与 Vue ModuleTopbar 同一套模块，对话是其中一项 -->
     <header class="top">
       <div class="nav-left">
-        <a class="logo" href="./workbench.html" id="brand-home" title="产品首页 /workbench"><i>OD</i> Open Dashboard</a>
+        <a class="logo" href="./workbench.html" id="brand-home" title="产品首页 /workbench">DataQ</a>
         <nav class="primary-nav" aria-label="产品主导航">
           <a href="./workbench.html" data-mod="workbench">工作台</a>
           <span class="on" data-mod="conversations">对话分析<span class="badge-sec">内测</span></span>
@@ -1173,7 +1175,7 @@
                       <span class="dot"></span><span class="t">房产交易分析看板</span><span class="st">示例</span>
                     </button>
                   </div>
-                  <div class="foot-note">Open Dashboard 内测 · 问数结果为会话预览，写入看板前不落查询结果行</div>
+                  <div class="foot-note">DataQ 内测 · 问数结果为会话预览，写入看板前不落查询结果行</div>
                 </div>
               </div>
             </div>
@@ -1282,7 +1284,7 @@
             <div class="style-top">
               <div class="style-info">
                 <h3 id="st-name">飞书蓝</h3>
-                <p id="st-desc">默认产品气质，对齐 Open Dashboard 顶栏与编辑器。</p>
+                <p id="st-desc">默认产品气质，对齐 DataQ 顶栏与编辑器。</p>
                 <button class="btn primary" type="button" id="btn-use-style" style="width:100%;justify-content:center;margin-bottom:8px">使用此风格</button>
                 <button class="btn" type="button" id="btn-style-x" style="width:100%;justify-content:center;background:transparent;color:#fff;border-color:#3a4254">关闭</button>
               </div>
@@ -2401,7 +2403,7 @@
       const b = e.target.closest('[data-export]'); if (!b) return;
       e.stopPropagation();
       const name = (S.linkedDashId || 'dash') + '-' + b.dataset.export + '.png';
-      const blob = new Blob([`Open Dashboard export stub\n${name}\nchannel=${S.channel}\n`], { type: 'text/plain' });
+      const blob = new Blob([`DataQ export stub\n${name}\nchannel=${S.channel}\n`], { type: 'text/plain' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = name.replace(/\.png$/, '.txt');

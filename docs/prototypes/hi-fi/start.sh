@@ -4,10 +4,9 @@ cd "$(dirname "$0")"
 PORT="${PORT:-8765}"
 ROOT="http://127.0.0.1:${PORT}"
 echo "Serving $(pwd)"
-echo "入口:   ${ROOT}/index.html"
-echo "用户端: ${ROOT}/workbench.html"
-echo "数据广场: ${ROOT}/data-market.html"
-echo "管理端: ${ROOT}/workspace-admin.html"
+echo "对话（产品壳）: ${ROOT}/conversation.html"
+echo "问数 dsh 表面: ${ROOT}/conversation-ask-dsh.html"
+echo "旧对话壳:     ${ROOT}/conversation-workspace.html"
 TARGET="${1:-index}"
 case "$TARGET" in
   index|home|entry)
@@ -24,6 +23,9 @@ case "$TARGET" in
     ;;
   conversation|conv)
     URL="${ROOT}/conversation.html"
+    ;;
+  ask-dsh|dsh|ask)
+    URL="${ROOT}/conversation-ask-dsh.html"
     ;;
   data-market|data-plaza|market|plaza|datasets)
     URL="${ROOT}/data-market.html"

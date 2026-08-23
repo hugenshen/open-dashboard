@@ -5,6 +5,7 @@ import io.opendashboard.application.DashboardAppService;
 import io.opendashboard.application.DatasetService;
 import io.opendashboard.application.DatasourceService;
 import io.opendashboard.application.FileTableStore;
+import io.opendashboard.application.QueryGuard;
 import io.opendashboard.application.StubQueryService;
 import io.opendashboard.domain.DashboardDtos.ChartViewVO;
 import io.opendashboard.domain.DashboardDtos.DashboardComponentVO;
@@ -35,6 +36,8 @@ public class BiPlatformService {
     private final DatasetProfiler profiler;
     private final FileTableStore fileTables;
     private final AskableDatasetService askable;
+    private final QueryGuard queryGuard;
+    private final org.springframework.beans.factory.ObjectProvider<io.opendashboard.application.DatasetPermissionService> permissions;
     private final org.springframework.beans.factory.ObjectProvider<io.opendashboard.domain.gateway.FieldProfileGateway> profileStore;
     private final org.springframework.beans.factory.ObjectProvider<DatasetProfileLearner> learner;
     private final KnowledgeService knowledge;
@@ -50,6 +53,8 @@ public class BiPlatformService {
             DatasetProfiler profiler,
             FileTableStore fileTables,
             AskableDatasetService askable,
+            QueryGuard queryGuard,
+            org.springframework.beans.factory.ObjectProvider<io.opendashboard.application.DatasetPermissionService> permissions,
             org.springframework.beans.factory.ObjectProvider<io.opendashboard.domain.gateway.FieldProfileGateway> profileStore,
             org.springframework.beans.factory.ObjectProvider<DatasetProfileLearner> learner,
             KnowledgeService knowledge,
@@ -64,6 +69,8 @@ public class BiPlatformService {
         this.profiler = profiler;
         this.fileTables = fileTables;
         this.askable = askable;
+        this.queryGuard = queryGuard;
+        this.permissions = permissions;
         this.profileStore = profileStore;
         this.learner = learner;
         this.knowledge = knowledge;
@@ -104,7 +111,7 @@ public class BiPlatformService {
                         learned.put(p.fieldName(), p);
                     }
                 } catch (Exception ignored) {
-                    // 无表/查询失败时回退关键词判定
+                    // 无表时 schema.role 走 group / JDBC type
                 }
             }
             // 维度值：de_glossary dimension 条目 canonical_field → values
@@ -136,7 +143,7 @@ public class BiPlatformService {
                         ff.put("roleSource", lp.roleSource() == null || lp.roleSource().isBlank() ? "learned" : lp.roleSource());
                     } else {
                         ff.put("role", DatasetProfiler.roleOf(f));
-                        ff.put("roleSource", "naming");
+                        ff.put("roleSource", "schema");
                     }
                     // 维度值配置（阶段5）：de_glossary dimension 条目的人工/自学习枚举值，增强模型理解
                     List<Object> fieldValues = glossaryValuesByField.get(f.name());
@@ -146,6 +153,12 @@ public class BiPlatformService {
                     fields.add(ff);
                 });
             }
+            List<String> visible = queryGuard.filterSchemaFieldNames(
+                    datasetId,
+                    fields.stream().map(f -> String.valueOf(f.getOrDefault("name", ""))).toList()
+            );
+            java.util.Set<String> visibleSet = new java.util.LinkedHashSet<>(visible);
+            fields.removeIf(f -> !visibleSet.contains(String.valueOf(f.getOrDefault("name", ""))));
             m.put("fields", fields);
             // 采样：聚合各字段 profile 的 sample 成一列（≤20 行），供 LLM 理解字段含义
             if (!learned.isEmpty()) {
@@ -214,17 +227,33 @@ public class BiPlatformService {
         out.put("fields", fields);
         out.put("data", r.rows() == null ? List.of() : r.rows());
         out.put("rowCount", r.rows() == null ? 0 : r.rows().size());
+        StubQueryService.putSampleMeta(out, r.sql());
         return out;
     }
 
     public Map<String, Object> profileDataset(String datasetId) {
         askable.requireAskable(datasetId);
-        return profiler.profile(datasetId);
+        // Skip live KPI/bar probes: on multi-million-row tables each probe was a full scan.
+        // Field roles from stored stats + schema are enough for od_plan_charts.
+        return profiler.profile(datasetId, false);
     }
 
     /** Dataset manage UI: stored field stats only, no live source probes. */
     public Map<String, Object> profileDatasetStats(String datasetId) {
         return profiler.profile(datasetId, false);
+    }
+
+    /** Stop in-flight warehouse queries (user abort / agent stop). */
+    public Map<String, Object> cancelLiveQueries(String owner) {
+        int n = queryService.cancelLiveQueries(owner == null ? "" : owner);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("cancelled", n);
+        out.put("stats", queryService.liveQueryStats());
+        return out;
+    }
+
+    public Map<String, Object> liveQueryStats() {
+        return queryService.liveQueryStats();
     }
 
     /** 手动触发数据集自学习（对已存在数据集补学；录入时已自动触发）。 */
@@ -463,11 +492,22 @@ public class BiPlatformService {
         if ("replace".equalsIgnoreCase(mode) && dashboardId != null && !dashboardId.isBlank()) {
             patchMap.put("dashboardId", dashboardId);
         }
+        if (dashboardId != null && !dashboardId.isBlank()) {
+            queryGuard.requireDashboardWrite(dashboardId);
+        }
         DashboardPatch.Patch patch = DashboardPatch.Patch.fromMap(patchMap);
         DashboardPatchApplier.ApplyResult applied = applier.apply(dashboardId, title, patch, mode);
+        io.opendashboard.application.DatasetPermissionService acl = permissions.getIfAvailable();
+        if (acl != null && applied != null && applied.dashboardId() != null) {
+            acl.grantOwner("dashboard", applied.dashboardId(), io.opendashboard.domain.context.AuthContext.get());
+        }
 
         List<Map<String, Object>> preview = new ArrayList<>();
-        for (String chartId : applied.chartIds()) {
+        // Default skip: live chartQuery on 6M-row facts can 15s-timeout each chart and
+        // abort the harness apply-patch call even after the draft was already written.
+        boolean wantPreview = Boolean.TRUE.equals(body.get("preview"));
+        if (wantPreview) {
+            for (String chartId : applied.chartIds()) {
             Map<String, Object> inline = findChartInline(patch, chartId);
             Object ds = inline.get("datasetId");
             if (ds != null && !String.valueOf(ds).isBlank()) {
@@ -501,13 +541,17 @@ public class BiPlatformService {
             }
             preview.add(card);
         }
+        }
 
         Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
         out.put("dashboardId", applied.dashboardId());
         out.put("chartIds", applied.chartIds());
+        out.put("chartCount", applied.chartIds().size());
         out.put("charts", preview);
         out.put("query", extractQuery(patch));
         out.put("mode", mode);
+        out.put("title", title);
         return out;
     }
 
@@ -549,16 +593,17 @@ public class BiPlatformService {
         String title = DeterministicPlanner.resolveTitle(message, schema);
         String usedId = DeterministicPlanner.resolveDatasetId(message, schema);
         DatasetDetailVO used = loaded.get(usedId);
-        long chartCount = patch.ops().stream().filter(op -> "upsert_chart".equals(String.valueOf(op.get("op")))).count();
+        DashboardPatchApplier.ApplyResult applied = applier.apply(dashboardId, title, patch, mode);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
+        out.put("dashboardId", applied.dashboardId());
         out.put("title", title);
         out.put("mode", mode);
         out.put("datasetId", usedId);
         out.put("datasetName", used != null && used.meta() != null ? used.meta().name() : usedId);
         out.put("weakDataset", DeterministicPlanner.isWeakDataset(used));
-        out.put("chartCount", chartCount);
-        out.put("patch", patch.toMap());
+        out.put("chartCount", applied.chartIds().size());
+        out.put("chartIds", applied.chartIds());
         return out;
     }
 

@@ -117,9 +117,15 @@ export const router = createRouter({
       meta: { title: '分享仪表盘', fullBleed: true, hideShell: true, public: true }
     },
     {
+      path: '/conversations/replay',
+      name: 'conversations-replay',
+      component: () => import('../conversation/views/UxJourneyReplay.vue'),
+      meta: { title: '旅程回放', fullBleed: true }
+    },
+    {
       path: '/conversations/:id?',
       name: 'conversations',
-      component: () => import('../conversation/views/ConversationWorkspace.vue'),
+      component: () => import('../conversation/views/ConversationDshSurface.vue'),
       meta: { title: '对话分析', fullBleed: true }
     },
     {
@@ -148,15 +154,13 @@ export const router = createRouter({
     },
     {
       path: '/dimensions',
-      name: 'dimensions',
-      component: () => import('../dimension/views/DimensionManage.vue'),
-      meta: { title: '维度管理', fullBleed: true, surface: 'manage' }
+      redirect: '/knowledge'
     },
     {
       path: '/knowledge',
       name: 'knowledge',
       component: () => import('../dimension/views/DimensionManage.vue'),
-      meta: { title: '知识维护', fullBleed: true, surface: 'manage' }
+      meta: { title: '知识库', fullBleed: true, surface: 'manage' }
     },
     {
       path: '/workspace-admin',

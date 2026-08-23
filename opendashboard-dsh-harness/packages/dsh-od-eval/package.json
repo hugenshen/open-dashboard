@@ -1,0 +1,17 @@
+{
+  "name": "@opendashboard/dsh-od-eval",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Segmented harness eval for ask/board (P012 E0) — drives gen-board / sql-guard, no conversation runtime",
+  "bin": {
+    "od-eval": "./src/cli.js"
+  },
+  "scripts": {
+    "eval": "node ./src/cli.js",
+    "test": "node --test ./src/result-set.test.js ./src/runner.test.js"
+  },
+  "dependencies": {
+    "@opendashboard/dsh-od-bi": "workspace:*"
+  }
+}

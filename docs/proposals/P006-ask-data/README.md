@@ -5,22 +5,25 @@ status: in-progress
 milestone: v0.5
 date: 2026-08-12
 prototype: docs/prototypes/hi-fi/conversation-workspace.html
+prototype-snapshot: docs/prototypes/snapshots/2026-08-21-p006-ask-data/
 design: [docs/proposals/P006-ask-data/design.md]
 acceptance: docs/proposals/P006-ask-data/acceptance.yaml
 gates:
   proposal: accepted
-  hi-fi: wip
+  hi-fi: accepted
   code: wip
   acceptance: blocked
 architecture: docs/design/architecture.html
 contract: docs/design/openapi.yaml
-implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backend/, opendashboard-harness/]
+implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backend/, opendashboard-dsh-harness/]
 depends: P004
 ---
 
 # P006 · 对话问数（Ask-data）
 
-> **状态** `in-progress` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 wip · 代码 wip · 验收 blocked
+> **状态** `in-progress` · 路线图 [进行中](../../product/roadmap/in-progress/) · 高保 **accepted（自研壳定稿）** · 代码 wip · 验收 blocked
+>
+> **高保说明**：问数自研对话壳已冻结为 [`2026-08-21-p006-ask-data`](../../prototypes/snapshots/2026-08-21-p006-ask-data/)。对话表面迁 DeepSeek Harness 的增量见 **[P011](../P011-dsh-conversation-surface/)**（`conversation-ask-dsh.html`），不回写本提案高保。
 
 ## 开发入口
 
@@ -30,8 +33,8 @@ depends: P004
 | 怎么验收 | [acceptance.yaml](./acceptance.yaml) |
 | 问数架构（现行代码） | [architecture.html#ask](../../design/architecture.html#ask) |
 | 问数架构（提案设计） | [design.md](./design.md) |
-| 原型 | 当前增量 [`conversation.html`](../../prototypes/hi-fi/conversation.html)；**尚未冻结快照** |
-| 代码落点 | `open-dashboard-frontend/src/conversation/` · `opendashboard-harness/` · Java internal BI |
+| 原型 | **定稿快照** [`2026-08-21-p006-ask-data`](../../prototypes/snapshots/2026-08-21-p006-ask-data/)（自研壳）；dsh 新表面见 [P011](../P011-dsh-conversation-surface/) |
+| 代码落点 | `opendashboard-dsh-harness/`（P011）· Java internal BI；壳侧 `ConversationDshSurface` |
 | 相邻提案 | 生成看板 [P004](../P004-conversation/)；可问权限 [P008](../P008-permission-aware-workbench/) |
 | 当前范围 | [路线图 · 进行中](../../product/roadmap/in-progress/)：PR-ASK-01…13 |
 
@@ -169,4 +172,7 @@ schema（M-Schema）→ LLM 生成 JSON{sql, chart-type}
 | 2026-08-17 | 补波及表；验收细节只保留在 yaml |
 | 2026-08-17 | 本月不交付 PR-ASK-07（可问集合一致）；等 P008。工作台问数框与结果卡保存本题图已按现有设计对齐产品 |
 | 2026-08-17 | 问数临时图改走 chartQuery + ECharts，不再用 CSS 条形图冒充图表 |
+| 2026-08-22 | 问数 schema 加厚 / 0 行 insight / 删 stub 划到 [P012](../P012-ask-gen-quality/) **M2**（不在 P012 本期 done）。出板质量见 P012 M1 |
+| 2026-08-22 | Java `IntentResolver` / `AskAnswerPlanner` 去掉业务词典，只认 schema 角色与字段名/label 重叠。见 P012 PR-QG-09 |
+| 2026-08-22 | P012 升范围落地 M2：dsh `od_get_schema` 接 sample/terms/questions；删 run_sql 华东 stub；0 行 insight |
 | 2026-08-20 | 落地 PR-ASK-07/08：三入口共用 GET /api/dataset/askable；Java public runs 410。pytest 覆盖 PR-ASK-09/12/13（suggest / few-shot / dimension-values）。e2e-auth-ask.sh pass |

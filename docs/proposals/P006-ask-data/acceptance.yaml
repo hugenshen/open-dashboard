@@ -1,3 +1,8 @@
+# P006 acceptance
+
+# P011 M4（2026-08-21）：依赖 `opendashboard-harness` / `/harness/v1` SSE 的问数验收已 **superseded**。
+# 问数 UI+Agent 改由 P011（opendashboard-dsh-harness）承接；下列 ID 保留历史状态。
+
 proposal: P006
 items:
   - id: PR-ASK-01

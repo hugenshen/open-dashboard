@@ -1,0 +1,421 @@
+{
+  "meta": {
+    "at": "2026-08-22T14:15:59.867Z",
+    "biBase": "http://127.0.0.1:8082",
+    "datasetId": "ds_31e4ffe9",
+    "userId": "u_demo",
+    "workspaceId": "workspace-retail"
+  },
+  "cases": [
+    {
+      "name": "BI health",
+      "ok": true,
+      "summary": "{\"ok\":true,\"role\":\"bi-platform\"}",
+      "ms": 0
+    },
+    {
+      "name": "schema + knowledge + profile",
+      "ok": true,
+      "ms": 29,
+      "fieldCount": 60,
+      "sampleRows": 20,
+      "knowledgeMetrics": 15,
+      "knowledgeTerms": 72,
+      "summary": "表 t_pay_order；ratio 字段 MchRate,ChannelRate；含 valueMap：ChannelType,ClientIp,DepositBank,PayFailTime",
+      "ratios": [
+        "MchRate",
+        "ChannelRate"
+      ],
+      "valueMapFields": [
+        "ChannelType",
+        "ClientIp",
+        "DepositBank",
+        "PayFailTime"
+      ]
+    },
+    {
+      "name": "ask · Status×Amount SUM",
+      "ok": true,
+      "ms": 64,
+      "coerced": false,
+      "encode": {
+        "category": "Status",
+        "value": "Amount",
+        "agg": "SUM",
+        "datasetId": "ds_31e4ffe9"
+      },
+      "rowCount": 3,
+      "chartType": "bar",
+      "sample": [
+        [
+          -1,
+          41501365020
+        ],
+        [
+          2,
+          642788387
+        ],
+        [
+          3,
+          160258431033
+        ]
+      ],
+      "sqlHint": "/* od_sample est=5858015 n=50000 */ SELECT `Status`, SUM(`Amount`) AS `Amount` FROM (SELECT `Status`, `Amount` FROM `xxpay`.`t_pay_order` LIMIT 50000) _od_sample GROUP BY `Status` LIMIT 1000 /* scaled x117.160 */",
+      "fields": [
+        {
+          "name": "Status",
+          "type": "DECIMAL"
+        },
+        {
+          "name": "Amount",
+          "type": "DECIMAL"
+        }
+      ]
+    },
+    {
+      "name": "ask · Status×MchIncome SUM",
+      "ok": true,
+      "ms": 66,
+      "coerced": false,
+      "encode": {
+        "category": "Status",
+        "value": "MchIncome",
+        "agg": "SUM",
+        "datasetId": "ds_31e4ffe9"
+      },
+      "rowCount": 3,
+      "chartType": "bar",
+      "sample": [
+        [
+          -1,
+          40963007349
+        ],
+        [
+          2,
+          634762204
+        ],
+        [
+          3,
+          158175038777
+        ]
+      ],
+      "sqlHint": "/* od_sample est=5858015 n=50000 */ SELECT `Status`, SUM(`MchIncome`) AS `MchIncome` FROM (SELECT `Status`, `MchIncome` FROM `xxpay`.`t_pay_order` LIMIT 50000) _od_sample GROUP BY `Status` LIMIT 1000 /* scaled x117.160 */",
+      "fields": [
+        {
+          "name": "Status",
+          "type": "DECIMAL"
+        },
+        {
+          "name": "MchIncome",
+          "type": "DECIMAL"
+        }
+      ]
+    },
+    {
+      "name": "ask · MchRate SUM→AVG 闸",
+      "ok": true,
+      "ms": 44,
+      "coerced": true,
+      "coerceReason": "ratio field MchRate coerced SUM→AVG",
+      "encode": {
+        "category": "MchType",
+        "value": "MchRate",
+        "agg": "AVG",
+        "datasetId": "ds_31e4ffe9"
+      },
+      "rowCount": 2,
+      "chartType": "bar",
+      "sample": [
+        [
+          1,
+          1.3
+        ],
+        [
+          9,
+          2.3104166667
+        ]
+      ],
+      "sqlHint": "/* od_sample est=5858015 n=50000 */ SELECT `MchType`, AVG(`MchRate`) AS `MchRate` FROM (SELECT `MchType`, `MchRate` FROM `xxpay`.`t_pay_order` LIMIT 50000) _od_sample GROUP BY `MchType` LIMIT 1000",
+      "fields": [
+        {
+          "name": "MchType",
+          "type": "DECIMAL"
+        },
+        {
+          "name": "MchRate",
+          "type": "DECIMAL"
+        }
+      ]
+    },
+    {
+      "name": "ask · 空结果 insight（SQL WHERE 1=0）",
+      "ok": true,
+      "ms": 6,
+      "rowCount": 0,
+      "empty": true,
+      "insight": "「空结果探测 WHERE 1=0」（数据集 ds_31e4ffe9） 查询成功但 0 行。请检查过滤条件、时间范围或字段是否匹配；不要把空结果当成有数。",
+      "sample": []
+    },
+    {
+      "name": "ask · ChannelType COUNT",
+      "ok": true,
+      "ms": 62,
+      "coerced": false,
+      "encode": {
+        "category": "ChannelType",
+        "value": "PayOrderId",
+        "agg": "COUNT",
+        "datasetId": "ds_31e4ffe9"
+      },
+      "rowCount": 2,
+      "chartType": "pie",
+      "sample": [
+        [
+          "Flashpay",
+          3515
+        ],
+        [
+          "INTERNAL",
+          5854500
+        ]
+      ],
+      "sqlHint": "/* od_sample est=5858015 n=50000 */ SELECT `ChannelType`, COUNT(`PayOrderId`) AS `PayOrderId` FROM (SELECT `ChannelType`, `PayOrderId` FROM `xxpay`.`t_pay_order` LIMIT 50000) _od_sample GROUP BY `ChannelType` LIMIT 1000 /* scaled x117.160 */",
+      "fields": [
+        {
+          "name": "ChannelType",
+          "type": "STRING"
+        },
+        {
+          "name": "PayOrderId",
+          "type": "DECIMAL"
+        }
+      ]
+    },
+    {
+      "name": "board · 按支付状态看入账",
+      "ok": true,
+      "phase": "generate",
+      "ms": 2793,
+      "source": "llm",
+      "note": "",
+      "model": "deepseek-chat",
+      "dashboardId": "71",
+      "chartCount": 4,
+      "chartTitles": [
+        "不同支付状态下的商户入账总额是多少？",
+        "不同支付状态下的支付金额总计是多少？",
+        "各支付状态的平均商户费率是多少？",
+        "按支付状态和商户类型交叉分析商户入账总额？"
+      ],
+      "goals": [
+        {
+          "intent": "compare",
+          "dim": "Status",
+          "measure": "MchIncome",
+          "agg": "sum",
+          "chartType": "bar",
+          "title": "不同支付状态下的商户入账总额是多少？"
+        },
+        {
+          "intent": "compare",
+          "dim": "Status",
+          "measure": "Amount",
+          "agg": "sum",
+          "chartType": "bar",
+          "title": "不同支付状态下的支付金额总计是多少？"
+        },
+        {
+          "intent": "kpi_ratio",
+          "dim": "",
+          "measure": "MchRate",
+          "agg": "avg",
+          "chartType": "kpi",
+          "title": "各支付状态的平均商户费率是多少？"
+        },
+        {
+          "intent": "table",
+          "dim": "Status",
+          "measure": "MchIncome",
+          "agg": "sum",
+          "chartType": "table",
+          "title": "按支付状态和商户类型交叉分析商户入账总额？"
+        }
+      ],
+      "charts": [
+        {
+          "intent": "compare",
+          "dim": "Status",
+          "measure": "MchIncome",
+          "agg": "sum",
+          "chartType": "bar",
+          "title": "不同支付状态下的商户入账总额是多少？"
+        },
+        {
+          "intent": "compare",
+          "dim": "Status",
+          "measure": "Amount",
+          "agg": "sum",
+          "chartType": "bar",
+          "title": "不同支付状态下的支付金额总计是多少？"
+        },
+        {
+          "intent": "kpi_ratio",
+          "dim": "",
+          "measure": "MchRate",
+          "agg": "avg",
+          "chartType": "kpi",
+          "title": "各支付状态的平均商户费率是多少？"
+        },
+        {
+          "intent": "table",
+          "dim": "Status",
+          "measure": "MchIncome",
+          "agg": "sum",
+          "chartType": "grouptable",
+          "title": "按支付状态和商户类型交叉分析商户入账总额？"
+        }
+      ],
+      "capabilityJunk": [
+        "PayOrderId",
+        "MchId",
+        "PayOrderIdOut",
+        "AppId",
+        "MchOrderNo",
+        "AgentId",
+        "ParentAgentId",
+        "ProductId",
+        "PassageId",
+        "PassageAccountId"
+      ],
+      "additive": [
+        "MchIncome",
+        "Amount",
+        "AgentRate",
+        "ParentAgentRate",
+        "AgentProfit",
+        "ParentAgentProfit",
+        "ActualAmount",
+        "PlatProfit",
+        "ChannelCost",
+        "RefundTimes"
+      ],
+      "ratios": [
+        "MchRate",
+        "ChannelRate"
+      ]
+    },
+    {
+      "name": "board · 费率主题不 SUM ratio",
+      "ok": true,
+      "phase": "generate",
+      "ms": 2621,
+      "source": "llm",
+      "note": "",
+      "model": "deepseek-chat",
+      "dashboardId": "72",
+      "chartCount": 3,
+      "chartTitles": [
+        "不同商户类型的商户费率平均值是多少？",
+        "不同渠道类型的渠道费率平均值是多少？",
+        "不同商户类型和渠道类型组合下的商户费率平均值是多少？"
+      ],
+      "goals": [
+        {
+          "intent": "kpi_ratio",
+          "dim": "",
+          "measure": "MchRate",
+          "agg": "avg",
+          "chartType": "kpi",
+          "title": "不同商户类型的商户费率平均值是多少？"
+        },
+        {
+          "intent": "kpi_ratio",
+          "dim": "",
+          "measure": "ChannelRate",
+          "agg": "avg",
+          "chartType": "kpi",
+          "title": "不同渠道类型的渠道费率平均值是多少？"
+        },
+        {
+          "intent": "kpi_ratio",
+          "dim": "",
+          "measure": "ChannelRate",
+          "agg": "avg",
+          "chartType": "kpi",
+          "title": "不同商户类型下的渠道费率平均值是多少？"
+        },
+        {
+          "intent": "kpi_ratio",
+          "dim": "",
+          "measure": "MchRate",
+          "agg": "avg",
+          "chartType": "kpi",
+          "title": "不同渠道类型下的商户费率平均值是多少？"
+        },
+        {
+          "intent": "compose",
+          "dim": "MchType",
+          "measure": "MchType",
+          "agg": "count",
+          "chartType": "table",
+          "title": "不同商户类型和渠道类型组合下的商户费率平均值是多少？"
+        }
+      ],
+      "charts": [
+        {
+          "intent": "kpi_ratio",
+          "dim": "",
+          "measure": "MchRate",
+          "agg": "avg",
+          "chartType": "kpi",
+          "title": "不同商户类型的商户费率平均值是多少？"
+        },
+        {
+          "intent": "kpi_ratio",
+          "dim": "",
+          "measure": "ChannelRate",
+          "agg": "avg",
+          "chartType": "kpi",
+          "title": "不同渠道类型的渠道费率平均值是多少？"
+        },
+        {
+          "intent": "compose",
+          "dim": "MchType",
+          "measure": "MchType",
+          "agg": "count",
+          "chartType": "grouptable",
+          "title": "不同商户类型和渠道类型组合下的商户费率平均值是多少？"
+        }
+      ],
+      "capabilityJunk": [
+        "PayOrderId",
+        "MchId",
+        "PayOrderIdOut",
+        "AppId",
+        "MchOrderNo",
+        "AgentId",
+        "ParentAgentId",
+        "ProductId",
+        "PassageId",
+        "PassageAccountId"
+      ],
+      "additive": [
+        "AgentRate",
+        "ParentAgentRate",
+        "MchIncome",
+        "ChannelCost",
+        "AgentProfit",
+        "ParentAgentProfit",
+        "Amount",
+        "ActualAmount",
+        "PlatProfit",
+        "RefundTimes"
+      ],
+      "ratios": [
+        "MchRate",
+        "ChannelRate"
+      ],
+      "summary": "无 SUM(rate) 落盘图"
+    }
+  ]
+}

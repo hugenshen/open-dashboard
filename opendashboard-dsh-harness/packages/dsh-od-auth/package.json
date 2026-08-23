@@ -1,0 +1,19 @@
+{
+  "name": "@opendashboard/dsh-od-auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OD ↔ dsh auth bridge (OD_DSH_BRIDGE)",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./bridge-state": "./src/bridge-state.js",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-llm": "0.1.1-rc.2"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  }
+}

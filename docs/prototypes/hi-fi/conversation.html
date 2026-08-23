@@ -3,11 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>对话 · Open Dashboard 高保</title>
-  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <title>对话 · DataQ 高保</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';try{var b=localStorage.getItem('od.brand');if(b)document.documentElement.dataset.odBrand=b;}catch(e){}</script>
   <script src="./vendor/echarts.min.js"></script>
   <link rel="stylesheet" href="./shared/shell.css" />
   <link rel="stylesheet" href="./shared/commercial.css" />
+  <style>
+    /* 对话页：内容区铺满，侧栏与工作台同一套 od-rail */
+    body[data-mod="conversation"] .od-col .app {
+      display: flex; flex-direction: column; min-height: 0; padding: 0; overflow: hidden;
+    }
+  </style>
 </head>
 <body data-mod="conversation">
 <div class="od-app" id="odApp">

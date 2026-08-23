@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>问数交互 · DeepSeek Harness 表面</title>
+  <script src="./vendor/echarts.min.js"></script>
+  <style>
+    :root {
+      --ink: #0f1115;
+      --ink-2: #3d4450;
+      --muted: #6b7280;
+      --faint: #9aa3af;
+      --line: #eceef2;
+      --line-2: #e2e5eb;
+      --bg: #ffffff;
+      --soft: #f5f6f8;
+      --soft-2: #eef0f4;
+      --accent: #4d6bfe;
+      --accent-soft: #eef1ff;
+      --ok: #1a7f4b;
+      --user-bg: #f0f1f4;
+      --shadow: 0 10px 40px rgba(15, 17, 21, 0.06);
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      --chat-max: 760px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: var(--font); color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+    button, textarea { font: inherit; color: inherit; }
+    button { border: 0; background: none; cursor: pointer; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    a { color: inherit; text-decoration: none; }
+    .hidden { display: none !important; }
+
+    .main { height: 100%; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+
+    .proto {
+      flex-shrink: 0; height: 32px; display: flex; align-items: center; gap: 8px;
+      padding: 0 14px; border-bottom: 1px solid var(--line); background: #fafbfc;
+      font-size: 12px; color: var(--muted);
+    }
+    .main.embed .proto { display: none; }
+    .proto b { color: var(--accent); }
+    .proto .sp { flex: 1; }
+    .proto .chip {
+      height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line-2);
+      background: #fff; font-size: 11.5px; color: var(--ink-2);
+    }
+    .proto .chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+    .top { flex-shrink: 0; padding: 12px 28px 0; }
+    .top-row {
+      display: flex; align-items: center; gap: 10px; width: min(100%, var(--chat-max));
+      margin: 0 auto;
+    }
+    .top-title {
+      font-size: 15px; font-weight: 650; color: var(--ink); min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .top-sp { flex: 1; }
+    .top-ico {
+      width: 28px; height: 28px; border-radius: 8px; color: var(--faint);
+      display: grid; place-items: center;
+    }
+    .top-ico:hover { background: var(--soft); color: var(--ink-2); }
+    .tabs {
+      display: flex; gap: 4px; width: min(100%, var(--chat-max));
+      margin: 10px auto 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .tab {
+      height: 34px; padding: 0 12px; font-size: 13.5px; color: var(--muted); position: relative;
+    }
+    .tab.on { color: var(--accent); font-weight: 620; }
+    .tab.on::after {
+      content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px;
+      background: var(--accent); border-radius: 2px 2px 0 0;
+    }
+
+    .body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .scroll {
+      flex: 1; min-height: 0; overflow: auto;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 0 28px;
+    }
+    .feed {
+      width: min(100%, var(--chat-max));
+      padding: 20px 0 16px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+
+    .hero {
+      flex: 1; min-height: 42vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 48px 16px;
+    }
+    .fish {
+      width: 48px; height: 48px; border-radius: 50%; background: #111; color: #fff;
+      display: grid; place-items: center; font-size: 22px;
+    }
+    .hero h1 { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
+    .hero p { font-size: 13.5px; color: var(--muted); max-width: 440px; line-height: 1.55; }
+    .suggests { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; max-width: 560px; }
+    .suggests button {
+      height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2);
+      background: #fff; font-size: 13px; color: var(--ink-2);
+    }
+    .suggests button:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+    .bubble-user {
+      align-self: flex-end; max-width: 78%;
+      padding: 8px 14px; border-radius: 18px;
+      background: var(--user-bg); font-size: 14.5px; line-height: 1.45;
+    }
+    .ctx-inject {
+      display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--faint);
+    }
+    .think-hd {
+      display: flex; align-items: center; gap: 6px; height: 24px; cursor: pointer;
+      color: var(--muted); font-size: 13.5px; user-select: none;
+    }
+    .think-hd .preview { color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .think-body {
+      margin-left: 22px; padding: 8px 10px; border-radius: 8px; background: var(--soft);
+      font-size: 13px; color: var(--muted); line-height: 1.55; white-space: pre-wrap;
+    }
+    .think.collapsed .think-body { display: none; }
+
+    .tool {
+      border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff;
+    }
+    .tool-hd {
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px;
+    }
+    .tool-hd .glyph {
+      width: 18px; height: 18px; border-radius: 5px; background: var(--soft-2);
+      display: grid; place-items: center; font-size: 10px; color: var(--muted); font-weight: 700;
+    }
+    .tool-hd .name { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+    .tool-hd .hint { flex: 1; min-width: 0; color: var(--faint); font-size: 12px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tool-hd .st { font-size: 11.5px; color: var(--ok); font-weight: 600; }
+    .tool-hd .st.run { color: var(--accent); }
+    .tool-body {
+      border-top: 1px solid var(--line); padding: 10px 12px; background: #fafbfc;
+      font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; line-height: 1.45; color: var(--ink-2);
+    }
+    .tool.collapsed .tool-body { display: none; }
+
+    .assistant { font-size: 15px; line-height: 1.65; }
+    .actions { display: flex; gap: 2px; }
+    .actions button {
+      width: 28px; height: 28px; border-radius: 8px; color: var(--faint); display: grid; place-items: center;
+    }
+    .actions button:hover { background: var(--soft); color: var(--ink-2); }
+
+    .node { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
+    .node-hd {
+      display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line);
+    }
+    .node-hd .badge {
+      height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11px; font-weight: 650;
+      background: var(--soft-2); font-family: var(--mono); color: var(--ink-2);
+    }
+    .node-hd .ttl { font-size: 13.5px; font-weight: 600; flex: 1; }
+    .node-hd .act {
+      height: 26px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-2);
+      font-size: 12px; background: #fff; color: var(--ink-2);
+    }
+    .node-bd { padding: 12px; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+    table.ans { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    table.ans th, table.ans td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+    table.ans th { background: var(--soft); color: var(--muted); font-weight: 600; }
+    table.ans tr:last-child td { border-bottom: 0; }
+    .chart-box { height: 220px; }
+    .sql-fold { margin-top: 10px; font-size: 12px; color: var(--muted); }
+    .sql-fold summary { cursor: pointer; color: var(--faint); }
+    .sql-fold pre {
+      margin-top: 6px; padding: 10px; border-radius: 8px; background: var(--soft);
+      font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap;
+    }
+    .clarify {
+      border: 1px dashed var(--line-2); border-radius: 14px; padding: 14px; background: #fafbfc;
+    }
+    .clarify h3 { font-size: 14px; font-weight: 650; margin-bottom: 6px; }
+    .clarify p { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+    .chips, .follow { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chips button, .follow button {
+      height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2);
+      background: #fff; font-size: 12.5px; color: var(--ink-2);
+    }
+    .chips button:hover, .follow button:hover { border-color: var(--accent); color: var(--accent); }
+
+    .diving {
+      display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--accent);
+    }
+    .diving .spin {
+      width: 12px; height: 12px; border: 2px solid var(--accent-soft); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .dock {
+      flex-shrink: 0; display: flex; flex-direction: column; align-items: center;
+      padding: 0 28px 10px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 40%);
+    }
+    .todo {
+      width: min(100%, var(--chat-max)); margin-bottom: 8px; display: none;
+      border: 1px solid var(--line); border-radius: 12px; background: #fff;
+    }
+    .todo.show { display: block; }
+    .todo summary {
+      list-style: none; cursor: pointer; padding: 8px 12px; font-size: 12.5px; color: var(--muted);
+      display: flex; gap: 8px;
+    }
+    .todo summary::-webkit-details-marker { display: none; }
+    .todo ol { margin: 0 12px 10px 28px; font-size: 12.5px; color: var(--ink-2); }
+    .todo li[data-done] { color: var(--faint); text-decoration: line-through; }
+
+    .composer {
+      width: min(100%, var(--chat-max));
+      border: 1.5px dashed #d5d8e0; border-radius: 18px; background: #fff;
+      box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden;
+    }
+    .composer:focus-within { border-color: #c5cae0; }
+    .composer textarea {
+      width: 100%; min-height: 52px; max-height: 140px; resize: none; border: 0;
+      padding: 14px 16px 4px; outline: none; font-size: 15px; line-height: 1.45; background: transparent;
+    }
+    .composer textarea::placeholder { color: var(--faint); }
+    .bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px 10px; }
+    .plus {
+      width: 32px; height: 32px; border-radius: 10px; color: var(--muted);
+      display: grid; place-items: center; font-size: 20px;
+    }
+    .plus:hover { background: var(--soft); }
+    .seat {
+      height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--ink-2);
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .seat:hover { background: var(--soft); }
+    .bar .sp { flex: 1; }
+    .send {
+      width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: #fff;
+      display: grid; place-items: center; font-size: 16px;
+    }
+    .send.stop { background: var(--ink); border-radius: 10px; }
+    .stats {
+      width: min(100%, var(--chat-max)); padding: 6px 4px 0;
+      font-size: 11.5px; color: var(--faint); display: flex; flex-wrap: wrap; gap: 6px 10px;
+    }
+    .stats:empty { display: none; }
+  </style>
+</head>
+<body>
+  <section class="main" id="main">
+    <div class="proto">
+      <span>高保 · 左栏见 <b>conversation.html</b> 产品壳（与工作台一致）· 居中 dsh 问数</span>
+      <span class="sp"></span>
+      <button type="button" class="chip" data-demo="landing">落地</button>
+      <button type="button" class="chip" data-demo="clarify">澄清</button>
+      <button type="button" class="chip" data-demo="running">运行中</button>
+      <button type="button" class="chip on" data-demo="answered">已回答</button>
+      <button type="button" class="chip" data-demo="board">生成看板</button>
+      <a class="chip" href="./conversation.html">带产品壳打开</a>
+    </div>
+
+    <header class="top" id="top">
+      <div class="top-row">
+        <div class="top-title" id="sessionTitle">华东本月 GMV 同比？</div>
+        <span class="top-sp"></span>
+        <button type="button" class="top-ico" title="Session log">◷</button>
+      </div>
+      <div class="tabs">
+        <button type="button" class="tab on">对话</button>
+        <button type="button" class="tab">轨迹</button>
+        <button type="button" class="tab">上下文</button>
+      </div>
+    </header>
+
+    <div class="body">
+      <div class="scroll" id="scroll"><div class="feed" id="feed"></div></div>
+      <div class="dock">
+        <details class="todo" id="todo">
+          <summary><span>计划</span><span>1 已完成 · 1 进行中 · 1 待处理</span></summary>
+          <ol>
+            <li data-done>解析问题并匹配可问数据集</li>
+            <li>生成只读 SQL 并校验</li>
+            <li>执行查询并选图</li>
+          </ol>
+        </details>
+        <div class="composer">
+          <textarea id="input" rows="2" placeholder="给智能体发消息"></textarea>
+          <div class="bar">
+            <button type="button" class="plus" title="命令">+</button>
+            <span class="sp"></span>
+            <button type="button" class="seat">DeepSeek-V4-Pro <span style="color:var(--faint)">▾</span></button>
+            <button type="button" class="send" id="btnSend">↑</button>
+          </div>
+        </div>
+        <div class="stats" id="stats"></div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const main = document.getElementById('main');
+      if (params.get('embed') === '1') main.classList.add('embed');
+
+      const SESSIONS = [
+        { title: '华东本月 GMV 同比？', demo: 'answered' },
+        { title: '今年收入多少', demo: 'answered' },
+        { title: '换一个问数问题', demo: 'clarify' },
+        { title: '新会话', demo: 'landing' },
+      ];
+      const SQL = `SELECT city, SUM(gmv) AS gmv
+FROM sales_detail
+WHERE dt >= date_trunc('month', current_date)
+  AND region = '华东'
+GROUP BY city
+ORDER BY gmv DESC
+LIMIT 10`;
+      const ROWS = [
+        ['上海', '4,820 万', '+21.2%'],
+        ['杭州', '3,140 万', '+18.6%'],
+        ['南京', '2,760 万', '+12.1%'],
+        ['苏州', '2,410 万', '+9.4%'],
+        ['合肥', '1,680 万', '+15.8%'],
+      ];
+
+      const feed = document.getElementById('feed');
+      const top = document.getElementById('top');
+      const sessionTitle = document.getElementById('sessionTitle');
+      const todo = document.getElementById('todo');
+      const input = document.getElementById('input');
+      const btnSend = document.getElementById('btnSend');
+      const stats = document.getElementById('stats');
+
+      let chartInst = null;
+      let demo = 'answered';
+
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, (c) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        })[c]);
+      }
+      function think(preview, body, collapsed) {
+        return `<div class="think ${collapsed ? 'collapsed' : ''}" data-think>
+          <div class="think-hd"><span>💭</span><span>Think</span><span class="preview">${esc(preview)}</span></div>
+          <div class="think-body">${esc(body)}</div>
+        </div>`;
+      }
+      function tool(name, hint, status, body, open) {
+        const st = status === 'running' ? 'run' : '';
+        const label = status === 'running' ? '运行中' : '完成';
+        return `<div class="tool ${open ? '' : 'collapsed'}" data-tool>
+          <div class="tool-hd">
+            <span class="glyph">工</span>
+            <span class="name">${esc(name)}</span>
+            <span class="hint">${esc(hint || '')}</span>
+            <span class="st ${st}">${label}</span>
+          </div>
+          <div class="tool-body">${esc(body || '')}</div>
+        </div>`;
+      }
+      function tableNode() {
+        const rows = ROWS.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('');
+        return `<div class="node">
+          <div class="node-hd">
+            <span class="badge">od-answer-table</span>
+            <span class="ttl">华东城市 GMV · 本月</span>
+            <span class="act" style="opacity:.55;cursor:default">SQL 不进浏览器</span>
+          </div>
+          <div class="node-bd">
+            <div class="table-wrap"><table class="ans">
+              <thead><tr><th>城市</th><th>GMV</th><th>同比</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table></div>
+            <p style="margin:10px 2px 0;font-size:12px;color:var(--faint);line-height:1.45">
+              只读 SQL 在 Agent Host（sql-guard）执行；Conversation Node 只渲染结果行（P011 / PR-DSH-04）。
+            </p>
+          </div>
+        </div>`;
+      }
+      function boardNode() {
+        return `<div class="node">
+          <div class="node-hd">
+            <span class="badge">od-board-preview</span>
+            <span class="ttl">AI 生成看板 · 8 图</span>
+            <a class="act" href="./dashboard.html">在编辑器打开</a>
+          </div>
+          <div class="node-bd">
+            <p style="font-size:13.5px;color:var(--ink-2);line-height:1.5;margin:4px 2px 8px">
+              Draft 已经 <code>od_emit_patch</code> → Java <code>apply-patch</code> 写入；浏览器 meta 不含完整 patch ops。
+            </p>
+          </div>
+        </div>`;
+      }
+      function chartNode() {
+        return `<div class="node">
+          <div class="node-hd">
+            <span class="badge">od-answer-chart</span>
+            <span class="ttl">临时图 · 柱状</span>
+            <button type="button" class="act" disabled>保存到仪表盘</button>
+          </div>
+          <div class="node-bd"><div class="chart-box" id="askChart"></div></div>
+        </div>`;
+      }
+      function destroyChart() {
+        if (chartInst) { chartInst.dispose(); chartInst = null; }
+      }
+      function mountChart() {
+        destroyChart();
+        const el = document.getElementById('askChart');
+        if (!el || !window.echarts) return;
+        chartInst = echarts.init(el);
+        chartInst.setOption({
+          grid: { left: 48, right: 12, top: 20, bottom: 28 },
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'category', data: ROWS.map((r) => r[0]), axisLabel: { color: '#6b7280' } },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#6b7280', formatter: (v) => v / 10000 + '万' },
+            splitLine: { lineStyle: { color: '#eceef2' } },
+          },
+          series: [{
+            type: 'bar',
+            data: [4820, 3140, 2760, 2410, 1680].map((v) => v * 10000),
+            itemStyle: { color: '#4d6bfe', borderRadius: [4, 4, 0, 0] },
+            barMaxWidth: 36,
+          }],
+        });
+      }
+      function setStats(t) { stats.textContent = t || ''; }
+
+      function renderLanding(title) {
+        top.classList.add('hidden');
+        todo.classList.remove('show');
+        sessionTitle.textContent = title || '新会话';
+        setStats('');
+        feed.innerHTML = `<div class="hero">
+          <div class="fish">𓆝</div>
+          <h1>问一句数</h1>
+          <p>直接提问即可。Agent 自动匹配可问数据集并生成只读 SQL，无需选手动选表或切换模式。</p>
+          <div class="suggests">
+            <button type="button" data-q="今年收入多少">今年收入多少</button>
+            <button type="button" data-q="华东本月 GMV 同比？">华东本月 GMV 同比？</button>
+            <button type="button" data-q="本周销售员 TOP5">本周销售员 TOP5</button>
+            <button type="button" data-q="换一个问数问题">换一个问数问题</button>
+          </div>
+        </div>`;
+        btnSend.textContent = '↑';
+        btnSend.classList.remove('stop');
+      }
+      function renderClarify(title) {
+        top.classList.remove('hidden');
+        todo.classList.remove('show');
+        sessionTitle.textContent = title || '换一个问数问题';
+        setStats('1 轮 · 2 步 · LLM 0.6s · 输入 2.1K tok · 输出 80 tok');
+        feed.innerHTML = `
+          <div class="bubble-user">换一个问数问题</div>
+          <div class="ctx-inject">📄 上下文注入 · 可问集合 / 知识词表</div>
+          ${think('问题过宽，先反问可问 Chip…', '不盲打 SQL。列出与可问集合匹配的高频问法。', true)}
+          ${tool('od_list_datasets', '自动扫描可问 · 3', 'done', 'matched: [销售明细, 商户维表, 门店日汇总]')}
+          <div class="clarify">
+            <h3>想问哪一类？</h3>
+            <p>说具体一点，我会自动找表回答。</p>
+            <div class="chips">
+              <button type="button" data-q="华东本月 GMV 同比？">华东本月 GMV 同比？</button>
+              <button type="button" data-q="今年收入多少">今年收入多少</button>
+              <button type="button" data-q="商户数本周变化">商户数本周变化</button>
+            </div>
+          </div>`;
+        btnSend.textContent = '↑';
+        btnSend.classList.remove('stop');
+      }
+      function renderRunning(title) {
+        top.classList.remove('hidden');
+        todo.classList.add('show');
+        sessionTitle.textContent = title || '华东本月 GMV 同比？';
+        setStats('2 轮 · 4 步 · LLM 运行中 · 首 token 0.5s');
+        feed.innerHTML = `
+          <div class="bubble-user">华东本月 GMV 同比？</div>
+          <div class="ctx-inject">📄 上下文注入 · 知识命中 GMV→成交额</div>
+          ${think('自动匹配数据集并生成只读 SQL…', '命中「销售明细」。区域=华东；时间=本月。', false)}
+          ${tool('od_list_datasets', '自动匹配 → 销售明细', 'done', 'score: 0.92 · reason: GMV/区域/本月')}
+          ${tool('od_get_schema', '销售明细', 'done', 'dims: city, region, dt\\nmeasures: gmv')}
+          ${tool('od_run_sql', 'sqlglot 只读校验通过', 'running', 'SELECT-only · table whitelist · executing…', true)}
+          <div class="diving"><span class="spin"></span>Deep diving… 问数执行中</div>`;
+        btnSend.textContent = '■';
+        btnSend.classList.add('stop');
+        destroyChart();
+      }
+      function renderAnswered(title) {
+        top.classList.remove('hidden');
+        todo.classList.remove('show');
+        sessionTitle.textContent = title || '华东本月 GMV 同比？';
+        setStats('2 轮 · 5 步 · LLM 1.2s · 首 token 平均 0.5s · 146 tok/s · 缓存命中 62% · 输入 7.8K tok · 输出 210 tok');
+        feed.innerHTML = `
+          <div class="bubble-user">华东本月 GMV 同比？</div>
+          <div class="ctx-inject">📄 上下文注入 · @opendashboard/od-ask-skill</div>
+          ${think('Auto-resolve dataset, build read-only SQL, pick bar…', 'Ask-3：找表 → schema → SQL → 校验 → 执行 → 选柱图。', true)}
+          ${tool('od_list_datasets', '自动匹配 → 销售明细', 'done', 'score: 0.92 · reason: GMV/区域/本月')}
+          ${tool('od_get_schema', '销售明细 · 12 字段', 'done', 'dims: city, region, dt\\nmeasures: gmv, order_cnt')}
+          ${tool('od_run_sql', '5 行 · 142ms', 'done', 'gate=pass · SQL 未下发浏览器 meta')}
+          <div class="assistant"><p>华东本月 GMV 约 <b>1.48 亿</b>，同比 <b>+16.4%</b>。上海、杭州贡献过半；合肥同比增速靠前。</p></div>
+          ${tableNode()}
+          ${chartNode()}
+          <div class="actions">
+            <button type="button" title="复制">⧉</button>
+            <button type="button" title="赞">👍</button>
+            <button type="button" title="踩">👎</button>
+            <button type="button" title="重试">↻</button>
+          </div>
+          <div class="follow">
+            <button type="button" data-q="拆到城市看环比">拆到城市看环比</button>
+            <button type="button" data-q="只要上海和杭州">只要上海和杭州</button>
+            <button type="button" data-q="换成折线看近 6 个月">换成折线看近 6 个月</button>
+            <button type="button" data-demo-jump="board">生成本题看板</button>
+          </div>`;
+        btnSend.textContent = '↑';
+        btnSend.classList.remove('stop');
+        requestAnimationFrame(mountChart);
+      }
+      function renderBoard(title) {
+        top.classList.remove('hidden');
+        todo.classList.remove('show');
+        sessionTitle.textContent = title || '生成本题看板';
+        setStats('1 轮 · 4 步 · gen · emit_patch ok');
+        feed.innerHTML = `
+          <div class="bubble-user">用销售明细生成一张经营看板</div>
+          ${think('profile → plan → layout → emit…', '确定性 plan/layout；写路径唯一 od_emit_patch。', true)}
+          ${tool('od_profile_dataset', '销售明细', 'done', 'dims: region,dt · measures: gmv')}
+          ${tool('od_plan_charts', '8 charts', 'done', 'kpi×2 + bar + line + grouptable…')}
+          ${tool('od_layout_board', 'DashboardPatch', 'done', 'ops: set_layout / upsert_chart / upsert_component')}
+          ${tool('od_emit_patch', 'apply-patch', 'done', 'dashboardId=d_demo · mode=replace')}
+          ${boardNode()}
+          <div class="assistant"><p>看板 draft 已写入。点「在编辑器打开」继续改布局。</p></div>`;
+        btnSend.textContent = '↑';
+        btnSend.classList.remove('stop');
+        destroyChart();
+      }
+
+      function bindFeed() {
+        feed.querySelectorAll('[data-think] .think-hd').forEach((hd) => {
+          hd.onclick = () => hd.parentElement.classList.toggle('collapsed');
+        });
+        feed.querySelectorAll('[data-tool] .tool-hd').forEach((hd) => {
+          hd.onclick = () => hd.parentElement.classList.toggle('collapsed');
+        });
+        feed.querySelectorAll('[data-q]').forEach((btn) => {
+          btn.onclick = () => { input.value = btn.dataset.q || ''; runFromInput(); };
+        });
+        feed.querySelectorAll('[data-demo-jump]').forEach((btn) => {
+          btn.onclick = () => setDemo(btn.dataset.demoJump);
+        });
+      }
+
+      function setDemo(name, title) {
+        demo = name;
+        document.querySelectorAll('.proto .chip[data-demo]').forEach((el) => {
+          el.classList.toggle('on', el.dataset.demo === name);
+        });
+        destroyChart();
+        if (name === 'landing') renderLanding(title);
+        else if (name === 'clarify') renderClarify(title);
+        else if (name === 'running') renderRunning(title);
+        else if (name === 'board') renderBoard(title);
+        else renderAnswered(title);
+        bindFeed();
+        document.getElementById('scroll').scrollTop = 0;
+      }
+
+      function runFromInput() {
+        const q = (input.value || '').trim();
+        if (!q) { input.focus(); return; }
+        if (/换一个|再问|还有什么可问/.test(q)) { setDemo('clarify', q); return; }
+        setDemo('running', q);
+        setTimeout(() => { if (demo === 'running') setDemo('answered', q); }, 1400);
+      }
+
+      document.querySelectorAll('.proto [data-demo]').forEach((el) => {
+        el.onclick = () => setDemo(el.dataset.demo);
+      });
+      btnSend.onclick = () => {
+        if (btnSend.classList.contains('stop')) { setDemo('answered', sessionTitle.textContent); return; }
+        runFromInput();
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); btnSend.click(); }
+      });
+      window.addEventListener('resize', () => { if (chartInst) chartInst.resize(); });
+
+      const q = (params.get('q') || '').trim();
+      const autorun = params.get('autorun') === '1';
+      const demoParam = params.get('demo');
+      if (demoParam && ['landing', 'clarify', 'running', 'answered'].includes(demoParam)) setDemo(demoParam);
+      else if (autorun && q) { input.value = q; runFromInput(); }
+      else setDemo('answered');
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "id": "BOARD-BIND-RATIO-01",
+  "track": "board",
+  "stage": "bind",
+  "pr": "PR-QG-05",
+  "dataset": { "id": "ds_fee", "fixture": "merchant-order-fields.json" },
+  "input": { "message": "按支付状态看费率" },
+  "expect": {
+    "minCharts": 2,
+    "forbidRatioSum": true,
+    "barValueIn": ["Amount", "MchIncome"]
+  }
+}

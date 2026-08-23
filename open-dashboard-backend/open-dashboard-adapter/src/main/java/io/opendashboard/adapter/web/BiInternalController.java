@@ -132,6 +132,31 @@ public class BiInternalController {
         return ResponseEntity.ok(bi.boardSummary(dashboardId));
     }
 
+    @PostMapping("/query/cancel")
+    public ResponseEntity<?> cancelQueries(
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token,
+            @RequestHeader(value = "X-User-Id", required = false) String userId
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String owner = userId;
+        if (body != null && body.get("owner") != null && !String.valueOf(body.get("owner")).isBlank()) {
+            owner = String.valueOf(body.get("owner"));
+        }
+        if (body != null && Boolean.TRUE.equals(body.get("all"))) {
+            owner = "";
+        }
+        return ResponseEntity.ok(bi.cancelLiveQueries(owner == null ? "" : owner));
+    }
+
+    @GetMapping("/query/stats")
+    public ResponseEntity<?> queryStats(
+            @RequestHeader(value = "X-OD-Internal-Token", required = false) String token
+    ) {
+        if (!authed(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(bi.liveQueryStats());
+    }
+
     @PostMapping("/profile-dataset")
     public ResponseEntity<?> profileDataset(
             @RequestBody Map<String, Object> body,

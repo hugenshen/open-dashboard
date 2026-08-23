@@ -1,0 +1,11 @@
+{
+  "id": "BOARD-PLAN-S1-02",
+  "track": "board",
+  "stage": "plan",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": { "message": "看看整体情况", "datasetName": "商户订单" },
+  "expect": {
+    "minGoals": 3,
+    "mustIntents": ["kpi_count"]
+  }
+}

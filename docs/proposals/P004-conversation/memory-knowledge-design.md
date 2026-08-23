@@ -1,5 +1,7 @@
 # P004 · 数据集自学习与运行时语义增强 POC
 
+> **2026-08-22 修订**：[P012](../P012-ask-gen-quality/) 已去掉 Java 业务词典。`FieldSemantics` 只判断查询失败串；`DatasetProfiler.roleOf` 只认 schema group / JDBC type；规划与意图只认用户原文与字段名/label 重叠。下文第 1 节仍是当时问题回顾。
+>
 > 定位：P004 对话分析（问数 + 看板生成）的数据质量与运行时语义增强方案。
 > 边界：本文件只描述 P004 内为了提升生成准确性需要的字段画像、候选指标、词表消费、采样、探活和评测闭环。产品化知识库、跨会话用户记忆、知识管理面归 [P010](../P010-user-memory-ask-knowledge/)；工作区、用户、权限、知识发布与记忆分层治理归 [P009](../P009-workspace-governance/)。
 > 验收：判据、状态和证据只维护在 [acceptance.yaml](./acceptance.yaml)，本文只反链验收 ID，不另定义验收表。

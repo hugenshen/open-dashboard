@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本仓以 docs 为产品与工程契约入口；实现位于 `open-dashboard-frontend/`、`open-dashboard-backend/`。
+本仓以 docs 为产品与工程契约入口；实现位于 `open-dashboard-frontend/`、`open-dashboard-backend/`、`opendashboard-dsh-harness/`（P011 对话 Agent）。Python `opendashboard-harness/` 已在 P011 M4 删除。
 
 ## 必读
 
@@ -91,4 +91,5 @@ done: YYYY-MM-DD                           # done 时填写
 ```bash
 ./scripts/up.sh
 ./docs/prototypes/hi-fi/start.sh
+cd opendashboard-dsh-harness && pnpm install && pnpm approve-builds --all && ./start.sh
 ```

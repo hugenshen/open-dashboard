@@ -16,8 +16,8 @@ opendashboard:
     enabled: true
     harness:
       mode: deerflow
-      # Java often runs on 8082 via --server.port; harness BI base is separate (OD_BI_BASE)
-      base-url: http://127.0.0.1:8091
+      # Legacy unused after P011 M4 (Agent is opendashboard-dsh-harness :3090)
+      base-url: http://127.0.0.1:3090
       internal-token: od-dev-internal
       timeout-ms: 180000
   bootstrap:

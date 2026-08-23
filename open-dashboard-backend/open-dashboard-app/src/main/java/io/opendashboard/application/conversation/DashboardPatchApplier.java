@@ -46,14 +46,9 @@ public class DashboardPatchApplier {
         List<String> staleCompIds = new ArrayList<>();
         List<String> staleChartIds = new ArrayList<>();
         if (replace) {
-            dashboards.get(dashboardId, "draft").ifPresent(d -> {
-                if (d.components() != null) {
-                    for (DashboardComponentVO c : d.components()) {
-                        if (c.id() != null && !c.id().isBlank()) staleCompIds.add(c.id());
-                    }
-                }
-                if (d.charts() != null) staleChartIds.addAll(d.charts().keySet());
-            });
+            // Strong clear: always wipe draft canvas before upsert so a second generate
+            // cannot leave stacked duplicates when stale id collection races or appends.
+            dashboards.get(dashboardId, "draft").ifPresent(d -> collectStale(d, staleCompIds, staleChartIds));
         }
         List<String> chartIds = new ArrayList<>();
         Map<String, String> chartIdAlias = new HashMap<>();
@@ -103,10 +98,13 @@ public class DashboardPatchApplier {
                     }
                 }
                 case "upsert_component" -> {
-                    String rawId = str(op.get("id"));
-                    String id = !rawId.isBlank() && rawId.chars().allMatch(Character::isDigit) ? rawId : "";
                     String type = str(op.get("type"));
                     if (type.isBlank()) type = "chart";
+                    String chartIdRaw = str(op.get("chartId"));
+                    String chartId = chartIdAlias.getOrDefault(chartIdRaw, chartIdRaw);
+                    // Component ids must be numeric for the editor store; planners historically
+                    // emitted "c_<chartId>" / "q_bar" which collapsed to "" and wiped the canvas.
+                    String id = resolveComponentId(str(op.get("id")), chartId, type, components.size());
                     int x = intVal(op.get("x"), 0);
                     int y = intVal(op.get("y"), 0);
                     int w = intVal(op.get("w"), 24);
@@ -119,7 +117,6 @@ public class DashboardPatchApplier {
                                 id, type, null, null, x, y, w, h, 1, props
                         ));
                     } else {
-                        String chartId = chartIdAlias.getOrDefault(str(op.get("chartId")), str(op.get("chartId")));
                         components.add(new DashboardComponentVO(
                                 id, "chart", null, chartId, x, y, w, h, 1, props
                         ));
@@ -138,6 +135,13 @@ public class DashboardPatchApplier {
                 null,
                 null
         ));
+        // Replace: delete stale first in a dedicated call so upsert never races with leftovers.
+        if (replace && !staleCompIds.isEmpty()) {
+            dashboards.updateComponents(dashboardId, new DashboardComponentsUpdateRequest(
+                    List.of(), staleCompIds, null
+            ));
+            staleCompIds.clear();
+        }
         if (!components.isEmpty() || !staleCompIds.isEmpty()) {
             dashboards.updateComponents(dashboardId, new DashboardComponentsUpdateRequest(
                     components, staleCompIds, null
@@ -152,6 +156,15 @@ public class DashboardPatchApplier {
 
         Map<String, Object> snapshot = snapshotOf(dashboardId);
         return new ApplyResult(dashboardId, chartIds, snapshot);
+    }
+
+    private static void collectStale(DashboardDetailVO d, List<String> staleCompIds, List<String> staleChartIds) {
+        if (d.components() != null) {
+            for (DashboardComponentVO c : d.components()) {
+                if (c.id() != null && !c.id().isBlank()) staleCompIds.add(c.id());
+            }
+        }
+        if (d.charts() != null) staleChartIds.addAll(d.charts().keySet());
     }
 
     public void restoreSnapshot(String dashboardId, Map<String, Object> snapshot) {
@@ -286,6 +299,34 @@ public class DashboardPatchApplier {
         Map<String, Object> out = new LinkedHashMap<>();
         m.forEach((k, v) -> out.put(String.valueOf(k), v));
         return out;
+    }
+
+    /** Prefer pure-digit ids; otherwise derive from chartId / digits-in-raw / stable fallback. */
+    private static String resolveComponentId(String rawId, String chartId, String type, int index) {
+        if (isAllDigits(rawId)) return rawId;
+        if (isAllDigits(chartId)) return chartId;
+        String fromRaw = digitsOnly(rawId);
+        if (!fromRaw.isBlank()) return fromRaw;
+        String fromChart = digitsOnly(chartId);
+        if (!fromChart.isBlank()) return fromChart;
+        int seed = (rawId + "|" + type + "|" + index).hashCode();
+        long id = Math.floorMod((long) seed, 1_000_000_000L);
+        if (id == 0) id = index + 1L;
+        return String.valueOf(id);
+    }
+
+    private static boolean isAllDigits(String s) {
+        return s != null && !s.isBlank() && s.chars().allMatch(Character::isDigit);
+    }
+
+    private static String digitsOnly(String s) {
+        if (s == null || s.isBlank()) return "";
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isDigit(c)) b.append(c);
+        }
+        return b.toString();
     }
 
     private static String str(Object o) {

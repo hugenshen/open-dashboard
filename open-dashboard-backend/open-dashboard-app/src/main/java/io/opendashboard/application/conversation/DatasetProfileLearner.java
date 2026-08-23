@@ -26,7 +26,7 @@ import java.util.Set;
  * （od_interpret_fields）与 schema 返回体复用。
  *
  * 沿用 ref/deer-flow 记忆的「先过滤 → 判定 → 确定性写闸 → 落库」四段式：
- * 统计特征为准，命名规则（FieldSemantics）只提供候选分数，不参与最终裁决。
+ * 统计特征为准；不再用业务词词典给角色/单位打分。
  */
 @Component
 public class DatasetProfileLearner {
@@ -122,16 +122,6 @@ public class DatasetProfileLearner {
             if (values == null || values.isEmpty()) continue;
             // 长文本/高基数排除：distinct 接近采样行数（30）说明近乎唯一，不是公共维度
             if (p.distinctCount() >= 25) continue;
-            // 技术字段排除：JSON/向量/embedding/时间戳毫秒/URL 等不是业务维度
-            String name = p.fieldName() == null ? "" : p.fieldName().toLowerCase(Locale.ROOT);
-            String label = p.fieldLabel() == null ? "" : p.fieldLabel().toLowerCase(Locale.ROOT);
-            String blob = name + " " + label;
-            if (blob.contains("embedding") || blob.contains("vector") || blob.contains("json")
-                    || blob.contains("url") || blob.contains("content") || blob.contains("summary")
-                    || blob.contains("reasoning")
-                    || (blob.contains("data") && blob.contains("insight"))) {
-                continue;
-            }
             // 值本身超长（JSON/向量/大文本）排除
             boolean hasLongValue = false;
             for (Object v : values) {
@@ -168,43 +158,26 @@ public class DatasetProfileLearner {
         }
     }
 
-    /** 候选指标抽取：measure 字段 → de_indicator(draft)，agg/unit 由命名启发式给出（确定性闸门）。 */
+    /** 候选指标抽取：measure 字段 → de_indicator(draft)；agg 固定 SUM，业务名取字段 label。 */
     private void extractIndicators(String datasetId, List<FieldProfileVO> profiles) {
         io.opendashboard.domain.gateway.IndicatorGateway g = indicatorStore.getIfAvailable();
         if (g == null) return;
         for (FieldProfileVO p : profiles) {
             if (!"measure".equals(p.roleLearned())) continue;
             if (indicatorConfirmed(datasetId, p.fieldName())) continue;
-            String name = p.fieldName() == null ? "" : p.fieldName().toLowerCase(Locale.ROOT);
             String label = p.fieldLabel() == null ? "" : p.fieldLabel();
-            String blob = name + " " + label.toLowerCase(Locale.ROOT);
-            // 排除明显非业务度量的数值：毫秒时间戳 / 经纬度 / 端口 / 序号
-            if (name.endsWith("time") || name.endsWith("_at") || name.endsWith("_ts")
-                    || name.contains("lat") || name.contains("lng") || name.contains("longitude")
-                    || name.contains("latitude") || name.endsWith("_no") || name.endsWith("_num")
-                    || name.endsWith("_port")) {
-                continue;
-            }
             if (p.numericMin() != null && p.numericMax() != null
                     && p.numericMax() > 4_100_000_000_000L && p.numericMin() > 1_000_000_000_000L) {
                 continue; // 毫秒级时间戳（1e12+），不是度量
             }
+            if (Boolean.TRUE.equals(p.timestampLike())) continue;
             String businessName = shortTerm(label.isBlank() ? p.fieldName() : label);
             String agg = "SUM";
-            if (blob.contains("rate") || blob.contains("率") || blob.contains("比例")) agg = "AVG";
             String unit = null;
-            if (blob.contains("amount") || blob.contains("金额") || blob.contains("money") || blob.contains("价")
-                    || blob.contains("收入") || blob.contains("利润") || blob.contains("销售额")) {
-                unit = "元";
-            } else if (blob.contains("qty") || blob.contains("数量") || blob.contains("count") || blob.contains("件")) {
-                unit = "件";
-            } else if (agg.equals("AVG")) {
-                unit = "%";
-            }
             g.upsert(new io.opendashboard.domain.DatasetDtos.IndicatorUpsertRequest(
                     datasetId, p.fieldName(), businessName, agg, unit, null, null, "draft", 0.5
             ));
-            // 度量词表：term=业务名，canonical=字段，aliases 含原始字段名/label（「销售额」→spending_amount）
+            // 度量词表：term=字段 label，canonical=字段名，aliases 含原始字段名/label
             io.opendashboard.domain.gateway.GlossaryGateway gg = glossaryStore.getIfAvailable();
             if (gg != null) {
                 List<String> aliases = new ArrayList<>();
@@ -342,19 +315,14 @@ public class DatasetProfileLearner {
             DatasetFieldVO f, long distinct, double nullRate, Set<String> values,
             boolean numeric, double min, double max
     ) {
-        String n = f.name().toLowerCase(Locale.ROOT);
-        String l = f.label() == null ? "" : f.label();
-
         // 1) 时间
         if (isTimeField(f)) return "time";
 
         // 2) 标志位：取值 ⊆ {0,1,y/n,true/false} 且低基数
         if (distinct <= 3 && lowCardinalityBoolean(values)) return "flag";
 
-        // 3) ID：数值且 distinct 接近行数（采样窗口内全部唯一）→ 高概率主键/外键
+        // 3) ID：数值且采样窗口内几乎全唯一
         if (numeric && distinct >= 5 && isAllDistinct(values)) return "id";
-        // 命名兜底：*_id / 主键 / 编号 即使数值不唯一也判 id（如 config_id 重复引用）
-        if (n.endsWith("id") || l.contains("ID") || l.contains("编号") || n.equals("id")) return "id";
 
         // 4) 度量：数值且非 id/flag
         if (numeric && distinct > 1) return "measure";
@@ -380,14 +348,10 @@ public class DatasetProfileLearner {
     }
 
     private boolean isTimeField(DatasetFieldVO f) {
-        String n = f.name().toLowerCase(Locale.ROOT);
-        String l = f.label() == null ? "" : f.label();
+        if (f == null) return false;
+        String g = f.group() == null ? "" : f.group().toLowerCase(Locale.ROOT);
+        if (g.equals("t") || g.equals("time")) return true;
         String dt = f.dataType() == null ? "" : f.dataType().toUpperCase(Locale.ROOT);
-        if (n.contains("expire") || n.contains("fail") || l.contains("失效")) return false;
-        if (n.equals("day") || n.equals("month") || l.contains("日期") || l.contains("月份")
-                || l.contains("时间") || n.contains("createtime") || n.endsWith("time")) {
-            return true;
-        }
         return dt.contains("DATE") || dt.contains("TIME") || dt.contains("TIMESTAMP");
     }
 

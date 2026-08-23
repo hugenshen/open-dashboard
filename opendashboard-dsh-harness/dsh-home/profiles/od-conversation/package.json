@@ -1,0 +1,22 @@
+{
+  "name": "dsh-profile-od-conversation",
+  "private": true,
+  "description": "OD conversation profile: dsh web + OD BI bundle",
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "@opendashboard/dsh-od-bundle",
+        "dsh-context"
+      ]
+    }
+  },
+  "dependencies": {
+    "@opendashboard/dsh-od-auth": "workspace:*",
+    "@opendashboard/dsh-od-bi": "workspace:*",
+    "@opendashboard/dsh-od-bundle": "workspace:*",
+    "@opendashboard/dsh-od-nodes": "workspace:*",
+    "dsh-context": "^0.21.0"
+  }
+}

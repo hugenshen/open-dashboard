@@ -1,3 +1,8 @@
+# P004 acceptance
+
+# P011 M4（2026-08-21）：基于 Python harness SSE（`/harness/v1`）的对话表面验收已 **superseded**。
+# 对话主路径改由 P011（dsh SessionEvent → ConversationNode）承接；下列 ID 保留历史 pass/todo，不再作为切流门禁。
+
 proposal: P004
 items:
   - id: PR-CONV-01

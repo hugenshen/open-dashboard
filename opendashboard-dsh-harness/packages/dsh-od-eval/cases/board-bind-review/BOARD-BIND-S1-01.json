@@ -1,0 +1,15 @@
+{
+  "id": "BOARD-BIND-S1-01",
+  "track": "board",
+  "stage": "bind",
+  "pr": "PR-QG-02",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": { "message": "按支付状态看入账" },
+  "expect": {
+    "minCharts": 3,
+    "barCategory": "Status",
+    "barValueIn": ["Amount", "MchIncome"],
+    "forbidEncodeValues": ["PayOrderId", "MchId"],
+    "forbidRatioSum": true
+  }
+}

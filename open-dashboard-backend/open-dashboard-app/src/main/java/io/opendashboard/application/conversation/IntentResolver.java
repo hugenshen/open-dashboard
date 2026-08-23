@@ -4,6 +4,7 @@ import io.opendashboard.domain.DatasetDtos.DatasetDetailVO;
 import io.opendashboard.domain.DatasetDtos.DatasetFieldVO;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -11,8 +12,8 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Deterministic NL → intent cards (DataEase-style: no model SQL).
- * Maps phrases onto schema fields; missing required phrases become clarify.
+ * NL → intent cards by matching the user text to schema field name/label
+ * (glossary aliases already folded into labels). No business-word dictionaries.
  */
 public final class IntentResolver {
 
@@ -141,100 +142,68 @@ public final class IntentResolver {
 
         List<Mapping> mapping = new ArrayList<>();
         List<Unresolved> unresolved = new ArrayList<>();
-        List<Card> cards = new ArrayList<>();
-
         TimeFilter time = resolveTime(q, detail, mapping, unresolved);
-        FieldHit income = findMeasure(detail, q, List.of("收入", "销售额", "营收", "gmv", "amount", "income", "订单收入"));
-        FieldHit profit = findMeasure(detail, q, List.of("利润", "profit", "毛利"));
-        FieldHit merchant = findDim(detail, q, List.of("商户", "商家", "门店", "merchant", "mch", "shop", "store"));
-        FieldHit region = findDim(detail, q, List.of("区域", "地区", "region"));
-        FieldHit channel = findDim(detail, q, List.of("渠道", "channel"));
 
-        boolean askedIncome = containsAny(q, "收入", "销售额", "营收", "gmv", "订单收入");
-        boolean askedProfit = containsAny(q, "利润", "毛利");
-        boolean askedMerchant = containsAny(q, "商户", "商家", "门店");
-        boolean askedRegion = containsAny(q, "区域", "地区");
-        boolean askedChannel = containsAny(q, "渠道");
-        boolean askedPlatform = q.contains("平台");
-
-        if (askedMerchant) bindOrMiss(merchant, "商户", "dim", mapping, unresolved, "数据集没有商户/商家类维度");
-        if (askedRegion) bindOrMiss(region, "区域", "dim", mapping, unresolved, "数据集没有区域维度");
-        if (askedChannel) bindOrMiss(channel, "渠道", "dim", mapping, unresolved, "数据集没有渠道维度");
-        if (askedIncome) bindOrMiss(income, askedPlatform && q.contains("平台") ? "收入" : "收入", "measure", mapping, unresolved, "数据集没有收入/销售额类指标");
-        if (askedProfit) {
-            FieldHit platformProfit = askedPlatform ? findMeasure(detail, q, List.of("平台利润", "platform_profit", "platformprofit")) : null;
-            if (platformProfit != null && platformProfit.field != null) {
-                bindOrMiss(platformProfit, "平台利润", "measure", mapping, unresolved, "");
-                profit = platformProfit;
-            } else {
-                bindOrMiss(profit, "利润", "measure", mapping, unresolved, "数据集没有利润类指标");
-                if (askedPlatform && profit != null && profit.field != null) {
-                    mapping.add(new Mapping("平台利润", "measure", profit.field, profit.label, "未找到平台专用字段，使用表内利润"));
+        List<DatasetFieldVO> hitMeasures = new ArrayList<>();
+        List<DatasetFieldVO> hitDims = new ArrayList<>();
+        if (detail != null && detail.fields() != null) {
+            for (DatasetFieldVO f : detail.fields()) {
+                String phrase = mentioned(q, f);
+                if (phrase == null) continue;
+                String role = DatasetProfiler.roleOf(f);
+                mapping.add(new Mapping(phrase, role, f.name(), display(f), null));
+                switch (role) {
+                    case "measure" -> hitMeasures.add(f);
+                    case "dim" -> hitDims.add(f);
+                    default -> {
+                    }
                 }
             }
         }
 
-        FieldHit primaryMeasure = income != null && income.field != null ? income : profit;
-        if (primaryMeasure == null || primaryMeasure.field == null) {
-            primaryMeasure = bestMeasure(detail);
-        }
-
-        if (askedMerchant && merchant != null && merchant.field != null && primaryMeasure != null && primaryMeasure.field != null) {
-            cards.add(new Card(
-                    merchant.label + " · " + primaryMeasure.label,
-                    "bar",
-                    merchant.field, merchant.label,
-                    primaryMeasure.field, primaryMeasure.label,
-                    "SUM",
-                    "各" + merchant.label
-            ));
-        }
-        if (askedRegion && region != null && region.field != null && primaryMeasure != null && primaryMeasure.field != null
-                && cards.stream().noneMatch(c -> region.field.equals(c.dimension()))) {
-            cards.add(new Card(
-                    region.label + " · " + primaryMeasure.label,
-                    "bar",
-                    region.field, region.label,
-                    primaryMeasure.field, primaryMeasure.label,
-                    "SUM",
-                    "各" + region.label
-            ));
-        }
-        if (askedChannel && channel != null && channel.field != null && primaryMeasure != null && primaryMeasure.field != null
-                && cards.stream().noneMatch(c -> channel.field.equals(c.dimension()))) {
-            cards.add(new Card(
-                    channel.label + " · " + primaryMeasure.label,
-                    "bar",
-                    channel.field, channel.label,
-                    primaryMeasure.field, primaryMeasure.label,
-                    "SUM",
-                    "各" + channel.label
-            ));
-        }
-        if (askedIncome && income != null && income.field != null) {
-            cards.add(0, new Card("订单收入", "kpi", null, null, income.field, income.label, "SUM", "收入"));
-        }
-        if (askedProfit && profit != null && profit.field != null) {
-            cards.add(new Card(profit.label, "kpi", null, null, profit.field, profit.label, "SUM", "利润"));
-        }
-        if (cards.isEmpty() && primaryMeasure != null && primaryMeasure.field != null) {
-            FieldHit dim = firstDim(detail, merchant, region, channel);
-            if (dim != null && dim.field != null) {
-                cards.add(new Card(
-                        dim.label + " · " + primaryMeasure.label,
+        DatasetFieldVO primaryMeasure = !hitMeasures.isEmpty()
+                ? hitMeasures.getFirst()
+                : firstOf(detail, "measure");
+        if (hitDims.isEmpty() && hitMeasures.isEmpty()) {
+            DatasetFieldVO dim = firstOf(detail, "dim");
+            List<Card> fallback = new ArrayList<>();
+            if (primaryMeasure != null && dim != null) {
+                fallback.add(new Card(
+                        display(dim) + " · " + display(primaryMeasure),
                         "bar",
-                        dim.field, dim.label,
-                        primaryMeasure.field, primaryMeasure.label,
+                        dim.name(), display(dim),
+                        primaryMeasure.name(), display(primaryMeasure),
                         "SUM",
                         q
                 ));
-            } else {
-                cards.add(new Card(primaryMeasure.label, "kpi", null, null, primaryMeasure.field, primaryMeasure.label, "SUM", q));
+            } else if (primaryMeasure != null) {
+                fallback.add(new Card(
+                        display(primaryMeasure), "kpi", null, null,
+                        primaryMeasure.name(), display(primaryMeasure), "SUM", q
+                ));
             }
+            return new Plan(datasetId, dsName, buildRewrite(dsName, time, fallback), time, fallback, mapping, unresolved);
         }
 
-        String rewrite = buildRewrite(dsName, time, cards);
-        return new Plan(datasetId, dsName, rewrite, time, cards, mapping, unresolved);
+        List<Card> cards = new ArrayList<>();
+        for (DatasetFieldVO m : hitMeasures) {
+            cards.add(new Card(display(m), "kpi", null, null, m.name(), display(m), "SUM", display(m)));
+        }
+        List<DatasetFieldVO> dims = !hitDims.isEmpty() ? hitDims : listOf(firstOf(detail, "dim"));
+        if (primaryMeasure != null) {
+            for (DatasetFieldVO d : dims) {
+                if (d == null) continue;
+                cards.add(new Card(
+                        display(d) + " · " + display(primaryMeasure),
+                        "bar",
+                        d.name(), display(d),
+                        primaryMeasure.name(), display(primaryMeasure),
+                        "SUM",
+                        display(d)
+                ));
+            }
+        }
+        return new Plan(datasetId, dsName, buildRewrite(dsName, time, cards), time, cards, mapping, unresolved);
     }
 
     public static Map<String, Object> encodeOf(Card card, String datasetId, TimeFilter time) {
@@ -249,17 +218,6 @@ public final class IntentResolver {
             encode.put("filters", time.toFilterAst());
         }
         return encode;
-    }
-
-    private static void bindOrMiss(
-            FieldHit hit, String phrase, String kind,
-            List<Mapping> mapping, List<Unresolved> unresolved, String missReason
-    ) {
-        if (hit != null && hit.field != null) {
-            mapping.add(new Mapping(phrase, kind, hit.field, hit.label, hit.note));
-        } else if (missReason != null && !missReason.isBlank()) {
-            unresolved.add(new Unresolved(phrase, missReason));
-        }
     }
 
     private static TimeFilter resolveTime(String q, DatasetDetailVO detail, List<Mapping> mapping, List<Unresolved> unresolved) {
@@ -280,14 +238,24 @@ public final class IntentResolver {
             unit = "day";
         }
         if (phrase == null) return null;
-        DatasetFieldVO timeField = pickTime(detail);
+        DatasetFieldVO timeField = firstOf(detail, "time");
         if (timeField == null) {
             unresolved.add(new Unresolved(phrase, "数据集没有可用的时间字段，无法过滤" + phrase));
             return null;
         }
-        String label = display(timeField);
-        mapping.add(new Mapping(phrase, "filter", timeField.name(), label, "相对时间过滤将写入 SQL WHERE"));
-        return new TimeFilter(timeField.name(), label, phrase, n, unit);
+        mapping.add(new Mapping(phrase, "filter", timeField.name(), display(timeField), null));
+        return new TimeFilter(timeField.name(), display(timeField), phrase, n, unit);
+    }
+
+    private static String mentioned(String q, DatasetFieldVO f) {
+        if (q == null || q.isBlank() || f == null) return null;
+        String label = display(f);
+        if (!label.isBlank() && q.contains(label)) return label;
+        String name = f.name() == null ? "" : f.name();
+        if (!name.isBlank() && q.toLowerCase(Locale.ROOT).contains(name.toLowerCase(Locale.ROOT))) {
+            return name;
+        }
+        return null;
     }
 
     private static String buildRewrite(String dsName, TimeFilter time, List<Card> cards) {
@@ -309,155 +277,50 @@ public final class IntentResolver {
     }
 
     private static String pickDataset(String q, SchemaGuard.SchemaBundle schema) {
-        String best = schema.byId().keySet().iterator().next();
-        int bestScore = Integer.MIN_VALUE;
-        for (Map.Entry<String, DatasetDetailVO> e : schema.byId().entrySet()) {
-            int score = scoreDataset(q, e.getValue());
-            if (score > bestScore) {
-                bestScore = score;
-                best = e.getKey();
-            }
-        }
-        return best;
+        return schema.byId().entrySet().stream()
+                .max(Comparator.comparingInt(e -> overlapScore(q, e.getValue())))
+                .map(Map.Entry::getKey)
+                .orElseGet(() -> schema.byId().keySet().iterator().next());
     }
 
-    private static int scoreDataset(String q, DatasetDetailVO detail) {
+    private static int overlapScore(String q, DatasetDetailVO detail) {
         int score = 0;
         String name = detail.meta() != null && detail.meta().name() != null ? detail.meta().name() : "";
         String table = detail.meta() != null && detail.meta().tableName() != null ? detail.meta().tableName() : "";
-        String blob = (name + " " + table).toLowerCase(Locale.ROOT);
-        if (q.contains("订单") && (name.contains("订单") || blob.contains("order"))) score += 40;
-        if (q.contains("销售") && (name.contains("销售") || blob.contains("sales"))) score += 30;
-        if (detail.fields() == null) return score;
-        for (DatasetFieldVO f : detail.fields()) {
-            String n = nz(f.name()).toLowerCase(Locale.ROOT);
-            String l = nz(f.label());
-            if (q.contains("商户") && (n.contains("mch") || n.contains("merchant") || l.contains("商户"))) score += 12;
-            if (q.contains("收入") && (n.contains("income") || n.contains("amount") || l.contains("收入") || l.contains("金额"))) {
-                score += 10;
+        if (!q.isBlank() && !name.isBlank() && q.contains(name)) score += 50;
+        if (!q.isBlank() && !table.isBlank() && q.toLowerCase(Locale.ROOT).contains(table.toLowerCase(Locale.ROOT))) {
+            score += 40;
+        }
+        if (detail.fields() != null) {
+            for (DatasetFieldVO f : detail.fields()) {
+                if (mentioned(q, f) != null) score += 10;
             }
-            if (q.contains("利润") && (n.contains("profit") || l.contains("利润"))) score += 10;
         }
         return score;
     }
 
-    private record FieldHit(String field, String label, String note) {}
-
-    private static FieldHit findMeasure(DatasetDetailVO detail, String q, List<String> keys) {
-        return findField(detail, keys, true);
-    }
-
-    private static FieldHit findDim(DatasetDetailVO detail, String q, List<String> keys) {
-        return findField(detail, keys, false);
-    }
-
-    private static FieldHit findField(DatasetDetailVO detail, List<String> keys, boolean measure) {
-        if (detail == null || detail.fields() == null) return null;
-        DatasetFieldVO best = null;
-        int bestScore = 0;
-        for (DatasetFieldVO f : detail.fields()) {
-            if (measure && !"quota".equalsIgnoreCase(f.group()) && !looksMeasure(f)) continue;
-            if (!measure && "quota".equalsIgnoreCase(f.group()) && !looksDim(f)) continue;
-            int score = 0;
-            String n = nz(f.name()).toLowerCase(Locale.ROOT);
-            String l = nz(f.label());
-            for (String k : keys) {
-                String kk = k.toLowerCase(Locale.ROOT);
-                if (n.equals(kk) || l.equals(k)) score += 80;
-                else if (n.contains(kk) || l.contains(k)) score += 40;
-            }
-            if (score > bestScore) {
-                bestScore = score;
-                best = f;
-            }
-        }
-        if (best == null || bestScore < 20) return null;
-        return new FieldHit(best.name(), display(best), null);
-    }
-
-    private static FieldHit bestMeasure(DatasetDetailVO detail) {
-        if (detail == null || detail.fields() == null) return null;
-        DatasetFieldVO best = null;
-        int bestScore = -1;
-        for (DatasetFieldVO f : detail.fields()) {
-            int s = 0;
-            String n = nz(f.name()).toLowerCase(Locale.ROOT);
-            String l = nz(f.label());
-            if ("quota".equalsIgnoreCase(f.group())) s += 10;
-            if (n.contains("amount") || l.contains("金额") || l.contains("收入") || l.contains("销售额")) s += 50;
-            if (n.contains("income")) s += 40;
-            if (n.contains("profit") || l.contains("利润")) s += 30;
-            if (s > bestScore) {
-                bestScore = s;
-                best = f;
-            }
-        }
-        return best == null ? null : new FieldHit(best.name(), display(best), null);
-    }
-
-    private static FieldHit firstDim(DatasetDetailVO detail, FieldHit... preferred) {
-        for (FieldHit h : preferred) {
-            if (h != null && h.field != null) return h;
-        }
+    private static DatasetFieldVO firstOf(DatasetDetailVO detail, String role) {
         if (detail == null || detail.fields() == null) return null;
         for (DatasetFieldVO f : detail.fields()) {
-            if ("dim".equalsIgnoreCase(f.group()) && looksDim(f)) {
-                return new FieldHit(f.name(), display(f), null);
-            }
+            if (role.equals(DatasetProfiler.roleOf(f))) return f;
         }
         return null;
     }
 
-    private static DatasetFieldVO pickTime(DatasetDetailVO detail) {
-        if (detail == null || detail.fields() == null) return null;
-        DatasetFieldVO best = null;
-        int bestScore = -1;
-        for (DatasetFieldVO f : detail.fields()) {
-            if (!isTimeField(f)) continue;
-            int s = 1;
-            String n = nz(f.name()).toLowerCase(Locale.ROOT);
-            if (n.contains("create")) s += 25;
-            if (n.contains("order") || n.contains("pay")) s += 15;
-            if (n.contains("update") || n.contains("expire")) s -= 10;
-            if (s > bestScore) {
-                bestScore = s;
-                best = f;
-            }
-        }
-        return best;
-    }
-
-    private static boolean isTimeField(DatasetFieldVO f) {
-        String n = nz(f.name()).toLowerCase(Locale.ROOT);
-        String l = nz(f.label());
-        String dt = nz(f.dataType()).toUpperCase(Locale.ROOT);
-        if (n.contains("expire") || l.contains("失效")) return false;
-        return n.contains("time") || n.contains("date") || n.equals("day") || n.equals("month")
-                || l.contains("日期") || l.contains("时间") || l.contains("月份")
-                || dt.contains("DATE") || dt.contains("TIME") || dt.contains("TIMESTAMP");
-    }
-
-    private static boolean looksMeasure(DatasetFieldVO f) {
-        String n = nz(f.name()).toLowerCase(Locale.ROOT);
-        String l = nz(f.label());
-        return n.contains("amount") || n.contains("income") || n.contains("profit") || n.contains("qty")
-                || l.contains("金额") || l.contains("收入") || l.contains("利润") || l.contains("销售额");
-    }
-
-    private static boolean looksDim(DatasetFieldVO f) {
-        return FieldSemantics.looksDim(f);
-    }
-
-    private static boolean containsAny(String q, String... keys) {
-        for (String k : keys) {
-            if (q.toLowerCase(Locale.ROOT).contains(k.toLowerCase(Locale.ROOT))) return true;
-        }
-        return false;
+    private static List<DatasetFieldVO> listOf(DatasetFieldVO f) {
+        return f == null ? List.of() : List.of(f);
     }
 
     private static String display(DatasetFieldVO f) {
-        if (f.label() != null && !f.label().isBlank()) return f.label();
-        return f.name();
+        if (f == null) return "";
+        String raw = f.label() == null || f.label().isBlank() ? nz(f.name()) : f.label();
+        String normalized = raw.replace('，', ',');
+        int comma = normalized.indexOf(',');
+        if (comma > 0) {
+            String head = normalized.substring(0, comma).trim();
+            if (!head.isBlank()) return head;
+        }
+        return raw;
     }
 
     private static String nz(String s) {

@@ -1,0 +1,14 @@
+{
+  "id": "BOARD-PLAN-S1-01",
+  "track": "board",
+  "stage": "plan",
+  "pr": "PR-QG-02",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": { "message": "按支付状态看入账", "datasetName": "商户订单" },
+  "expect": {
+    "minGoals": 3,
+    "maxGoals": 10,
+    "mustIntents": ["compare"],
+    "questionIncludes": ["支付状态"]
+  }
+}

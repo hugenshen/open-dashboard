@@ -1,0 +1,23 @@
+{
+  "name": "@opendashboard/dsh-od-bundle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OD conversation profile bundle: BI tools + auth + coding-tool trim",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@opendashboard/dsh-od-auth": "workspace:*",
+    "@opendashboard/dsh-od-bi": "workspace:*",
+    "@opendashboard/dsh-od-nodes": "workspace:*"
+  }
+}

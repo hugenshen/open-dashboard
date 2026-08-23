@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { dashboardApi, dashboardTreeApi, chartQueryApi } from '../../api/dashboard'
 import { datasetApi } from '../../dataset/api'
+import { hasStoredPermission } from '../../api/http'
 import {
   datasetsToHiFi,
   detailToHiFi,
@@ -11,11 +12,15 @@ import {
   type HiFiDash
 } from './adapter'
 import EditorOnboarding from './EditorOnboarding.vue'
-import ConversationAiPanel from '../../conversation/components/ConversationAiPanel.vue'
+import ConversationDshPanel from '../../conversation/components/ConversationDshPanel.vue'
 import './editor.css'
 
 const props = defineProps<{
   mode?: 'editor' | 'preview'
+  /** When set (e.g. conversation split), load this draft instead of route.params.id */
+  dashboardId?: string
+  /** Hide floating ConversationDshPanel — parent already shows dsh chat */
+  embedded?: boolean
 }>()
 
 const route = useRoute()
@@ -23,7 +28,12 @@ const router = useRouter()
 const error = ref('')
 const loading = ref(true)
 const saving = ref(false)
+const unpublished = ref(false)
+const publishing = ref(false)
 const guideReady = ref(false)
+const canPublish = computed(
+  () => hasStoredPermission('dashboard:manage') || hasStoredPermission('*')
+)
 const forceGuide = computed(() => route.query.guide === '1')
 const selectedChartId = ref<string | undefined>()
 const selectedEncode = ref<Record<string, unknown> | undefined>()
@@ -38,7 +48,7 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 let knownCompIds = new Set<string>()
 let knownChartIds = new Set<string>()
 
-const dashId = () => String(route.params.id || '')
+const dashId = () => String(props.dashboardId || route.params.id || '')
 
 async function loadHiFiDatasets() {
   const list = await datasetApi.list()
@@ -145,14 +155,51 @@ function scheduleSave(dash: HiFiDash) {
   }, 600)
 }
 
+function goPreviewBack() {
+  const id = dashId()
+  if (route.query.from === 'edit') {
+    router.push(`/dashboards/${id}/edit`)
+  } else {
+    router.push('/dashboards')
+  }
+}
+
+function goEdit() {
+  router.push(`/dashboards/${dashId()}/edit`)
+}
+
+async function publishAndPreview() {
+  publishing.value = true
+  error.value = ''
+  try {
+    await dashboardApi.publish(dashId())
+    unpublished.value = false
+    await boot()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    publishing.value = false
+  }
+}
+
 async function boot() {
   loading.value = true
   error.value = ''
+  unpublished.value = false
   try {
     const id = dashId()
     let detail
     if (props.mode === 'preview') {
       // 对齐高保：预览只读已发布版，不静默回退草稿
+      const st = await dashboardApi.status(id)
+      if (st.status === 'draft') {
+        unpublished.value = true
+        loading.value = false
+        guideReady.value = false
+        runtime?.destroy()
+        runtime = null
+        return
+      }
       detail = await dashboardApi.get(id, 'published')
     } else {
       detail = await dashboardApi.get(id, 'draft')
@@ -182,6 +229,7 @@ async function boot() {
     runtime?.destroy()
     runtime = mod.mountHiFiDashboard({
       mode: props.mode || 'editor',
+      embedded: Boolean(props.embedded),
       previewFrom: route.query.from === 'edit' ? 'editor' : 'list',
       dash,
       datasets,
@@ -196,14 +244,10 @@ async function boot() {
       onDirty: (d: HiFiDash) => scheduleSave(d),
       onBack: () => {
         if (props.mode === 'preview') {
-          if (route.query.from === 'edit') {
-            router.push(`/dashboards/${id}/edit`)
-          } else {
-            router.push(`/dashboards/${id}`)
-          }
+          goPreviewBack()
           return
         }
-        router.push(`/dashboards/${id}`)
+        router.push('/dashboards')
       },
       onPreview: () => {
         const d = runtime?.getDash()
@@ -278,7 +322,7 @@ function onGuideDone() {
 
 onMounted(boot)
 watch(
-  () => [route.params.id, props.mode],
+  () => [props.dashboardId, route.params.id, props.mode],
   () => boot()
 )
 
@@ -290,16 +334,35 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="hifi-dash-root">
+  <div class="hifi-dash-root" :class="{ embedded: props.embedded }">
     <div v-if="loading" class="boot">加载编辑器…</div>
-    <div v-if="error" class="boot err">{{ error }}</div>
+    <div v-else-if="unpublished" class="boot unpublished">
+      <div class="unpublished-card">
+        <p>草稿没有已发布版本可预览</p>
+        <p v-if="error" class="unpublished-err">{{ error }}</p>
+        <div class="unpublished-acts">
+          <button type="button" class="ubtn" @click="goPreviewBack">返回</button>
+          <button type="button" class="ubtn" @click="goEdit">去编辑</button>
+          <button
+            v-if="canPublish"
+            type="button"
+            class="ubtn primary"
+            :disabled="publishing"
+            @click="publishAndPreview"
+          >
+            {{ publishing ? '发布中…' : '发布并预览' }}
+          </button>
+        </div>
+      </div>
+    </div>
+    <div v-else-if="error" class="boot err">{{ error }}</div>
     <div class="app" id="od-hifi-app" />
     <div class="ctx" id="od-hifi-ctx" />
     <div class="modal-mask" id="od-hifi-mask" />
     <div class="toast-wrap" id="od-hifi-toasts" />
     <div v-if="saving" class="save-chip">保存中…</div>
-    <ConversationAiPanel
-      v-if="!loading && !error && props.mode !== 'preview'"
+    <ConversationDshPanel
+      v-if="!props.embedded && !loading && !error && props.mode !== 'preview'"
       :dashboard-id="dashId()"
       :selected-chart-id="selectedChartId"
       :selected-encode="selectedEncode"
@@ -307,7 +370,7 @@ onBeforeUnmount(() => {
       @applied="reloadDraftQuiet"
     />
     <EditorOnboarding
-      v-if="guideReady && !loading && !error"
+      v-if="!props.embedded && guideReady && !loading && !error"
       :force="forceGuide"
       @done="onGuideDone"
     />
@@ -334,6 +397,51 @@ onBeforeUnmount(() => {
   color: #f54a45;
   padding: 2rem;
 }
+.boot.unpublished {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #fff;
+}
+.unpublished-card {
+  text-align: center;
+  padding: 1.5rem;
+}
+.unpublished-card p {
+  margin: 0;
+  font-size: 14px;
+  color: #646a73;
+}
+.unpublished-err {
+  margin-top: 8px !important;
+  color: #f54a45 !important;
+  font-size: 13px !important;
+}
+.unpublished-acts {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+}
+.ubtn {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d0d3d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2329;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ubtn.primary {
+  background: #3370ff;
+  border-color: #3370ff;
+  color: #fff;
+}
+.ubtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .save-chip {
   position: fixed;
   right: 24px;
@@ -344,5 +452,20 @@ onBeforeUnmount(() => {
   font-size: 12px;
   padding: 6px 10px;
   border-radius: 8px;
+}
+.hifi-dash-root.embedded .editor.no-left {
+  grid-template-columns: 48px minmax(0, 1fr) minmax(0, 280px);
+}
+.hifi-dash-root.embedded .editor.no-left.no-insp {
+  grid-template-columns: 48px minmax(0, 1fr) 0;
+}
+.hifi-dash-root.embedded .left-dock {
+  background: #f7f8fa;
+}
+.hifi-dash-root.embedded .left-dock-item {
+  padding: 8px 0 10px;
+}
+.hifi-dash-root.embedded .bar.bar-editor {
+  padding-left: 10px;
 }
 </style>
