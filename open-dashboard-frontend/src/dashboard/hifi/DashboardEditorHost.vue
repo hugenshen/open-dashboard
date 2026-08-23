@@ -453,19 +453,5 @@ onBeforeUnmount(() => {
   padding: 6px 10px;
   border-radius: 8px;
 }
-.hifi-dash-root.embedded .editor.no-left {
-  grid-template-columns: 48px minmax(0, 1fr) minmax(0, 280px);
-}
-.hifi-dash-root.embedded .editor.no-left.no-insp {
-  grid-template-columns: 48px minmax(0, 1fr) 0;
-}
-.hifi-dash-root.embedded .left-dock {
-  background: #f7f8fa;
-}
-.hifi-dash-root.embedded .left-dock-item {
-  padding: 8px 0 10px;
-}
-.hifi-dash-root.embedded .bar.bar-editor {
-  padding-left: 10px;
-}
+/* embedded 布局规则在 editor.css（动态插入的 .editor 不受 scoped 影响） */
 </style>

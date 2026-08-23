@@ -48,7 +48,9 @@ export function mountHiFiDashboard(options) {
   // Embedded: don't pre-select a chart (avoids empty/wide inspector flash).
   if (__productOpts.embedded) state.selectedId = null;
   state.bindCollapsed = false;
-  state.opsCollapsed = false;
+  // Embedded float panel is narrow — keep field bank docked until user expands it.
+  state.opsCollapsed = Boolean(__productOpts.embedded);
+  state.opsUserToggled = false;
   state.undo = [];
   state.linkageHits = [];
   state.drillStack = [];
@@ -1317,8 +1319,10 @@ const state = {
   rightTab: 'data',
   leftCollapsed: false,
   inspCollapsed: false,
+  inspUserToggled: false,
   bindCollapsed: false,
   opsCollapsed: false,
+  opsUserToggled: false,
   selectedId: null,
   clipboard: null,
   filter: { region: '', channel: '', dateFrom: '', dateTo: '' },
@@ -6001,9 +6005,19 @@ function selectComp(id, { right = true, left = false } = {}) {
     // Point-select opens config; drag/context keep the collapsed chrome.
     if (state.inspCollapsed) {
       state.inspCollapsed = false;
+      // 分栏浮层宽度有限：未手动展开过字段银行时保持收起轨
+      if (__productOpts?.embedded && !state.opsUserToggled) {
+        state.opsCollapsed = true;
+      }
       syncEditorChrome();
     }
     renderRight(document.getElementById('right'));
+    if (__productOpts?.embedded && id) {
+      requestAnimationFrame(() => {
+        document.querySelector(`.widget[data-wid="${CSS.escape(id)}"]`)
+          ?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      });
+    }
   }
   if (left && state.leftTab === 'layer') renderLeft(document.getElementById('left'));
   syncDataOpsLayout();
@@ -6641,6 +6655,26 @@ function renderEditor(app) {
         <div class="pbody" id="right"></div>
       </aside>
     </div>`;
+
+  if (__productOpts?.embedded) {
+    const editorEl = app.querySelector('.editor');
+    if (editorEl && !editorEl.querySelector('.insp-backdrop')) {
+      const bd = document.createElement('button');
+      bd.type = 'button';
+      bd.className = 'insp-backdrop';
+      bd.setAttribute('aria-label', '关闭配置面板');
+      bd.addEventListener('click', () => {
+        state.inspCollapsed = true;
+        state.inspUserToggled = true;
+        state.selectedId = null;
+        document.querySelectorAll('.widget').forEach((w) => w.classList.remove('selected'));
+        document.querySelectorAll('.layer').forEach((n) => n.classList.remove('on'));
+        syncEditorChrome();
+        renderRight(document.getElementById('right'));
+      });
+      editorEl.appendChild(bd);
+    }
+  }
 
   app.querySelector('#toList').onclick = () => { state.module = 'dashboard'; state.screen = 'list'; state.editSurface = 'pc'; render(); };
   app.querySelector('#btnGuide')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('od:open-dashboard-guide')));
@@ -8916,7 +8950,10 @@ function wirePaneFolds(el) {
   el.querySelectorAll('[data-fold]').forEach((b) => {
     b.onclick = () => {
       if (b.dataset.fold === 'bind') state.bindCollapsed = true;
-      else state.opsCollapsed = true;
+      else {
+        state.opsCollapsed = true;
+        state.opsUserToggled = true;
+      }
       syncDataOpsLayout();
       renderRight(document.getElementById('right'));
     };
@@ -8924,7 +8961,10 @@ function wirePaneFolds(el) {
   el.querySelectorAll('[data-unfold]').forEach((b) => {
     b.onclick = () => {
       if (b.dataset.unfold === 'bind') state.bindCollapsed = false;
-      else state.opsCollapsed = false;
+      else {
+        state.opsCollapsed = false;
+        state.opsUserToggled = true;
+      }
       syncDataOpsLayout();
       renderRight(document.getElementById('right'));
     };

@@ -185,8 +185,8 @@ watch(
   flex-direction: column;
 }
 .od-dsh-surface.has-dash .od-dsh-surface__chat {
-  flex: 0 0 42%;
-  max-width: 42%;
+  flex: 0 0 34%;
+  max-width: 34%;
   border-right: 1px solid var(--od-line, #e5e7eb);
 }
 .od-dsh-surface__frame {

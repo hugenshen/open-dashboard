@@ -2940,3 +2940,100 @@
   font-size: 18px;
   line-height: 1;
 }
+
+/* ── Embedded (对话分栏)：配置面板浮层，不挤占画布列 ──
+ * 点选图表会开 data-ops（全屏约 540px）；分栏里若仍占格，画布只剩几十像素，
+ * 图表看起来像「消失」。浮层叠在 stage 上，grid 只留左轨 + 画布。 */
+.hifi-dash-root.embedded .editor {
+  position: relative;
+  grid-template-columns: minmax(160px, 200px) minmax(0, 1fr) !important;
+}
+.hifi-dash-root.embedded .editor.no-left,
+.hifi-dash-root.embedded .editor.no-left.no-insp,
+.hifi-dash-root.embedded .editor.no-left.data-ops-open,
+.hifi-dash-root.embedded .editor.no-left.data-ops-open.ops-collapsed,
+.hifi-dash-root.embedded .editor.no-left.data-ops-open.bind-collapsed,
+.hifi-dash-root.embedded .editor.no-left.data-ops-open.ops-collapsed.bind-collapsed {
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+}
+.hifi-dash-root.embedded .editor.no-insp,
+.hifi-dash-root.embedded .editor.no-insp.data-ops-open,
+.hifi-dash-root.embedded .editor.no-insp.data-ops-open.ops-collapsed,
+.hifi-dash-root.embedded .editor.no-insp.data-ops-open.bind-collapsed,
+.hifi-dash-root.embedded .editor.no-insp.data-ops-open.ops-collapsed.bind-collapsed,
+.hifi-dash-root.embedded .editor.data-ops-open,
+.hifi-dash-root.embedded .editor.data-ops-open.ops-collapsed,
+.hifi-dash-root.embedded .editor.data-ops-open.bind-collapsed,
+.hifi-dash-root.embedded .editor.data-ops-open.ops-collapsed.bind-collapsed {
+  grid-template-columns: minmax(160px, 200px) minmax(0, 1fr) !important;
+}
+.hifi-dash-root.embedded .editor.no-left.no-insp.data-ops-open,
+.hifi-dash-root.embedded .editor.no-left.no-insp.data-ops-open.ops-collapsed,
+.hifi-dash-root.embedded .editor.no-left.no-insp.data-ops-open.bind-collapsed,
+.hifi-dash-root.embedded .editor.no-left.no-insp.data-ops-open.ops-collapsed.bind-collapsed {
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+}
+.hifi-dash-root.embedded .editor > .insp {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  width: min(360px, 92%);
+  max-width: 100%;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-left: 1px solid var(--line);
+  box-shadow: -12px 0 28px rgba(31, 35, 41, 0.14);
+}
+.hifi-dash-root.embedded .editor.data-ops-open > .insp {
+  width: min(400px, 94%);
+}
+.hifi-dash-root.embedded .editor.no-insp > .insp {
+  display: none !important;
+}
+/* 窄浮层内字段银行与绑定区上下叠，避免再要 540px 宽 */
+.hifi-dash-root.embedded .editor.data-ops-open .data-work {
+  grid-template-areas: "ops" "bind";
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(120px, 0.85fr) minmax(160px, 1.15fr);
+}
+.hifi-dash-root.embedded .editor.data-ops-open .data-work.ops-rail {
+  grid-template-areas: "bind" "dock";
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 1fr) 48px;
+}
+.hifi-dash-root.embedded .editor.data-ops-open .data-work.bind-rail {
+  grid-template-areas: "ops" "dock";
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 1fr) 48px;
+}
+.hifi-dash-root.embedded .editor.data-ops-open .data-ops {
+  border-left: 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.hifi-dash-root.embedded .insp-backdrop {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(31, 35, 41, 0.16);
+  cursor: pointer;
+}
+.hifi-dash-root.embedded .editor:not(.no-insp) > .insp-backdrop {
+  display: block;
+}
+.hifi-dash-root.embedded .bar.bar-editor {
+  padding-left: 10px;
+}
+.hifi-dash-root.embedded .left-dock {
+  background: #f7f8fa;
+}
+.hifi-dash-root.embedded .left-dock-item {
+  padding: 8px 0 10px;
+}
