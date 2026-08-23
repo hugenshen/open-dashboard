@@ -21,6 +21,7 @@ import io.opendashboard.domain.DashboardDtos.ShareViewVO;
 import io.opendashboard.domain.DatasetDtos.DatasetDetailVO;
 import io.opendashboard.domain.gateway.DashboardGateway;
 import io.opendashboard.domain.context.AuthContext;
+import io.opendashboard.domain.context.AuthPrincipal;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
@@ -39,16 +40,22 @@ public class DashboardAppService {
 
     private final ObjectProvider<DashboardGateway> repository;
     private final ObjectProvider<DatasetService> datasetService;
+    private final ObjectProvider<DatasetPermissionService> permissions;
+    private final ObjectProvider<EffectiveAccessService> access;
     private final ConcurrentHashMap<String, MemDash> mem = new ConcurrentHashMap<>();
     private final AtomicLong seq = new AtomicLong(2000);
     private final AtomicLong tplSeq = new AtomicLong(System.currentTimeMillis());
 
     public DashboardAppService(
             ObjectProvider<DashboardGateway> repository,
-            ObjectProvider<DatasetService> datasetService
+            ObjectProvider<DatasetService> datasetService,
+            ObjectProvider<DatasetPermissionService> permissions,
+            ObjectProvider<EffectiveAccessService> access
     ) {
         this.repository = repository;
         this.datasetService = datasetService;
+        this.permissions = permissions;
+        this.access = access;
         seed();
     }
 
@@ -110,16 +117,48 @@ public class DashboardAppService {
 
     public List<BusiNodeVO> tree() {
         DashboardGateway repo = repository.getIfAvailable();
-        if (repo != null) return repo.tree();
-        List<BusiNodeVO> roots = new ArrayList<>();
-        for (MemDash d : mem.values()) {
-            if (!"0".equals(d.meta.pid())) continue;
-            roots.add(new BusiNodeVO(
-                    d.meta.id(), d.meta.pid(), d.meta.name(), d.meta.nodeType(),
-                    "dashboard".equals(d.meta.nodeType()), List.of()
-            ));
+        List<BusiNodeVO> raw;
+        if (repo != null) {
+            raw = repo.tree();
+        } else {
+            List<BusiNodeVO> roots = new ArrayList<>();
+            for (MemDash d : mem.values()) {
+                if (!"0".equals(d.meta.pid())) continue;
+                roots.add(new BusiNodeVO(
+                        d.meta.id(), d.meta.pid(), d.meta.name(), d.meta.nodeType(),
+                        "dashboard".equals(d.meta.nodeType()), List.of()
+                ));
+            }
+            raw = roots;
         }
-        return roots;
+        return filterTree(raw);
+    }
+
+    private List<BusiNodeVO> filterTree(List<BusiNodeVO> nodes) {
+        AuthPrincipal principal = AuthContext.get();
+        EffectiveAccessService acl = access.getIfAvailable();
+        if (acl == null) return nodes;
+        if (principal == null) return List.of();
+        if (EffectiveAccessService.isWorkspaceAdmin(principal) || principal.hasPermission("dashboard:manage")) {
+            return nodes;
+        }
+        Set<String> allowed = acl.grantedDashboardIds(principal);
+        return filterTree(nodes, allowed);
+    }
+
+    private static List<BusiNodeVO> filterTree(List<BusiNodeVO> nodes, Set<String> allowed) {
+        List<BusiNodeVO> out = new ArrayList<>();
+        for (BusiNodeVO n : nodes) {
+            if ("dashboard".equals(n.nodeType())) {
+                if (allowed.contains(n.id())) out.add(n);
+                continue;
+            }
+            List<BusiNodeVO> kids = filterTree(n.children() == null ? List.of() : n.children(), allowed);
+            if (!kids.isEmpty()) {
+                out.add(new BusiNodeVO(n.id(), n.pid(), n.name(), n.nodeType(), n.leaf(), kids));
+            }
+        }
+        return out;
     }
 
     public DashboardNodeVO create(DashboardCreateRequest req) {
@@ -151,7 +190,7 @@ public class DashboardAppService {
             MemDash d = new MemDash(
                     meta,
                     new DashboardLayoutVO(72, 36, null, 0, Map.of(),
-                            Map.of("enabled", true, "device", "iphone-14", "bg", "#f5f6f8", "components", List.of())),
+                            Map.of("enabled", false, "device", "iphone-14", "bg", "#f5f6f8", "components", List.of())),
                     new ArrayList<>(),
                     new HashMap<>(),
                     null,
@@ -163,6 +202,10 @@ public class DashboardAppService {
             mem.put(id, d);
         }
         applyTemplate(meta.id(), templateId);
+        DatasetPermissionService acl = permissions.getIfAvailable();
+        if (acl != null && (meta.nodeType() == null || "dashboard".equals(meta.nodeType()))) {
+            acl.grantOwner("dashboard", meta.id(), AuthContext.get());
+        }
         // re-read so contentId/version reflect template writes
         return get(meta.id(), "draft").map(DashboardDetailVO::meta).orElse(meta);
     }
@@ -180,9 +223,10 @@ public class DashboardAppService {
         );
         if (bp.isEmpty()) return;
 
-        if (!bp.extStyle().isEmpty()) {
+        Map<String, Object> mobile = bp.mobile() == null || bp.mobile().isEmpty() ? null : bp.mobile();
+        if (!bp.extStyle().isEmpty() || mobile != null) {
             updateLayout(dashboardId, new DashboardLayoutUpdateRequest(
-                    72, 120, null, 0, bp.extStyle(), null, "1"
+                    72, 120, null, 0, bp.extStyle(), mobile, "1"
             ));
         }
         for (ChartViewVO ch : bp.charts().values()) {

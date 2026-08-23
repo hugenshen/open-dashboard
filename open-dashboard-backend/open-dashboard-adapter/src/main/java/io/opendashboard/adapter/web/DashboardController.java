@@ -1,6 +1,7 @@
 package io.opendashboard.adapter.web;
 
 import io.opendashboard.application.DashboardAppService;
+import io.opendashboard.application.EffectiveAccessService;
 import io.opendashboard.domain.DashboardDtos.BusiNodeRequest;
 import io.opendashboard.domain.DashboardDtos.BusiNodeVO;
 import io.opendashboard.domain.DashboardDtos.ChartViewSaveRequest;
@@ -41,9 +42,11 @@ import java.util.Map;
 public class DashboardController {
 
     private final DashboardAppService service;
+    private final EffectiveAccessService access;
 
-    public DashboardController(DashboardAppService service) {
+    public DashboardController(DashboardAppService service, EffectiveAccessService access) {
         this.service = service;
+        this.access = access;
     }
 
     @GetMapping("/dashboard/templates")
@@ -56,6 +59,7 @@ public class DashboardController {
             @PathVariable String id,
             @RequestParam(defaultValue = "draft") String view
     ) {
+        access.requireDashboardView(id);
         return service.get(id, view).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -110,6 +114,7 @@ public class DashboardController {
 
     @GetMapping("/dashboard/{id}/status")
     public ResponseEntity<DashboardStatusVO> status(@PathVariable String id) {
+        access.requireDashboardView(id);
         return service.status(id).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -118,6 +123,7 @@ public class DashboardController {
             @PathVariable String id,
             @RequestParam(defaultValue = "draft") String view
     ) {
+        access.requireDashboardView(id);
         return service.getLinkages(id, view).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -141,6 +147,7 @@ public class DashboardController {
 
     @GetMapping("/dashboard/{id}/share")
     public ResponseEntity<DashboardShareVO> getShare(@PathVariable String id) {
+        access.requireDashboardView(id);
         return service.getShare(id).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -182,6 +189,7 @@ public class DashboardController {
 
     @GetMapping("/dashboardTree/barInfo/{id}")
     public ResponseEntity<DashboardBarVO> barInfo(@PathVariable String id) {
+        access.requireDashboardView(id);
         return service.barInfo(id).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

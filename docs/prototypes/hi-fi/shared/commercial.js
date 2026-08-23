@@ -935,12 +935,21 @@ const THEMES = {
   ocean:   { brand:'#0ea5e9', series:['#0ea5e9','#14b8a6','#6366f1','#f59e0b'] },
   forest:  { brand:'#059669', series:['#059669','#84cc16','#0d9488','#ca8a04'] },
   rose:    { brand:'#e11d48', series:['#e11d48','#f97316','#a855f7','#64748b'] },
-  mono:    { brand:'#334155', series:['#334155','#64748b','#94a3b8','#cbd5e1'] }
+  mono:    { brand:'#334155', series:['#334155','#64748b','#94a3b8','#cbd5e1'] },
+  amber:   { brand:'#d97706', series:['#d97706','#2563eb','#059669','#dc2626'] },
+  orange:  { brand:'#ea580c', series:['#ea580c','#f59e0b','#3370ff','#10b981'] },
+  violet:  { brand:'#7c3aed', series:['#7c3aed','#6366f1','#db2777','#f59e0b'] }
 };
 
 const state = {
   module: 'workbench', // workbench | conversation | datasource | dataset | dashboard | report
-  screen: 'list',      // list | editor | preview（仪表盘）；报告用 list | editor
+  screen: 'list',      // list | editor | preview | templates
+  tplCat: 'all',
+  tplSearch: '',
+  tplPreviewId: null,
+  tplDevice: 'pc',
+  editorFrom: 'list', // list | templates — 编辑器返回去向
+  _pushRoute: false,
   phase: 'a',
   mobile: false,
   editSurface: 'pc', // pc | mobile（编辑器画布）
@@ -972,7 +981,10 @@ const state = {
   rptInspCollapsed: false,
   _rptChartProxy: null,
   folderFilter: 'all',
+  statusFilter: 'all',
+  updaterFilter: 'all',
   search: '',
+  listDrawerOpen: false, // 仪表盘/报告列表：点行开抽屉，默认不占详情栏
   srcId: 'src_mysql_erp',
   datasetId: 'ds_sales',
   dsWizardStep: 1,
@@ -982,6 +994,10 @@ const state = {
   chartInst: {},
   layout: { push: true, compactOnDrop: false, showGrid: true }
 };
+
+function isPreviewReadonly() {
+  return state.screen === 'preview';
+}
 
 function toast(msg, type='') {
   const el = document.createElement('div');
@@ -1021,12 +1037,26 @@ function defaultEncode(kind) {
 
 function mkChart(type, title, encodeExtra = {}, styleExtra = {}, datasetId = 'ds_sales') {
   const id = uid('chart');
+  const chrome = defaultChartStyle();
+  const style = { ...chrome, ...styleExtra };
+  // 卡片外壳默认白底浅标题栏；渐变主视觉 KPI 保留装饰底。
+  if (!isDecorBg(style.bg)) {
+    style.bg = chrome.bg;
+    style.titleBg = chrome.titleBg;
+    style.titleColor = chrome.titleColor;
+  }
+  style.headerBg = chrome.headerBg;
+  style.headerColor = chrome.headerColor;
+  style.rowHeadBg = chrome.rowHeadBg;
+  style.rowHeadColor = chrome.rowHeadColor;
+  style.cornerBg = chrome.cornerBg;
+  style.cornerColor = chrome.cornerColor;
   return {
     id,
     chart: {
       id, title, chartType: type, datasetId,
       encode: { ...defaultEncode(type), ...encodeExtra },
-      style: { ...defaultChartStyle(), ...styleExtra }
+      style
     }
   };
 }
@@ -1043,6 +1073,19 @@ function packDash(d, meta = {}) {
 }
 
 /** items: {type:'chart', ref, x,y,w,h} | {type:'slicer'|'text', props, x,y,w,h} */
+function extraTrio(y, opts) {
+  opts = opts || {};
+  const ds = opts.ds || 'ds_sales';
+  const a = mkChart('hbar', opts.rank || '排行', { category: opts.rankCat || 'salesman', value: opts.val || 'amount', format: opts.format }, { showLabel: true }, ds);
+  const b = mkChart('area', opts.trend || '趋势', { category: opts.trendCat || 'product', value: opts.val || 'amount', format: opts.format }, { smooth: true }, ds);
+  const c = mkChart(opts.third || 'pie', opts.struct || '结构', { category: opts.pieCat || 'channel', value: opts.val || 'amount', format: opts.format }, opts.third === 'table' ? { pageSize: 6 } : {}, ds);
+  return [
+    { type: 'chart', ref: a, x: 0, y, w: 4, h: 4 },
+    { type: 'chart', ref: b, x: 4, y, w: 4, h: 4 },
+    { type: 'chart', ref: c, x: 8, y, w: 4, h: 4 }
+  ];
+}
+
 function assembleDash(d, items) {
   d.charts = {};
   d.components = items.map((it, i) => {
@@ -1086,6 +1129,458 @@ function seedSalesMobile(d) {
       z: m.components.length + 1, styleSync: true, style: null
     });
     y += 4;
+  });
+}
+
+/** 模板开箱即带一份可用的移动稿，用户不必再勾选上板。 */
+function autoSeedMobileLayout(d) {
+  const m = ensureMobile(d);
+  m.enabled = true;
+  m.device = 'iphone_14';
+  m.bg = '#f0f2f5';
+  m.components = [];
+  let y = 0;
+  const isKpi = (c) => {
+    const ch = d.charts[c.chartId];
+    return !!(ch && ch.chartType === 'kpi');
+  };
+  const bars = (d.components || []).filter(c => c.type === 'query' || c.type === 'slicer' || c.type === 'text');
+  const kpis = (d.components || []).filter(isKpi);
+  const rest = (d.components || []).filter(c => !bars.includes(c) && !kpis.includes(c));
+  bars.forEach((pc) => {
+    m.components.push({
+      id: uid('m'), refId: pc.id, x: 0, y, w: 6, h: 1,
+      z: m.components.length + 1, styleSync: true, style: null
+    });
+    y += 1;
+  });
+  kpis.forEach((pc, i) => {
+    m.components.push({
+      id: uid('m'), refId: pc.id,
+      x: (i % 2) * 3, y: y + Math.floor(i / 2) * 2, w: 3, h: 2,
+      z: m.components.length + 1, styleSync: true, style: null
+    });
+  });
+  y += Math.ceil(kpis.length / 2) * 2;
+  rest.forEach((pc) => {
+    m.components.push({
+      id: uid('m'), refId: pc.id, x: 0, y, w: 6, h: 4,
+      z: m.components.length + 1, styleSync: true, style: null
+    });
+    y += 4;
+  });
+}
+
+function rematerializeDash(src, name) {
+  const d = clone(src);
+  d.id = uid('dash');
+  d.name = name || src.name;
+  d.status = 'draft';
+  d.share = null;
+  d.contentId = '1';
+  d.version = 1;
+  const chartMap = {};
+  const newCharts = {};
+  Object.values(d.charts || {}).forEach((ch) => {
+    const nid = uid('chart');
+    chartMap[ch.id] = nid;
+    newCharts[nid] = { ...ch, id: nid };
+  });
+  d.charts = newCharts;
+  const compMap = {};
+  d.components = (d.components || []).map((c) => {
+    const nid = uid('w');
+    compMap[c.id] = nid;
+    return {
+      ...c,
+      id: nid,
+      chartId: c.chartId ? (chartMap[c.chartId] || c.chartId) : c.chartId
+    };
+  });
+  d.linkages = (d.linkages || []).map((l) => ({
+    ...l,
+    id: uid('l'),
+    sourceChartId: chartMap[l.sourceChartId] || l.sourceChartId,
+    targetChartId: chartMap[l.targetChartId] || l.targetChartId
+  }));
+  d.jumps = (d.jumps || []).map((j) => ({
+    ...j,
+    id: uid('j'),
+    sourceChartId: chartMap[j.sourceChartId] || j.sourceChartId
+  }));
+  d.alerts = (d.alerts || []).map((a) => ({
+    ...a,
+    id: uid('a'),
+    chartId: chartMap[a.chartId] || a.chartId
+  }));
+  d.mobile = {
+    enabled: false,
+    device: (d.mobile && d.mobile.device) || 'iphone_14',
+    bg: (d.mobile && d.mobile.bg) || '#f0f2f5',
+    components: []
+  };
+  return d;
+}
+
+function openTemplateMarket() {
+  state.module = 'dashboard';
+  if (state.screen !== 'templates') state._pushRoute = true;
+  state.screen = 'templates';
+  state.tplPreviewId = null;
+  if (pageMod() !== 'dashboard') {
+    location.href = moduleHref('dashboard', 'templates');
+    return;
+  }
+  render();
+}
+
+function renameCharts(d, titles) {
+  Object.values(d.charts || {}).forEach((ch) => {
+    if (titles[ch.title]) ch.title = titles[ch.title];
+  });
+  return d;
+}
+
+function stampDash(d, spec) {
+  if (spec.titles) renameCharts(d, spec.titles);
+  if (spec.banner) {
+    const t = (d.components || []).find((c) => c.type === 'text');
+    if (t) t.props = { ...(t.props || {}), content: spec.banner };
+  }
+  return d;
+}
+
+/** 白卡片 + 浅标题栏。保留 theme / KPI 强调色，以及少量渐变主视觉。 */
+function isDecorBg(v) {
+  const s = String(v || '');
+  return s.includes('gradient') || s === 'transparent';
+}
+
+function kpiHeroStyle(from, to) {
+  return {
+    bg: `linear-gradient(155deg, ${from} 0%, ${to} 100%)`,
+    titleBg: 'transparent',
+    titleBg: 'transparent',
+    titleColor: 'rgba(255,255,255,.9)',
+    valueColor: '#ffffff',
+    borderColor: 'transparent',
+    borderWidth: 0,
+    showTitle: false,
+    valueSize: 26
+  };
+}
+
+function heroTextProps(text) {
+  return {
+    content: text,
+    fontSize: 18,
+    color: '#fff',
+    bg: 'linear-gradient(118deg, #6d5efc 0%, #ff7a59 46%, #3ec8ff 100%)',
+    radius: 12
+  };
+}
+
+function inferTemplateSlicerSpec(d) {
+  const counts = {};
+  Object.values(d.charts || {}).forEach((ch) => {
+    const id = ch.datasetId || 'ds_sales';
+    counts[id] = (counts[id] || 0) + 1;
+  });
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'ds_sales';
+  if (top === 'ds_ops') return { field: 'channel', label: '来源', datasetId: top };
+  if (top === 'ds_fin') return { field: 'dept', label: '部门', datasetId: top };
+  if (top === 'ds_inv') return { field: 'warehouse', label: '仓库', datasetId: top };
+  if (top === 'ds_crm') return { field: 'region', label: '区域', datasetId: top };
+  return { field: 'region', label: '区域', datasetId: top };
+}
+
+/** 模板稿面自带筛选：日期区间 + 一个业务维度切片。空白画布不走这里。 */
+function ensureTemplateFilters(d) {
+  const comps = d.components || [];
+  if (!comps.length) return d;
+  const tabId = comps[0].tabId || 'tab_main';
+  const slicers = comps.filter((c) => c.type === 'slicer');
+  const hasDate = slicers.some((c) => (c.props || {}).kind === 'date');
+  const spec = inferTemplateSlicerSpec(d);
+  const maxZ = comps.reduce((m, c) => Math.max(m, c.z || 0), 0);
+  const mkDate = (x, y, z) => ({
+    id: uid('w'), tabId, type: 'slicer', x, y, w: 5, h: 1, z,
+    props: { kind: 'date', label: '日期' }
+  });
+  const mkDim = (x, y, z) => ({
+    id: uid('w'), tabId, type: 'slicer', x, y, w: 7, h: 1, z,
+    props: { field: spec.field, label: spec.label, datasetId: spec.datasetId }
+  });
+
+  if (!slicers.length) {
+    const banner = comps.find((c) => c.type === 'text' && c.y === 0);
+    const y = banner ? (banner.y + (banner.h || 1)) : 0;
+    comps.forEach((c) => { if (c.y >= y) c.y += 1; });
+    comps.push(mkDate(0, y, maxZ + 1), mkDim(5, y, maxZ + 2));
+    d.components = comps;
+    return d;
+  }
+
+  if (!hasDate) {
+    const first = slicers[0];
+    if (first.w >= 8 && first.x === 0) {
+      first.w = Math.max(4, first.w - 5);
+      first.x = 5;
+      first.props = { ...(first.props || {}), datasetId: first.props?.datasetId || spec.datasetId };
+      comps.push(mkDate(0, first.y, maxZ + 1));
+    } else {
+      const y = first.y;
+      comps.forEach((c) => { if (c.y >= y) c.y += 1; });
+      comps.push(mkDate(0, y, maxZ + 1));
+    }
+    d.components = comps;
+  }
+  return d;
+}
+
+function unifyTemplateChrome(d) {
+  const chrome = defaultChartStyle();
+  Object.values(d.charts || {}).forEach((ch) => {
+    const st = ch.style || {};
+    const decor = isDecorBg(st.bg);
+    ch.style = {
+      ...st,
+      bg: decor ? st.bg : chrome.bg,
+      borderColor: decor ? (st.borderColor || 'transparent') : chrome.borderColor,
+      borderWidth: decor ? (st.borderWidth ?? 0) : chrome.borderWidth,
+      cardRadius: chrome.cardRadius,
+      titleBg: decor ? (st.titleBg || 'transparent') : chrome.titleBg,
+      titleBg: decor ? (st.titleBg || st.titleBg || 'transparent') : chrome.titleBg,
+      titleColor: decor && st.titleColor ? st.titleColor : chrome.titleColor,
+      headerBg: chrome.headerBg,
+      headerColor: chrome.headerColor,
+      rowHeadBg: chrome.rowHeadBg,
+      rowHeadColor: chrome.rowHeadColor,
+      cornerBg: chrome.cornerBg,
+      cornerColor: chrome.cornerColor
+    };
+  });
+  (d.components || []).forEach((c) => {
+    if (c.type !== 'text' && c.type !== 'slicer') return;
+    const p = { ...(c.props || {}) };
+    if (!isDecorBg(p.bg)) delete p.bg;
+    c.props = p;
+  });
+  return ensureTemplateFilters(d);
+}
+
+function sceneTheme(d, name) {
+  d.theme = name;
+  const series = (THEMES[name] || THEMES.default).series;
+  let i = 0;
+  Object.values(d.charts || {}).forEach((ch) => {
+    if (ch.chartType === 'kpi' && !(ch.style && ch.style.valueColor)) {
+      ch.style = { ...(ch.style || {}), valueColor: series[i++ % series.length] };
+    }
+  });
+  return d;
+}
+
+function templateFamilyBuilder(family) {
+  const map = {
+    sales: demoDash,
+    ops: demoOpsDash,
+    finance: demoFinDash,
+    region: demoRegionDash,
+    inventory: demoInvDash,
+    crm: demoCrmDash,
+    promo: demoPromoDash,
+    'kpi-wall': demoKpiWallDash
+  };
+  return map[family] || demoDash;
+}
+
+function templateDashBuilder(item) {
+  const byId = {
+    exec: demoExecDash,
+    'kpi-wall': demoKpiWallDash,
+    hr: demoHrDash,
+    sales: demoDash,
+    region: demoRegionDash,
+    channel: demoChannelDash,
+    product: demoProductDash,
+    ops: demoOpsDash,
+    promo: demoPromoDash,
+    funnel: demoFunnelDash,
+    traffic: demoTrafficDash,
+    sla: demoSlaDash,
+    finance: demoFinDash,
+    cash: demoCashDash,
+    cost: demoCostDash,
+    gmv: demoGmvDash,
+    store: demoStoreDash,
+    crm: demoCrmDash,
+    cohort: demoCohortDash,
+    nps: demoNpsDash,
+    inventory: demoInvDash,
+    supply: demoSupplyDash,
+    quality: demoQualityDash
+  };
+  const fn = byId[item.id] || templateFamilyBuilder(item.family);
+  return () => unifyTemplateChrome(fn());
+}
+
+function applyPageTemplate(id) {
+  const catalog = window.OD_PAGE_TEMPLATES;
+  const item = catalog ? catalog.byId(id) : { id: 'blank', name: '空白画布', family: 'blank', cat: 'blank', responsive: false };
+  const catFolder = {
+    rec: '推荐', sales: '销售', ops: '运营', fin: '财务',
+    retail: '零售', crm: '客户', supply: '供应', blank: '未分组'
+  };
+  let d;
+  if (item.family === 'blank' || item.id === 'blank') {
+    d = packDash(emptyDash(item.name || '未命名仪表盘'), {
+      folder: '未分组', desc: '空白画布', updateBy: '当前用户', updateTime: '刚刚'
+    });
+  } else {
+    d = rematerializeDash(templateDashBuilder(item)(), item.name);
+    d = packDash(d, {
+      folder: catFolder[item.cat] || '未分组',
+      desc: item.desc || '',
+      updateBy: '当前用户',
+      updateTime: '刚刚'
+    });
+    if (item.responsive !== false) autoSeedMobileLayout(d);
+  }
+  state.dashboards.unshift(d);
+  selectDash(d.id);
+  state.module = 'dashboard';
+  state.screen = 'editor';
+  state.editorFrom = 'templates';
+  state.tplPreviewId = null;
+  toast('已应用模板 · ' + d.name, 'ok');
+  render();
+}
+
+function renderTemplateMarket(app) {
+  const catalog = window.OD_PAGE_TEMPLATES;
+  if (!catalog) {
+    app.innerHTML = '<div class="tpl-market"><p style="padding:24px">模板目录未加载</p></div>';
+    return;
+  }
+  const cat = state.tplCat || 'all';
+  const q = state.tplSearch || '';
+  const items = catalog.filterItems(cat, q);
+  const previewId = state.tplPreviewId;
+  const previewItem = previewId ? catalog.byId(previewId) : null;
+
+  if (previewItem && previewId) {
+    const device = state.tplDevice || 'pc';
+    app.innerHTML = `
+      <div class="tpl-preview">
+        <div class="tpl-prev-bar">
+          <button type="button" class="btn ghost" id="tplBack">← 返回市场</button>
+          <h2>${esc(previewItem.name)}</h2>
+          <span class="sub">${previewItem.responsive ? '开箱多端' : '空白 · 可手排移动端'}</span>
+          <div class="spacer"></div>
+          <div class="tpl-devices" role="tablist">
+            <button type="button" data-dev="pc" class="${device === 'pc' ? 'on' : ''}">PC</button>
+            <button type="button" data-dev="pad" class="${device === 'pad' ? 'on' : ''}">平板</button>
+            <button type="button" data-dev="phone" class="${device === 'phone' ? 'on' : ''}">手机</button>
+          </div>
+          <button type="button" class="btn primary" id="tplApplyPrev">应用此模板</button>
+        </div>
+        <div class="tpl-prev-stage">
+          <div class="tpl-frame ${device === 'pad' ? 'is-pad' : ''} ${device === 'phone' ? 'is-phone' : ''}">
+            ${catalog.sketch(previewItem)}
+            <p style="margin-top:10px;font-size:12px;color:var(--text-3)">${esc(previewItem.desc)}</p>
+          </div>
+        </div>
+      </div>`;
+    app.querySelector('#tplBack').onclick = () => {
+      state.tplPreviewId = null;
+      render();
+    };
+    app.querySelector('#tplApplyPrev').onclick = () => applyPageTemplate(previewItem.id);
+    app.querySelectorAll('[data-dev]').forEach((b) => {
+      b.onclick = () => { state.tplDevice = b.dataset.dev; render(); };
+    });
+    return;
+  }
+
+  const catLabel = (catalog.cats.find((c) => c.id === cat) || catalog.cats[0]).label;
+  function tplHeat(id) {
+    let n = 0;
+    for (let i = 0; i < id.length; i++) n += id.charCodeAt(i) * (i + 2);
+    return { views: ((8 + (n % 90)) / 10).toFixed(1) + '万', uses: 36 + (n % 420) };
+  }
+  function cardHtml(it) {
+    const heat = tplHeat(it.id);
+    return `<article class="tpl-card" data-tid="${esc(it.id)}">
+      ${it.rec ? '<i class="tpl-ribbon"></i>' : ''}
+      <div class="tpl-cover">
+        ${catalog.sketch(it)}
+        <div class="tpl-hover">
+          <button type="button" class="btn" data-prev="${esc(it.id)}">预览</button>
+          <button type="button" class="btn primary" data-apply="${esc(it.id)}">应用</button>
+        </div>
+      </div>
+      <div class="tpl-meta">
+        <div class="tpl-meta-row"><b>${esc(it.name)}</b><span class="tpl-heat">${heat.views} · ${heat.uses}</span></div>
+        <span class="tpl-official">${it.id === 'blank' ? '空白画布' : '官方'}</span>
+      </div>
+    </article>`;
+  }
+  app.innerHTML = `
+    <div class="tpl-market">
+      <div class="tpl-head">
+        <button type="button" class="btn ghost" id="tplToList">← 仪表盘</button>
+        <div>
+          <h2>从模板新建</h2>
+          <div class="sub">${items.length} 张 · 应用后手机端已排好，不必再改造</div>
+        </div>
+        <div class="spacer"></div>
+        <label class="tpl-search"><span>⌕</span>
+          <input id="tplSearch" placeholder="搜索模板" value="${esc(q)}" />
+        </label>
+      </div>
+      <div class="tpl-body">
+        <aside class="tpl-cats">
+          <div class="tpl-cats-head">模板市场</div>
+          ${catalog.cats.map((c) => `<button type="button" class="tpl-cat ${c.id === cat ? 'on' : ''}" data-cat="${c.id}">${esc(c.label)}</button>`).join('')}
+        </aside>
+        <div class="tpl-grid-wrap">
+          ${q ? `<div class="tpl-search-hit">搜索「${esc(q)}」为你找到 ${items.length} 个结果</div>` : ''}
+          <div class="tpl-sec">${esc(catLabel)}<small>${items.length} 张</small></div>
+          <div class="tpl-grid">
+            ${items.map((it) => cardHtml(it)).join('') || '<p class="sub">没有匹配的模板</p>'}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  app.querySelector('#tplToList').onclick = () => { state.screen = 'list'; render(); };
+  app.querySelector('#tplSearch').oninput = (e) => {
+    state.tplSearch = e.target.value;
+    const caret = e.target.selectionStart;
+    render();
+    const next = document.querySelector('#tplSearch');
+    if (next) {
+      next.focus();
+      try { next.setSelectionRange(caret, caret); } catch (_) { /* ignore */ }
+    }
+  };
+  app.querySelectorAll('[data-cat]').forEach((b) => {
+    b.onclick = () => { state.tplCat = b.dataset.cat; render(); };
+  });
+  const openPreview = (id) => {
+    state.tplPreviewId = id;
+    state.tplDevice = 'pc';
+    state._pushRoute = true;
+    render();
+  };
+  app.querySelectorAll('.tpl-card').forEach((el) => {
+    el.onclick = () => openPreview(el.dataset.tid);
+  });
+  app.querySelectorAll('[data-prev]').forEach((b) => {
+    b.onclick = (e) => { e.stopPropagation(); openPreview(b.dataset.prev); };
+  });
+  app.querySelectorAll('[data-apply]').forEach((b) => {
+    b.onclick = (e) => { e.stopPropagation(); applyPageTemplate(b.dataset.apply); };
   });
 }
 
@@ -1233,7 +1728,7 @@ function demoInvDash() {
 
 function demoFinDash() {
   const d = emptyDash('财务月报', 'dash_fin');
-  d.theme = 'default';
+  d.theme = 'amber';
   const kpi1 = mkChart('kpi', '累计收入', { value: 'income', calc: 'mom' }, { valueColor: '#059669' }, 'ds_fin');
   const kpi2 = mkChart('kpi', '累计支出', { value: 'expense', calc: 'mom' }, { valueColor: '#dc2626' }, 'ds_fin');
   const kpi3 = mkChart('kpi', '累计利润', { value: 'profit', calc: 'yoy' }, { valueColor: '#2563eb' }, 'ds_fin');
@@ -1296,7 +1791,7 @@ function demoCrmDash() {
 
 function demoPromoDash() {
   const d = emptyDash('促销活动监控', 'dash_promo');
-  d.theme = 'ocean';
+  d.theme = 'orange';
   const kpi1 = mkChart('kpi', '活动 GMV', { value: 'amount', calc: 'mom' }, { valueColor: '#0369a1' });
   const kpi2 = mkChart('kpi', '活动销量', { value: 'qty', format: 'raw', calc: 'mom' }, { valueColor: '#0e7490' });
   const kpi3 = mkChart('kpi', '平均折扣%', { value: 'discount', agg: 'AVG', format: 'fixed1' }, { valueColor: '#c2410c' });
@@ -1327,6 +1822,373 @@ function demoPromoDash() {
   d.linkages = [{ id: 'l_promo', sourceChartId: bar.id, sourceField: 'channel', targetChartId: detail.id, targetField: 'channel', enabled: true }];
   d.status = 'publishedWithDraft';
   return packDash(d, { folder: '运营增长', desc: '大促监控 · 折扣/支付/冲刺榜 · 有未发布改动', updateBy: '李四', updateTime: '2026-07-29 16:05' });
+}
+
+function demoExecDash() {
+  const d = emptyDash('经营驾驶舱', 'dash_exec');
+  d.theme = 'violet';
+  const kpi1 = mkChart('kpi', '收入', { value: 'amount', calc: 'yoy' }, kpiHeroStyle('#ff8a4c', '#ff5d8a'));
+  const kpi2 = mkChart('kpi', '利润', { value: 'profit', calc: 'yoy' }, { valueColor: '#059669', valueSize: 28 });
+  const kpi3 = mkChart('kpi', '订单', { value: 'order_cnt', format: 'raw', calc: 'mom' }, { valueColor: '#0284c7', valueSize: 28 });
+  const kpi4 = mkChart('kpi', '履约率', { value: 'amount', format: 'percent' }, { valueColor: '#0f766e', valueSize: 28 });
+  const line = mkChart('line', '收入趋势', { category: 'product', value: 'amount' }, { smooth: true });
+  const bar = mkChart('bar', '区域贡献', { category: 'region', value: 'amount' }, { showLabel: true });
+  const pie = mkChart('pie', '业务结构', { category: 'channel', value: 'amount' });
+  const table = mkChart('table', '经营明细', { value: 'amount', format: 'raw' }, { pageSize: 8 });
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 2, props: heroTextProps('经营驾驶舱     利润金额  612万     环比 +3.1%') },
+    { type: 'chart', ref: kpi1, x: 0, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: kpi2, x: 3, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: kpi3, x: 6, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: kpi4, x: 9, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: line, x: 0, y: 4, w: 8, h: 5 },
+    { type: 'chart', ref: bar, x: 8, y: 4, w: 4, h: 5 },
+    { type: 'chart', ref: pie, x: 0, y: 9, w: 4, h: 4 },
+    { type: 'chart', ref: table, x: 4, y: 9, w: 8, h: 4 },
+    ...extraTrio(13, { third: 'table', struct: '渠道明细' })
+  ]);
+  d.status = 'draft';
+  return packDash(d, { folder: '推荐', desc: '管理层一屏：收入/利润/订单/履约', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoKpiWallDash() {
+  const d = emptyDash('KPI 墙', 'dash_kpi_wall');
+  d.theme = 'default';
+  const kpis = [
+    mkChart('kpi', 'GMV', { value: 'amount', calc: 'yoy' }, kpiHeroStyle('#6366f1', '#8b5cf6')),
+    mkChart('kpi', '销量', { value: 'qty', format: 'raw', calc: 'mom' }, { valueColor: '#0284c7' }),
+    mkChart('kpi', '利润', { value: 'profit', calc: 'yoy' }, { valueColor: '#059669' }),
+    mkChart('kpi', '客单', { value: 'unit_price', agg: 'AVG', format: 'fixed0' }, { valueColor: '#b45309' }),
+    mkChart('kpi', 'UV', { value: 'order_cnt', format: 'raw' }, { valueColor: '#7c3aed' }),
+    mkChart('kpi', '转化', { value: 'amount', format: 'percent' }, { valueColor: '#0d9488' }),
+    mkChart('kpi', '复购', { value: 'amount', format: 'percent' }, { valueColor: '#c026d3' }),
+    mkChart('kpi', 'NPS', { value: 'qty', format: 'raw' }, { valueColor: '#16a34a' })
+  ];
+  const bar = mkChart('bar', '指标趋势', { category: 'region', value: 'amount' }, { showLabel: true });
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 2, props: heroTextProps('KPI 墙     晨会投屏     一屏八格') },
+    ...kpis.map((ref, i) => ({ type: 'chart', ref, x: (i % 4) * 3, y: 2 + Math.floor(i / 4) * 2, w: 3, h: 2 })),
+    { type: 'chart', ref: bar, x: 0, y: 6, w: 12, h: 5 },
+    ...extraTrio(11, { rank: '区域排行', trend: '品类趋势', struct: '渠道结构' })
+  ]);
+  d.status = 'draft';
+  return packDash(d, { folder: '推荐', desc: '八格指标墙，适合晨会投屏', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoHrDash() {
+  const d = emptyDash('人力编制', 'dash_hr');
+  d.theme = 'violet';
+  const kpi1 = mkChart('kpi', '编制', { value: 'order_cnt', format: 'raw' }, { valueColor: '#7c3aed' });
+  const kpi2 = mkChart('kpi', '在岗', { value: 'qty', format: 'raw', calc: 'mom' }, { valueColor: '#6d28d9' });
+  const kpi3 = mkChart('kpi', '流失率', { value: 'amount', format: 'percent' }, { valueColor: '#e11d48' });
+  const bar = mkChart('bar', '部门编制', { category: 'dept', value: 'qty', format: 'raw' }, { showLabel: true });
+  const pie = mkChart('pie', '流失结构', { category: 'channel', value: 'qty', format: 'raw' });
+  const hbar = mkChart('hbar', '岗位缺口', { category: 'salesman', value: 'qty', format: 'raw' }, { showLabel: true });
+  const table = mkChart('table', '编制明细', { value: 'qty', format: 'raw' }, { pageSize: 8 });
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: '人力编制 · 盯到岗与流失，缺口优先补齐', fontSize: 14, color: '#6b21a8' } },
+    { type: 'chart', ref: kpi1, x: 0, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi2, x: 4, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: kpi3, x: 8, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: bar, x: 0, y: 3, w: 8, h: 5 },
+    { type: 'chart', ref: pie, x: 8, y: 3, w: 4, h: 5 },
+    { type: 'chart', ref: hbar, x: 0, y: 8, w: 6, h: 4 },
+    { type: 'chart', ref: table, x: 6, y: 8, w: 6, h: 4 },
+    ...extraTrio(12, { rank: '司龄排行', trend: '入职趋势', third: 'table', struct: '用工明细' })
+  ]);
+  d.status = 'draft';
+  return packDash(d, { folder: '推荐', desc: '编制、到岗、流失与部门对比', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoFunnelDash() {
+  const d = emptyDash('转化漏斗', 'dash_funnel');
+  d.theme = 'ocean';
+  const kpi1 = mkChart('kpi', '曝光', { value: 'uv', format: 'raw' }, { valueColor: '#0d9488' }, 'ds_ops');
+  const kpi2 = mkChart('kpi', '点击', { value: 'pv', format: 'raw' }, { valueColor: '#0284c7' }, 'ds_ops');
+  const kpi3 = mkChart('kpi', '加购', { value: 'order_cnt', format: 'raw' }, { valueColor: '#0369a1' });
+  const kpi4 = mkChart('kpi', '下单', { value: 'qty', format: 'raw' }, { valueColor: '#0f766e' });
+  const bar = mkChart('bar', '转化漏斗', { category: 'module', value: 'uv', format: 'raw' }, { showLabel: true }, 'ds_ops');
+  const hbar = mkChart('hbar', '端对比', { category: 'platform', value: 'uv', format: 'raw' }, { showLabel: true }, 'ds_ops');
+  const line = mkChart('line', '每日转化', { category: 'day', value: 'uv', format: 'raw' }, { smooth: true }, 'ds_ops');
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: '转化漏斗 · 曝光 → 点击 → 加购 → 下单', fontSize: 14, color: '#115e59' } },
+    { type: 'chart', ref: kpi1, x: 0, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi2, x: 3, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi3, x: 6, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: kpi4, x: 9, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: bar, x: 0, y: 3, w: 7, h: 6 },
+    { type: 'chart', ref: hbar, x: 7, y: 3, w: 5, h: 6 },
+    { type: 'chart', ref: line, x: 0, y: 9, w: 12, h: 4 },
+    ...extraTrio(13, { ds: 'ds_ops', val: 'uv', format: 'raw', rankCat: 'platform', trendCat: 'day', pieCat: 'channel', rank: '端排行', trend: '流量趋势', third: 'table', struct: '来源明细' })
+  ]);
+  d.status = 'draft';
+  return packDash(d, { folder: '运营增长', desc: '曝光→点击→下单漏斗', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoNpsDash() {
+  const d = emptyDash('满意度', 'dash_nps');
+  d.theme = 'forest';
+  const kpi1 = mkChart('kpi', 'NPS', { value: 'qty', format: 'raw' }, { valueColor: '#16a34a' });
+  const kpi2 = mkChart('kpi', '好评率', { value: 'amount', format: 'percent' }, { valueColor: '#15803d' });
+  const kpi3 = mkChart('kpi', '差评率', { value: 'amount', format: 'percent' }, { valueColor: '#dc2626' });
+  const bar = mkChart('bar', '差评分布', { category: 'region', value: 'qty', format: 'raw' }, { showLabel: true });
+  const pie = mkChart('pie', '评价结构', { category: 'channel', value: 'qty', format: 'raw' });
+  const table = mkChart('table', '评价明细', { value: 'qty', format: 'raw' }, { pageSize: 8 });
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: '满意度 · NPS 与差评分布', fontSize: 14, color: '#14532d' } },
+    { type: 'chart', ref: kpi1, x: 0, y: 1, w: 4, h: 3 },
+    { type: 'chart', ref: kpi2, x: 4, y: 1, w: 4, h: 3 },
+    { type: 'chart', ref: kpi3, x: 8, y: 1, w: 4, h: 3 },
+    { type: 'chart', ref: pie, x: 0, y: 4, w: 5, h: 5 },
+    { type: 'chart', ref: bar, x: 5, y: 4, w: 7, h: 5 },
+    { type: 'chart', ref: table, x: 0, y: 9, w: 12, h: 4 },
+    ...extraTrio(13, { rank: '区域评分', trend: '品类口碑', third: 'table', struct: '评价明细' })
+  ]);
+  d.status = 'draft';
+  return packDash(d, { folder: '客户', desc: 'NPS 与差评分布', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+/** 渠道对比：四渠道 KPI + 通栏对比柱 + 双饼，区别于销售分析的区域/趋势骨架 */
+function demoChannelDash() {
+  const d = emptyDash('渠道对比', 'dash_channel');
+  d.theme = 'ocean';
+  const k1 = mkChart('kpi', '线上 GMV', { value: 'amount', calc: 'yoy' }, { valueColor: '#0284c7' });
+  const k2 = mkChart('kpi', '线下 GMV', { value: 'qty', format: 'raw' }, { valueColor: '#0f766e' });
+  const k3 = mkChart('kpi', '经销额', { value: 'profit', calc: 'yoy' }, { valueColor: '#6366f1' });
+  const k4 = mkChart('kpi', '其他渠道', { value: 'order_cnt', format: 'raw' }, { valueColor: '#d97706' });
+  const bar = mkChart('bar', '渠道成交对比', { category: 'channel', value: 'amount' }, { showLabel: true });
+  const pie = mkChart('pie', '渠道结构', { category: 'channel', value: 'amount' });
+  const pie2 = mkChart('pie', '支付结构', { category: 'pay_type', value: 'amount' });
+  const table = mkChart('table', '渠道明细', { value: 'amount', format: 'raw' }, { pageSize: 8 });
+  assembleDash(d, [
+    { type: 'slicer', x: 0, y: 0, w: 12, h: 1, props: { field: 'channel', label: '渠道' } },
+    { type: 'chart', ref: k1, x: 0, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: k2, x: 3, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: k3, x: 6, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: k4, x: 9, y: 1, w: 3, h: 2 },
+    { type: 'chart', ref: bar, x: 0, y: 3, w: 12, h: 5 },
+    { type: 'chart', ref: pie, x: 0, y: 8, w: 4, h: 5 },
+    { type: 'chart', ref: pie2, x: 4, y: 8, w: 4, h: 5 },
+    { type: 'chart', ref: table, x: 8, y: 8, w: 4, h: 5 },
+    ...extraTrio(13, { rank: '销售员渠道', trend: '产品趋势', third: 'table', struct: '渠道明细' })
+  ]);
+  return packDash(d, { folder: '销售', desc: '线上/线下/经销结构对照', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoProductDash() {
+  const d = emptyDash('产品贡献', 'dash_product');
+  d.theme = 'ocean';
+  const k1 = mkChart('kpi', 'SKU 贡献', { value: 'amount', calc: 'yoy' }, { valueColor: '#0891b2' });
+  const k2 = mkChart('kpi', '爆款数', { value: 'order_cnt', format: 'raw' }, { valueColor: '#0e7490' });
+  const k3 = mkChart('kpi', '滞销 SKU', { value: 'qty', format: 'raw' }, { valueColor: '#c2410c' });
+  const hbar = mkChart('hbar', '品类贡献排行', { category: 'category', value: 'amount' }, { showLabel: true });
+  const line = mkChart('line', '品类走势', { category: 'product', value: 'amount' }, { smooth: true });
+  const pie = mkChart('pie', '品类结构', { category: 'category', value: 'amount' });
+  assembleDash(d, [
+    { type: 'chart', ref: k1, x: 0, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: k2, x: 4, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: k3, x: 8, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: hbar, x: 0, y: 2, w: 12, h: 5 },
+    { type: 'chart', ref: line, x: 0, y: 7, w: 7, h: 5 },
+    { type: 'chart', ref: pie, x: 7, y: 7, w: 5, h: 5 },
+    ...extraTrio(12, { rank: '销售员贡献', trend: '产品走势', third: 'table', struct: 'SKU 明细' })
+  ]);
+  return packDash(d, { folder: '销售', desc: 'SKU / 品类贡献与滞销', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoTrafficDash() {
+  const d = emptyDash('流量获客', 'dash_traffic');
+  d.theme = 'ocean';
+  const k1 = mkChart('kpi', '自然流量', { value: 'uv', format: 'raw' }, { valueColor: '#0284c7' }, 'ds_ops');
+  const k2 = mkChart('kpi', '付费流量', { value: 'pv', format: 'raw' }, { valueColor: '#7c3aed' }, 'ds_ops');
+  const k3 = mkChart('kpi', '社交流量', { value: 'duration', agg: 'AVG', format: 'fixed0' }, { valueColor: '#0d9488' }, 'ds_ops');
+  const k4 = mkChart('kpi', '其他', { value: 'bounce', agg: 'AVG', format: 'percent' }, { valueColor: '#ea580c' }, 'ds_ops');
+  const pie = mkChart('pie', '来源结构', { category: 'channel', value: 'uv', format: 'raw' }, {}, 'ds_ops');
+  const bar = mkChart('bar', '端 UV', { category: 'platform', value: 'uv', format: 'raw' }, { showLabel: true }, 'ds_ops');
+  const line = mkChart('line', '来源趋势', { category: 'day', value: 'uv', format: 'raw' }, { smooth: true }, 'ds_ops');
+  assembleDash(d, [
+    { type: 'chart', ref: k1, x: 0, y: 0, w: 3, h: 2 },
+    { type: 'chart', ref: k2, x: 3, y: 0, w: 3, h: 2 },
+    { type: 'chart', ref: k3, x: 6, y: 0, w: 3, h: 2 },
+    { type: 'chart', ref: k4, x: 9, y: 0, w: 3, h: 2 },
+    { type: 'chart', ref: pie, x: 0, y: 2, w: 5, h: 6 },
+    { type: 'chart', ref: bar, x: 5, y: 2, w: 7, h: 6 },
+    { type: 'chart', ref: line, x: 0, y: 8, w: 12, h: 4 },
+    ...extraTrio(12, { ds: 'ds_ops', val: 'uv', format: 'raw', rankCat: 'platform', trendCat: 'day', pieCat: 'channel', third: 'table', struct: '来源明细' })
+  ]);
+  return packDash(d, { folder: '运营', desc: '来源结构与端对比', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoSlaDash() {
+  const d = emptyDash('服务时效', 'dash_sla');
+  d.theme = 'mono';
+  const k1 = mkChart('kpi', '按时率', { value: 'uv', format: 'percent' }, { valueColor: '#334155' }, 'ds_ops');
+  const k2 = mkChart('kpi', '均响应', { value: 'duration', agg: 'AVG', format: 'fixed1' }, { valueColor: '#0f766e' }, 'ds_ops');
+  const k3 = mkChart('kpi', '积压单', { value: 'bounce', agg: 'AVG', format: 'raw' }, { valueColor: '#dc2626' }, 'ds_ops');
+  const line = mkChart('line', '时效走势', { category: 'day', value: 'duration', agg: 'AVG' }, { smooth: true }, 'ds_ops');
+  const pie = mkChart('pie', '工单类型', { category: 'channel', value: 'uv', format: 'raw' }, {}, 'ds_ops');
+  const table = mkChart('table', '工单明细', { value: 'uv', format: 'raw' }, { pageSize: 8 }, 'ds_ops');
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: '服务时效 · 盯按时率与超时工单', fontSize: 14, color: '#1f2329' } },
+    { type: 'chart', ref: k1, x: 0, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: k2, x: 4, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: k3, x: 8, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: line, x: 0, y: 3, w: 12, h: 5 },
+    { type: 'chart', ref: pie, x: 0, y: 8, w: 5, h: 5 },
+    { type: 'chart', ref: table, x: 5, y: 8, w: 7, h: 5 },
+    ...extraTrio(13, { ds: 'ds_ops', val: 'uv', format: 'raw', rankCat: 'platform', trendCat: 'day', pieCat: 'channel', rank: '端积压', trend: '响应趋势', third: 'table', struct: '来源工单' })
+  ]);
+  return packDash(d, { folder: '运营', desc: '工单时效与积压', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoCashDash() {
+  const d = emptyDash('现金流', 'dash_cash');
+  d.theme = 'amber';
+  const k1 = mkChart('kpi', '回款', { value: 'income', calc: 'mom' }, { valueColor: '#059669' }, 'ds_fin');
+  const k2 = mkChart('kpi', '支出', { value: 'expense', calc: 'mom' }, { valueColor: '#dc2626' }, 'ds_fin');
+  const k3 = mkChart('kpi', '净现金', { value: 'profit', calc: 'yoy' }, { valueColor: '#d97706' }, 'ds_fin');
+  const line = mkChart('line', '回款走势', { category: 'month', value: 'income' }, { smooth: true }, 'ds_fin');
+  const area = mkChart('area', '支出走势', { category: 'month', value: 'expense' }, { smooth: true }, 'ds_fin');
+  const bar = mkChart('bar', '科目收支', { category: 'subject', value: 'income' }, { showLabel: true }, 'ds_fin');
+  assembleDash(d, [
+    { type: 'chart', ref: k1, x: 0, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: k2, x: 4, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: k3, x: 8, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: line, x: 0, y: 2, w: 6, h: 5 },
+    { type: 'chart', ref: area, x: 6, y: 2, w: 6, h: 5 },
+    { type: 'chart', ref: bar, x: 0, y: 7, w: 12, h: 5 },
+    ...extraTrio(12, { ds: 'ds_fin', val: 'income', rankCat: 'dept', trendCat: 'month', pieCat: 'subject', rank: '部门回款', trend: '月度回款', struct: '科目结构' })
+  ]);
+  return packDash(d, { folder: '财务', desc: '回款、支出与净现金', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoCostDash() {
+  const d = emptyDash('费用管控', 'dash_cost');
+  d.theme = 'amber';
+  const k1 = mkChart('kpi', '费用', { value: 'expense', calc: 'mom' }, { valueColor: '#d97706' }, 'ds_fin');
+  const k2 = mkChart('kpi', '预算执行', { value: 'income', format: 'percent' }, { valueColor: '#2563eb' }, 'ds_fin');
+  const k3 = mkChart('kpi', '超支部门', { value: 'profit', format: 'raw' }, { valueColor: '#dc2626' }, 'ds_fin');
+  const hbar = mkChart('hbar', '部门费用', { category: 'dept', value: 'expense' }, { showLabel: true }, 'ds_fin');
+  const pie = mkChart('pie', '费用结构', { category: 'subject', value: 'expense' }, {}, 'ds_fin');
+  const table = mkChart('table', '科目明细', { value: 'expense', format: 'raw' }, { pageSize: 8 }, 'ds_fin');
+  assembleDash(d, [
+    { type: 'chart', ref: k1, x: 0, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: k2, x: 4, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: k3, x: 8, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: hbar, x: 0, y: 2, w: 7, h: 4 },
+    { type: 'chart', ref: pie, x: 7, y: 2, w: 5, h: 4 },
+    { type: 'chart', ref: table, x: 0, y: 6, w: 12, h: 4 },
+    ...extraTrio(10, { ds: 'ds_fin', val: 'expense', rankCat: 'dept', trendCat: 'month', pieCat: 'subject', third: 'table', struct: '费用明细' })
+  ]);
+  return packDash(d, { folder: '财务', desc: '部门费用与超支', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoGmvDash() {
+  const d = emptyDash('商户入账', 'dash_gmv');
+  d.theme = 'default';
+  const k1 = mkChart('kpi', '入账', { value: 'amount', calc: 'yoy' }, { valueColor: '#3370ff' });
+  const k2 = mkChart('kpi', '待结算', { value: 'qty', format: 'raw' }, { valueColor: '#d97706' });
+  const k3 = mkChart('kpi', '失败额', { value: 'profit', calc: 'none' }, { valueColor: '#dc2626' });
+  const k4 = mkChart('kpi', '商户数', { value: 'order_cnt', format: 'raw' }, { valueColor: '#0f766e' });
+  const pie = mkChart('pie', '支付状态', { category: 'pay_type', value: 'amount' });
+  const bar = mkChart('bar', '商户类型', { category: 'channel', value: 'amount' }, { showLabel: true });
+  const table = mkChart('table', '入账明细', { value: 'amount', format: 'raw' }, { pageSize: 8 });
+  assembleDash(d, [
+    { type: 'chart', ref: k1, x: 0, y: 0, w: 3, h: 2 },
+    { type: 'chart', ref: k2, x: 3, y: 0, w: 3, h: 2 },
+    { type: 'chart', ref: k3, x: 6, y: 0, w: 3, h: 2 },
+    { type: 'chart', ref: k4, x: 9, y: 0, w: 3, h: 2 },
+    { type: 'chart', ref: pie, x: 0, y: 2, w: 5, h: 6 },
+    { type: 'chart', ref: bar, x: 5, y: 2, w: 7, h: 6 },
+    { type: 'chart', ref: table, x: 0, y: 8, w: 12, h: 4 },
+    ...extraTrio(12, { rank: '销售员入账', trend: '产品入账', third: 'table', struct: '支付明细' })
+  ]);
+  return packDash(d, { folder: '零售', desc: '支付状态入账与商户类型', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoStoreDash() {
+  const d = emptyDash('门店零售', 'dash_store');
+  d.theme = 'orange';
+  const k1 = mkChart('kpi', '日销', { value: 'amount', calc: 'mom' }, kpiHeroStyle('#ff9a56', '#ff5d8a'));
+  const k2 = mkChart('kpi', '客单', { value: 'unit_price', agg: 'AVG', format: 'fixed0' }, { valueColor: '#c2410c', valueSize: 28 });
+  const k3 = mkChart('kpi', '连带', { value: 'discount', agg: 'AVG', format: 'fixed1' }, { valueColor: '#0f766e', valueSize: 28 });
+  const k4 = mkChart('kpi', '进店', { value: 'order_cnt', format: 'raw' }, { valueColor: '#3370ff', valueSize: 28 });
+  const hbar = mkChart('hbar', '门店排行', { category: 'salesman', value: 'amount' }, { showLabel: true });
+  const bar = mkChart('bar', '时段销售', { category: 'product', value: 'amount' }, { showLabel: true });
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 2, props: heroTextProps('门店零售     日销售额  86.2万     环比 +5.4%') },
+    { type: 'chart', ref: k1, x: 0, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: k2, x: 3, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: k3, x: 6, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: k4, x: 9, y: 2, w: 3, h: 2 },
+    { type: 'chart', ref: hbar, x: 0, y: 4, w: 7, h: 6 },
+    { type: 'chart', ref: bar, x: 7, y: 4, w: 5, h: 6 },
+    ...extraTrio(10, { rank: '店员排行', trend: '品类日销', struct: '渠道结构' })
+  ]);
+  return packDash(d, { folder: '零售', desc: '门店日销、客单与时段', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoCohortDash() {
+  const d = emptyDash('留存分析', 'dash_cohort');
+  d.theme = 'violet';
+  const k1 = mkChart('kpi', 'M1 留存', { value: 'customers', format: 'percent' }, { valueColor: '#7c3aed' }, 'ds_crm');
+  const k2 = mkChart('kpi', 'M3 留存', { value: 'gmv', format: 'percent' }, { valueColor: '#db2777' }, 'ds_crm');
+  const k3 = mkChart('kpi', '复购周期', { value: 'repurchase', agg: 'AVG', format: 'fixed0' }, { valueColor: '#6366f1' }, 'ds_crm');
+  const pivot = mkChart('pivot', '同期群', { category: 'level', colDim: 'region', value: 'gmv' }, { showRowTotal: true }, 'ds_crm');
+  const bar = mkChart('bar', '来源留存', { category: 'industry', value: 'customers', format: 'raw' }, { showLabel: true }, 'ds_crm');
+  assembleDash(d, [
+    { type: 'chart', ref: k1, x: 0, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: k2, x: 4, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: k3, x: 8, y: 0, w: 4, h: 2 },
+    { type: 'chart', ref: pivot, x: 0, y: 2, w: 12, h: 6 },
+    { type: 'chart', ref: bar, x: 0, y: 8, w: 12, h: 4 },
+    ...extraTrio(12, { ds: 'ds_crm', val: 'gmv', rankCat: 'region', trendCat: 'level', pieCat: 'industry', rank: '区域贡献', trend: '等级趋势', struct: '行业结构' })
+  ]);
+  return packDash(d, { folder: '客户', desc: '同期群与复购周期', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoSupplyDash() {
+  const d = emptyDash('供应履约', 'dash_supply');
+  d.theme = 'forest';
+  const k1 = mkChart('kpi', '履约率', { value: 'value', format: 'percent' }, { valueColor: '#4d7c0f' }, 'ds_inv');
+  const k2 = mkChart('kpi', '缺货', { value: 'stock', format: 'raw' }, { valueColor: '#dc2626' }, 'ds_inv');
+  const k3 = mkChart('kpi', '在途', { value: 'turnover', agg: 'AVG', format: 'fixed0' }, { valueColor: '#0f766e' }, 'ds_inv');
+  const line = mkChart('line', '履约走势', { category: 'warehouse', value: 'value' }, { smooth: true }, 'ds_inv');
+  const bar = mkChart('bar', '供应商履约', { category: 'sku', value: 'stock', format: 'raw' }, { showLabel: true }, 'ds_inv');
+  const pie = mkChart('pie', '缺货结构', { category: 'status', value: 'stock', format: 'raw' }, {}, 'ds_inv');
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: '供应履约 · 缺货与在途优先处理', fontSize: 14, color: '#1f2329' } },
+    { type: 'chart', ref: k1, x: 0, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: k2, x: 4, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: k3, x: 8, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: line, x: 0, y: 3, w: 7, h: 5 },
+    { type: 'chart', ref: pie, x: 7, y: 3, w: 5, h: 5 },
+    { type: 'chart', ref: bar, x: 0, y: 8, w: 12, h: 5 },
+    ...extraTrio(13, { ds: 'ds_inv', val: 'stock', format: 'raw', rankCat: 'sku', trendCat: 'warehouse', pieCat: 'status', third: 'table', struct: '库存明细' })
+  ]);
+  return packDash(d, { folder: '供应', desc: '履约率、缺货与在途', updateBy: '当前用户', updateTime: '刚刚' });
+}
+
+function demoQualityDash() {
+  const d = emptyDash('质量缺陷', 'dash_quality');
+  d.theme = 'rose';
+  const k1 = mkChart('kpi', '来料不良', { value: 'value', format: 'percent' }, { valueColor: '#dc2626' }, 'ds_inv');
+  const k2 = mkChart('kpi', '退货', { value: 'stock', format: 'raw' }, { valueColor: '#ea580c' }, 'ds_inv');
+  const k3 = mkChart('kpi', '客诉', { value: 'turnover', agg: 'AVG', format: 'raw' }, { valueColor: '#be123c' }, 'ds_inv');
+  const bar = mkChart('bar', '缺陷类型', { category: 'category', value: 'stock', format: 'raw' }, { showLabel: true }, 'ds_inv');
+  const line = mkChart('line', '不良走势', { category: 'warehouse', value: 'value' }, { smooth: true }, 'ds_inv');
+  const pie = mkChart('pie', '不良结构', { category: 'status', value: 'stock', format: 'raw' }, {}, 'ds_inv');
+  assembleDash(d, [
+    { type: 'text', x: 0, y: 0, w: 12, h: 1, props: { content: '质量缺陷 · 来料不良与退货', fontSize: 14, color: '#1f2329' } },
+    { type: 'chart', ref: k1, x: 0, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: k2, x: 4, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: k3, x: 8, y: 1, w: 4, h: 2 },
+    { type: 'chart', ref: bar, x: 0, y: 3, w: 7, h: 5 },
+    { type: 'chart', ref: pie, x: 7, y: 3, w: 5, h: 5 },
+    { type: 'chart', ref: line, x: 0, y: 8, w: 12, h: 4 },
+    ...extraTrio(12, { ds: 'ds_inv', val: 'stock', format: 'raw', rankCat: 'sku', trendCat: 'warehouse', pieCat: 'status', third: 'table', struct: '缺陷明细' })
+  ]);
+  return packDash(d, { folder: '供应', desc: '来料不良、退货与客诉', updateBy: '当前用户', updateTime: '刚刚' });
 }
 
 function buildCatalog() {
@@ -1480,6 +2342,11 @@ function subHashFor(mod) {
     return screen + (id ? '/' + encodeURIComponent(id) : '');
   }
   if (mod === 'dashboard') {
+    if (state.screen === 'templates') {
+      return state.tplPreviewId
+        ? 'templates/preview/' + encodeURIComponent(state.tplPreviewId)
+        : 'templates';
+    }
     const screen = ['list', 'editor', 'preview'].includes(state.screen) ? state.screen : 'list';
     const id = state.dashId || state.dash?.id || '';
     if (screen === 'list' && !id) return '';
@@ -1497,8 +2364,12 @@ function syncRoute() {
   if (_applyingRoute) return;
   const next = (buildRouteHash() || '').replace(/\/+$/, '');
   const clean = next.replace(/\/$/, '');
+  const push = state._pushRoute;
+  state._pushRoute = false;
   if (location.hash === clean || (!clean && !location.hash)) return;
-  history.replaceState(null, '', clean || location.pathname + location.search);
+  const url = clean || location.pathname + location.search;
+  if (push) history.pushState(null, '', url);
+  else history.replaceState(null, '', url);
 }
 
 function applyInnerParts(page, parts) {
@@ -1531,7 +2402,12 @@ function applyInnerParts(page, parts) {
     state.screen = screen;
     return;
   }
-  const screen = ['list', 'editor', 'preview'].includes(parts[0]) ? parts[0] : 'list';
+  const screen = ['list', 'editor', 'preview', 'templates'].includes(parts[0]) ? parts[0] : 'list';
+  if (screen === 'templates') {
+    state.screen = 'templates';
+    state.tplPreviewId = parts[1] === 'preview' ? decodeURIComponent(parts[2] || '') || null : null;
+    return;
+  }
   const dashId = parts[1] || (['list', 'editor', 'preview'].includes(parts[0]) ? '' : parts[0]);
   if (parts[0] && !['list', 'editor', 'preview'].includes(parts[0])) {
     if (state.dashboards.some(d => d.id === parts[0])) {
@@ -1572,6 +2448,7 @@ function gotoModule(mod) {
   }
   state.module = target;
   state.screen = 'list';
+  state.listDrawerOpen = false;
   render();
 }
 
@@ -2135,6 +3012,7 @@ function render() {
     if (state.screen === 'editor') renderReportEditor(app);
     else renderReportList(app);
   }
+  else if (state.screen === 'templates') renderTemplateMarket(app);
   else if (state.screen === 'list') renderList(app);
   else if (state.screen === 'preview') renderPreview(app);
   else renderEditor(app);
@@ -2398,10 +3276,7 @@ function renderWorkbench(app) {
   };
 
   app.querySelector('#wbRefresh').onclick = () => toast('已同步（演示）', 'ok');
-  const newDash = () => {
-    state.module = 'dashboard';
-    createBlankDash();
-  };
+  const newDash = () => openTemplateMarket();
   app.querySelector('#wbNewDash').onclick = newDash;
   const appNew = app.querySelector('#wbAppNew');
   if (appNew) appNew.onclick = newDash;
@@ -2449,18 +3324,18 @@ function renderWorkbench(app) {
   });
 }
 
-/** 对话模块：嵌入 conversation-workspace.html，与同壳其它模块共用顶栏路由 */
+/** 对话模块：OD 壳侧栏（与 workbench 一致）+ iframe 嵌入 dsh 问数交互 */
 function renderConversation(app) {
   const q = (sessionStorage.getItem('od.ask.q') || '').trim();
   const autorun = sessionStorage.getItem('od.ask.autorun') === '1';
   sessionStorage.removeItem('od.ask.autorun');
-  const params = new URLSearchParams({ embed: '1', v: '20260817e' });
+  const params = new URLSearchParams({ embed: '1', v: '20260821g' });
   if (autorun && q) {
     params.set('q', q);
     params.set('autorun', '1');
     sessionStorage.removeItem('od.ask.q');
   }
-  app.innerHTML = `<iframe class="conv-frame" id="convFrame" title="对话分析" src="./conversation-workspace.html?${params.toString()}"></iframe>`;
+  app.innerHTML = `<iframe class="conv-frame" id="convFrame" title="对话问数 · DeepSeek Harness" src="./conversation-ask-dsh.html?${params.toString()}"></iframe>`;
 }
 
 function renderDatasource(app) {
@@ -2491,12 +3366,13 @@ function renderDatasource(app) {
           <strong>数据源</strong>
           <span>${DATASOURCES.length} 个连接 · ${okN} 连通 · 飞书式资产管理</span>
         </div>
-        <div class="chip-row" id="typeChips">
-          ${typeKeys.map(t => {
-            const label = t === 'all' ? '全部' : srcMeta(t).label;
-            const n = t === 'all' ? DATASOURCES.length : DATASOURCES.filter(s => s.type === t).length;
-            return `<button type="button" class="filter-chip ${state.srcTypeFilter===t?'on':''}" data-tf="${t}">${esc(label)} <span style="opacity:.75">${n}</span></button>`;
-          }).join('')}
+        <div class="field-filters">
+          <label class="field-filter">
+            <span>类型</span>
+            <select id="srcType">
+              ${typeKeys.map(t => `<option value="${esc(t)}" ${state.srcTypeFilter===t?'selected':''}>${esc(t === 'all' ? '全部' : srcMeta(t).label)}</option>`).join('')}
+            </select>
+          </label>
         </div>
         <div class="spacer"></div>
         <label class="studio-search"><span class="ico">⌕</span>
@@ -2610,7 +3486,7 @@ function renderDatasource(app) {
     </div>`;
 
   app.querySelector('#srcSearch').oninput = e => { state.search = e.target.value; render(); };
-  app.querySelectorAll('[data-tf]').forEach(el => el.onclick = () => { state.srcTypeFilter = el.dataset.tf; render(); });
+  app.querySelector('#srcType').onchange = e => { state.srcTypeFilter = e.target.value; render(); };
   app.querySelectorAll('[data-sid]').forEach(el => el.onclick = () => { state.srcId = el.dataset.sid; render(); });
   app.querySelector('#btnPing').onclick = () => {
     const hero = app.querySelector('#srcHero');
@@ -2817,9 +3693,14 @@ function renderDataset(app) {
           <strong>数据集</strong>
           <span>语义层 · 字段角色 · 预览取数 · 一键上板</span>
         </div>
-        <div class="chip-row">
-          <button type="button" class="filter-chip ${state.folderFilter==='all'?'on':''}" data-ff="all">全部</button>
-          ${folders.map(f => `<button type="button" class="filter-chip ${state.folderFilter===f?'on':''}" data-ff="${esc(f)}">${esc(f)}</button>`).join('')}
+        <div class="field-filters">
+          <label class="field-filter">
+            <span>分组</span>
+            <select id="dsFolder">
+              <option value="all" ${state.folderFilter==='all'?'selected':''}>全部</option>
+              ${folders.map(f => `<option value="${esc(f)}" ${state.folderFilter===f?'selected':''}>${esc(f)}</option>`).join('')}
+            </select>
+          </label>
         </div>
         <div class="spacer"></div>
         <label class="studio-search"><span class="ico">⌕</span>
@@ -2888,7 +3769,7 @@ function renderDataset(app) {
     </div>`;
 
   app.querySelector('#dsSearch').oninput = e => { state.search = e.target.value; render(); };
-  app.querySelectorAll('[data-ff]').forEach(el => el.onclick = () => { state.folderFilter = el.dataset.ff; render(); });
+  app.querySelector('#dsFolder').onchange = e => { state.folderFilter = e.target.value; render(); };
   app.querySelectorAll('[data-did]').forEach(el => el.onclick = () => { state.datasetId = el.dataset.did; state.dsTab = 'fields'; render(); });
   app.querySelectorAll('#dsTabs [data-tab]').forEach(el => el.onclick = () => { state.dsTab = el.dataset.tab; render(); });
 
@@ -4219,72 +5100,140 @@ function renderReportList(app) {
   const q = state.search.trim();
   const folders = [...new Set(state.reports.map(r => r.folder || '未分组'))];
   const list = state.reports.filter(r => {
+    if (state.statusFilter !== 'all' && r.status !== state.statusFilter) return false;
     if (state.folderFilter !== 'all' && (r.folder || '未分组') !== state.folderFilter) return false;
     return !q || r.name.includes(q) || (r.desc || '').includes(q);
+  }).slice().sort((a, b) => {
+    const rank = (s) => (s === 'publishedWithDraft' ? 0 : s === 'draft' ? 1 : 2);
+    return rank(a.status) - rank(b.status);
   });
   const r = currentReport();
-  const chartBlocks = (r.blocks || []).filter(b => b.type === 'reportChart');
+  const drawer = state.listDrawerOpen && r;
+  const chartBlocks = drawer ? (r.blocks || []).filter(b => b.type === 'reportChart') : [];
   app.innerHTML = `
-    <div class="manage">
-      <div class="bar">
-        <strong style="font-size:14px">在线报告</strong>
-        <span class="crumb">Umo 风格高保 · 引用看板图 / 报告内新建 · 实时取数</span>
+    <div class="manage catalog">
+      <div class="catalog-bar">
+        <div class="title-block">
+          <strong>报告</strong>
+          <span>${state.reports.length} 份 · 点名称进入文档</span>
+        </div>
+        <div class="field-filters">
+          <label class="field-filter">
+            <span>状态</span>
+            <select id="rptStatus">
+              <option value="all" ${state.statusFilter==='all'?'selected':''}>全部</option>
+              <option value="draft" ${state.statusFilter==='draft'?'selected':''}>草稿</option>
+              <option value="publishedWithDraft" ${state.statusFilter==='publishedWithDraft'?'selected':''}>有改动</option>
+              <option value="published" ${state.statusFilter==='published'?'selected':''}>已发布</option>
+            </select>
+          </label>
+          <label class="field-filter">
+            <span>分组</span>
+            <select id="rptFolder">
+              <option value="all" ${state.folderFilter==='all'?'selected':''}>全部</option>
+              ${folders.map(f => `<option value="${esc(f)}" ${state.folderFilter===f?'selected':''}>${esc(f)}</option>`).join('')}
+            </select>
+          </label>
+        </div>
         <div class="spacer"></div>
-        <input class="search-inline" id="rptSearch" placeholder="搜索报告" value="${esc(state.search)}" />
-        <button class="btn primary" id="btnNewRpt">+ 新建报告</button>
+        <label class="studio-search"><span class="ico">⌕</span>
+          <input id="rptSearch" placeholder="搜索报告" value="${esc(state.search)}" />
+        </label>
+        <button type="button" class="btn primary" id="btnNewRpt">+ 新建报告</button>
       </div>
-      <div class="list-layout">
-        <div class="tree">
-          <div class="tree-item ${state.folderFilter==='all'?'on':''}" data-ff="all">全部（${state.reports.length}）</div>
-          ${folders.map(f => {
-            const n = state.reports.filter(x => (x.folder || '未分组') === f).length;
-            return `<div class="tree-item ${state.folderFilter===f?'on':''}" data-ff="${esc(f)}">${esc(f)} <span class="sub">${n} 个</span></div>`;
-          }).join('')}
-          <div class="tree-sec">列表</div>
-          ${list.map(x => `
-            <div class="tree-item ${x.id===r.id?'on':''}" data-rpt="${x.id}">
-              ${esc(x.name)}
-              <span class="sub">${esc(x.folder || '')} · ${x.status === 'draft' ? '草稿' : x.status === 'publishedWithDraft' ? '有改动' : '已发布'}</span>
-            </div>`).join('') || '<div class="tree-item">无匹配</div>'}
+      <div class="catalog-body ${drawer ? 'with-drawer' : ''}">
+        <div class="catalog-table-wrap">
+          <table class="catalog-table">
+            <thead>
+              <tr>
+                <th class="col-name">名称</th>
+                <th class="col-tight">状态</th>
+                <th class="col-tight">分组</th>
+                <th class="col-tight">图表</th>
+                <th class="col-tight">更新人</th>
+                <th class="col-tight">更新时间</th>
+                <th class="acts">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.map(x => {
+                const n = (x.blocks || []).filter(b => b.type === 'reportChart').length;
+                return `<tr data-rpt="${x.id}" class="${drawer && x.id===r.id ? 'on' : ''}">
+                  <td class="col-name"><b>${esc(x.name)}</b><div class="sub">${esc(x.desc || '')}</div></td>
+                  <td class="col-tight">${statusTag(x.status)}</td>
+                  <td class="col-tight">${esc(x.folder || '未分组')}</td>
+                  <td class="col-tight">${n}</td>
+                  <td class="col-tight muted">${esc(x.updateBy || '—')}</td>
+                  <td class="col-tight muted">${esc(x.updateTime || '')}</td>
+                  <td class="acts">
+                    <div class="row-acts">
+                      <button type="button" class="text-btn" data-edit-rpt="${x.id}">打开</button>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('') || `<tr><td colspan="7" class="empty-cell">${q || state.folderFilter!=='all' ? '无匹配报告' : '还没有报告，点上方新建'}</td></tr>`}
+            </tbody>
+          </table>
         </div>
-        <div class="detail">
-          <div class="detail-hero" style="flex-direction:column;align-items:stretch">
+        ${drawer ? `
+        <aside class="catalog-drawer" id="rptDrawer">
+          <div class="drawer-hd">
             <div>
-              <h2 style="margin-bottom:6px">${esc(r.name)}</h2>
-              <p style="color:var(--text-2);font-size:13px;margin-bottom:12px">${esc(r.desc || '—')} · ${statusTag(r.status)}</p>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button type="button" class="btn primary" id="btnEditRpt">打开编辑器</button>
-                <button type="button" class="btn" id="btnToDash">去仪表盘选图</button>
-              </div>
+              <h2>${esc(r.name)}</h2>
+              <p>${esc(r.desc || '—')} · ${statusTag(r.status)}</p>
             </div>
+            <button type="button" class="btn ghost" id="btnCloseRptDrawer" aria-label="关闭">✕</button>
           </div>
-          <div class="meta-grid">
-            <div class="meta-card"><div class="k">图表块</div><div class="v">${chartBlocks.length}</div></div>
-            <div class="meta-card"><div class="k">引用看板</div><div class="v">${chartBlocks.filter(b => b.source==='dashboard').length}</div></div>
-            <div class="meta-card"><div class="k">报告内新建</div><div class="v">${chartBlocks.filter(b => b.source==='inline').length}</div></div>
-            <div class="meta-card"><div class="k">更新</div><div class="v" style="font-size:12px">${esc(r.updateBy)} · ${esc(r.updateTime || '')}</div></div>
+          <div class="drawer-metrics">
+            <div><em>图表块</em><b>${chartBlocks.length}</b></div>
+            <div><em>引用看板</em><b>${chartBlocks.filter(b => b.source==='dashboard').length}</b></div>
+            <div><em>报告内新建</em><b>${chartBlocks.filter(b => b.source==='inline').length}</b></div>
           </div>
-          <div class="preview-mini">
-            <div style="font-size:12px;color:var(--text-2);font-weight:600">交互说明</div>
-            <div style="margin-top:8px;font-size:12px;color:var(--text-2);line-height:1.6">
-              报告编辑器高保对齐 <a href="https://github.com/umodoc/editor" target="_blank" rel="noreferrer">umodoc/editor</a> Ribbon（开始/插入/表格/工具/页面/视图/导出）+ 状态栏；业务图表在「工具」槽位。
-            </div>
+          <div class="drawer-acts">
+            <button type="button" class="btn primary" id="btnEditRpt">打开编辑器</button>
+            <button type="button" class="btn" id="btnToDash">去仪表盘选图</button>
           </div>
-        </div>
+          <p class="drawer-hint">双击表格行也可直接进入编辑器。</p>
+        </aside>` : ''}
       </div>
     </div>`;
   app.querySelector('#rptSearch').oninput = e => { state.search = e.target.value; render(); };
-  app.querySelectorAll('[data-ff]').forEach(el => el.onclick = () => { state.folderFilter = el.dataset.ff; render(); });
+  app.querySelector('#rptStatus').onchange = e => { state.statusFilter = e.target.value; render(); };
+  app.querySelector('#rptFolder').onchange = e => { state.folderFilter = e.target.value; render(); };
   app.querySelectorAll('[data-rpt]').forEach(el => {
-    el.onclick = () => { selectReport(el.dataset.rpt); render(); };
-    el.ondblclick = () => { selectReport(el.dataset.rpt); state.screen = 'editor'; render(); };
+    el.onclick = (e) => {
+      if (e.target.closest('[data-edit-rpt]')) return;
+      selectReport(el.dataset.rpt);
+      state.listDrawerOpen = false;
+      state.screen = 'editor';
+      render();
+    };
+  });
+  app.querySelectorAll('[data-edit-rpt]').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      selectReport(el.dataset.editRpt);
+      state.listDrawerOpen = false;
+      state.screen = 'editor';
+      render();
+    };
   });
   app.querySelector('#btnNewRpt').onclick = () => createBlankReport();
-  app.querySelector('#btnEditRpt').onclick = () => { state.module = 'report'; state.screen = 'editor'; render(); };
-  app.querySelector('#btnToDash').onclick = () => {
+  app.querySelector('#btnCloseRptDrawer')?.addEventListener('click', () => {
+    state.listDrawerOpen = false;
+    render();
+  });
+  app.querySelector('#btnEditRpt')?.addEventListener('click', () => {
+    state.module = 'report';
+    state.listDrawerOpen = false;
+    state.screen = 'editor';
+    render();
+  });
+  app.querySelector('#btnToDash')?.addEventListener('click', () => {
+    state.listDrawerOpen = false;
     selectDash('dash_region');
     gotoModule('dashboard');
-  };
+  });
 }
 
 function ensureReportBlockAnchors(r) {
@@ -5253,6 +6202,7 @@ function selectComp(id, { right = true, left = false } = {}) {
   document.querySelectorAll('.widget').forEach(w => w.classList.toggle('selected', w.dataset.wid === id));
   document.querySelectorAll('.layer').forEach(n => n.classList.toggle('on', n.dataset.sel === id));
   if (right) renderRight(document.getElementById('right'));
+  else syncDataOpsLayout();
   if (left && state.leftTab === 'layer') renderLeft(document.getElementById('left'));
 }
 
@@ -5302,7 +6252,7 @@ function updateWidgetChrome(comp) {
   const title = ch?.title || '图表';
   const badge = missingBind(ch).length ? '待配置' : ch.chartType;
   const isKpi = ch?.chartType === 'kpi';
-  hd.innerHTML = `<span style="font-weight:inherit;color:inherit;font-size:inherit">${esc(title)}</span>${isKpi ? '' : `<span>${esc(badge)}</span>`}`;
+  hd.innerHTML = `<span style="font-weight:inherit;color:inherit;font-size:inherit">${esc(title)}</span>${isKpi || isPreviewReadonly() ? '' : `<span>${esc(badge)}</span>`}`;
   applyCardStyleDom(el, comp);
 }
 
@@ -5704,82 +6654,181 @@ function statusTag(st) {
 function renderList(app) {
   const q = state.search.trim();
   const folders = [...new Set(state.dashboards.map(d => d.folder || '未分组'))];
+  const updaters = [...new Set(state.dashboards.map(d => d.updateBy).filter(Boolean))];
   const list = state.dashboards.filter(d => {
+    if (state.statusFilter !== 'all' && d.status !== state.statusFilter) return false;
     if (state.folderFilter !== 'all' && (d.folder || '未分组') !== state.folderFilter) return false;
+    if (state.updaterFilter !== 'all' && (d.updateBy || '') !== state.updaterFilter) return false;
     return !q || d.name.includes(q) || (d.desc || '').includes(q);
+  }).slice().sort((a, b) => {
+    const rank = (s) => (s === 'publishedWithDraft' ? 0 : s === 'draft' ? 1 : 2);
+    return rank(a.status) - rank(b.status);
   });
   const d = currentDash();
   if (d && state.dash?.id !== d.id) selectDash(d.id);
-  const chartCount = Object.keys(d.charts || {}).length;
-  const dsNames = (d.datasetIds || []).map(id => DATASETS[id]?.name || id).join('、') || '—';
-  const sampleDs = DATASETS[(d.datasetIds || [])[0]] || DATASETS.ds_sales;
-  const dim = sampleDs.fields.find(f => f.group === 'dim')?.name;
-  const quota = sampleDs.fields.find(f => f.group === 'quota')?.name;
+  const drawer = state.listDrawerOpen && d;
+  const chartCount = drawer ? Object.keys(d.charts || {}).length : 0;
+  const dsNames = drawer ? ((d.datasetIds || []).map(id => DATASETS[id]?.name || id).join('、') || '—') : '';
   app.innerHTML = `
-    <div class="manage">
-      <div class="bar">
-        <strong style="font-size:14px">仪表盘</strong>
-        <span class="crumb">场景库 · 编辑器能力不变，仅扩充列表</span>
+    <div class="manage catalog">
+      <div class="catalog-bar">
+        <div class="title-block">
+          <strong>仪表盘</strong>
+          <span>${state.dashboards.length} 个 · 点名称进入画布</span>
+        </div>
+        <div class="field-filters">
+          <label class="field-filter">
+            <span>状态</span>
+            <select id="dashStatus">
+              <option value="all" ${state.statusFilter==='all'?'selected':''}>全部</option>
+              <option value="draft" ${state.statusFilter==='draft'?'selected':''}>草稿</option>
+              <option value="publishedWithDraft" ${state.statusFilter==='publishedWithDraft'?'selected':''}>有改动</option>
+              <option value="published" ${state.statusFilter==='published'?'selected':''}>已发布</option>
+            </select>
+          </label>
+          <label class="field-filter">
+            <span>分组</span>
+            <select id="dashFolder">
+              <option value="all" ${state.folderFilter==='all'?'selected':''}>全部</option>
+              ${folders.map(f => `<option value="${esc(f)}" ${state.folderFilter===f?'selected':''}>${esc(f)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="field-filter">
+            <span>更新人</span>
+            <select id="dashUpdater">
+              <option value="all" ${state.updaterFilter==='all'?'selected':''}>全部</option>
+              ${updaters.map(u => `<option value="${esc(u)}" ${state.updaterFilter===u?'selected':''}>${esc(u)}</option>`).join('')}
+            </select>
+          </label>
+        </div>
         <div class="spacer"></div>
-        <input class="search-inline" id="dashSearch" placeholder="搜索仪表盘" value="${esc(state.search)}" />
-        <button class="btn primary" id="btnNew">+ 新建</button>
+        <label class="studio-search"><span class="ico">⌕</span>
+          <input id="dashSearch" placeholder="搜索仪表盘" value="${esc(state.search)}" />
+        </label>
+        <button type="button" class="btn primary" id="btnNew">+ 新建</button>
       </div>
-      <div class="list-layout">
-        <div class="tree">
-          <div class="tree-item ${state.folderFilter==='all'?'on':''}" data-ff="all">全部（${state.dashboards.length}）</div>
-          ${folders.map(f => {
-            const n = state.dashboards.filter(x => (x.folder || '未分组') === f).length;
-            return `<div class="tree-item ${state.folderFilter===f?'on':''}" data-ff="${esc(f)}">${esc(f)} <span class="sub">${n} 个</span></div>`;
-          }).join('')}
-          <div class="tree-sec">列表</div>
-          ${list.map(x => `
-            <div class="tree-item ${x.id===d.id?'on':''}" data-dash="${x.id}">
-              ${esc(x.name)}${(x.mobile && x.mobile.enabled) ? ' · 移动' : ''}
-              <span class="sub">${esc(x.folder || '')} · ${x.status === 'draft' ? '草稿' : x.status === 'publishedWithDraft' ? '有改动' : '已发布'}</span>
-            </div>`).join('') || '<div class="tree-item">无匹配</div>'}
+      <div class="catalog-body ${drawer ? 'with-drawer' : ''}">
+        <div class="catalog-table-wrap">
+          <table class="catalog-table">
+            <thead>
+              <tr>
+                <th class="col-name">名称</th>
+                <th class="col-tight">状态</th>
+                <th class="col-tight">分组</th>
+                <th class="col-tight">图表</th>
+                <th class="col-tight">更新人</th>
+                <th class="col-tight">更新时间</th>
+                <th class="acts">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.map(x => {
+                const n = Object.keys(x.charts || {}).length;
+                return `<tr data-dash="${x.id}" class="${drawer && x.id===d.id ? 'on' : ''}">
+                  <td class="col-name">
+                    <b>${esc(x.name)}</b>${(x.mobile && x.mobile.enabled) ? ' <span class="tag mob">移动</span>' : ''}
+                    <div class="sub">${esc(x.desc || '')}</div>
+                  </td>
+                  <td class="col-tight">${statusTag(x.status)}</td>
+                  <td class="col-tight">${esc(x.folder || '未分组')}</td>
+                  <td class="col-tight">${n}</td>
+                  <td class="col-tight muted">${esc(x.updateBy || '—')}</td>
+                  <td class="col-tight muted">${esc(x.updateTime || '')}</td>
+                  <td class="acts">
+                    <div class="row-acts">
+                      <button type="button" class="text-btn" data-edit-dash="${x.id}">打开</button>
+                      <button type="button" class="text-btn" data-preview-dash="${x.id}">预览</button>
+                      <button type="button" class="text-btn danger" data-del-dash="${x.id}" ${state.dashboards.length<=1?'disabled':''}>删除</button>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('') || `<tr><td colspan="7" class="empty-cell">${q || state.folderFilter!=='all' ? '无匹配仪表盘' : '还没有仪表盘，点上方新建'}</td></tr>`}
+            </tbody>
+          </table>
         </div>
-        <div class="detail">
-          <div class="detail-hero" style="flex-direction:column;align-items:stretch">
+        ${drawer ? `
+        <aside class="catalog-drawer" id="dashDrawer">
+          <div class="drawer-hd">
             <div>
-              <h2 style="margin-bottom:6px">${esc(d.name)}${(d.mobile && d.mobile.enabled) ? '<span class="tag mob">移动端</span>' : ''}</h2>
-              <p style="color:var(--text-2);font-size:13px;margin-bottom:12px">${esc(d.desc || '—')} · ${statusTag(d.status)}</p>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button type="button" class="btn primary" id="btnEdit">编辑</button>
-                <button type="button" class="btn" id="btnPrev" title="${d.status==='draft'?'草稿尚未发布，点击查看说明':'打开已发布只读预览'}">预览已发布</button>
-                <button type="button" class="btn" id="btnShareList">分享</button>
-              </div>
+              <h2>${esc(d.name)}${(d.mobile && d.mobile.enabled) ? '<span class="tag mob">移动端</span>' : ''}</h2>
+              <p>${esc(d.desc || '—')} · ${statusTag(d.status)}</p>
             </div>
+            <button type="button" class="btn ghost" id="btnCloseDashDrawer" aria-label="关闭">✕</button>
           </div>
-          <div class="meta-grid">
-            <div class="meta-card"><div class="k">图表数</div><div class="v">${chartCount}</div></div>
-            <div class="meta-card"><div class="k">数据集</div><div class="v" style="font-size:12px">${esc(dsNames)}</div></div>
-            <div class="meta-card"><div class="k">更新</div><div class="v" style="font-size:12px">${esc(d.updateBy)} · ${esc(d.updateTime || '')}</div></div>
-            <div class="meta-card"><div class="k">分享</div><div class="v">${d.share ? '已开启' : '未开启'}</div></div>
+          <div class="drawer-metrics">
+            <div><em>图表</em><b>${chartCount}</b></div>
+            <div><em>数据集</em><b style="font-size:13px">${esc(dsNames)}</b></div>
+            <div><em>分享</em><b style="font-size:13px">${d.share ? '已开启' : '未开启'}</b></div>
           </div>
-          <div class="preview-mini">
-            <div style="font-size:12px;color:var(--text-2);font-weight:600">场景缩略（示例聚合）</div>
-            ${dim && quota ? sparkHtml(sampleDs.rows, dim, quota) : ''}
-            <div style="margin-top:10px;font-size:11px;color:var(--text-3)">双击左侧名称可直接进入编辑 · 画布逻辑与原先一致</div>
+          <div class="drawer-acts">
+            <button type="button" class="btn primary" id="btnEdit">编辑</button>
+            <button type="button" class="btn" id="btnPrev" title="${d.status==='draft'?'草稿尚未发布，点击查看说明':'打开已发布只读预览'}">预览已发布</button>
+            <button type="button" class="btn" id="btnShareList">分享</button>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn" id="btnDup">复制场景</button>
-            <button class="btn danger" id="btnDel" ${state.dashboards.length<=1?'disabled':''}>删除</button>
-            <button class="btn ghost" id="btnToDs">查看关联数据集</button>
+          <div class="drawer-acts secondary">
+            <button type="button" class="btn" id="btnDup">复制</button>
+            <button type="button" class="btn danger" id="btnDel" ${state.dashboards.length<=1?'disabled':''}>删除</button>
+            <button type="button" class="btn ghost" id="btnToDs">关联数据集</button>
           </div>
-        </div>
+          <p class="drawer-hint">双击表格行也可直接进入编辑器。</p>
+        </aside>` : ''}
       </div>
     </div>`;
   app.querySelector('#dashSearch').oninput = e => { state.search = e.target.value; render(); };
-  app.querySelectorAll('[data-ff]').forEach(el => el.onclick = () => { state.folderFilter = el.dataset.ff; render(); });
+  app.querySelector('#dashStatus').onchange = e => { state.statusFilter = e.target.value; render(); };
+  app.querySelector('#dashFolder').onchange = e => { state.folderFilter = e.target.value; render(); };
+  app.querySelector('#dashUpdater').onchange = e => { state.updaterFilter = e.target.value; render(); };
   app.querySelectorAll('[data-dash]').forEach(el => {
-    el.onclick = () => { selectDash(el.dataset.dash); render(); };
-    el.ondblclick = () => { selectDash(el.dataset.dash); state.screen = 'editor'; render(); };
+    el.onclick = (e) => {
+      if (e.target.closest('[data-edit-dash], [data-preview-dash], [data-del-dash]')) return;
+      selectDash(el.dataset.dash);
+      state.listDrawerOpen = false;
+      state.screen = 'editor';
+      render();
+    };
   });
-  app.querySelector('#btnEdit').onclick = () => { state.module = 'dashboard'; state.screen = 'editor'; render(); };
-  app.querySelector('#btnPrev').onclick = () => openPublishedPreview('list');
-  app.querySelector('#btnShareList').onclick = () => openShareModal();
-  app.querySelector('#btnNew').onclick = () => createBlankDash();
-  app.querySelector('#btnDup').onclick = () => {
+  app.querySelectorAll('[data-edit-dash]').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      selectDash(el.dataset.editDash);
+      state.listDrawerOpen = false;
+      state.screen = 'editor';
+      render();
+    };
+  });
+  app.querySelectorAll('[data-preview-dash]').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      selectDash(el.dataset.previewDash);
+      openPublishedPreview('list');
+    };
+  });
+  app.querySelectorAll('[data-del-dash]').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      if (state.dashboards.length <= 1) return;
+      const id = el.dataset.delDash;
+      state.dashboards = state.dashboards.filter(x => x.id !== id);
+      selectDash(state.dashboards[0].id);
+      state.listDrawerOpen = false;
+      toast('已删除', 'ok');
+      render();
+    };
+  });
+  app.querySelector('#btnNew').onclick = () => openTemplateMarket();
+  app.querySelector('#btnCloseDashDrawer')?.addEventListener('click', () => {
+    state.listDrawerOpen = false;
+    render();
+  });
+  app.querySelector('#btnEdit')?.addEventListener('click', () => {
+    state.module = 'dashboard';
+    state.listDrawerOpen = false;
+    state.screen = 'editor';
+    render();
+  });
+  app.querySelector('#btnPrev')?.addEventListener('click', () => openPublishedPreview('list'));
+  app.querySelector('#btnShareList')?.addEventListener('click', () => openShareModal());
+  app.querySelector('#btnDup')?.addEventListener('click', () => {
     const copy = packDash(clone(d), {
       folder: d.folder, desc: (d.desc || '') + '（副本）',
       updateBy: '当前用户', updateTime: '刚刚'
@@ -5790,20 +6839,23 @@ function renderList(app) {
     copy.share = null;
     state.dashboards.unshift(copy);
     selectDash(copy.id);
+    state.listDrawerOpen = true;
     toast('已复制场景', 'ok');
     render();
-  };
-  app.querySelector('#btnDel').onclick = () => {
+  });
+  app.querySelector('#btnDel')?.addEventListener('click', () => {
     if (state.dashboards.length <= 1) return;
     state.dashboards = state.dashboards.filter(x => x.id !== d.id);
     selectDash(state.dashboards[0].id);
+    state.listDrawerOpen = false;
     toast('已删除', 'ok');
     render();
-  };
-  app.querySelector('#btnToDs').onclick = () => {
+  });
+  app.querySelector('#btnToDs')?.addEventListener('click', () => {
+    state.listDrawerOpen = false;
     state.datasetId = (d.datasetIds || [])[0] || 'ds_sales';
     gotoModule('dataset');
-  };
+  });
 }
 
 function renderEditor(app) {
@@ -5850,7 +6902,17 @@ function renderEditor(app) {
       </aside>
     </div>`;
 
-  app.querySelector('#toList').onclick = () => { state.module = 'dashboard'; state.screen = 'list'; state.editSurface = 'pc'; render(); };
+  app.querySelector('#toList').onclick = () => {
+    state.module = 'dashboard';
+    state.editSurface = 'pc';
+    if (state.editorFrom === 'templates') {
+      state.screen = 'templates';
+      state.tplPreviewId = null;
+    } else {
+      state.screen = 'list';
+    }
+    render();
+  };
   app.querySelector('#toggleInsp').onclick = () => { state.inspCollapsed = !state.inspCollapsed; render(); };
   app.querySelector('#btnUndo').onclick = undo;
   app.querySelector('#btnPreview').onclick = () => openPublishedPreview('editor');
@@ -6246,6 +7308,7 @@ function wireBoardDrop(board) {
 function widgetHtml(c, cw) {
   const box = px(c.x, c.y, c.w, c.h, cw);
   const sel = c.id === state.selectedId ? 'selected' : '';
+  const readonly = isPreviewReadonly();
   let title = c.type, badge = '';
   if (c.type === 'chart') {
     const ch = state.dash.charts[c.chartId];
@@ -6260,10 +7323,21 @@ function widgetHtml(c, cw) {
   // slicer: single compact row (no tall empty header)
   if (c.type === 'slicer') {
     const p = c.props || {};
+    const slicerStyle = `left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;z-index:${c.z};background:${p.bg || '#fff'};color:${p.titleColor || '#1f2329'};border-radius:${p.radius ?? 10}px`;
+    if (p.kind === 'date') {
+      return `<div class="widget slicer ${sel}" data-wid="${c.id}" style="${slicerStyle}">
+      <div class="slicer-inline" data-drag="${c.id}">
+        <b style="color:inherit">${esc(title)}</b>
+        <input type="date" data-date="from" value="${esc(state.filter.dateFrom || '')}" />
+        <span style="color:var(--text-3)">~</span>
+        <input type="date" data-date="to" value="${esc(state.filter.dateTo || '')}" />
+      </div>
+      ${handlesHtml(c.id)}
+    </div>`;
+    }
     const field = p.field || 'region';
     const cur = state.filter[field] || '';
-    const opts = slicerOptions(field);
-    const slicerStyle = `left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;z-index:${c.z};background:${p.bg || '#fff'};color:${p.titleColor || '#1f2329'};border-radius:${p.radius ?? 10}px`;
+    const opts = slicerOptions(field, p.datasetId);
     return `<div class="widget slicer ${sel}" data-wid="${c.id}" style="${slicerStyle}">
       <div class="slicer-inline" data-drag="${c.id}">
         <b style="color:inherit">${esc(title)}</b>
@@ -6299,12 +7373,12 @@ function widgetHtml(c, cw) {
     const bw = st.borderWidth != null ? st.borderWidth : 1;
     cardStyle += `;background:${st.bg || '#fff'};border-radius:${st.cardRadius ?? 10}px;border:${bw}px solid ${st.borderColor || '#e5e6eb'}`;
     const hdAlign = st.titleAlign === 'center' ? 'center' : 'left';
-    const titleBg = st.titleBg || '#fafbfc';
+    const titleBg = readonly ? 'transparent' : (st.titleBg || '#fafbfc');
     const inverse = isDarkColor(titleBg);
     const titleBold = st.titleBold !== false;
     const hdStyle = `color:${st.titleColor || '#1f2329'};background:${titleBg};font-size:${st.titleSize || 12}px;font-weight:${titleBold ? 700 : 500};justify-content:${hdAlign === 'center' ? 'center' : 'space-between'};${showTitle ? '' : 'display:none'}`;
     const bdTop = showTitle ? 32 : (isKpi ? 0 : 0);
-    const head = `<div class="hd ${inverse ? 'inverse' : ''} ${titleBold ? 'bold' : ''}" data-drag="${c.id}" style="${hdStyle}"><span style="font-weight:inherit;color:inherit;font-size:inherit">${esc(title)}</span>${isKpi ? '' : `<span>${esc(badge)}</span>`}</div>`;
+    const head = `<div class="hd ${inverse ? 'inverse' : ''} ${titleBold ? 'bold' : ''}" data-drag="${c.id}" style="${hdStyle}"><span style="font-weight:inherit;color:inherit;font-size:inherit">${esc(title)}</span>${isKpi || readonly ? '' : `<span>${esc(badge)}</span>`}</div>`;
     const miss = missingBind(ch);
     // KPI 无标题栏时也要能拖动：整卡可拖
     const dragPad = (!showTitle && isKpi)
@@ -6329,7 +7403,17 @@ function widgetHtml(c, cw) {
   </div>`;
 }
 
-function slicerOptions(field) {
+function slicerOptions(field, datasetId) {
+  const pick = (rows) => {
+    const set = new Set();
+    (rows || []).forEach(r => { if (r[field] != null && r[field] !== '') set.add(String(r[field])); });
+    return [...set].slice(0, 8);
+  };
+  const ds = datasetId && DATASETS[datasetId];
+  if (ds) {
+    const list = pick(ds.rows);
+    if (list.length) return list;
+  }
   const defaults = { region: ['华东', '华北', '华南'], channel: ['线上', '线下'] };
   if (defaults[field]) return defaults[field];
   const set = new Set();
@@ -6341,6 +7425,15 @@ function slicerOptions(field) {
 }
 
 function wireSlicer(el) {
+  el.querySelectorAll('[data-date]').forEach(inp => {
+    inp.onmousedown = e => e.stopPropagation();
+    inp.onclick = e => e.stopPropagation();
+    inp.onchange = () => {
+      if (inp.dataset.date === 'from') state.filter.dateFrom = inp.value;
+      else state.filter.dateTo = inp.value;
+      repaintAllCharts();
+    };
+  });
   const field = el.querySelector('.slicer')?.dataset.sfield || 'region';
   el.querySelectorAll('[data-sv]').forEach(b => {
     b.onclick = e => {
@@ -6355,7 +7448,7 @@ function wireSlicer(el) {
 
 function wireDrag(el, comp, cw) {
   const board = el.parentElement;
-  const unit = cw || colW(board);
+  const unitNow = () => colW(board);
   el.onmousedown = e => {
     if (e.target.closest('[data-fix]')) {
       e.stopPropagation();
@@ -6367,7 +7460,7 @@ function wireDrag(el, comp, cw) {
       return;
     }
     if (e.button === 2) return;
-    selectComp(comp.id, { right: state.selectedId !== comp.id });
+    selectComp(comp.id);
   };
   el.oncontextmenu = e => {
     e.preventDefault();
@@ -6376,7 +7469,6 @@ function wireDrag(el, comp, cw) {
   };
 
   const beginInteract = () => {
-    selectComp(comp.id, { right: false });
     el.classList.add('dragging');
     if (state.layout.showGrid) board.classList.add('editing-grid');
   };
@@ -6385,26 +7477,35 @@ function wireDrag(el, comp, cw) {
     board.classList.remove('editing-grid');
     hidePlaceholder(board);
     board.querySelectorAll('.widget').forEach(w => w.classList.remove('pushed'));
+    const unit = unitNow();
     if (layout) {
       commitLayout(layout);
       paintPositions(board, layout, unit);
     }
     markDirty();
     selectComp(comp.id, { right: true });
-    Object.values(state.chartInst).forEach(c => { try { c.resize(); } catch (_) {} });
+    relayoutBoard();
   };
 
   const hd = el.querySelector('[data-drag]');
   if (hd) {
     hd.onmousedown = e => {
       if (e.button !== 0) return;
+      if (e.target.closest('input, button, select, textarea')) return;
       e.preventDefault();
       e.stopPropagation();
-      pushUndo();
-      beginInteract();
+      selectComp(comp.id);
       const startX = e.clientX, startY = e.clientY, ox = comp.x, oy = comp.y;
+      let dragging = false;
       let latest = tabComps().map(c => ({ ...c }));
       const move = ev => {
+        if (!dragging) {
+          if (Math.abs(ev.clientX - startX) < 6 && Math.abs(ev.clientY - startY) < 6) return;
+          dragging = true;
+          pushUndo();
+          beginInteract();
+        }
+        const unit = unitNow();
         let nx = Math.min(gridCols() - comp.w, Math.max(0, ox + snap(ev.clientX - startX, unit)));
         let ny = Math.max(0, oy + snap(ev.clientY - startY, rowH()));
         latest = tabComps().map(c => c.id === comp.id ? { ...c, x: nx, y: ny } : { ...c });
@@ -6417,6 +7518,10 @@ function wireDrag(el, comp, cw) {
       const up = () => {
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
+        if (!dragging) {
+          relayoutBoard();
+          return;
+        }
         if (state.layout.compactOnDrop) latest = compactLayout(latest);
         endInteract(latest);
       };
@@ -6436,6 +7541,7 @@ function wireDrag(el, comp, cw) {
       const min = minWH(comp);
       let latest = tabComps().map(c => ({ ...c }));
       const move = ev => {
+        const unit = unitNow();
         const ddx = snap(ev.clientX - startX, unit);
         const ddy = snap(ev.clientY - startY, rowH());
         let nx = ox, ny = oy, nw = ow, nh = oh;
@@ -6531,6 +7637,12 @@ function groupPivotColHeaders(colKeys, valFields) {
   return groups;
 }
 
+function fitTablePageSize(box, wanted) {
+  const h = box.clientHeight || 160;
+  const fit = Math.max(3, Math.floor((h - 40 - 32) / 28));
+  return Math.min(wanted || 5, fit);
+}
+
 function paintTableChart(el, comp, ch, st, rows) {
   const box = el.querySelector('[data-table]');
   if (!box) return;
@@ -6583,7 +7695,7 @@ function paintTableChart(el, comp, ch, st, rows) {
     const measureHint = valFields.map(f => fieldLabelOf(ch.datasetId, f)).join(', ');
     const alignCls = st.cellAlign === 'center' ? 'cell-center' : '';
     const gridCls = isDarkColor(st.headerBg) ? 'grid-full' : '';
-    box.innerHTML = `<table class="dt pivot ${stripe} ${alignCls} ${gridCls}">${head}<tbody>${body || '<tr><td colspan="2">暂无数据</td></tr>'}${foot}</tbody></table>
+    box.innerHTML = `<div class="table-scroll"><table class="dt pivot ${stripe} ${alignCls} ${gridCls}">${head}<tbody>${body || '<tr><td colspan="2">暂无数据</td></tr>'}${foot}</tbody></table></div>
       <div class="table-pager"><span>${piv.rowKeys.length} 行 · ${piv.colKeys.length} 列 · ${ch.encode.agg || 'SUM'}(${esc(measureHint)})</span><span>透视交叉表</span></div>`;
     return;
   }
@@ -6593,7 +7705,7 @@ function paintTableChart(el, comp, ch, st, rows) {
     const valFields = encodeFields(ch.encode, 'value');
     let data = aggregateTable(rows, catFields, valFields, ch.encode.agg || 'SUM');
     if (sn.resultLimit > 0) data = data.slice(0, sn.resultLimit);
-    const pageSize = st.pageSize || 10;
+    const pageSize = fitTablePageSize(box, st.pageSize || 10);
     const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
     if (!ch._page || ch._page > totalPages) ch._page = 1;
     const page = ch._page;
@@ -6602,11 +7714,11 @@ function paintTableChart(el, comp, ch, st, rows) {
     const head = st.showHeader !== false
       ? `<thead><tr>${catFields.map(f => `<th style="${hs}">${esc(fieldLabelOf(ch.datasetId, f))}</th>`).join('')}${valFields.map(f => `<th class="num" style="${hs}">${esc(fieldLabelOf(ch.datasetId, f))}</th>`).join('')}</tr></thead>` : '';
     const totals = Object.fromEntries(valFields.map(f => [f, data.reduce((s, r) => s + (r.values[f] || 0), 0)]));
-    box.innerHTML = `<table class="dt ${stripe}">${head}
+    box.innerHTML = `<div class="table-scroll"><table class="dt ${stripe}">${head}
       <tbody>
         ${slice.map(r => `<tr>${(r.dims.length ? r.dims : [r.key]).map(d => `<td>${esc(d)}</td>`).join('')}${valFields.map(f => `<td class="num">${formatVal(r.values[f], fmt)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${colSpan || 1}">暂无数据</td></tr>`}
         ${st.showRowTotal !== false ? `<tr class="total"><td colspan="${Math.max(1, catFields.length)}">合计</td>${valFields.map(f => `<td class="num">${formatVal(totals[f], fmt)}</td>`).join('')}</tr>` : ''}
-      </tbody></table>
+      </tbody></table></div>
       <div class="table-pager">
         <span>${page} / ${totalPages} · 共 ${data.length} 组</span>
         <span>
@@ -6621,7 +7733,7 @@ function paintTableChart(el, comp, ch, st, rows) {
   // 明细表：原始行
   const dataset = ds(ch.datasetId);
   const cols = (dataset?.fields || []).map(f => f.name);
-  const pageSize = st.pageSize || 5;
+  const pageSize = fitTablePageSize(box, st.pageSize || 5);
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   if (!ch._page || ch._page > totalPages) ch._page = 1;
   const page = ch._page;
@@ -6632,12 +7744,12 @@ function paintTableChart(el, comp, ch, st, rows) {
         const num = fieldMeta(ch.datasetId, c)?.group === 'quota';
         return `<th class="${num?'num':''}" style="${hs}">${esc(lab)}</th>`;
       }).join('')}</tr></thead>` : '';
-  box.innerHTML = `<table class="dt ${stripe}">${head}
+  box.innerHTML = `<div class="table-scroll"><table class="dt ${stripe}">${head}
     <tbody>${slice.map(r => `<tr>${cols.map(c => {
       const num = fieldMeta(ch.datasetId, c)?.group === 'quota';
       const v = r[c];
       return `<td class="${num?'num':''}">${num ? formatVal(v, fmt || 'raw') : esc(v)}</td>`;
-    }).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length||1}">暂无数据</td></tr>`}</tbody></table>
+    }).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length||1}">暂无数据</td></tr>`}</tbody></table></div>
     <div class="table-pager">
       <span>${page} / ${totalPages} · 共 ${rows.length} 行明细</span>
       <span>
@@ -6812,6 +7924,12 @@ function paintChart(el, comp) {
         markLine: idx === 0 ? markLine : undefined
       }))
     };
+  }
+  option.backgroundColor = 'transparent';
+  if (option.series) {
+    option.series.forEach((s) => {
+      if (s.areaStyle) s.areaStyle = { opacity: 0.16 };
+    });
   }
   inst.setOption(option, true);
   inst.off('click');
@@ -7069,21 +8187,23 @@ function wireInspMode(el) {
   });
 }
 
+function relayoutBoard() {
+  const board = document.getElementById('board');
+  if (!board || isMobileEdit()) return;
+  paintPositions(board, tabComps(), colW(board));
+  Object.values(state.chartInst || {}).forEach(c => { try { c.resize(); } catch (_) {} });
+}
+
 function syncDataOpsLayout() {
   const editor = document.querySelector('.editor');
   if (!editor) return;
   const open = shouldDataOpsOpen();
-  const was = editor.classList.contains('data-ops-open');
   editor.classList.toggle('data-ops-open', open);
   editor.classList.toggle('bind-collapsed', !!state.bindCollapsed);
   editor.classList.toggle('ops-collapsed', !!state.opsCollapsed);
-  if (was === open) return;
-  const board = document.getElementById('board');
-  if (!board || isMobileEdit()) return;
-  requestAnimationFrame(() => {
-    paintPositions(board, tabComps(), colW(board));
-    Object.values(state.chartInst || {}).forEach(c => { try { c.resize(); } catch (_) {} });
-  });
+  if (isMobileEdit()) return;
+  relayoutBoard();
+  requestAnimationFrame(() => relayoutBoard());
 }
 
 function wrapInspBody(inner) {
@@ -7225,14 +8345,36 @@ function renderRight(el) {
   if (state.rightTab === 'senior') return renderSenior(el, comp);
   if (comp.type === 'chart') return renderDataPanel(el, comp);
   if (comp.type === 'slicer') {
+    const kind = (comp.props || {}).kind === 'date' ? 'date' : 'enum';
     el.innerHTML = wrapInspBody(`<div class="sec"><h4>切片器</h4>
+      <div class="field"><label>类型</label>
+        <select id="sk">
+          <option value="enum" ${kind==='enum'?'selected':''}>枚举</option>
+          <option value="date" ${kind==='date'?'selected':''}>日期区间</option>
+        </select>
+      </div>
       <div class="field"><label>字段</label>
-        <select id="sf"><option value="region">region</option><option value="product">product</option></select>
+        <select id="sf">
+          <option value="region">区域 region</option>
+          <option value="channel">渠道 channel</option>
+          <option value="platform">端 platform</option>
+          <option value="warehouse">仓库 warehouse</option>
+          <option value="dept">部门 dept</option>
+          <option value="subject">科目 subject</option>
+          <option value="product">产品 product</option>
+        </select>
       </div>
       <div class="field"><label>显示名</label><input id="sl" value="${esc(comp.props.label||'')}" /></div>
     </div>`);
-    el.querySelector('#sf').value = comp.props.field;
-    el.querySelector('#sf').onchange = e => { pushUndo(); comp.props.field = e.target.value; markDirty(); replaceWidget(comp); };
+    const sf = el.querySelector('#sf');
+    if (comp.props.field) sf.value = comp.props.field;
+    el.querySelector('#sk').onchange = e => {
+      pushUndo();
+      if (e.target.value === 'date') { comp.props.kind = 'date'; comp.props.label = comp.props.label || '日期'; }
+      else { delete comp.props.kind; }
+      markDirty(); replaceWidget(comp); renderRight(el);
+    };
+    sf.onchange = e => { pushUndo(); comp.props.field = e.target.value; markDirty(); replaceWidget(comp); };
     el.querySelector('#sl').onchange = e => { pushUndo(); comp.props.label = e.target.value; markDirty(); replaceWidget(comp); };
     wireInspMode(el);
     return;
@@ -8209,7 +9351,7 @@ function renderPreview(app) {
     ${useMobLay ? '' : '<div class="qbar" id="qbar"></div>'}
     <div class="canvas-wrap ${useMobLay?'mobile-edit':''}" style="flex:1;min-height:0">
       ${useMobLay ? '' : '<div class="tab-strip" id="tabStrip"></div>'}
-      ${useMobLay ? phoneShellHtml(mob, { mode: 'preview' }) : `<div class="board" id="board"></div>`}
+      ${useMobLay ? phoneShellHtml(mob, { mode: 'preview' }) : `<div class="board preview-readonly" id="board"></div>`}
     </div>`;
   app.querySelector('#back').onclick = leavePreview;
   app.querySelector('#sh').onclick = () => openShareModal();
@@ -8603,6 +9745,23 @@ window.addEventListener('hashchange', () => {
   if (applyRouteFromHash()) return;
   render();
 });
+
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-mod="dashboard"]');
+  if (!a || pageMod() !== 'dashboard') return;
+  if (state.screen !== 'templates' && !(state.screen === 'editor' && state.editorFrom === 'templates')) return;
+  e.preventDefault();
+  if (state.screen === 'templates' && state.tplPreviewId) {
+    state.tplPreviewId = null;
+    render();
+    return;
+  }
+  if (state.screen === 'templates') return;
+  state.screen = 'templates';
+  state.tplPreviewId = null;
+  state.editSurface = 'pc';
+  render();
+}, true);
 
 // 首次进入：按当前 html 的 data-mod 渲染；hash 只表示模块内对象
 const redirected = applyRouteFromHash();

@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>数据广场 · DataQ 高保</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <link rel="stylesheet" href="./shared/shell.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    button, input, select, textarea { font: inherit; }
+    .plaza { flex: 1; min-height: 0; overflow: hidden; padding: 0; display: flex; flex-direction: column; background: #f6f7fa; }
+    .inner {
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .plaza-hero {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 28px 8px;
+      text-align: center;
+    }
+    .plaza-hero h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 780;
+      letter-spacing: -0.03em;
+    }
+    .plaza-hero p {
+      margin: 6px 0 0;
+      color: var(--od-muted);
+      font-size: 14px;
+      line-height: 1.45;
+      max-width: 560px;
+    }
+    .hero-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: min(640px, 100%);
+      height: 46px;
+      margin-top: 14px;
+      border: 1px solid #d7dce6;
+      border-radius: 14px;
+      background: #fff;
+      padding: 0 5px 0 16px;
+      box-shadow: 0 8px 20px rgba(79, 70, 229, 0.08);
+    }
+    .hero-search:focus-within {
+      border-color: var(--od-brand);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+    .hero-search svg { width: 18px; height: 18px; color: #8b93a3; flex-shrink: 0; }
+    .hero-search input {
+      flex: 1;
+      min-width: 0;
+      height: 100%;
+      border: 0;
+      outline: none;
+      background: transparent;
+      font-size: 15px;
+    }
+    .hero-search button {
+      min-width: 80px;
+      height: 36px;
+      border: 0;
+      border-radius: 11px;
+      background: var(--od-brand);
+      color: #fff;
+      padding: 0 18px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .plaza-head { display: none; }
+    .hero, .panel, .space-nav, .side-card, .asset, .bulk-bar, .drawer {
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-card);
+      box-shadow: var(--od-shadow);
+    }
+    .hero { display: none; }
+    .eyebrow { color: var(--od-brand); font-size: 12px; font-weight: 760; letter-spacing: .04em; }
+    .hero h1 { margin-top: 7px; font-size: 24px; font-weight: 780; letter-spacing: 0; }
+    .hero p {
+      margin-top: 7px;
+      color: var(--od-muted);
+      font-size: 13.5px;
+      line-height: 1.62;
+      max-width: 1120px;
+    }
+    .hero-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .btn {
+      min-height: 34px;
+      padding: 7px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--od-line);
+      background: var(--od-card);
+      color: var(--od-ink);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 650;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn.primary { background: var(--od-brand); border-color: var(--od-brand); color: #fff; }
+    .btn.ghost { background: var(--od-bg); }
+    .btn[disabled] { opacity: .48; cursor: not-allowed; }
+    .icon-btn { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; }
+    .icon-btn svg { width: 16px; height: 16px; }
+    .space-nav { padding: 12px; }
+    .nav-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+      color: var(--od-muted);
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .space-btn {
+      width: 100%;
+      min-height: 40px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--od-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .space-btn:hover { background: var(--od-bg); color: var(--od-ink); }
+    .space-btn.on { background: var(--od-brand-soft); color: var(--od-brand); font-weight: 720; }
+    .space-btn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .space-btn em { font-style: normal; font-size: 11px; color: var(--od-faint); flex-shrink: 0; }
+    .space-divider { height: 1px; background: var(--od-line); margin: 10px 0; }
+    .mini-stat { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .mini-stat div { border: 1px solid var(--od-line); border-radius: 8px; background: var(--od-bg); padding: 10px; min-width: 0; }
+    .mini-stat b { display: block; font-size: 18px; letter-spacing: 0; }
+    .mini-stat span { color: var(--od-muted); font-size: 11.5px; }
+    .panel {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+      margin: 0 16px 16px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: none;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 14px 12px;
+      border-bottom: 0;
+    }
+    .search-wrap {
+      margin-left: auto;
+      width: min(360px, 100%);
+      height: 32px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      min-width: 0;
+    }
+    .search-wrap svg { width: 15px; height: 15px; color: var(--od-faint); flex-shrink: 0; }
+    .search {
+      min-width: 0;
+      width: 100%;
+      height: 32px;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--od-ink);
+      font-size: 13px;
+    }
+    .select {
+      height: 36px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-bg);
+      color: var(--od-ink);
+      padding: 0 10px;
+      font-size: 13px;
+      outline: none;
+    }
+    .view-toggle { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--od-line); background: var(--od-bg); border-radius: 8px; }
+    .view-toggle button {
+      border: 0;
+      width: 32px;
+      height: 30px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--od-muted);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .view-toggle button.on { background: var(--od-card); color: var(--od-brand); box-shadow: 0 1px 2px rgba(17, 24, 39, .06); }
+    .view-toggle svg { width: 15px; height: 15px; }
+    .tabs {
+      display: flex;
+      gap: 2px;
+      padding: 0 14px 10px;
+      overflow-x: auto;
+      border-bottom: 0;
+    }
+    .tabs button {
+      min-height: 28px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--od-muted);
+      font-size: 13px;
+      font-weight: 650;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tabs button.on { color: var(--od-brand); background: var(--od-brand-soft); }
+    .filters {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px 12px;
+      border-bottom: 1px solid var(--od-line);
+      flex-wrap: wrap;
+    }
+    .filters .tabs { padding: 0; flex: 1; min-width: 0; border: 0; }
+    .filters .sp { flex: 1; min-width: 8px; }
+    .seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--od-bg); border: 1px solid var(--od-line); }
+    .seg button {
+      height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--od-muted);
+      font-size: 12.5px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .seg button.on { background: var(--od-card); color: var(--od-brand); box-shadow: 0 1px 2px rgba(17, 24, 39, .06); }
+    .filter-chip {
+      border: 1px solid var(--od-line);
+      border-radius: 999px;
+      background: var(--od-card);
+      color: var(--od-muted);
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .filter-chip.on { color: var(--od-brand); background: var(--od-brand-soft); border-color: #c7d2fe; }
+    .asset-grid { display: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px; overflow: auto; }
+    .asset {
+      position: relative;
+      padding: 14px;
+      min-width: 0;
+      box-shadow: none;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 10px;
+    }
+    .asset:hover { box-shadow: var(--od-shadow-hover); }
+    .asset-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+    .check { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--od-brand); }
+    .asset-title { min-width: 0; }
+    .asset-title button {
+      border: 0;
+      background: transparent;
+      color: var(--od-ink);
+      font-weight: 760;
+      font-size: 15px;
+      cursor: pointer;
+      text-align: left;
+      line-height: 1.35;
+    }
+    .asset-title button:hover { color: var(--od-brand); }
+    .asset-title p { color: var(--od-muted); font-size: 12.5px; line-height: 1.55; margin-top: 4px; }
+    .type {
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 760;
+      border: 1px solid var(--od-line);
+      color: var(--od-muted);
+      background: var(--od-bg);
+      white-space: nowrap;
+    }
+    .type.dataset { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+    .type.dashboard { color: #047857; background: #ecfdf3; border-color: #bbf7d0; }
+    .type.bundle { color: #7c2d12; background: #fff7ed; border-color: #fed7aa; }
+    .type.file { color: #854d0e; background: #fefce8; border-color: #fde68a; }
+    .type.api { color: #6d28d9; background: #f5f3ff; border-color: #ddd6fe; }
+    .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .meta-grid div { border: 1px solid var(--od-line); border-radius: 8px; background: var(--od-bg); padding: 8px; min-width: 0; }
+    .meta-grid span { display: block; color: var(--od-faint); font-size: 11px; margin-bottom: 3px; }
+    .meta-grid b { display: block; color: var(--od-ink); font-size: 12px; font-weight: 680; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip, .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 3px 7px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 680;
+      background: var(--od-card);
+      color: var(--od-muted);
+      border: 1px solid var(--od-line);
+    }
+    .badge.ok { background: #ecfdf3; color: #047857; border-color: #bbf7d0; }
+    .badge.mine { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+    .badge.wait { background: #fff7e6; color: #b45309; border-color: #fde68a; }
+    .badge.lock { background: #eef0f3; color: var(--od-muted); }
+    .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .asset-list { display: block; padding: 0; overflow: auto; flex: 1; min-height: 0; }
+    table { width: 100%; border-collapse: collapse; min-width: 780px; font-size: 13px; }
+    th, td { padding: 11px 10px; border-bottom: 1px solid var(--od-line); text-align: left; vertical-align: middle; }
+    th { color: var(--od-muted); font-size: 12px; font-weight: 760; background: var(--od-bg); }
+    td { color: var(--od-ink); }
+    .asset-list .btn { min-height: 30px; padding: 5px 9px; }
+    .panel.list-mode .asset-grid { display: none !important; }
+    .panel.list-mode .asset-list { display: block; }
+    .panel.card-mode .asset-grid { display: grid; }
+    .panel.card-mode .asset-list { display: none; }
+    .bulk-bar {
+      display: none;
+      position: sticky;
+      bottom: 12px;
+      margin: 0 14px 14px;
+      padding: 10px 12px;
+      align-items: center;
+      gap: 10px;
+      z-index: 4;
+    }
+    .bulk-bar.show { display: flex; }
+    .bulk-bar span { color: var(--od-muted); font-size: 13px; }
+    .bulk-bar .sp { flex: 1; }
+    .empty { display: none; padding: 46px 16px; text-align: center; color: var(--od-muted); font-size: 13px; line-height: 1.6; }
+    .empty.show { display: block; }
+    .side { display: grid; gap: 12px; }
+    .side-card { padding: 14px; }
+    .side-card h2 { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; font-weight: 760; }
+    .side-card p { margin-top: 6px; color: var(--od-muted); font-size: 12.5px; line-height: 1.55; }
+    .my-list { margin-top: 12px; display: grid; gap: 8px; }
+    .my-item { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--od-line); border-radius: 8px; background: var(--od-bg); }
+    .my-item b { font-size: 13px; }
+    .my-item span { color: var(--od-muted); font-size: 12px; line-height: 1.45; }
+    .flow { margin-top: 12px; display: grid; gap: 8px; }
+    .flow div { padding: 9px 10px; border: 1px solid var(--od-line); border-radius: 8px; background: var(--od-bg); color: var(--od-muted); font-size: 12.5px; line-height: 1.45; }
+    .flow b { color: var(--od-ink); }
+    .mask {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, .28);
+      display: none;
+      align-items: stretch;
+      justify-content: flex-end;
+      z-index: 80;
+    }
+    .mask.show { display: flex; }
+    .drawer {
+      width: min(520px, 100%);
+      height: 100%;
+      border-radius: 0;
+      border-top: 0;
+      border-right: 0;
+      border-bottom: 0;
+      padding: 18px;
+      overflow: auto;
+    }
+    .drawer-hd { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--od-line); }
+    .drawer-hd h3 { font-size: 18px; letter-spacing: 0; }
+    .drawer-hd p { color: var(--od-muted); font-size: 12.5px; line-height: 1.55; margin-top: 4px; }
+    .form { display: grid; gap: 12px; margin-top: 14px; }
+    .field label { display: block; margin-bottom: 6px; color: var(--od-muted); font-size: 12px; font-weight: 760; }
+    .field input, .field textarea, .field select {
+      width: 100%;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-bg);
+      color: var(--od-ink);
+      padding: 9px 10px;
+      outline: none;
+      font-size: 13px;
+    }
+    .field textarea { min-height: 82px; resize: vertical; line-height: 1.5; }
+    .checks { display: flex; gap: 8px; flex-wrap: wrap; }
+    .checks label {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      padding: 8px 10px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-bg);
+      color: var(--od-muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .checks input { accent-color: var(--od-brand); }
+    .drawer-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .space-nav, .side { display: none; }
+    .scope-tabs { display: inline-flex; gap: 2px; padding: 3px; background: #eef0f3; border-radius: 8px; margin: 0; }
+    .scope-tabs button {
+      min-height: 30px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--od-muted);
+      padding: 0 14px;
+      font-weight: 650;
+      box-shadow: none;
+    }
+    .scope-tabs button.on { color: var(--od-brand); background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    @media (max-width: 1700px) {
+      .inner { grid-template-columns: 1fr; }
+      .asset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 1180px) {
+      .plaza { padding: 20px; }
+      .inner { grid-template-columns: 1fr; }
+      .side { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 860px) {
+      .plaza { padding: 16px; }
+      .inner { grid-template-columns: 1fr; }
+      .hero { flex-direction: column; }
+      .hero-actions { justify-content: flex-start; }
+      .toolbar { grid-template-columns: 1fr; }
+      .asset-grid { grid-template-columns: 1fr; }
+      .side { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body data-mod="dataMarket">
+<div class="od-app" id="odApp">
+  <div class="od-col">
+    <main class="plaza od-page">
+      <div class="inner">
+        <section class="plaza-hero">
+          <h1>优选数据资产</h1>
+          <p id="heroCopy">组织内可用的全部数据资产，添加到我的数据后可对该数据进行分析</p>
+          <form class="hero-search" role="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input class="search" id="q" placeholder="您需要什么数据？搜一下" />
+            <button type="submit">搜索</button>
+          </form>
+        </section>
+
+        <section class="panel list-mode" id="panel">
+          <div class="filters">
+            <div class="tabs" aria-label="资产分类">
+              <button class="on" type="button" data-type="all">全部</button>
+              <button type="button" data-type="dataset">数据集</button>
+              <button type="button" data-type="dashboard">仪表板</button>
+              <button type="button" data-type="bundle">数据表组合</button>
+              <button type="button" data-type="file">文件</button>
+              <button type="button" data-type="api">API 数据</button>
+            </div>
+            <select class="select" id="ownerFilter" aria-label="负责人筛选">
+              <option value="all">全部负责人</option>
+              <option value="林数据">林数据</option>
+              <option value="王业务">王业务</option>
+              <option value="陈治理">陈治理</option>
+            </select>
+            <div class="seg" id="mineFilters" hidden>
+              <button class="on" type="button" data-state-filter="mine">已添加</button>
+              <button type="button" data-state-filter="pending">申请中</button>
+            </div>
+            <div class="view-toggle" aria-label="视图切换">
+              <button class="on" type="button" data-view="list" title="列表视图">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg>
+              </button>
+              <button type="button" data-view="card" title="卡片视图">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="asset-grid" id="assetGrid">
+            <article class="asset" data-id="order" data-type="dataset" data-state="granted" data-space="retail" data-owner="林数据" data-sensitive="safe" data-mine="true">
+              <div class="asset-head"><input class="check" type="checkbox" aria-label="选择订单表" /><div class="asset-title"><button type="button" data-detail>订单表</button><p>t_pay_order · GMV、订单数、渠道、区域，适合作为经营问数默认上下文。</p></div><span class="type dataset">数据集</span></div>
+              <div class="meta-grid"><div><span>数据空间</span><b>零售经营项目组</b></div><div><span>负责人</span><b>林数据</b></div><div><span>更新</span><b>10 分钟前</b></div><div><span>状态</span><b>已添加到我的数据</b></div></div>
+              <div class="chips"><span class="badge ok">已获权</span><span class="badge mine">我的数据</span><span class="chip">低敏</span><span class="chip">可问</span></div>
+              <div class="actions"><a class="btn primary" href="./conversation.html">开始问数</a><button class="btn" type="button" data-added>已添加</button><a class="btn" href="./knowledge.html">查看口径</a></div>
+            </article>
+            <article class="asset" data-id="store" data-type="dataset" data-state="granted" data-space="east" data-owner="陈治理" data-sensitive="masked" data-mine="false">
+              <div class="asset-head"><input class="check" type="checkbox" aria-label="选择门店日结表" /><div class="asset-title"><button type="button" data-detail>门店日结表</button><p>fact_store_daily · 销售额、客单价、门店等级，仅华东区域行权限。</p></div><span class="type dataset">数据集</span></div>
+              <div class="meta-grid"><div><span>数据空间</span><b>华东门店项目组</b></div><div><span>负责人</span><b>陈治理</b></div><div><span>更新</span><b>今天 08:10</b></div><div><span>状态</span><b>可添加</b></div></div>
+              <div class="chips"><span class="badge ok">已获权</span><span class="chip">脱敏可用</span><span class="chip">行权限</span></div>
+              <div class="actions"><a class="btn primary" href="./conversation.html">开始问数</a><button class="btn" type="button" data-add>添加到我的数据</button></div>
+            </article>
+            <article class="asset" data-id="retail-dash" data-type="dashboard" data-state="granted" data-space="retail" data-owner="王业务" data-sensitive="safe" data-mine="true">
+              <div class="asset-head"><input class="check" type="checkbox" aria-label="选择经营周报仪表板" /><div class="asset-title"><button type="button" data-detail>经营周报仪表板</button><p>零售经营核心指标看板，含 GMV、渠道、区域、客群趋势。</p></div><span class="type dashboard">仪表板</span></div>
+              <div class="meta-grid"><div><span>数据空间</span><b>零售经营项目组</b></div><div><span>负责人</span><b>王业务</b></div><div><span>更新</span><b>昨天 19:22</b></div><div><span>状态</span><b>已添加到我的数据</b></div></div>
+              <div class="chips"><span class="badge ok">已获权</span><span class="badge mine">我的数据</span><span class="chip">可查看</span></div>
+              <div class="actions"><a class="btn primary" href="./dashboard.html">打开</a><button class="btn" type="button" data-added>已添加</button></div>
+            </article>
+            <article class="asset" data-id="member" data-type="dataset" data-state="requestable" data-space="retail" data-owner="王业务" data-sensitive="high" data-mine="false">
+              <div class="asset-head"><input class="check" type="checkbox" aria-label="选择会员画像宽表" /><div class="asset-title"><button type="button" data-detail>会员画像宽表</button><p>dim_member_profile · 会员等级、生命周期、复购标签，含敏感画像字段。</p></div><span class="type dataset">数据集</span></div>
+              <div class="meta-grid"><div><span>数据空间</span><b>零售经营项目组</b></div><div><span>负责人</span><b>王业务</b></div><div><span>更新</span><b>今天 09:25</b></div><div><span>状态</span><b>可申请消费</b></div></div>
+              <div class="chips"><span class="badge lock">可申请</span><span class="chip">高敏需审批</span><span class="chip">字段明细隐藏</span></div>
+              <div class="actions"><button class="btn primary" type="button" data-apply>申请消费</button><button class="btn" type="button" data-detail>查看说明</button></div>
+            </article>
+            <article class="asset" data-id="inventory" data-type="bundle" data-state="requestable" data-space="supply" data-owner="林数据" data-sensitive="masked" data-mine="false">
+              <div class="asset-head"><input class="check" type="checkbox" aria-label="选择供应链库存组合" /><div class="asset-title"><button type="button" data-detail>供应链库存组合</button><p>库存、采购和调拨三张表的组合资产，管理员已发布到广场。</p></div><span class="type bundle">数据表组合</span></div>
+              <div class="meta-grid"><div><span>数据空间</span><b>供应链协同空间</b></div><div><span>负责人</span><b>林数据</b></div><div><span>更新</span><b>2 小时前</b></div><div><span>状态</span><b>可申请消费</b></div></div>
+              <div class="chips"><span class="badge lock">可申请</span><span class="chip">脱敏可用</span><span class="chip">组合资产</span></div>
+              <div class="actions"><button class="btn primary" type="button" data-apply>申请消费</button><button class="btn" type="button" data-detail>查看说明</button></div>
+            </article>
+            <article class="asset" data-id="payment" data-type="dataset" data-state="pending" data-space="finance" data-owner="王业务" data-sensitive="high" data-mine="false">
+              <div class="asset-head"><input class="check" type="checkbox" aria-label="选择支付流水明细" /><div class="asset-title"><button type="button" data-detail>支付流水明细</button><p>fact_payment_detail · 支付方式、退款、结算状态，昨天提交申请。</p></div><span class="type dataset">数据集</span></div>
+              <div class="meta-grid"><div><span>数据空间</span><b>财务共享空间</b></div><div><span>负责人</span><b>王业务</b></div><div><span>审批人</span><b>财务数据负责人</b></div><div><span>状态</span><b>申请中</b></div></div>
+              <div class="chips"><span class="badge wait">申请中</span><span class="chip">高敏需审批</span><span class="chip">不可问</span></div>
+              <div class="actions"><button class="btn" type="button" disabled>等待审批</button><button class="btn" type="button" data-detail>查看进度</button></div>
+            </article>
+            <article class="asset" data-id="price-file" data-type="file" data-state="granted" data-space="retail" data-owner="陈治理" data-sensitive="safe" data-mine="false">
+              <div class="asset-head"><input class="check" type="checkbox" aria-label="选择促销价格文件" /><div class="asset-title"><button type="button" data-detail>促销价格文件</button><p>promotion_price_2026.xlsx · 运营上传文件，适合作为促销效果分析辅助数据。</p></div><span class="type file">文件</span></div>
+              <div class="meta-grid"><div><span>数据空间</span><b>零售经营项目组</b></div><div><span>负责人</span><b>陈治理</b></div><div><span>更新</span><b>8 月 16 日</b></div><div><span>状态</span><b>可添加</b></div></div>
+              <div class="chips"><span class="badge ok">已获权</span><span class="chip">低敏</span><span class="chip">文件资产</span></div>
+              <div class="actions"><button class="btn primary" type="button" data-add>添加到我的数据</button><button class="btn" type="button" data-detail>预览</button></div>
+            </article>
+            <article class="asset" data-id="weather-api" data-type="api" data-state="requestable" data-space="east" data-owner="林数据" data-sensitive="safe" data-mine="false">
+              <div class="asset-head"><input class="check" type="checkbox" aria-label="选择天气影响 API" /><div class="asset-title"><button type="button" data-detail>天气影响 API</button><p>weather_impact_api · 接入外部天气、节假日和门店客流影响因子。</p></div><span class="type api">API 数据</span></div>
+              <div class="meta-grid"><div><span>数据空间</span><b>华东门店项目组</b></div><div><span>负责人</span><b>林数据</b></div><div><span>更新</span><b>每天同步</b></div><div><span>状态</span><b>可申请消费</b></div></div>
+              <div class="chips"><span class="badge lock">可申请</span><span class="chip">低敏</span><span class="chip">API 接入</span></div>
+              <div class="actions"><button class="btn primary" type="button" data-apply>申请消费</button><button class="btn" type="button" data-detail>查看说明</button></div>
+            </article>
+          </div>
+
+          <div class="asset-list" id="assetList">
+            <table>
+              <thead><tr><th>选择</th><th>资产名称</th><th>类型</th><th>数据空间</th><th>负责人</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody id="listRows"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="empty">没有匹配资产。可以切换企业 / 我的资产、资产类型或搜索关键词。</div>
+          <div class="bulk-bar" id="bulkBar"><span>已选择 <b id="selectedCount">0</b> 个资产</span><span class="sp"></span><button class="btn" type="button" id="clearSelect">取消选择</button><button class="btn primary" type="button" id="bulkAdd">批量添加到我的数据</button></div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="mask" id="drawerMask" aria-hidden="true">
+  <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+    <div class="drawer-hd">
+      <div><h3 id="drawerTitle">资产详情</h3><p id="drawerDesc">查看资产业务说明、负责人、授权状态和可执行操作。</p></div>
+      <button class="btn icon-btn" type="button" id="drawerClose" title="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div id="drawerBody"></div>
+  </aside>
+</div>
+
+<script src="./shared/shell.js"></script>
+<script>
+  const toast = (msg) => window.odToast ? odToast(msg) : alert(msg);
+  const panel = document.getElementById('panel');
+  const grid = document.getElementById('assetGrid');
+  const empty = document.getElementById('empty');
+  const bulkBar = document.getElementById('bulkBar');
+  const selectedCount = document.getElementById('selectedCount');
+  const listRows = document.getElementById('listRows');
+  const mineCount = document.getElementById('mineCount');
+  const pendingCount = document.getElementById('pendingCount');
+  const myList = document.getElementById('myList');
+  const drawerMask = document.getElementById('drawerMask');
+  const drawerTitle = document.getElementById('drawerTitle');
+  const drawerDesc = document.getElementById('drawerDesc');
+  const drawerBody = document.getElementById('drawerBody');
+  let stateFilter = 'mine';
+  let typeFilter = 'all';
+  let assetScope = 'org';
+  let sensitiveFilter = '';
+
+  function cards() { return [...document.querySelectorAll('.asset')]; }
+  function assetName(card) { return card.querySelector('.asset-title button').textContent.trim(); }
+  function typeText(card) { return card.querySelector('.type').textContent.trim(); }
+  function statusText(card) {
+    if (card.dataset.state === 'pending') return '申请中';
+    if (card.dataset.state === 'requestable') return '可申请';
+    return card.dataset.mine === 'true' ? '我的数据' : '已获权';
+  }
+  function syncCounters() {
+    const mine = cards().filter((card) => card.dataset.mine === 'true').length;
+    const pending = cards().filter((card) => card.dataset.state === 'pending').length;
+    if (mineCount) mineCount.textContent = String(mine);
+    if (pendingCount) pendingCount.textContent = String(pending);
+    if (myList) myList.innerHTML = cards().filter((card) => card.dataset.mine === 'true').slice(0, 5).map((card) => `<div class="my-item"><b>${assetName(card)}</b><span>${typeText(card)} · 已添加 · 可消费</span></div>`).join('');
+  }
+  function renderListRows(visibleCards) {
+    listRows.innerHTML = visibleCards.map((card) => {
+      const checked = card.querySelector('.check').checked ? 'checked' : '';
+      const primary = card.dataset.state === 'granted'
+        ? (card.dataset.mine === 'true' ? '<button class="btn" type="button" disabled>已添加</button>' : `<button class="btn primary" type="button" data-row-add="${card.dataset.id}">添加</button>`)
+        : card.dataset.state === 'pending' ? '<button class="btn" type="button" disabled>等待审批</button>' : `<button class="btn primary" type="button" data-row-apply="${card.dataset.id}">申请</button>`;
+      return `<tr data-row-id="${card.dataset.id}"><td><input class="check row-check" type="checkbox" ${checked} aria-label="选择 ${assetName(card)}" /></td><td><button class="btn ghost" type="button" data-row-detail="${card.dataset.id}">${assetName(card)}</button></td><td>${typeText(card)}</td><td>${card.querySelector('.meta-grid div:first-child b').textContent}</td><td>${card.dataset.owner}</td><td>${statusText(card)}</td><td>${primary}</td></tr>`;
+    }).join('');
+  }
+  function matches(card) {
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const owner = document.getElementById('ownerFilter').value;
+    const textOk = !q || card.innerText.toLowerCase().includes(q);
+    const typeOk = typeFilter === 'all' || card.dataset.type === typeFilter;
+    const scopeOk = assetScope === 'org' ? card.dataset.state !== 'pending' : (stateFilter === 'mine' ? card.dataset.mine === 'true' : card.dataset.state === 'pending');
+    const ownerOk = owner === 'all' || card.dataset.owner === owner;
+    const sensitiveOk = !sensitiveFilter || card.dataset.sensitive === sensitiveFilter;
+    return textOk && typeOk && scopeOk && ownerOk && sensitiveOk;
+  }
+  function render() {
+    const visible = [];
+    cards().forEach((card) => {
+      const on = matches(card);
+      card.style.display = on ? 'grid' : 'none';
+      if (on) visible.push(card);
+    });
+    renderListRows(visible);
+    empty.classList.toggle('show', visible.length === 0);
+    if (visible.length === 0) grid.style.display = 'none';
+    else grid.style.removeProperty('display');
+    updateBulk();
+    syncCounters();
+  }
+  function updateBulk() {
+    const selected = cards().filter((card) => card.querySelector('.check').checked);
+    selectedCount.textContent = String(selected.length);
+    bulkBar.classList.toggle('show', selected.length > 0);
+  }
+  function markAdded(card) {
+    if (!card || card.dataset.state !== 'granted') {
+      toast('只有已获权资产可以添加到我的数据');
+      return;
+    }
+    card.dataset.mine = 'true';
+    const stateCell = card.querySelector('.meta-grid div:nth-child(4) b');
+    if (stateCell) stateCell.textContent = '已添加到我的数据';
+    if (!card.querySelector('.badge.mine')) card.querySelector('.chips').insertAdjacentHTML('beforeend', '<span class="badge mine">我的数据</span>');
+    card.querySelectorAll('[data-add]').forEach((btn) => {
+      btn.textContent = '已添加';
+      btn.removeAttribute('data-add');
+      btn.setAttribute('data-added', '');
+    });
+  }
+  function closeDrawer() {
+    drawerMask.classList.remove('show');
+    drawerMask.setAttribute('aria-hidden', 'true');
+  }
+  function openDetail(card, mode) {
+    const name = assetName(card);
+    drawerTitle.textContent = mode === 'apply' ? '申请消费 · ' + name : name;
+    drawerDesc.textContent = card.querySelector('.asset-title p').textContent.trim();
+    if (mode === 'apply') {
+      drawerBody.innerHTML = `<form class="form" id="applyForm"><div class="field"><label>申请用途</label><textarea required>用于当前工作区经营分析，验证业务机会并沉淀分析看板。</textarea></div><div class="field"><label>有效期</label><select><option>30 天</option><option>90 天</option><option>180 天</option></select></div><div class="field"><label>期望权限</label><div class="checks"><label><input type="checkbox" checked /> 问数</label><label><input type="checkbox" checked /> 生成看板</label><label><input type="checkbox" /> 订阅报告</label></div></div><div class="field"><label>审批链路</label><input value="资产负责人审批 → 工作区管理员确认 → Java 权限中心生效" readonly /></div><div class="drawer-actions"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">提交申请</button></div></form>`;
+      drawerBody.querySelector('#applyForm').onsubmit = (event) => {
+        event.preventDefault();
+        card.dataset.state = 'pending';
+        card.querySelectorAll('.badge').forEach((badge) => {
+          if (badge.classList.contains('lock')) {
+            badge.className = 'badge wait';
+            badge.textContent = '申请中';
+          }
+        });
+        const stateCell = card.querySelector('.meta-grid div:nth-child(4) b');
+        if (stateCell) stateCell.textContent = '申请中';
+        card.querySelectorAll('[data-apply]').forEach((btn) => {
+          btn.textContent = '等待审批';
+          btn.disabled = true;
+          btn.removeAttribute('data-apply');
+        });
+        closeDrawer();
+        toast('已提交消费申请 · ' + name);
+        render();
+      };
+    } else {
+      drawerBody.innerHTML = `<div class="form"><div class="field"><label>资产状态</label><input value="${statusText(card)}" readonly /></div><div class="field"><label>负责人</label><input value="${card.dataset.owner}" readonly /></div><div class="field"><label>可见信息</label><textarea readonly>${card.dataset.state === 'requestable' ? '未获权前仅展示业务说明、负责人、敏感等级和申请条件。字段明细、样例数据、查询结果均隐藏。' : '已获权资产可查看业务口径，并可添加到我的数据后进入分析任务。'}</textarea></div><div class="drawer-actions"><button class="btn" type="button" data-close>关闭</button>${card.dataset.state === 'requestable' ? '<button class="btn primary" type="button" data-drawer-apply>申请消费</button>' : ''}</div></div>`;
+      const applyBtn = drawerBody.querySelector('[data-drawer-apply]');
+      if (applyBtn) applyBtn.onclick = () => openDetail(card, 'apply');
+    }
+    drawerMask.classList.add('show');
+    drawerMask.setAttribute('aria-hidden', 'false');
+    drawerBody.querySelectorAll('[data-close]').forEach((btn) => { btn.onclick = closeDrawer; });
+  }
+
+  document.querySelectorAll('.tabs [data-type]').forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tabs [data-type]').forEach((x) => x.classList.toggle('on', x === btn));
+      typeFilter = btn.dataset.type;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-scope]').forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll('[data-scope]').forEach((x) => x.classList.toggle('on', x === btn));
+      assetScope = btn.dataset.scope;
+      document.getElementById('mineFilters').hidden = assetScope !== 'mine';
+      stateFilter = 'mine';
+      document.querySelectorAll('#mineFilters [data-state-filter]').forEach((x) => {
+        x.classList.toggle('on', x.dataset.stateFilter === stateFilter);
+      });
+      const copy = document.getElementById('heroCopy');
+      if (copy) {
+        copy.textContent = assetScope === 'mine'
+          ? '已添加到我的数据的资产可直接分析；申请中的资产可查看进度'
+          : '组织内可用的全部数据资产，添加到我的数据后可对该数据进行分析';
+      }
+      render();
+    };
+  });
+  document.querySelectorAll('[data-state-filter]').forEach((btn) => {
+    btn.onclick = () => {
+      btn.parentElement.querySelectorAll('[data-state-filter]').forEach((x) => x.classList.toggle('on', x === btn));
+      stateFilter = btn.dataset.stateFilter;
+      render();
+    };
+  });
+  document.querySelectorAll('.filter-chip[data-sensitive]').forEach((btn) => {
+    btn.onclick = () => {
+      sensitiveFilter = sensitiveFilter === btn.dataset.sensitive ? '' : btn.dataset.sensitive;
+      document.querySelectorAll('.filter-chip[data-sensitive]').forEach((x) => x.classList.toggle('on', x.dataset.sensitive === sensitiveFilter));
+      render();
+    };
+  });
+  document.querySelectorAll('[data-view]').forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll('[data-view]').forEach((x) => x.classList.toggle('on', x === btn));
+      panel.classList.toggle('list-mode', btn.dataset.view === 'list');
+      panel.classList.toggle('card-mode', btn.dataset.view === 'card');
+      render();
+    };
+  });
+  document.getElementById('q').oninput = render;
+  document.querySelector('.hero-search').onsubmit = (event) => { event.preventDefault(); render(); };
+  document.getElementById('ownerFilter').onchange = render;
+  document.getElementById('clearSelect').onclick = () => {
+    cards().forEach((card) => { card.querySelector('.check').checked = false; });
+    render();
+  };
+  document.getElementById('bulkAdd').onclick = () => {
+    const selected = cards().filter((card) => card.querySelector('.check').checked);
+    const granted = selected.filter((card) => card.dataset.state === 'granted');
+    granted.forEach(markAdded);
+    selected.forEach((card) => { card.querySelector('.check').checked = false; });
+    toast(granted.length ? `已添加 ${granted.length} 个资产到我的数据` : '所选资产暂无使用权限，请先申请消费');
+    render();
+  };
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    const card = target.closest ? target.closest('.asset') : null;
+    if (target.matches('[data-add]') && card) {
+      markAdded(card);
+      toast('已添加到我的数据 · ' + assetName(card));
+      render();
+    }
+    if (target.matches('[data-apply]') && card) openDetail(card, 'apply');
+    if (target.matches('[data-detail]') && card) openDetail(card, 'detail');
+    if (target.matches('.check')) updateBulk();
+    if (target.matches('[data-row-add]')) {
+      const rowCard = cards().find((item) => item.dataset.id === target.dataset.rowAdd);
+      markAdded(rowCard);
+      toast('已添加到我的数据 · ' + assetName(rowCard));
+      render();
+    }
+    if (target.matches('[data-row-apply]')) {
+      const rowCard = cards().find((item) => item.dataset.id === target.dataset.rowApply);
+      openDetail(rowCard, 'apply');
+    }
+    if (target.matches('[data-row-detail]')) {
+      const rowCard = cards().find((item) => item.dataset.id === target.dataset.rowDetail);
+      openDetail(rowCard, 'detail');
+    }
+    if (target.matches('.row-check')) {
+      const tr = target.closest('tr');
+      const rowCard = cards().find((item) => item.dataset.id === tr.dataset.rowId);
+      rowCard.querySelector('.check').checked = target.checked;
+      updateBulk();
+    }
+  });
+  drawerMask.addEventListener('click', (event) => {
+    if (event.target === drawerMask) closeDrawer();
+  });
+  document.getElementById('drawerClose').onclick = closeDrawer;
+  render();
+</script>
+</body>
+</html>

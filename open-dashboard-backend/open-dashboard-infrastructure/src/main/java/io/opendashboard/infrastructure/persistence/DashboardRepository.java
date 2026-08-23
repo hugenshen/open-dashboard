@@ -666,7 +666,7 @@ public class DashboardRepository implements DashboardGateway {
             jdbc.update(
                     """
                     INSERT INTO de_dashboard_layout (id, dashboard_id, copy_type, grid_cols, grid_rows, mobile_json)
-                    VALUES (?, ?, 'draft', 72, 36, '{"enabled":true,"device":"iphone-14","bg":"#f5f6f8","components":[]}'::jsonb)
+                    VALUES (?, ?, 'draft', 72, 36, '{"enabled":false,"device":"iphone-14","bg":"#f5f6f8","components":[]}'::jsonb)
                     """,
                     nextId("de_dashboard_layout"), dashboardId
             );

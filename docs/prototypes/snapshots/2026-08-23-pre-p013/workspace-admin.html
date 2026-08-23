@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>成员权限 · DataQ 高保</title>
+  <script>document.documentElement.dataset.odTheme = localStorage.getItem('od.theme') || 'light';</script>
+  <link rel="stylesheet" href="./shared/shell.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    button, input, select { font: inherit; }
+    .admin {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 24px 28px 56px;
+    }
+    .admin-inner {
+      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(780px, 1fr) clamp(340px, 18vw, 420px);
+      gap: 20px;
+      align-items: start;
+    }
+    .head {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .head h1 { font-size: 24px; font-weight: 760; letter-spacing: 0; }
+    .head p { margin-top: 6px; font-size: 13.5px; color: var(--od-muted); line-height: 1.55; }
+    .head-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .panel {
+      background: var(--od-card);
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      box-shadow: var(--od-shadow);
+      min-width: 0;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 10px 12px 0;
+      border-bottom: 1px solid var(--od-line);
+      overflow: auto;
+    }
+    .tab {
+      height: 38px;
+      padding: 0 12px;
+      border: 0;
+      background: transparent;
+      border-bottom: 2px solid transparent;
+      color: var(--od-muted);
+      font-size: 13px;
+      font-weight: 620;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tab:hover { color: var(--od-ink); }
+    .tab.on { color: var(--od-brand); border-bottom-color: var(--od-brand); }
+    .pane { display: none; padding: 16px; }
+    .pane.on { display: block; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .search {
+      width: min(360px, 100%);
+      height: 34px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      padding: 0 11px;
+      background: var(--od-bg);
+      color: var(--od-ink);
+    }
+    .sp { flex: 1; }
+    .btn {
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--od-line);
+      background: var(--od-card);
+      color: var(--od-ink);
+      font-size: 13px;
+      font-weight: 650;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .btn.primary { background: var(--od-brand); color: #fff; border-color: var(--od-brand); }
+    .btn:hover { filter: brightness(.98); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      padding: 12px;
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      background: var(--od-bg);
+    }
+    .stat span { display: block; color: var(--od-faint); font-size: 12px; }
+    .stat b { display: block; margin-top: 5px; font-size: 21px; letter-spacing: 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 11px 8px;
+      border-bottom: 1px solid var(--od-line);
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      color: var(--od-faint);
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--od-bg);
+    }
+    .badge {
+      display: inline-flex;
+      height: 22px;
+      align-items: center;
+      padding: 0 7px;
+      border-radius: 6px;
+      background: var(--od-brand-soft);
+      color: var(--od-brand);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.ok { background: #ecfdf3; color: #047857; }
+    .badge.warn { background: #fff7e6; color: #b45309; }
+    .badge.off { background: #eef0f3; color: var(--od-muted); }
+    .stack { display: flex; flex-direction: column; gap: 12px; }
+    .aside-card { padding: 14px; }
+    .aside-card h2 { font-size: 14px; font-weight: 730; }
+    .aside-card p { margin-top: 6px; font-size: 12.5px; color: var(--od-muted); line-height: 1.55; }
+    .flow {
+      margin-top: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .flow div {
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: var(--od-bg);
+      font-size: 12.5px;
+      color: var(--od-muted);
+    }
+    .flow b { color: var(--od-ink); }
+    .matrix {
+      display: grid;
+      grid-template-columns: 1.2fr repeat(4, .65fr);
+      border: 1px solid var(--od-line);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 12.5px;
+    }
+    .matrix div {
+      padding: 10px;
+      border-right: 1px solid var(--od-line);
+      border-bottom: 1px solid var(--od-line);
+      background: var(--od-card);
+    }
+    .matrix div:nth-child(5n) { border-right: 0; }
+    .matrix .h { background: var(--od-bg); color: var(--od-faint); font-weight: 700; }
+    .matrix .yes { color: #047857; font-weight: 750; }
+    .matrix .no { color: var(--od-faint); }
+    @media (max-width: 1100px) {
+      .admin { padding: 20px; }
+      .admin-inner { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+      .head { flex-direction: column; }
+      .head-actions { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body data-mod="admin">
+<div class="od-app" id="odApp">
+  <div class="od-col">
+    <main class="admin od-page">
+      <div class="admin-inner">
+        <header class="head">
+          <div>
+            <h1>成员权限</h1>
+            <p>管理当前工作区的成员、项目组、角色、数据权限和工具权限。对话分析只消费这里计算后的有效权限，不自行放大权限。</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn" type="button" id="syncBtn">同步外部用户组</button>
+            <button class="btn primary" type="button" id="inviteBtn">邀请成员</button>
+          </div>
+        </header>
+
+        <section class="panel">
+          <div class="tabs">
+            <button class="tab on" type="button" data-tab="members">成员</button>
+            <button class="tab" type="button" data-tab="roles">角色</button>
+            <button class="tab" type="button" data-tab="data">数据权限</button>
+            <button class="tab" type="button" data-tab="tools">工具权限</button>
+            <button class="tab" type="button" data-tab="audit">审计</button>
+          </div>
+
+          <div class="pane on" data-pane="members">
+            <div class="toolbar">
+              <input class="search" value="零售经营项目组" aria-label="搜索成员或项目组" />
+              <span class="sp"></span>
+              <button class="btn" type="button">新建项目组</button>
+            </div>
+            <div class="grid">
+              <div class="stat"><span>成员</span><b>18</b></div>
+              <div class="stat"><span>项目组</span><b>4</b></div>
+              <div class="stat"><span>待确认邀请</span><b>2</b></div>
+            </div>
+            <table>
+              <thead><tr><th>成员</th><th>项目组</th><th>角色</th><th>状态</th><th>最近运行</th></tr></thead>
+              <tbody>
+                <tr><td>赵演示</td><td>零售分析组</td><td><span class="badge">分析师</span></td><td><span class="badge ok">已加入</span></td><td>今天 14:21</td></tr>
+                <tr><td>林数据</td><td>数据治理组</td><td><span class="badge">数据管理员</span></td><td><span class="badge ok">已加入</span></td><td>今天 11:08</td></tr>
+                <tr><td>王业务</td><td>经营负责人</td><td><span class="badge">知识审核人</span></td><td><span class="badge warn">待审核</span></td><td>昨天 18:42</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pane" data-pane="roles">
+            <div class="matrix" aria-label="角色权限矩阵">
+              <div class="h">权限</div><div class="h">只读</div><div class="h">分析师</div><div class="h">数据管理员</div><div class="h">管理员</div>
+              <div>对话分析 / 问数</div><div class="yes">有</div><div class="yes">有</div><div class="yes">有</div><div class="yes">有</div>
+              <div>生成仪表盘草稿</div><div class="no">无</div><div class="yes">有</div><div class="yes">有</div><div class="yes">有</div>
+              <div>发布知识</div><div class="no">无</div><div class="no">无</div><div class="yes">有</div><div class="yes">有</div>
+              <div>成员与权限管理</div><div class="no">无</div><div class="no">无</div><div class="no">无</div><div class="yes">有</div>
+            </div>
+          </div>
+
+          <div class="pane" data-pane="data">
+            <table>
+              <thead><tr><th>数据集</th><th>可问人群</th><th>行权限</th><th>列策略</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>订单表</td><td>零售分析组</td><td>全部区域</td><td>手机号脱敏</td><td><span class="badge ok">可问</span></td></tr>
+                <tr><td>门店日结表</td><td>华东门店项目组</td><td>region = 华东</td><td>成本列不可见</td><td><span class="badge ok">可问</span></td></tr>
+                <tr><td>原始支付流水</td><td>数据治理组</td><td>仅审计查询</td><td>敏感列隐藏</td><td><span class="badge off">不可问</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pane" data-pane="tools">
+            <table>
+              <thead><tr><th>工具</th><th>需要权限</th><th>副作用</th><th>审计</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>dataset.query</td><td>dataset:use</td><td>read</td><td>summary</td><td><span class="badge ok">启用</span></td></tr>
+                <tr><td>dashboard.applyPatch</td><td>dashboard:create/edit</td><td>write</td><td>full</td><td><span class="badge ok">启用</span></td></tr>
+                <tr><td>knowledge.publish</td><td>knowledge:publish</td><td>write</td><td>full</td><td><span class="badge warn">审核后启用</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pane" data-pane="audit">
+            <table>
+              <thead><tr><th>时间</th><th>用户</th><th>动作</th><th>资源</th><th>结果</th></tr></thead>
+              <tbody>
+                <tr><td>14:21</td><td>赵演示</td><td>问数 run</td><td>订单表</td><td><span class="badge ok">通过</span></td></tr>
+                <tr><td>13:55</td><td>林数据</td><td>发布知识</td><td>GMV 口径 v3</td><td><span class="badge ok">通过</span></td></tr>
+                <tr><td>13:12</td><td>赵演示</td><td>写入看板</td><td>经营日报</td><td><span class="badge warn">缺少 edit 权限</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside class="stack">
+          <section class="panel aside-card">
+            <h2>有效权限计算</h2>
+            <p>Java 统一计算工作区成员、项目组角色、资源 ACL、数据策略和工具策略。Harness 只消费授权快照，并在工具调用时再次让 Java 校验。</p>
+            <div class="flow">
+              <div><b>1. 身份</b><br />userId 来自登录或外部网关</div>
+              <div><b>2. 工作区</b><br />workspaceId 来自服务端当前上下文</div>
+              <div><b>3. 资源</b><br />数据集、看板、报告和知识按 ACL 过滤</div>
+              <div><b>4. 工具</b><br />Tool Gateway 根据 Java 下发清单开放</div>
+            </div>
+          </section>
+          <section class="panel aside-card">
+            <h2>管理端边界</h2>
+            <p>这里管理事实和策略；用户使用端只展示对话分析、看板和报告，不承载成员、发布、审计等治理动作。</p>
+            <div class="flow">
+              <div><b>用户端</b><br />工作台 / 对话分析 / 仪表盘 / 报告</div>
+              <div><b>管理端</b><br />数据源 / 数据集 / 知识库 / 成员权限</div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="./shared/shell.js"></script>
+<script>
+  document.querySelectorAll('[data-tab]').forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === btn));
+      document.querySelectorAll('[data-pane]').forEach((p) => p.classList.toggle('on', p.dataset.pane === btn.dataset.tab));
+    };
+  });
+  document.getElementById('inviteBtn').onclick = () => window.odToast && odToast('邀请成员 · 演示');
+  document.getElementById('syncBtn').onclick = () => window.odToast && odToast('已读取外部用户组同步任务 · 演示');
+</script>
+</body>
+</html>

@@ -143,6 +143,21 @@ function rectsOverlap(a: HiFiComp, b: HiFiComp) {
 
 /** Clamp short charts and push later ones down so 72-col seed (h=12→2) still paints. */
 function normalizeHiFiLayout(comps: HiFiComp[], charts: Record<string, HiFiChart>) {
+  // Drop exact duplicate widgets left by a failed/racing replace (same type+encode/title).
+  const seen = new Set<string>()
+  const deduped: HiFiComp[] = []
+  for (const c of comps) {
+    const ch = c.chartId ? charts[c.chartId] : null
+    const sig = ch
+      ? `${c.type}|${ch.chartType}|${ch.title}|${JSON.stringify(ch.encode || {})}`
+      : `${c.type}|${JSON.stringify(c.props || {})}`
+    if (seen.has(sig)) continue
+    seen.add(sig)
+    deduped.push(c)
+  }
+  comps.length = 0
+  comps.push(...deduped)
+
   for (const c of comps) {
     const chartType = c.chartId ? charts[c.chartId]?.chartType : undefined
     c.h = Math.max(c.h, minHiFiHeight(c.type, chartType))

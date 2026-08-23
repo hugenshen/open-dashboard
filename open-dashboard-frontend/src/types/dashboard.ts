@@ -30,7 +30,7 @@ export interface DashboardCreateRequest {
   name: string
   nodeType: NodeType
   layoutMode?: LayoutMode
-  /** Built-in template: blank | sales | ops | finance */
+  /** Built-in template: blank | sales | ops | finance | … P013 catalog */
   templateId?: string
 }
 
@@ -39,6 +39,10 @@ export interface DashboardTemplateVO {
   name: string
   domain: string
   description: string
+  category?: string
+  thumbnail?: string | null
+  responsive?: boolean
+  recommended?: boolean
 }
 
 export interface DashboardRenameRequest {

@@ -20,8 +20,11 @@
 |----|------|------|------|------------|------|
 | `2026-08-17-p007-app-shell` | 2026-08-17 | [P007](../proposals/P007-app-shell/) | increment | 首次拆出左栏壳、工作台独立页、问数结果进对话流 | [snapshots/…](./snapshots/2026-08-17-p007-app-shell/) |
 | `2026-08-17-p007-app-shell-final` | 2026-08-17 | [P007](../proposals/P007-app-shell/) | **acceptance** | 相对上一版：工作台三行对齐、空/少/多状态、SQLBot 仅编辑器、深色同步嵌入对话；**P007 高保实现对照此版** | [snapshots/…](./snapshots/2026-08-17-p007-app-shell-final/) |
+| `2026-08-21-p006-ask-data` | 2026-08-21 | [P006](../proposals/P006-ask-data/) | **acceptance** | 冻结迁 dsh 前的自研问数壳（`conversation-workspace` 结果卡 / 步骤折叠 / 工作台 autorun）；**P006 旧交互实现对照此版**；其后问数表面改走 [P011](../proposals/P011-dsh-conversation-surface/) | [snapshots/…](./snapshots/2026-08-21-p006-ask-data/) |
+| `2026-08-23-pre-p013` | 2026-08-23 | [P013](../proposals/P013-dashboard-page-templates/) | increment | 相对 P006/P007 快照之后的 hi-fi：冻结 P008/P009/P010 目录治理与壳增量，作为 P013 模板市场开工前档 | [snapshots/…](./snapshots/2026-08-23-pre-p013/) |
 
-当前 hi-fi 增量（未打快照）：[P009](../proposals/P009-workspace-governance/) 统一入口 `index.html`、同壳双区域、顶部工作区切换器、登录/注册、账号设置、成员权限管理页 `workspace-admin.html`，并将核心后台页改为宽屏占满式布局；[P008](../proposals/P008-permission-aware-workbench/) 用户端数据广场 `data-market.html` 改为顶栏分区+右侧搜索、默认全宽列表、铺满剩余视口；[P010](../proposals/P010-user-memory-ask-knowledge/) 管理端知识库 `knowledge.html`；对话分析页展示当前工作区、可问数据集与知识命中。**编辑器壳（试改）**：仪表盘编辑态隐藏产品顶栏、壳层操作并入编辑条；侧栏与其它页一致（进入默认收起，展开占位推内容，非浮层）。
+当前 hi-fi 增量（未打 acceptance 快照）：[P013](../proposals/P013-dashboard-page-templates/) 仪表盘模板市场（`dashboard.html?v=p013t15#/templates`，Quick BI 质感浮卡、无精选 Hero，封面图种与稿面一致，≥20 张、模板自带移动布局）。P008 数据广场 / P009 治理页 / P010 知识库仍叠在同一 hi-fi 上。  
+[P011](../proposals/P011-dsh-conversation-surface/) 问数表面 `conversation-ask-dsh.html` 已 **accepted**（落地/澄清/运行中/已回答/生成看板）；产品壳 `conversation.html` 嵌此页。旧 `conversation-workspace.html` 仅作生成/对照。
 
 预览某快照：
 

@@ -1,6 +1,6 @@
 /* extracted from dashboard-commercial.html */
 .hifi-dash-root {
-      --brand: #3370ff; --brand-soft: #e8f0ff; --brand-hover: #2860e1;
+      --brand: var(--od-brand, #4f46e5); --brand-soft: var(--od-brand-soft, #eef2ff); --brand-hover: var(--od-brand-hover, #4338ca);
       --text: #1f2329; --text-2: #646a73; --text-3: #8f959e;
       --line: #dee0e3; --line-soft: #eff0f1; --bg: #f2f3f5; --bg-elev: #fff;
       --success: #00b578; --danger: #f54a45; --warn: #ff8800;
@@ -31,6 +31,13 @@
     .board.preview-readonly .slicer-inline,
     .board.preview-readonly .query-inline {
       cursor: default;
+    }
+    .board.preview-readonly .widget .hd {
+      background: transparent !important;
+      border-bottom-color: transparent !important;
+    }
+    .board.preview-readonly .widget .hd span:not(:first-child) {
+      display: none;
     }
     .mob-adapt-tip {
       flex-shrink: 0;
@@ -288,12 +295,119 @@
     .editor.data-ops-open.ops-collapsed { grid-template-columns: 236px minmax(0,1fr) 352px; }
     .editor.data-ops-open.bind-collapsed { grid-template-columns: 236px minmax(0,1fr) 268px; }
     .editor.data-ops-open.ops-collapsed.bind-collapsed { grid-template-columns: 236px minmax(0,1fr) 48px; }
+    .hifi-dash-root .editor.no-insp,
     .editor.no-insp { grid-template-columns: 236px minmax(0,1fr) 0; }
+    .hifi-dash-root .editor.no-insp .insp,
     .editor.no-insp .insp { display: none; }
+    .hifi-dash-root .editor.no-left,
+    .editor.no-left { grid-template-columns: 48px minmax(0,1fr) 312px; }
+    .hifi-dash-root .editor.no-left .left-pane,
+    .editor.no-left .left-pane {
+      width: 48px;
+      max-width: 48px;
+      min-width: 48px;
+      border-right: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+    .hifi-dash-root .editor.no-left .left-pane-full,
+    .editor.no-left .left-pane-full { display: none !important; }
+    .hifi-dash-root .editor.no-left .left-dock,
+    .editor.no-left .left-dock {
+      display: flex;
+      width: 48px;
+      min-width: 48px;
+      max-width: 48px;
+      box-sizing: border-box;
+      border-right: 1px solid var(--line-soft);
+    }
+    .hifi-dash-root .editor:not(.no-left) .left-dock,
+    .editor:not(.no-left) .left-dock { display: none !important; }
+    .hifi-dash-root .editor.no-left.data-ops-open,
+    .editor.no-left.data-ops-open { grid-template-columns: 48px minmax(0,1fr) 540px; }
+    .hifi-dash-root .editor.no-left.data-ops-open.ops-collapsed,
+    .editor.no-left.data-ops-open.ops-collapsed { grid-template-columns: 48px minmax(0,1fr) 352px; }
+    .hifi-dash-root .editor.no-left.data-ops-open.bind-collapsed,
+    .editor.no-left.data-ops-open.bind-collapsed { grid-template-columns: 48px minmax(0,1fr) 268px; }
+    .hifi-dash-root .editor.no-left.data-ops-open.ops-collapsed.bind-collapsed,
+    .editor.no-left.data-ops-open.ops-collapsed.bind-collapsed { grid-template-columns: 48px minmax(0,1fr) 48px; }
+    .hifi-dash-root .editor.no-left.no-insp,
+    .editor.no-left.no-insp { grid-template-columns: 48px minmax(0,1fr) 0; }
+    .hifi-dash-root .editor.no-insp.data-ops-open,
+    .hifi-dash-root .editor.no-insp.data-ops-open.ops-collapsed,
+    .hifi-dash-root .editor.no-insp.data-ops-open.bind-collapsed,
+    .hifi-dash-root .editor.no-insp.data-ops-open.ops-collapsed.bind-collapsed,
+    .editor.no-insp.data-ops-open,
+    .editor.no-insp.data-ops-open.ops-collapsed,
+    .editor.no-insp.data-ops-open.bind-collapsed,
+    .editor.no-insp.data-ops-open.ops-collapsed.bind-collapsed { grid-template-columns: 236px minmax(0,1fr) 0; }
+    .hifi-dash-root .editor.no-left.no-insp.data-ops-open,
+    .hifi-dash-root .editor.no-left.no-insp.data-ops-open.ops-collapsed,
+    .hifi-dash-root .editor.no-left.no-insp.data-ops-open.bind-collapsed,
+    .hifi-dash-root .editor.no-left.no-insp.data-ops-open.ops-collapsed.bind-collapsed,
+    .editor.no-left.no-insp.data-ops-open,
+    .editor.no-left.no-insp.data-ops-open.ops-collapsed,
+    .editor.no-left.no-insp.data-ops-open.bind-collapsed,
+    .editor.no-left.no-insp.data-ops-open.ops-collapsed.bind-collapsed { grid-template-columns: 48px minmax(0,1fr) 0; }
     .pane { background: #fbfcfd; border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
     .insp { border-right: 0; border-left: 1px solid var(--line); }
-    .ptabs { display: grid; grid-template-columns: 1fr 1fr; height: 44px; border-bottom: 1px solid var(--line-soft); flex-shrink: 0; background: #fff; padding: 0 10px; }
-    .ptabs.t3 { grid-template-columns: 1fr 1fr 1fr; }
+    .ptabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 28px;
+      height: 44px;
+      border-bottom: 1px solid var(--line-soft);
+      flex-shrink: 0;
+      background: #fff;
+      padding: 0 6px 0 10px;
+      align-items: center;
+      gap: 2px;
+    }
+    .ptabs.t3 { grid-template-columns: 1fr 1fr 1fr 28px; }
+    .left-pane-full {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+    }
+    .left-dock {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 6px;
+      height: 100%;
+      background: #f4f5f7;
+      border-right: 1px solid var(--line-soft);
+    }
+    .left-dock-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 0 12px;
+      border: 0;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(31, 35, 41, 0.06);
+      color: var(--text-2);
+      cursor: pointer;
+    }
+    .left-dock-item:hover {
+      color: var(--brand);
+      background: #f5f8ff;
+      box-shadow: 0 1px 4px rgba(51, 112, 255, 0.12);
+    }
+    .left-dock-item svg { display: block; flex-shrink: 0; }
+    .left-dock-item span {
+      writing-mode: vertical-rl;
+      letter-spacing: 0.14em;
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1;
+    }
+    .left-pane .pane-fold[data-fold="left"] svg {
+      transform: scaleX(-1);
+    }
     .ptabs button { border: 0; background: transparent; color: var(--text-2); font-size: 12px; position: relative; }
     .ptabs button.on { color: var(--brand); font-weight: 600; }
     .ptabs button.on::after { content: ""; position: absolute; left: 24%; right: 24%; bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--brand); }
@@ -1884,6 +1998,28 @@
   padding: 12px;
   min-height: 0;
 }
+.hifi-dash-root .insp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 180px;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.hifi-dash-root .insp-empty p { margin: 0; }
+.hifi-dash-root .insp-empty-hint {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+  max-width: 200px;
+}
+.hifi-dash-root .insp-empty #collapseInspEmpty {
+  margin-top: 8px;
+}
 .hifi-dash-root .insp-mode {
   flex-shrink: 0;
   padding: 6px 10px 8px;
@@ -2384,6 +2520,19 @@
   .editor.data-ops-open.bind-collapsed { grid-template-columns: 200px minmax(0,1fr) 248px; }
   .bar.bar-editor.data-ops-open.ops-collapsed.bind-collapsed,
   .editor.data-ops-open.ops-collapsed.bind-collapsed { grid-template-columns: 200px minmax(0,1fr) 48px; }
+  .editor.no-left.data-ops-open { grid-template-columns: 48px minmax(0,1fr) 468px; }
+  .editor.no-left.data-ops-open.ops-collapsed { grid-template-columns: 48px minmax(0,1fr) 308px; }
+  .editor.no-left.data-ops-open.bind-collapsed { grid-template-columns: 48px minmax(0,1fr) 248px; }
+  .editor.no-left.data-ops-open.ops-collapsed.bind-collapsed { grid-template-columns: 48px minmax(0,1fr) 48px; }
+  .editor.no-insp.data-ops-open,
+  .editor.no-insp.data-ops-open.ops-collapsed,
+  .editor.no-insp.data-ops-open.bind-collapsed,
+  .editor.no-insp.data-ops-open.ops-collapsed.bind-collapsed { grid-template-columns: 200px minmax(0,1fr) 0; }
+  .editor.no-left.no-insp,
+  .editor.no-left.no-insp.data-ops-open,
+  .editor.no-left.no-insp.data-ops-open.ops-collapsed,
+  .editor.no-left.no-insp.data-ops-open.bind-collapsed,
+  .editor.no-left.no-insp.data-ops-open.ops-collapsed.bind-collapsed { grid-template-columns: 48px minmax(0,1fr) 0; }
   .hifi-dash-root .editor.data-ops-open .data-work {
     grid-template-columns: minmax(220px, 1fr) 200px;
   }

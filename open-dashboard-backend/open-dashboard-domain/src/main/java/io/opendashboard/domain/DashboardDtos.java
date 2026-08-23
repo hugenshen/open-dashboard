@@ -109,8 +109,16 @@ public final class DashboardDtos {
             String id,
             String name,
             String domain,
-            String description
-    ) {}
+            String description,
+            String category,
+            String thumbnail,
+            boolean responsive,
+            boolean recommended
+    ) {
+        public DashboardTemplateVO(String id, String name, String domain, String description) {
+            this(id, name, domain, description, domain, null, false, false);
+        }
+    }
 
     public record DashboardRenameRequest(String id, String name) {}
 

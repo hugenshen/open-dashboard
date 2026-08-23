@@ -41,6 +41,14 @@ export function mountHiFiDashboard(options) {
   state.dashId = dash.id;
   state.dash = dash;
   state.selectedId = dash.components?.find((c) => c.type === 'chart')?.id || dash.components?.[0]?.id || null;
+  // Conversation split: canvas first — collapse chrome until user opens it.
+  state.leftCollapsed = Boolean(__productOpts.embedded);
+  state.inspCollapsed = Boolean(__productOpts.embedded);
+  state.inspUserToggled = false;
+  // Embedded: don't pre-select a chart (avoids empty/wide inspector flash).
+  if (__productOpts.embedded) state.selectedId = null;
+  state.bindCollapsed = false;
+  state.opsCollapsed = false;
   state.undo = [];
   state.linkageHits = [];
   state.drillStack = [];
@@ -77,6 +85,11 @@ export function mountHiFiDashboard(options) {
     rerender: () => render(),
     destroy() {
       disposeCharts();
+      if (__boardResizeObs) {
+        try { __boardResizeObs.disconnect(); } catch (_) {}
+        __boardResizeObs = null;
+      }
+      __lastBoardInnerW = 0;
       const app = elById('app');
       if (app) app.innerHTML = '';
       if (state._chartQueryCache) state._chartQueryCache = {};
@@ -1302,6 +1315,7 @@ const state = {
   editSurface: 'pc', // pc | mobile（编辑器画布）
   leftTab: 'comp',
   rightTab: 'data',
+  leftCollapsed: false,
   inspCollapsed: false,
   bindCollapsed: false,
   opsCollapsed: false,
@@ -2595,10 +2609,26 @@ function fieldSortOf(ch, name) {
 
 function displayFieldLabel(ch, name) {
   const alias = fieldCfgOf(ch, name).alias;
-  if (alias && String(alias).trim()) return String(alias).trim();
+  if (alias && String(alias).trim()) return cleanFieldLabel(String(alias).trim());
   const lab = fieldLabelOf(ch.datasetId, name);
-  if (lab && /[\u4e00-\u9fff]/.test(String(lab))) return lab;
+  if (lab && /[\u4e00-\u9fff]/.test(String(lab))) return cleanFieldLabel(lab);
   return humanizeFieldName(name);
+}
+
+/** Strip dataset annotation noise: "商户入账,单位分" → "商户入账" */
+function cleanFieldLabel(raw) {
+  let s = String(raw || '').replace(/，/g, ',').trim();
+  const comma = s.indexOf(',');
+  if (comma > 0) {
+    const head = s.slice(0, comma).trim();
+    if (head) s = head;
+  }
+  const colon = s.indexOf(':');
+  if (colon > 1) {
+    const head = s.slice(0, colon).trim();
+    if (head && /[\u4e00-\u9fff]/.test(head)) s = head;
+  }
+  return s.replace(/[，,]?\s*单位\s*[:：]?\s*分\s*$/g, '').trim() || String(raw || '');
 }
 
 /** 明细表列：维度槽 + 指标槽；兼容旧 encode.columns */
@@ -2897,6 +2927,30 @@ function formatAxisVal(v, unit, fmt) {
   if (unit === 'wan') return formatVal(n / 10000, fmt || 'fixed1') + '万';
   if (unit === 'yi') return formatVal(n / 1e8, fmt || 'fixed2') + '亿';
   return formatVal(n, fmt);
+}
+
+/** Apply chart.style.formatter (e.g. 分→元) then axisUnit / suffix. */
+function measureDisplayVal(v, st, fmt, sampleForAuto) {
+  let n = Number(v);
+  if (!Number.isFinite(n)) return formatEmpty(v, '-');
+  const f = st?.formatter;
+  if (f && typeof f === 'object' && f.unit != null && Number.isFinite(Number(f.unit))) {
+    n = n * Number(f.unit);
+  }
+  let axis = st?.axisUnit || 'none';
+  if ((axis === 'none' || !axis) && f?.unit != null) {
+    const probe = Number.isFinite(Number(sampleForAuto)) ? Number(sampleForAuto) * Number(f.unit) : n;
+    if (Math.abs(probe) >= 1e8) axis = 'yi';
+    else if (Math.abs(probe) >= 1e4) axis = 'wan';
+  }
+  let text = formatAxisVal(n, axis, fmt);
+  if (axis === 'none' || axis === '' || axis == null) {
+    const suf = st?.valueSuffix != null && st.valueSuffix !== ''
+      ? st.valueSuffix
+      : (f && f.suffix ? f.suffix : '');
+    if (suf && !String(text).endsWith(String(suf))) text = `${text}${suf}`;
+  }
+  return text;
 }
 
 function formatEmpty(v, placeholder) {
@@ -5943,8 +5997,16 @@ function selectComp(id, { right = true, left = false } = {}) {
   state.selectedId = id;
   document.querySelectorAll('.widget').forEach(w => w.classList.toggle('selected', w.dataset.wid === id));
   document.querySelectorAll('.layer').forEach(n => n.classList.toggle('on', n.dataset.sel === id));
-  if (right) renderRight(document.getElementById('right'));
+  if (right) {
+    // Point-select opens config; drag/context keep the collapsed chrome.
+    if (state.inspCollapsed) {
+      state.inspCollapsed = false;
+      syncEditorChrome();
+    }
+    renderRight(document.getElementById('right'));
+  }
   if (left && state.leftTab === 'layer') renderLeft(document.getElementById('left'));
+  syncDataOpsLayout();
 }
 
 function flashWidget(el) {
@@ -6554,15 +6616,19 @@ function renderEditor(app) {
       </div>
     </div>
     <div class="editor ${editorShellClass()}">
-      <aside class="pane">
-        <div class="ptabs">
-          <button class="${state.leftTab==='comp'?'on':''}" data-lt="comp">${leftCompLabel}</button>
-          <button class="${state.leftTab==='layer'?'on':''}" data-lt="layer">图层</button>
+      <aside class="pane left-pane">
+        <div class="left-pane-full">
+          <div class="ptabs">
+            <button type="button" class="${state.leftTab==='comp'?'on':''}" data-lt="comp">${leftCompLabel}</button>
+            <button type="button" class="${state.leftTab==='layer'?'on':''}" data-lt="layer">图层</button>
+            ${paneFoldBtn('left', '收起组件库')}
+          </div>
+          <div class="pbody" id="left"></div>
+          <div class="left-guide-foot">
+            <button type="button" class="btn ghost" id="btnGuide">？ 新手指引</button>
+          </div>
         </div>
-        <div class="pbody" id="left"></div>
-        <div class="left-guide-foot">
-          <button type="button" class="btn ghost" id="btnGuide">？ 新手指引</button>
-        </div>
+        ${leftDockHtml(leftCompLabel)}
       </aside>
       <section class="stage ${isMob?'mobile-stage':''}">
         <div class="layout-bar" id="layoutBar"></div>
@@ -6577,7 +6643,8 @@ function renderEditor(app) {
     </div>`;
 
   app.querySelector('#toList').onclick = () => { state.module = 'dashboard'; state.screen = 'list'; state.editSurface = 'pc'; render(); };
-  app.querySelector('#btnGuide').onclick = () => window.dispatchEvent(new CustomEvent('od:open-dashboard-guide'));
+  app.querySelector('#btnGuide')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('od:open-dashboard-guide')));
+  wireLeftPaneChrome(app);
   app.querySelector('#btnUndo').onclick = undo;
   app.querySelector('#btnPreview').onclick = () => openPublishedPreview('editor');
   app.querySelector('#btnShare').onclick = () => openShareModal();
@@ -6611,6 +6678,7 @@ function renderEditor(app) {
     renderBoard(app.querySelector('#board'));
   }
   renderRight(app.querySelector('#right'));
+  syncEditorChrome();
   wireKeyboardLayout();
 }
 
@@ -6627,6 +6695,8 @@ function renderLayoutBar(el) {
     : '';
   el.innerHTML = `
     ${deviceBar}
+    <button class="btn ghost" id="toggleLeft" title="${state.leftCollapsed ? '展开左侧组件库' : '收起左侧组件库'}">${state.leftCollapsed ? '显示组件' : '收起组件'}</button>
+    <button class="btn ghost" id="toggleInsp" title="${state.inspCollapsed ? '展开右侧配置' : '收起右侧配置'}">${state.inspCollapsed ? '显示配置' : '收起配置'}</button>
     <button class="btn ghost" id="layCompact" title="消除纵向空隙">自动紧凑</button>
     <button class="btn ghost" id="layFull" title="选中组件拉满整行">整行</button>
     <button class="btn ghost" id="layHalf" title="选中组件半宽">半宽</button>
@@ -6635,6 +6705,16 @@ function renderLayoutBar(el) {
     <label class="tog"><input type="checkbox" id="layAuto" ${L.compactOnDrop?'checked':''}/> 落位紧凑</label>
     <label class="tog"><input type="checkbox" id="layGrid" ${L.showGrid?'checked':''}/> 网格</label>
     <span class="hint">${isMobileEdit() ? '顶栏选 iOS / Android / Pad 机型（含中兴平板）' : '拖拽移动 · 八向缩放 · 方向键微调 · 组件库可拖入画布'}</span>`;
+  el.querySelector('#toggleLeft').onclick = () => {
+    state.leftCollapsed = !state.leftCollapsed;
+    syncEditorChrome();
+  };
+  el.querySelector('#toggleInsp').onclick = () => {
+    state.inspCollapsed = !state.inspCollapsed;
+    state.inspUserToggled = true;
+    syncEditorChrome();
+    if (!state.inspCollapsed) renderRight(document.getElementById('right'));
+  };
   el.querySelector('#layDevice')?.addEventListener('change', e => {
     if (setMobileDevice(e.target.value)) render();
   });
@@ -7419,6 +7499,7 @@ function widgetHtml(c, cw) {
     const ch = state.dash.charts[c.chartId];
     title = ch?.title || '图表';
     badge = missingBind(ch).length ? '待配置' : (state.pendingPaint?.has(ch.id) ? '待更新' : ch.chartType);
+    if (readonly) badge = '';
   } else if (c.type === 'slicer') {
     title = c.props?.label || '切片器';
     badge = 'slicer';
@@ -7549,13 +7630,12 @@ function wireDrag(el, comp, cw) {
       e.stopPropagation();
       state.rightTab = 'data';
       state.inspCollapsed = false;
-      const insp = document.querySelector('.editor');
-      if (insp) insp.classList.remove('no-insp');
+      syncEditorChrome();
       selectComp(comp.id);
       return;
     }
     if (e.button === 2) return;
-    selectComp(comp.id, { right: state.selectedId !== comp.id });
+    selectComp(comp.id);
   };
   el.oncontextmenu = e => {
     e.preventDefault();
@@ -8110,7 +8190,10 @@ function packQueryResult(ch, result) {
     return {
       rows,
       data: [{ name: '合计', value: v }],
-      seriesPack: { categories: ['合计'], series: [{ name: val, data: [v] }] }
+      seriesPack: {
+        categories: ['合计'],
+        series: [{ name: displayFieldLabel(ch, val), field: val, data: [v] }]
+      }
     };
   }
   return {
@@ -8118,7 +8201,11 @@ function packQueryResult(ch, result) {
     data: rows.map((r) => ({ name: String(r[cat] ?? ''), value: toNum(r[val]) })),
     seriesPack: {
       categories: rows.map((r) => String(r[cat] ?? '')),
-      series: [{ name: val, data: rows.map((r) => toNum(r[val])) }]
+      series: [{
+        name: displayFieldLabel(ch, val),
+        field: val,
+        data: rows.map((r) => toNum(r[val]))
+      }]
     }
   };
 }
@@ -8190,6 +8277,17 @@ function paintChart(el, comp) {
   }
   seriesPack = sortSeriesPack(ch, seriesPack);
   data = sortPieData(ch, data);
+  // Live packs historically used raw field names; always prefer display labels.
+  if (seriesPack?.series?.length) {
+    seriesPack = {
+      ...seriesPack,
+      series: seriesPack.series.map((s) => {
+        const field = s.field || (valFields.includes(s.name) ? s.name : null);
+        if (!field) return s;
+        return { ...s, field, name: displayFieldLabel(ch, field) };
+      })
+    };
+  }
   if (sn.resultLimit > 0 && ch.chartType !== 'pie' && ch.chartType !== 'kpi') {
     seriesPack = {
       categories: seriesPack.categories.slice(0, sn.resultLimit),
@@ -8235,7 +8333,7 @@ function paintChart(el, comp) {
     box.innerHTML = `<div class="kpi-box ${compact ? 'compact' : ''} ${alertOn ? 'alert' : ''}" style="text-align:${align}">
       ${showInnerTitle ? `<div class="kpi-label" style="color:${st.titleColor || 'var(--text-2)'}">${esc(ch.title)}</div>` : ''}
       ${subHtml}
-      <div class="n" style="color:${vColor};font-size:${vSize}px;line-height:1.2">${esc(prefix)}${formatVal(v, ch.encode.format)}${esc(suffix)}</div>
+      <div class="n" style="color:${vColor};font-size:${vSize}px;line-height:1.2">${esc(prefix)}${measureDisplayVal(v, st, ch.encode.format, v)}</div>
       ${compareHtml}
     </div>`;
     return;
@@ -8264,7 +8362,16 @@ function paintChart(el, comp) {
   const tipFs = st.tooltipFontSize || 12;
   let option = {};
   const fmt = ch.encode.format || 'raw';
-  const tipVal = (v) => formatAxisVal(v, st.axisUnit || 'none', fmt);
+  const autoProbe = (() => {
+    const vals = (seriesPack?.series || []).flatMap((s) => s.data || []);
+    let m = 0;
+    for (const x of vals) {
+      const n = Number(x);
+      if (Number.isFinite(n) && Math.abs(n) > m) m = Math.abs(n);
+    }
+    return m || data.reduce((m, d) => Math.max(m, Math.abs(Number(d.value) || 0)), 0);
+  })();
+  const tipVal = (v) => measureDisplayVal(v, st, fmt, autoProbe);
   const seriesColors = resolveSeriesColors(st, theme);
   const legendNames = ch.chartType === 'pie'
     ? data.map(d => d.name)
@@ -8278,7 +8385,7 @@ function paintChart(el, comp) {
     const inner = Math.min(+st.pieInner || 35, (+st.pieOuter || 65) - 5);
     const outer = +st.pieOuter || 65;
     const pieFmt = primaryVal ? fieldFormatOf(ch, primaryVal) : fmt;
-    const pieTip = (v) => formatVal(v, pieFmt);
+    const pieTip = (v) => measureDisplayVal(v, st, pieFmt);
     option = {
       color: seriesColors,
       tooltip: showTip ? {
@@ -8639,15 +8746,118 @@ function renderMobileDashSettings(el) {
 
 function editorShellClass() {
   return [
+    state.leftCollapsed ? 'no-left' : '',
+    state.inspCollapsed ? 'no-insp' : '',
     shouldDataOpsOpen() ? 'data-ops-open' : '',
     state.bindCollapsed ? 'bind-collapsed' : '',
     state.opsCollapsed ? 'ops-collapsed' : ''
   ].filter(Boolean).join(' ');
 }
 
+/** After chrome/grid width changes, remeasure colW and reposition widgets + charts. */
+let __lastBoardInnerW = 0;
+function reflowBoardLayout(force = false) {
+  if (isMobileEdit()) {
+    requestAnimationFrame(() => fitMobilePhone());
+    return;
+  }
+  const run = () => {
+    const board = document.getElementById('board');
+    if (!board) return;
+    const w = board.clientWidth || 0;
+    if (!force && w > 0 && Math.abs(w - __lastBoardInnerW) < 2) return;
+    __lastBoardInnerW = w;
+    const comps = tabComps();
+    const cw = colW(board);
+    board.style.backgroundSize = `${cw + gapSize()}px ${rowH() + gapSize()}px`;
+    paintPositions(board, comps, cw);
+    Object.values(state.chartInst || {}).forEach((c) => {
+      try { c.resize(); } catch (_) {}
+    });
+  };
+  // Double rAF: wait for CSS grid column change to commit before measuring clientWidth.
+  requestAnimationFrame(() => requestAnimationFrame(run));
+}
+
+let __boardResizeObs = null;
+function ensureBoardResizeObserver() {
+  if (typeof ResizeObserver === 'undefined') return;
+  const wrap = document.getElementById('cwrap') || document.querySelector('.canvas-wrap');
+  if (!wrap) return;
+  if (__boardResizeObs) {
+    try { __boardResizeObs.disconnect(); } catch (_) {}
+  }
+  let timer = 0;
+  __boardResizeObs = new ResizeObserver(() => {
+    if (timer) cancelAnimationFrame(timer);
+    timer = requestAnimationFrame(() => {
+      timer = 0;
+      if (state.screen !== 'editor' && state.screen !== 'preview') return;
+      reflowBoardLayout(false);
+    });
+  });
+  __boardResizeObs.observe(wrap);
+}
+
+function syncEditorChrome() {
+  const editor = document.querySelector('.hifi-dash-root .editor') || document.querySelector('.editor');
+  const bar = document.querySelector('.hifi-dash-root .bar-editor') || document.querySelector('.bar-editor');
+  const cls = editorShellClass().split(/\s+/).filter(Boolean);
+  const flags = ['no-left', 'no-insp', 'data-ops-open', 'bind-collapsed', 'ops-collapsed'];
+  [editor, bar].filter(Boolean).forEach((node) => {
+    flags.forEach((f) => node.classList.toggle(f, cls.includes(f)));
+  });
+  const toggleLeft = document.getElementById('toggleLeft');
+  if (toggleLeft) {
+    toggleLeft.textContent = state.leftCollapsed ? '显示组件' : '收起组件';
+    toggleLeft.title = state.leftCollapsed ? '展开左侧组件库' : '收起左侧组件库';
+  }
+  const toggleInsp = document.getElementById('toggleInsp');
+  if (toggleInsp) {
+    toggleInsp.textContent = state.inspCollapsed ? '显示配置' : '收起配置';
+    toggleInsp.title = state.inspCollapsed ? '展开右侧配置' : '收起右侧配置';
+  }
+  syncDataOpsLayout({ skipReflow: true });
+  reflowBoardLayout(true);
+  ensureBoardResizeObserver();
+}
+
 function shouldDataOpsOpen() {
   if (state.inspCollapsed || isMobileEdit()) return false;
   return findComp(state.selectedId)?.type === 'chart';
+}
+
+function leftDockHtml(compLabel) {
+  return `<nav class="left-dock" aria-label="已收起的组件库">
+    <button type="button" class="left-dock-item" data-unfold-left="comp" title="展开组件">
+      ${dockIcon('comp')}<span>${esc(compLabel || '组件')}</span>
+    </button>
+    <button type="button" class="left-dock-item" data-unfold-left="layer" title="展开图层">
+      ${dockIcon('layer')}<span>图层</span>
+    </button>
+  </nav>`;
+}
+
+function wireLeftPaneChrome(root) {
+  const el = root?.querySelector?.('.left-pane') || root;
+  if (!el) return;
+  el.querySelectorAll('[data-fold="left"]').forEach((b) => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      state.leftCollapsed = true;
+      syncEditorChrome();
+    };
+  });
+  el.querySelectorAll('[data-unfold-left]').forEach((b) => {
+    b.onclick = () => {
+      state.leftTab = b.dataset.unfoldLeft === 'layer' ? 'layer' : 'comp';
+      state.leftCollapsed = false;
+      syncEditorChrome();
+      const pane = document.querySelector('.left-pane');
+      pane?.querySelectorAll('[data-lt]').forEach((x) => x.classList.toggle('on', x.dataset.lt === state.leftTab));
+      renderLeft(document.getElementById('left'));
+    };
+  });
 }
 
 function paneFoldBtn(which, title) {
@@ -8664,6 +8874,20 @@ function dockIcon(kind) {
     return `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/>
       <path d="M2.5 6.2h11M6.2 6.2v7.3" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    </svg>`;
+  }
+  if (kind === 'comp') {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <rect x="9" y="9" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    </svg>`;
+  }
+  if (kind === 'layer') {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 2.8 13.2 5.6 8 8.4 2.8 5.6Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M2.8 8.2 8 11l5.2-2.8M2.8 10.6 8 13.4l5.2-2.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
     </svg>`;
   }
   return `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
@@ -8728,24 +8952,24 @@ function wireInspMode(el) {
   });
 }
 
-function syncDataOpsLayout() {
+function syncDataOpsLayout(opts = {}) {
   const editor = document.querySelector('.hifi-dash-root .editor') || document.querySelector('.editor');
   const bar = document.querySelector('.hifi-dash-root .bar-editor') || document.querySelector('.bar-editor');
   if (!editor) return;
   const open = shouldDataOpsOpen();
-  const was = editor.classList.contains('data-ops-open');
+  const prevOpen = editor.classList.contains('data-ops-open');
+  const prevBind = editor.classList.contains('bind-collapsed');
+  const prevOps = editor.classList.contains('ops-collapsed');
   [editor, bar].filter(Boolean).forEach((node) => {
     node.classList.toggle('data-ops-open', open);
     node.classList.toggle('bind-collapsed', !!state.bindCollapsed);
     node.classList.toggle('ops-collapsed', !!state.opsCollapsed);
   });
-  if (was === open) return;
-  const board = document.getElementById('board');
-  if (!board || isMobileEdit()) return;
-  requestAnimationFrame(() => {
-    paintPositions(board, tabComps(), colW(board));
-    Object.values(state.chartInst || {}).forEach(c => { try { c.resize(); } catch (_) {} });
-  });
+  const changed = prevOpen !== open
+    || prevBind !== !!state.bindCollapsed
+    || prevOps !== !!state.opsCollapsed;
+  // Collapsing bind/ops to the 48px dock frees width — must reflow even if data-ops-open stays true.
+  if (changed && !opts.skipReflow) reflowBoardLayout(true);
 }
 
 function closeChartTypePop() {
@@ -8890,9 +9114,25 @@ function renderRight(el) {
   const comp = findComp(state.selectedId);
   if (!comp) {
     if (isMobileEdit()) return renderMobileDashSettings(el);
-    el.innerHTML = `<div class="insp-scroll"><div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px;line-height:1.6">
-      点选组件进行配置<br/>画布支持拖拽 / 缩放 / 右键菜单
+    // Embedded: keep right chrome collapsed when nothing is selected (avoid blank slab).
+    if (__productOpts?.embedded && state.inspCollapsed !== false) {
+      state.inspCollapsed = true;
+      syncEditorChrome();
+    }
+    if (state.inspCollapsed) {
+      el.innerHTML = '';
+      return;
+    }
+    el.innerHTML = `<div class="insp-scroll"><div class="insp-empty">
+      <p>点选组件进行配置</p>
+      <p class="insp-empty-hint">画布支持拖拽 / 缩放 / 右键菜单</p>
+      <button type="button" class="btn ghost" id="collapseInspEmpty">收起配置</button>
     </div></div>`;
+    el.querySelector('#collapseInspEmpty').onclick = () => {
+      state.inspCollapsed = true;
+      state.inspUserToggled = true;
+      syncEditorChrome();
+    };
     return;
   }
   if (state.rightTab === 'style') return renderStyle(el, comp);
@@ -11581,8 +11821,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('resize', () => {
     if (state.screen === 'editor' || state.screen === 'preview') {
       if (useMobileLayout()) fitMobilePhone();
-      const board = document.getElementById('board');
-      if (board) renderBoard(board);
+      else reflowBoardLayout();
     }
   });
 }

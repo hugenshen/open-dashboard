@@ -1,13 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { getAuthHeaders } from '../../api/http'
-
-const STORAGE_KEY = 'od.dash.editor.onboarded.v1'
-
-function userStorageKey() {
-  const userId = getAuthHeaders()['X-User-Id'] || 'anonymous'
-  return `${STORAGE_KEY}.${encodeURIComponent(userId)}`
-}
 
 const props = defineProps<{
   force?: boolean
@@ -152,7 +144,6 @@ function measure() {
 }
 
 function finish() {
-  localStorage.setItem(userStorageKey(), '1')
   visible.value = false
   emit('done')
 }
@@ -174,7 +165,7 @@ function skip() {
   finish()
 }
 
-/** 手动/强制打开：可反复点右下角入口重新走一遍 */
+/** 只在用户点「新手指引」或 URL 带 ?guide=1 时打开，不自动弹出 */
 function open() {
   visible.value = true
   step.value = 0
@@ -183,19 +174,6 @@ function open() {
 
 function onOpenRequest() {
   open()
-}
-
-function maybeShow() {
-  const key = userStorageKey()
-  const legacy = localStorage.getItem(STORAGE_KEY)
-  if (legacy && !localStorage.getItem(key)) {
-    localStorage.setItem(key, legacy)
-    localStorage.removeItem(STORAGE_KEY)
-  }
-  const onboarded = localStorage.getItem(key)
-  if (props.force || !onboarded) {
-    open()
-  }
 }
 
 watch(step, () => nextTick(measure))
@@ -207,7 +185,7 @@ watch(
 )
 
 onMounted(() => {
-  setTimeout(maybeShow, 220)
+  if (props.force) setTimeout(open, 220)
   window.addEventListener('resize', measure)
   window.addEventListener('od:open-dashboard-guide', onOpenRequest)
 })
@@ -217,7 +195,7 @@ onUnmounted(() => {
   window.removeEventListener('od:open-dashboard-guide', onOpenRequest)
 })
 
-defineExpose({ open, maybeShow })
+defineExpose({ open })
 </script>
 
 <template>
