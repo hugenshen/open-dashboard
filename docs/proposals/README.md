@@ -14,12 +14,13 @@
 
 | Pxxx | 状态 | Gates（高保 / 代码 / 验收） | 里程碑 | 开发先看 |
 |------|------|----------------------------|--------|----------|
-| [P004](./P004-conversation/) 对话分析 | in-progress | wip / wip / blocked | v0.5 | [README](./P004-conversation/README.md#开发入口) · [4A 生成](../design/architecture.html#gen) |
-| [P006](./P006-ask-data/) 对话问数 | in-progress | wip / wip / blocked | v0.5 | [README](./P006-ask-data/README.md#开发入口) · [4A 问数](../design/architecture.html#ask) |
+| [P004](./P004-conversation/) 对话分析 | in-progress | wip / wip / blocked | v0.5 | [README](./P004-conversation/README.md#开发入口) · [4A 生成](../design/architecture.html#gen)（表面已由 P011 承接） |
+| [P006](./P006-ask-data/) 对话问数 | in-progress | wip / wip / blocked | v0.5 | [README](./P006-ask-data/README.md#开发入口) · [4A 问数](../design/architecture.html#ask)（表面已由 P011 承接） |
 | [P007](./P007-app-shell/) 产品壳与工作台 | in-progress | accepted / wip / blocked | v0.5 | [README 开发入口](./P007-app-shell/README.md#开发入口) |
 | [P008](./P008-permission-aware-workbench/) 权限感知工作台 | accepted | wip / wip / none | v0.5 | [README 开发入口](./P008-permission-aware-workbench/README.md#开发入口) |
 | [P009](./P009-workspace-governance/) 工作区隔离、用户体系与知识治理 | in-progress | wip / wip / none | v0.6 | [README 开发入口](./P009-workspace-governance/README.md#开发入口) |
 | [P010](./P010-user-memory-ask-knowledge/) 用户记忆与问数知识库 | in-progress | wip / wip / none | v0.5 | [README](./P010-user-memory-ask-knowledge/README.md#开发入口) · [管理面](./P010-user-memory-ask-knowledge/management-design.md) |
+| [P013](./P013-dashboard-page-templates/) 仪表盘页面模板 | in-progress | wip / none / none | v0.6 | [README](./P013-dashboard-page-templates/README.md#开发入口) · [`#/templates`](../prototypes/hi-fi/dashboard.html) |
 
 ### 计划中（`draft`）
 
@@ -31,11 +32,13 @@
 
 | Pxxx | 里程碑 | 4A | requirements |
 |------|--------|-----|--------------|
+| [P012](./P012-ask-gen-quality/) 对话出板 / 问数质量闸 | v0.6 | [问数](../design/architecture.html#ask) · [生成](../design/architecture.html#gen) | PR-QG-02…05 · PR-QG-09…12 |
+| [P011](./P011-dsh-conversation-surface/) 对话表面迁到 dsh Web | v0.6 | [问数](../design/architecture.html#ask) · [生成](../design/architecture.html#gen) | PR-DSH-02…06 · PR-DSH-09 |
 | [P001](./P001-mobile-layout-c/) 移动端布局 | v0.2 | [AA](../design/architecture.html#application) · [DA](../design/architecture.html#data) | PR-DASH-11 |
 | [P002](./P002-vue-java-scaffold/) Vue + Java 脚手架 | v0.3 | [4A](../design/architecture.html) · [OpenAPI](../design/openapi.yaml) | NFR-05 |
 | [P003](./P003-report-umo-charts/) 在线报告 | v0.4 | [BA](../design/architecture.html#business) · [AA](../design/architecture.html#application) | PR-RPT-01…07 |
 
-下一号：`P011`。
+下一号：`P014`。
 
 > `docs/design/` 只保留 `architecture.html` 与 `openapi.yaml`。提案详细设计不得复制回 `design/`。
 

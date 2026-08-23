@@ -1,6 +1,6 @@
 # 产品需求（现状基线）
 
-> **状态**：as-built（与已验收能力对齐）· 日期：2026-08-06  
+> **状态**：as-built（与已验收能力对齐）· 日期：2026-08-23  
 > 本文只登记「当前已交付」的产品需求。产品是什么见 [README.md](./README.md)，下一步见 [roadmap/README.md](./roadmap/README.md)。
 
 ## 追溯映射
@@ -13,6 +13,8 @@
 | PR-DASH-11 | [P001](../proposals/P001-mobile-layout-c/) | [AA](../design/architecture.html#application) · [DA](../design/architecture.html#data) |
 | NFR-05 | [P002](../proposals/P002-vue-java-scaffold/) | [4A](../design/architecture.html) |
 | PR-RPT-01…07 | [P003](../proposals/P003-report-umo-charts/) | [BA](../design/architecture.html#business) · [AA](../design/architecture.html#application) |
+| PR-DSH-02…06 · PR-DSH-09 | [P011](../proposals/P011-dsh-conversation-surface/) | [问数](../design/architecture.html#ask) · [生成](../design/architecture.html#gen) |
+| PR-QG-02…05 · PR-QG-09…12 | [P012](../proposals/P012-ask-gen-quality/) | [问数](../design/architecture.html#ask) · [生成](../design/architecture.html#gen) |
 
 ---
 
@@ -118,6 +120,34 @@
 | PR-AUTH-02 | 写操作权限码 | `dashboard:manage` / `datasource:manage` / `dataset:manage` / `report:manage` |
 | PR-AUTH-03 | 当前用户与菜单 | `GET /api/auth/me`、`/api/auth/menus` |
 | PR-AUTH-04 | 分享接口可匿名 | `/api/share/**` 无类级鉴权 |
+
+### 2.9 对话（DeepSeek Harness 表面）
+
+| ID | 需求 | 验收要点 |
+|----|------|----------|
+| PR-DSH-02 | OD 壳「对话」打开 dsh Web | `/conversations` → `ConversationDshSurface`；Vite `/dsh` → :3090 |
+| PR-DSH-03 | 问数出表（Conversation Node） | `od_run_query` → `odKind=answer_table` |
+| PR-DSH-04 | 问数出临时图；浏览器无裸 SQL | `od_run_sql` + TS sql-guard；`answer_chart` |
+| PR-DSH-05 | 一句话生成看板 | 主路径 `od_generate_board` → Java `apply-patch`（[P012](../proposals/P012-ask-gen-quality/)）；`od_emit_patch` 仅兼容/DEPRECATED；右侧编辑器可打开 draft |
+| PR-DSH-06 | 默认禁用 bash / 任意写盘工具 | `cordis.patch.yml` 裁剪 |
+| PR-DSH-09 | 无 Python Agent sidecar | 仓内仅 `opendashboard-dsh-harness/` |
+
+来源：[P011](../proposals/P011-dsh-conversation-surface/) · 架构 [问数](../design/architecture.html#ask) / [生成](../design/architecture.html#gen)。写板质量与问数加厚见 §2.10。
+
+### 2.10 对话出板 / 问数质量闸
+
+| ID | 需求 | 验收要点 |
+|----|------|----------|
+| PR-QG-02 | 出板主题句影响选维 / 度量 | `/board` 的 `message` 进入 `od_plan_charts` / `od_generate_board` 规划加权 |
+| PR-QG-03 | 生成稿去掉碎饼与毛线 | 同维柱+饼不同时保留；高基数饼降级；无日/月桶的裸时间戳折线不落稿 |
+| PR-QG-04 | 布局无半行空洞；查询条不填假区间 | 对比最多并排 2；单张对比/折线全宽；日期默认仅来自 profile min/max |
+| PR-QG-05 | KPI 与金额单位可读 | 无「订单」语义时不用「订单数」；label 含「单位分」带分→元 formatter |
+| PR-QG-09 | last-resort 无业务词典 | Java 规划/角色只认 schema · profile · 用户原文与字段名/label 重叠 |
+| PR-QG-10 | 问数 schema 加厚 | `od_get_schema` 含 sample(≤3) / confirmed terms / few-shot questions |
+| PR-QG-11 | 空结果诚实；失败不造假行 | 0 行带 insight；无华东/华北 stub；list 失败 fail-closed |
+| PR-QG-12 | 出板 Goal 规划主路径 | LLM（或降级规则）产出 goals → bind 闸 → 确认后再 `od_generate_board` |
+
+来源：[P012](../proposals/P012-ask-gen-quality/) · 架构 [问数](../design/architecture.html#ask) / [生成](../design/architecture.html#gen)。不在基线：sqlglot AST、问数完整 ECharts 预览（原 M3）、对话改图循环与斜杠菜单个案。
 
 ---
 

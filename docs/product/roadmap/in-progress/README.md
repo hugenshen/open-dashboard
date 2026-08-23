@@ -32,7 +32,7 @@
 | 要解决什么 | 对话默认不会出表/临时图；问数和「生成整页看板」混在一起 |
 | 范围 | **做**问数默认轨、会话内表/临时图。**不做**问数「保存到仪表盘」（adopt 入口延后）、整页生成（P004）、可问集合产品化（P008） |
 | 里程碑 | v0.5 |
-| 当前做到哪 | 高保 / 代码均 wip；验收 **PR-ASK-01…13**；高频问法 few-shot 与 confirmed 维度值已接入 SQLBot；换题反问已编码；历史问数回放思考与结果卡已编码；0 行问数改为说明无数据、打开已完成会话不重跑 |
+| 当前做到哪 | **自研问数高保已定稿** [`2026-08-21-p006-ask-data`](../../../prototypes/snapshots/2026-08-21-p006-ask-data/)；SSE 验收已 superseded；对话表面见已完成 [P011](../../../proposals/P011-dsh-conversation-surface/) |
 | 提案 | [P006](../../../proposals/P006-ask-data/) |
 
 ## P008 权限感知工作台
@@ -43,7 +43,7 @@
 | 要解决什么 | 工作台无法回答「我能看/改哪些看板和报告、哪些数能问」 |
 | 范围 | **做**有效权限、我的资源、可问数据、用户端数据广场、报告静态授权。**不做**内置登录 / 完整 IAM |
 | 里程碑 | v0.5 |
-| 当前做到哪 | 边界已接受；askable API 与 Harness 身份贯穿已编码；用户端数据广场高保已补；工作台「我的资源」仍未冻结 |
+| 当前做到哪 | 边界已接受；askable API 与身份贯穿已编码；数据广场第一版已补。**详细设计已落** [permission-design-brief.html](../../../proposals/P008-permission-aware-workbench/permission-design-brief.html)。ACL 表、公开 chartQuery 闸、工作台「我的资源」未编码 |
 | 提案 | [P008](../../../proposals/P008-permission-aware-workbench/) |
 
 ## P010 用户记忆与问数知识库
@@ -54,7 +54,7 @@
 | 要解决什么 | 每次对话从零开始；NL2SQL 没有业务同义词和金标准 SQL |
 | 范围 | **做**按 `workspaceId + userId` 隔离的用户 facts、数据集术语+SQL 示例、确认闸门管理面、eval 回归。**不做**登录站、完整工作空间/IAM 管理与跨工作区发布流（P009）、TableRAG |
 | 里程碑 | v0.5 |
-| 当前做到哪 | 引擎（学习/指标/词表/注入/记忆）已在 main 编码；用户记忆已按 `workspaceId + userId` 隔离并通过 harness 测试；**管理端知识库高保 wip**（[`knowledge.html`](../../../prototypes/hi-fi/knowledge.html)） |
+| 当前做到哪 | 引擎已编码；问数 `od_get_schema` 带 `semantic` 投影；管理端入口「知识库」`/knowledge`（待确认/已启用/金标准问法）。**高保记忆 Tab 仍 wip**（[`knowledge.html`](../../../prototypes/hi-fi/knowledge.html)） |
 | 提案 | [P010](../../../proposals/P010-user-memory-ask-knowledge/) |
 
 ## P009 工作区隔离、用户体系与知识治理
@@ -68,13 +68,24 @@
 | 当前做到哪 | Harness H1/H3 骨架编码；Harness 文件会话、知识和用户记忆按 `X-Workspace-Id` 过滤；Java public API 已补 `/api/workspaces`、工作区/用户组/角色/成员/数据广场/申请消费；Vue 已接显式登录、退出、用户使用端/管理端菜单、工作区切换、数据广场和成员权限页 |
 | 提案 | [P009](../../../proposals/P009-workspace-governance/) |
 
+## P013 仪表盘页面模板、阅读态主题与多端即默认
+
+| | |
+|--|--|
+| 给谁 | 要从稿面开工的分析师；用手机看已发布板的业务读者 |
+| 要解决什么 | 新建只有 4 张文字磁贴、没有预览；模板应用后还要再做移动端；阅读态仍像编辑器 |
+| 范围 | **做** DataEase 风模板市场（≥20 张）、CSS 变量明暗/品牌色、模板自带移动布局、阅读态去角标。**不做** Tabler 邮件/登录页、整仓 @tabler/core、改 P012 出板算法 |
+| 里程碑 | v0.6 |
+| 当前做到哪 | 高保对照 Quick BI 做市场质感（渐变舞台 / 浮卡，无精选 Hero）；封面与稿面图种对齐；明细表分页钉底；模板画布自带日期+维度切片；点说明条按当前列宽重排。上一版冻结 `2026-08-23-pre-p013`。**尚未** `hi-fi: accepted` / 代码 |
+| 提案 | [P013](../../../proposals/P013-dashboard-page-templates/) |
+
 ## 治理补齐（尚未立项）
 
 | | |
 |--|--|
 | 给谁 | 分享观看的业务读者；生产环境接入方 |
-| 要解决什么 | 分享无密码/过期、资源无 ACL、开发回落账号、同时编辑互相覆盖 |
-| 范围 | 资源级 ACL、分享密码与过期、生产关闭 `dev-fallback`、布局保存 409。动手前先开 **P011+**，不要直接改代码冒充已设计 |
+| 要解决什么 | 分享无密码/过期、开发回落账号、同时编辑互相覆盖 |
+| 范围 | 分享密码与过期、生产关闭 `dev-fallback`、布局保存 409。**资源级 ACL 已收入 [P008 brief](../../../proposals/P008-permission-aware-workbench/permission-design-brief.html)**，不要另开一套 |
 | 里程碑 | v0.5 缺口 |
 | 当前做到哪 | 未立项 |
 

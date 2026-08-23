@@ -381,6 +381,112 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DataRequestVO'
+  /workspaces/{workspaceId}/dataset-requests/{requestId}/approve:
+    post:
+      tags: [workspace]
+      summary: Approve a dataset request and write dataset use ACL
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Grant written
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetGrantVO'
+  /workspaces/{workspaceId}/dataset-requests/{requestId}/reject:
+    post:
+      tags: [workspace]
+      summary: Reject a dataset request
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Rejected
+  /workspaces/{workspaceId}/dataset-permissions:
+    get:
+      tags: [workspace]
+      summary: List dataset ACL grants and row/column policies for the workspace
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetPermissionBundle'
+  /workspaces/{workspaceId}/dataset-permissions/grants:
+    post:
+      tags: [workspace]
+      summary: Grant dataset use (optional row filter / hidden columns)
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatasetGrantRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasetGrantVO'
+  /workspaces/{workspaceId}/dataset-permissions/grants/{grantId}:
+    delete:
+      tags: [workspace]
+      summary: Revoke a dataset ACL grant
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: grantId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Deleted
+  /workspaces/{workspaceId}/dataset-permissions/policies/{policyId}:
+    delete:
+      tags: [workspace]
+      summary: Delete a row or column data policy
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: policyId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Deleted
   /conversations/styles:
     get:
       tags: [conversation]
@@ -1085,9 +1191,10 @@ paths:
   /dataset/askable:
     get:
       tags: [dataset]
-      summary: List datasets the current user may ask (conversation:use ∩ dataset:use)
+      summary: List datasets the current user may ask (conversation:use ∩ ACL use)
       description: |
         Shared by workbench, conversation, and editor SQLBot (P008).
+        Set is instance ACL use (or dataset:manage). Empty set must not fall back to the first live table.
         Server rejects harness/internal BI queries for IDs outside this set.
         Identity comes from Auth SPI headers; request bodies must not declare userId.
       responses:
@@ -1734,6 +1841,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/DashboardBarVO'
 
+  /dashboard/templates:
+    get:
+      tags: [dashboard]
+      summary: List built-in dashboard page templates
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DashboardTemplateVO'
+
   /dashboard/{id}:
     get:
       tags: [dashboard]
@@ -1925,7 +2046,7 @@ paths:
   /chartQuery/query:
     post:
       tags: [chartQuery]
-      summary: Runtime chart query
+      summary: Runtime chart query (dataset ACL ∩ QueryGuard; dashboardId also requires dashboard ACL)
       requestBody:
         required: true
         content:
@@ -1939,6 +2060,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChartQueryResult'
+        '403':
+          description: DATASET_UNAVAILABLE or DATASET_COLUMN_FORBIDDEN
+        '404':
+          description: RESOURCE_FORBIDDEN (no dashboard ACL; existence not leaked)
 
   /chartQuery/explainSql:
     post:
@@ -1964,7 +2089,7 @@ paths:
   /datasetQuery/execute:
     post:
       tags: [datasetQuery]
-      summary: Execute QuerySpec against a dataset (sole data-source entry)
+      summary: Execute QuerySpec against a dataset (QueryGuard + dataset ACL)
       requestBody:
         required: true
         content:
@@ -1978,6 +2103,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DatasetQueryResult'
+        '403':
+          description: DATASET_UNAVAILABLE or DATASET_COLUMN_FORBIDDEN
 
   /report:
     get:
@@ -2376,6 +2503,78 @@ components:
           type: array
           items: { type: string }
 
+    DatasetPermissionBundle:
+      type: object
+      properties:
+        datasets:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              tableName: { type: string }
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/DatasetMemberOption'
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/DatasetGrantVO'
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DatasetPolicyVO'
+
+    DatasetMemberOption:
+      type: object
+      properties:
+        userId: { type: string }
+        displayName: { type: string }
+        username: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+
+    DatasetGrantVO:
+      type: object
+      properties:
+        id: { type: string }
+        datasetId: { type: string }
+        subjectType: { type: string }
+        subjectId: { type: string }
+        subjectLabel: { type: string }
+        action: { type: string }
+
+    DatasetPolicyVO:
+      type: object
+      properties:
+        id: { type: string }
+        datasetId: { type: string }
+        subjectType: { type: string }
+        subjectId: { type: string }
+        subjectLabel: { type: string }
+        kind: { type: string, enum: [row, column] }
+        effect: { type: string }
+        predicate: { type: object }
+        enabled: { type: boolean }
+
+    DatasetGrantRequest:
+      type: object
+      required: [datasetId, subjectId]
+      properties:
+        datasetId: { type: string }
+        subjectType: { type: string, enum: [user, role, group], default: user }
+        subjectId: { type: string }
+        action: { type: string, enum: [use, manage, owner], default: use }
+        rowField: { type: string }
+        rowOp: { type: string, default: eq }
+        rowValue: { type: string }
+        hideColumns:
+          type: array
+          items: { type: string }
+
     EffectivePermissionVO:
       type: object
       properties:
@@ -2520,6 +2719,21 @@ components:
         name: { type: string }
         nodeType: { type: string, enum: [folder, dashboard] }
         layoutMode: { type: string, enum: [grid, free], default: grid }
+        templateId:
+          type: string
+          description: Built-in template id; unknown values fall back to blank
+
+    DashboardTemplateVO:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        domain: { type: string }
+        description: { type: string }
+        category: { type: string }
+        thumbnail: { type: string, nullable: true }
+        responsive: { type: boolean }
+        recommended: { type: boolean }
 
     DashboardRenameRequest:
       type: object
@@ -2595,7 +2809,7 @@ components:
       type: object
       properties:
         id: { type: string }
-        type: { type: string, enum: [chart, filter, text, image, tabs] }
+        type: { type: string, enum: [chart, filter, text, image, tabs, query, slicer] }
         parentId: { type: string }
         chartViewId: { type: string }
         x: { type: integer }
