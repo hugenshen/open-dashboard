@@ -1,12 +1,15 @@
 username: hugenshen
-updatedAt: 2026-08-24T04:11:24.116Z
-skills: {}
+updatedAt: 2026-08-24T06:35:35.711Z
+skills:
+  home:
+    count: 1
+    lastUsed: 2026-08-24T06:03:29.632Z
 interventions:
-  sessions: 5
-  interrupt: 0
-  toolReject: 0
-  correction: 0
-prompts: 5
+  sessions: 6
+  interrupt: 5
+  toolReject: 2
+  correction: 1
+prompts: 27
 tokens:
   input: 0
   output: 0
