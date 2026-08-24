@@ -1,8 +1,14 @@
 username: hugenshen
-updatedAt: 2026-08-24T03:26:24.745Z
+updatedAt: 2026-08-24T04:03:46.939Z
 skills: {}
 interventions:
-  sessions: 3
+  sessions: 4
   interrupt: 0
   toolReject: 0
   correction: 0
+prompts: 3
+tokens:
+  input: 0
+  output: 0
+  cacheRead: 0
+  cacheCreation: 0
