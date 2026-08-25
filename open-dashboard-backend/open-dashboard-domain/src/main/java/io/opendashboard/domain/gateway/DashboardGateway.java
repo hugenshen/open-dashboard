@@ -64,5 +64,8 @@ public interface DashboardGateway {
 
     List<DashboardCatalogItem> listDashboardCatalog();
 
+    /** Published dashboards for data-plaza discovery (no ACL filter). */
+    List<DashboardNodeVO> listPlazaPublished();
+
     Optional<Map<String, Object>> findChartEncode(String dashboardId, String chartId, String copyType);
 }

@@ -298,11 +298,14 @@ public class DatasetProfiler {
     }
 
     /**
-     * Fallback role from dataset schema group + JDBC type. Learned profile wins when present.
+     * Role from name/label first (IDs and status/type codes), then schema group / JDBC type.
+     * Learned profile still wins in {@code BiPlatformService} when present.
      */
     public static String roleOf(DatasetFieldVO f) {
         if (f == null || f.name() == null) return "junk";
         if (isTimeField(f)) return "time";
+        if (FieldSemantics.looksLikeIdentifier(f.name(), f.label())) return "id";
+        if (FieldSemantics.looksLikeCodeDim(f.name(), f.label())) return "dim";
         String g = f.group() == null ? "" : f.group().toLowerCase(Locale.ROOT);
         if (g.equals("q") || g.equals("quota") || g.equals("measure")) return "measure";
         if (g.equals("d") || g.equals("dim") || g.equals("dimension")) return "dim";

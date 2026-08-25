@@ -31,7 +31,15 @@ public final class DeterministicPlanner {
         String datasetId = pickDataset(q, schema);
         DatasetDetailVO detail = schema.byId().get(datasetId);
 
-        List<DatasetFieldVO> measures = fieldsOf(detail, "measure");
+        List<DatasetFieldVO> measures = fieldsOf(detail, "measure").stream()
+                .filter(f -> !FieldSemantics.looksLikeIdentifier(f.name(), f.label()))
+                .toList();
+        List<DatasetFieldVO> additive = measures.stream()
+                .filter(f -> !FieldSemantics.looksLikeRatio(f.name(), f.label()))
+                .toList();
+        List<DatasetFieldVO> ratios = measures.stream()
+                .filter(f -> FieldSemantics.looksLikeRatio(f.name(), f.label()))
+                .toList();
         List<DatasetFieldVO> dims = fieldsOf(detail, "dim");
         DatasetFieldVO time = fieldsOf(detail, "time").stream().findFirst().orElse(null);
 
@@ -41,7 +49,7 @@ public final class DeterministicPlanner {
         ops.add(DashboardPatch.setTheme(styleId == null || styleId.isBlank() ? "feishu-blue" : styleId));
 
         DatasetFieldVO countKey = !dims.isEmpty() ? dims.getFirst() : time;
-        if (countKey == null && measures.isEmpty()) {
+        if (countKey == null && additive.isEmpty() && ratios.isEmpty()) {
             return new DashboardPatch.Patch(dashboardId, ops);
         }
 
@@ -54,15 +62,22 @@ public final class DeterministicPlanner {
                     encodeKpi(datasetId, countKey.name(), "COUNT")
             ));
         }
-        for (DatasetFieldVO m : measures) {
+        for (DatasetFieldVO m : additive) {
             if (kpis.size() >= 4) break;
             kpis.add(new ChartSpec(
                     String.valueOf(base + seq++), "kpi", display(m),
                     encodeKpi(datasetId, m.name(), "SUM")
             ));
         }
+        if (kpis.size() < 4 && !ratios.isEmpty()) {
+            DatasetFieldVO r0 = ratios.getFirst();
+            kpis.add(new ChartSpec(
+                    String.valueOf(base + seq++), "kpi", display(r0),
+                    encodeKpi(datasetId, r0.name(), "AVG")
+            ));
+        }
 
-        DatasetFieldVO plotMeasure = measures.isEmpty() ? null : measures.getFirst();
+        DatasetFieldVO plotMeasure = additive.isEmpty() ? null : additive.getFirst();
         String valueField = plotMeasure != null
                 ? plotMeasure.name()
                 : (countKey != null ? countKey.name() : null);
@@ -74,33 +89,35 @@ public final class DeterministicPlanner {
             plots.add(new ChartSpec(
                     String.valueOf(base + seq++), "bar",
                     display(d0) + " · " + valueLabel,
-                    encodeCat(datasetId, d0.name(), valueField, agg)
+                    encodeCat(datasetId, d0, valueField, agg)
             ));
-            DatasetFieldVO pieDim = dims.size() > 1 ? dims.get(1) : d0;
-            plots.add(new ChartSpec(
-                    String.valueOf(base + seq++), "pie",
-                    display(pieDim) + " 构成",
-                    encodeCat(datasetId, pieDim.name(), valueField, agg)
-            ));
+            DatasetFieldVO pieDim = dims.size() > 1 ? dims.get(1) : null;
+            if (pieDim != null && FieldSemantics.looksLikeCodeDim(pieDim.name(), pieDim.label())) {
+                plots.add(new ChartSpec(
+                        String.valueOf(base + seq++), "pie",
+                        display(pieDim) + " 构成",
+                        encodeCat(datasetId, pieDim, pieDim.name(), "COUNT")
+                ));
+            }
             if (time != null) {
                 plots.add(new ChartSpec(
                         String.valueOf(base + seq++), "line",
                         display(time) + "走势 · " + valueLabel,
-                        encodeCat(datasetId, time.name(), valueField, agg)
+                        encodeCat(datasetId, time, valueField, agg)
                 ));
             } else if (dims.size() > 2) {
                 DatasetFieldVO d2 = dims.get(2);
                 plots.add(new ChartSpec(
                         String.valueOf(base + seq++), "bar",
                         display(d2) + " · " + valueLabel,
-                        encodeCat(datasetId, d2.name(), valueField, agg)
+                        encodeCat(datasetId, d2, valueField, agg)
                 ));
             }
         } else if (valueField != null && countKey != null) {
             plots.add(new ChartSpec(
                     String.valueOf(base + seq++), "bar",
                     display(countKey) + " · " + valueLabel,
-                    encodeCat(datasetId, countKey.name(), valueField, agg)
+                    encodeCat(datasetId, countKey, valueField, agg)
             ));
         }
 
@@ -257,12 +274,20 @@ public final class DeterministicPlanner {
         return encode;
     }
 
-    private static Map<String, Object> encodeCat(String datasetId, String category, String value, String agg) {
+    private static Map<String, Object> encodeCat(String datasetId, DatasetFieldVO category, String value, String agg) {
         Map<String, Object> encode = new LinkedHashMap<>();
         encode.put("datasetId", datasetId);
-        encode.put("category", category);
+        encode.put("category", category.name());
         encode.put("value", value);
         encode.put("agg", agg);
+        Map<String, String> vm = FieldSemantics.parseValueMap(category.label());
+        String alias = display(category);
+        if (!vm.isEmpty() || (alias != null && !alias.equals(category.name()))) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            if (alias != null && !alias.equals(category.name())) entry.put("alias", alias);
+            if (!vm.isEmpty()) entry.put("valueMap", vm);
+            encode.put("fieldCfg", Map.of(category.name(), entry));
+        }
         return encode;
     }
 

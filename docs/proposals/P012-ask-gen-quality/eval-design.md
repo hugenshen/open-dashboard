@@ -219,7 +219,7 @@ E2E 失败必须能下钻到失败 stage（评测 runner 按段重放）。
 
 | 切片 | 交付物 | 依赖 | 状态 |
 |------|--------|------|------|
-| **E0.1** | `packages/dsh-od-eval`：runner + JSON 金标 + board plan/bind/layout + ask guard/viz/ex(夹具) | 现有 gen-board 导出 | **已编码** · `pnpm eval` 12/12 |
+| **E0.1** | `packages/dsh-od-eval`：runner + JSON 金标 + board plan/bind/layout/realize/review/worker/cockpit + ask guard/viz/ex | 现有 gen-board / P015 worker 导出 | **已编码** · `pnpm eval` |
 | **E0.2** | ask EX 真连 Java 只读执行比对（扩 30 题） | BI 内测库 | **暂缓**（流水线 P0/P1/M1.6 优先） |
 | **E0.3** | board plan LLM soft 金标 + 模型指纹报告 | M1.6 LLM Goal | **暂缓** |
 | **E1** | 可选：评测 HTTP + 分数存储 + 定时跑 | E0 稳定后 | **暂缓** |

@@ -27,18 +27,19 @@
 
 ```text
 od_list_datasets（模型选表，已有）
-  → od_plan_charts（对话可见：KPI / 柱 / 饼 / 折线 / 表；schema-only，无 live GROUP BY）
-  → od_generate_board({ datasetId, title, message, styleId? })
+  → od_plan_charts（对话可见分析任务，不定图种；schema-only，无 live GROUP BY）
+  → 用户确认
+  → od_generate_board({ datasetId, title, message, goals })
        GET  /api/internal/bi/datasets/{id}/schema
-       POST /api/internal/bi/profile-dataset      # includeProbes=false，已实现
-       planChartsFromFields(fields, message)      # 与上一步同一套确定性规划
-       reviewCharts(charts, profile)              # 确定性，模型不可跳过
-       layoutBoardPatch(...)                      # 末图拉满 + 查询条默认
+       POST /api/internal/bi/profile-dataset      # includeProbes=false
+       bind + review
+       realizeBoundCharts                         # P015：每任务内部 chartQuery 取样再选图
+       reviewCharts + layoutBoardPatch
        apply-patch
   → od_finish
 ```
 
-Persona / `/board` 继续禁止生成时先 `od_run_query` / `od_run_sql`。[PR-QG-06](./acceptance.yaml)
+Persona / `/board` 继续禁止**模型**先 `od_run_query` / `od_run_sql`。[PR-QG-06](./acceptance.yaml) 取样取数由 [P015](../P015-board-task-realize/) 在 generate 内部完成。
 
 不恢复 `od_review_charts` 工具。review 是 `od_generate_board`（及 `od_plan_charts`）内部函数。
 
@@ -162,14 +163,14 @@ A/B/C 是**能力分层**。**定稿**见 [quality-upgrade-brief.html §6](./qua
 | 查询条 | 有低基数维（`distinctCount` 2–15 或 status/type）→ `select`，默认「全部」 | 同上 |
 | 最多 3 个 query items | 超出按 time > 问题加权维 > 其它 | |
 | KPI 行 | ≤4，宽 `floor(72/n)` | 已有 |
-| 图（固化模板） | 对比图最多 2 张并排 36+36；单张对比拉满 72；折线/面积独占全宽一行；最多 1 张趋势、1 张汇总表；**禁止半行留白** | [PR-QG-04](./acceptance.yaml) |
+| 图（固化模板） | KPI 行后先放全宽趋势；对比/排行/构成最多 4 张（两行 36+36）；单张对比拉满 72；折线/面积独占全宽一行；至多 1 张饼、1 张趋势、1 张汇总表；**禁止半行留白** | [PR-QG-04](./acceptance.yaml) |
 | 表 | 全宽 72，最多 1 张 | 已有 |
 
 ## 7. 工具与 persona
 
-- **不新增** `od_*`。[PR-QG-06](./acceptance.yaml)
-- `/board`：先 `od_plan_charts` 把图表类型/标题列给用户，再 `od_generate_board` 写入；调用 generate 时把用户主题放进 `message`（M1 实现后）。
-- 禁止生成路径 `od_run_query` / `od_run_sql` / `od_layout_board` / 模型自拼 patch。
+- **P012 当时不新增** `od_*`。[PR-QG-06](./acceptance.yaml)。后续 [P015](../P015-board-task-realize/) 把 `od_get_data` 等细工具给 board worker，不给对话 Lead。
+- `/board`：先 `od_plan_charts` 把分析任务列给用户（不定图种），确认后 `od_board_worker` 按任务取数再选图写入（[P015](../P015-board-task-realize/)）。`od_generate_board` 仅 last-resort。
+- 禁止**对话模型**在生成路径调用 `od_run_query` / `od_run_sql` / `od_layout_board` / 自拼 patch。取样问数见 [P015](../P015-board-task-realize/)。
 - `od_compose_board` 仍是 last-resort，不作为 M1 主路径。
 
 ## 8. 测试夹具（实现时）
@@ -200,7 +201,7 @@ A/B/C 是**能力分层**。**定稿**见 [quality-upgrade-brief.html §6](./qua
 | 切片 | 内容 | 状态 |
 |------|------|------|
 | M1.5 | 规则 Goal + `measureKind` + review R10 | **已编码**（过渡） |
-| M1.6 | **LLM Goal 规划主路径** + 能力卡 + 确认/澄清 + bind 闸；规则改 fallback | **已编码** · `goal-planner.js` + `od_plan_charts`/`od_generate_board`；PR-QG-12 pass（fixture）；无 key 时 rules-fallback |
+| M1.6 | **LLM Goal 规划主路径** + 能力卡 + 确认/澄清 + bind/`reviewCharts` 闸；对话路径无规则回退 | **已编码** · `goal-planner.js`；无 key / 全闸掉 → plan 失败 |
 | M2 | `od_get_schema` sample/terms/questions；0 行 insight；删 stub 假行 | **已编码**（PR-QG-10/11） |
 | **P0** | 出板/问数合并 confirmed metrics → kind/agg | **已编码** · `knowledge-merge.js` + `loadSchemaAndProfile` / `od_get_schema` |
 | **P1** | 维值 → `encode.fieldCfg.valueMap` | **已编码** |

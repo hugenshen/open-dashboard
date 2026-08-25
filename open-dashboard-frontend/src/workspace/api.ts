@@ -42,6 +42,8 @@ export type DataAssetVO = {
   tags: string[]
   updatedAt: number
   actions: Array<'ask' | 'open' | 'add' | 'request' | 'manage'>
+  /** draft | published | publishedWithDraft；仅仪表盘有 */
+  publishStatus?: string | null
 }
 
 export type DataSpaceVO = {

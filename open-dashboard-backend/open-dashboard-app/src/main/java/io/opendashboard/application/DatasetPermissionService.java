@@ -30,16 +30,19 @@ public class DatasetPermissionService {
     private final ObjectProvider<ResourceAccessPort> store;
     private final IdentityRepository identity;
     private final DatasetService datasets;
+    private final ObjectProvider<DashboardAppService> dashboards;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public DatasetPermissionService(
             ObjectProvider<ResourceAccessPort> store,
             IdentityRepository identity,
-            DatasetService datasets
+            DatasetService datasets,
+            ObjectProvider<DashboardAppService> dashboards
     ) {
         this.store = store;
         this.identity = identity;
         this.datasets = datasets;
+        this.dashboards = dashboards;
     }
 
     public DatasetPermissionBundle bundle(String workspaceId, AuthPrincipal principal) {
@@ -232,6 +235,13 @@ public class DatasetPermissionService {
                 principal.userId(),
                 now
         ));
+        DashboardAppService dashSvc = dashboards.getIfAvailable();
+        boolean isDashboard = dashSvc != null && dashSvc.findNodeMeta(found.datasetId())
+                .map(n -> "dashboard".equals(n.nodeType()))
+                .orElse(false);
+        if (isDashboard) {
+            return grantResource(workspaceId, "dashboard", found.datasetId(), "user", found.applicantId(), "view", principal);
+        }
         return grant(workspaceId, new GrantRequest(
                 found.datasetId(),
                 "user",
@@ -242,6 +252,33 @@ public class DatasetPermissionService {
                 null,
                 null
         ), principal);
+    }
+
+    public GrantVO grantResource(
+            String workspaceId,
+            String resourceType,
+            String resourceId,
+            String subjectType,
+            String subjectId,
+            String action,
+            AuthPrincipal principal
+    ) {
+        requireAdmin(principal);
+        ResourceAccessPort port = requireStore();
+        AclGrant grant = new AclGrant(
+                "acl-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16),
+                workspaceId,
+                resourceType,
+                resourceId,
+                subjectType == null || subjectType.isBlank() ? "user" : subjectType,
+                subjectId,
+                action == null || action.isBlank() ? "view" : action,
+                System.currentTimeMillis(),
+                principal.userId()
+        );
+        port.upsertGrant(grant);
+        return new GrantVO(grant.id(), grant.resourceId(), grant.subjectType(), grant.subjectId(),
+                subjectId, grant.action());
     }
 
     public void rejectRequest(String workspaceId, String requestId, AuthPrincipal principal) {

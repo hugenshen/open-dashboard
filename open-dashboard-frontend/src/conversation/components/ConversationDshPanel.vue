@@ -29,6 +29,7 @@ const dshSrc = computed(() => {
     userId: bundle.userId || '',
     workspaceId: bundle.workspaceId || '',
     perms: bundle.permissions || '',
+    dashboardId: props.dashboardId || '',
     linkedDashboardId: props.dashboardId || '',
     selectedChartId: props.selectedChartId || '',
   }

@@ -22,3 +22,4 @@ docs/prototypes/vendor/editor/
 
 # Optional local re-exports; committed .cursor-export/ is the shareable snapshot
 # (do not put secrets into transcripts before regenerating).
+.dev-logs/

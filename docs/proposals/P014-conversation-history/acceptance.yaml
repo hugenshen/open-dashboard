@@ -1,0 +1,76 @@
+# P014 acceptance — 对话历史
+proposal: P014
+status: in-progress
+
+items:
+  - id: PR-HIST-01
+    title: 评审接受壳层历史入口 + 按用户工作区索引
+    gate: proposal
+    criterion: 产品接受「/conversations 始终能开历史列表；session 按 userId+workspaceId 分区；不恢复 dsh 左栏树；不把 Java 消息表当气泡真相」。
+    method: manual
+    command_or_path: docs/proposals/P014-conversation-history/README.md
+    expected: 文首 status 为 accepted 或 in-progress，并出现在 roadmap/in-progress。
+    evidence: "2026-08-24 用户确认按 design 实施；status→in-progress；挂入 roadmap/in-progress"
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+
+  - id: PR-HIST-02
+    title: 高保：落地页也能点历史并打开一条会话
+    gate: hi-fi
+    criterion: conversation-ask-dsh 落地态可见「新对话」「历史」；打开历史抽屉能看到多条；点一条切到已回答/对应 demo，标题跟随。
+    method: ui
+    command_or_path: docs/prototypes/hi-fi/conversation-ask-dsh.html
+    expected: demo=landing 仍能打开历史；点「华东本月 GMV 同比？」进入已回答态。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: null
+
+  - id: PR-HIST-03
+    title: 产品页列出当前用户工作区会话
+    gate: code
+    criterion: 登录后打开 /conversations，点「历史」列出 dsh 中该 user+workspace 的会话（非空时）。换工作区后列表跟着变。
+    method: ui
+    command_or_path: open-dashboard-frontend/src/conversation/views/ConversationDshSurface.vue
+    expected: 同一用户两工作区列表隔离；未登录不展示他人会话。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: null
+
+  - id: PR-HIST-04
+    title: 点历史打开原会话而不重跑 Agent
+    gate: code
+    criterion: 打开一条已结束会话，对话流出现原气泡与结果 Node；网络中无新的一轮 od_* 工具调用（除非用户再发消息）。
+    method: ui
+    command_or_path: opendashboard-dsh-harness/
+    expected: 回放而非 POST 新 run；有过出板的会话可再次展开右侧 draft。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: null
+
+  - id: PR-HIST-05
+    title: 重启 dsh 后历史仍在（不跟 cwd）
+    gate: code
+    criterion: 用 start.sh（cwd=runtime 沙箱）重启后，同一登录用户仍能在「历史」看到重启前创建的会话。
+    method: ui
+    command_or_path: opendashboard-dsh-harness/start.sh
+    expected: 列表非空且可打开；不依赖仓库根路径当 workspace key。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: null
+
+  - id: PR-HIST-06
+    title: 空态诚实
+    gate: code
+    criterion: 该用户该工作区确实无会话时，历史面板文案为「暂无历史会话」；dsh/索引失败时不把错误渲染成空列表。
+    method: ui
+    command_or_path: open-dashboard-frontend/src/conversation/views/ConversationDshSurface.vue
+    expected: 失败有明确提示；成功且无数据才是暂无。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: null

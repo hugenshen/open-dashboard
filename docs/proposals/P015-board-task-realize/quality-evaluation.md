@@ -53,13 +53,20 @@ pnpm test                          # 120 单测，含 realize / worker
 | worker | 按任务取数；空维可改维重试；有数后再选图 |
 | 稿面 | 分行 KPI；compare=bar；rank=hbar；构成最多 1 饼；明细表；金额「分」换成亿/万/元；不 SUM 商户ID/订单号当度量 |
 
-**2026-08-24 实测**（dashboard **11**《订单经营仪表盘》draft）：
+**2026-08-25 实测**（dashboard **12**《订单经营仪表盘》已发布）：
+
+- 数据源「本地测试库」MySQL 已连通 → 数据集 `ds_012eb19e` 订单表 → 新对话 `/board` → 规划 8 任务（llm，图种待取数后定）→ 确认后 **仅** `od_board_worker`（轨迹无 `od_run_query` / `od_compose_board`）
+- worker ~30s；3 KPI（支付金额 20.24亿 / 商户入账 19.98亿 / 平台利润 2477.3万）+ 3 bar + 1 hbar + grouptable；同维 pie 被 review 去掉
+- 编辑 KPI 标题「支付金额总额（E2E）」自动保存后发布成功（状态「已发布」）
+- Java `POST /compose-board` 返回 `ok=false` 不写 draft
+
+**2026-08-24 实测**（dashboard **11**《订单经营仪表盘》draft，对照）：
 
 - 规划 9 任务（llm）；确认后 worker ~40s；Lead 轨迹无 `od_run_query` / `od_compose_board`
 - worker 摘要：t5/t9 默认维空结果后改 `Status` 重试成功；t8 误用 `PayOrderId` 构成已改为 `Status` + rate
 - 画布：支付订单总数 KPI `5,858,015`；商户入账 KPI `19.98亿`；费率 KPI；状态/渠道 **bar**；Top10 **hbar**；状态构成 **pie×1**；状态明细 **grouptable**
 
-这只证明 PR-REAL-11 的“确认后走 worker”与基础形态闸通过，不代表业务质量验收。运行态 encode 仍有待 PR-REAL-15/16/18 解决的风险：没有订单时间趋势；状态/渠道缺 valueMap；商户费率是未确认的简单 AVG；金额/收入没有可见的成功状态过滤；Top10 使用 `AppId` 而非明确经营对象；状态金额 bar 与状态数量 pie 信息接近。不得把 dashboard 11 单次手验替代 48 例对照、口径复现和盲评。
+这只证明 PR-REAL-11 的“确认后走 worker”与基础形态闸通过，不代表业务质量验收。运行态 encode 仍有待 PR-REAL-15/16/18 解决的风险：没有订单时间趋势；状态/渠道缺 valueMap；商户费率是未确认的简单 AVG；金额/收入没有可见的成功状态过滤；Top10 使用 `AppId` 而非明确经营对象；状态金额 bar 与状态数量 pie 信息接近。不得把 dashboard 11/12 单次手验替代 48 例对照、口径复现和盲评。dashboard **10** 不得当验收成功。
 
 ## 以后才做（不进当前 CI）
 

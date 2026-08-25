@@ -577,6 +577,20 @@ public class DashboardRepository implements DashboardGateway {
         return findNode(id).map(n -> new DashboardStatusVO(n.id(), n.status(), n.contentId(), n.version()));
     }
 
+    @Override
+    public List<DashboardNodeVO> listPlazaPublished() {
+        return jdbc.query(
+                """
+                SELECT id, pid, name, node_type, status, layout_mode, content_id, version, update_time
+                FROM de_dashboard
+                WHERE node_type = 'dashboard'
+                  AND status IN ('published', 'publishedWithDraft')
+                ORDER BY update_time DESC NULLS LAST, id
+                """,
+                (rs, i) -> mapNode(rs)
+        );
+    }
+
     public List<DashboardCatalogItem> listDashboardCatalog() {
         List<DashboardCatalogItem> dashboards = jdbc.query(
                 """

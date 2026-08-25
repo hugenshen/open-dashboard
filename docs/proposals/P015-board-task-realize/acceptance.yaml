@@ -130,7 +130,7 @@ items:
     method: manual
     command_or_path: opendashboard-dsh-harness ./start.sh · /conversations
     expected: 轨迹可见 od_board_worker → od_get_data → od_save_chart → od_commit_board。
-    evidence: "2026-08-24 新对话 /board 订单经营仪表盘：od_plan_charts llm 9 任务不定图种；确认后仅 od_board_worker（无 Lead od_run_query/od_compose_board）；dashboard 11：4 KPI + 2 bar + 1 hbar + 1 pie + grouptable；空维改 Status 重试；金额 19.98亿。详见 quality-evaluation.md BOARD-E2E-ORDERS-01"
+    evidence: "2026-08-25 新对话 /board：od_plan_charts llm 8 任务不定图种；确认后仅 od_board_worker（无 Lead od_run_query/od_compose_board）；dashboard 12 已发布：3 KPI（20.24亿/19.98亿/2477.3万）+ 3 bar + 1 hbar + grouptable。2026-08-24 dashboard 11 对照见 quality-evaluation.md BOARD-E2E-ORDERS-01。"
     status: pass
     blocker_of_done: true
     requirements_target: null

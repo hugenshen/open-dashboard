@@ -138,17 +138,36 @@ public class BiPlatformService {
                     ff.put("dataType", f.dataType());
                     ff.put("origin", f.origin());
                     io.opendashboard.domain.DatasetDtos.FieldProfileVO lp = learned.get(f.name());
+                    String role;
+                    String roleSource;
                     if (lp != null && lp.roleLearned() != null && !lp.roleLearned().isBlank()) {
-                        ff.put("role", lp.roleLearned());
-                        ff.put("roleSource", lp.roleSource() == null || lp.roleSource().isBlank() ? "learned" : lp.roleSource());
+                        role = lp.roleLearned();
+                        roleSource = lp.roleSource() == null || lp.roleSource().isBlank() ? "learned" : lp.roleSource();
                     } else {
-                        ff.put("role", DatasetProfiler.roleOf(f));
-                        ff.put("roleSource", "schema");
+                        role = DatasetProfiler.roleOf(f);
+                        roleSource = "schema";
                     }
-                    // 维度值配置（阶段5）：de_glossary dimension 条目的人工/自学习枚举值，增强模型理解
+                    if (FieldSemantics.looksLikeIdentifier(f.name(), f.label())) {
+                        role = "id";
+                        roleSource = "name";
+                    } else if (FieldSemantics.looksLikeCodeDim(f.name(), f.label()) && "measure".equals(role)) {
+                        role = "dim";
+                        roleSource = "name";
+                    }
+                    ff.put("role", role);
+                    ff.put("roleSource", roleSource);
                     List<Object> fieldValues = glossaryValuesByField.get(f.name());
                     if (fieldValues != null && !fieldValues.isEmpty()) {
                         ff.put("values", fieldValues.stream().limit(24).toList());
+                    }
+                    Map<String, String> commentMap = FieldSemantics.parseValueMap(f.label());
+                    if (!commentMap.isEmpty()) {
+                        ff.put("valueMap", commentMap);
+                        if (fieldValues == null || fieldValues.isEmpty()) {
+                            List<Map<String, String>> parsed = new ArrayList<>();
+                            commentMap.forEach((k, v) -> parsed.add(Map.of("value", k, "label", v)));
+                            ff.put("values", parsed);
+                        }
                     }
                     fields.add(ff);
                 });
@@ -556,101 +575,10 @@ public class BiPlatformService {
     }
 
     public Map<String, Object> composeBoard(Map<String, Object> body) {
-        String message = body.get("message") == null ? "" : String.valueOf(body.get("message"));
-        String dashboardId = body.get("dashboardId") == null ? null : String.valueOf(body.get("dashboardId"));
-        String styleId = body.get("styleId") == null ? "feishu-blue" : String.valueOf(body.get("styleId"));
-        String mode = body.get("mode") == null ? "replace" : String.valueOf(body.get("mode"));
-        @SuppressWarnings("unchecked")
-        List<String> datasetIds = body.get("datasetIds") instanceof List<?> list
-                ? list.stream().map(String::valueOf).toList()
-                : List.of();
-        Map<String, DatasetDetailVO> loaded = new LinkedHashMap<>();
-        for (String id : datasetIds) {
-            if (!askable.isAskable(id)) continue;
-            datasets.get(id).ifPresent(d -> loaded.put(id, d));
-        }
-        if (loaded.isEmpty() && !datasetIds.isEmpty()) {
-            return Map.of("ok", false, "error", "datasets not found");
-        }
-        if (loaded.isEmpty()) {
-            askable.listAskable().stream()
-                    .filter(m -> !DeterministicPlanner.isWeakDataset(new DatasetDetailVO(m, List.of())))
-                    .limit(3)
-                    .forEach(m -> datasets.get(m.id()).ifPresent(d -> loaded.put(d.meta().id(), d)));
-            if (loaded.isEmpty()) {
-                askable.listAskable().stream().limit(3)
-                        .forEach(m -> datasets.get(m.id()).ifPresent(d -> loaded.put(d.meta().id(), d)));
-            }
-        }
-        SchemaGuard.SchemaBundle schema = SchemaGuard.load(new ArrayList<>(loaded.keySet()), loaded);
-        if (!schema.okForPagePatch()) {
-            return Map.of("ok", false, "error", "schema guard failed", "missing", schema.missingIds());
-        }
-        DashboardPatch.Patch patch = DeterministicPlanner.plan(dashboardId, styleId, message, schema);
-        if ("append".equalsIgnoreCase(mode) && dashboardId != null && !dashboardId.isBlank()) {
-            patch = toAppendPatch(dashboardId, patch);
-        }
-        String title = DeterministicPlanner.resolveTitle(message, schema);
-        String usedId = DeterministicPlanner.resolveDatasetId(message, schema);
-        DatasetDetailVO used = loaded.get(usedId);
-        DashboardPatchApplier.ApplyResult applied = applier.apply(dashboardId, title, patch, mode);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("ok", true);
-        out.put("dashboardId", applied.dashboardId());
-        out.put("title", title);
-        out.put("mode", mode);
-        out.put("datasetId", usedId);
-        out.put("datasetName", used != null && used.meta() != null ? used.meta().name() : usedId);
-        out.put("weakDataset", DeterministicPlanner.isWeakDataset(used));
-        out.put("chartCount", applied.chartIds().size());
-        out.put("chartIds", applied.chartIds());
-        return out;
-    }
-
-    /** Keep only new charts/components; place below existing board max Y. */
-    private DashboardPatch.Patch toAppendPatch(String dashboardId, DashboardPatch.Patch full) {
-        Map<String, Object> summary = boardSummary(dashboardId);
-        int maxY = 0;
-        Object comps = summary.get("components");
-        if (comps instanceof List<?> list) {
-            for (Object o : list) {
-                if (o instanceof Map<?, ?> m) {
-                    Object y = m.get("y");
-                    Object h = m.get("h");
-                    int yi = y instanceof Number n ? n.intValue() : 0;
-                    int hi = h instanceof Number n ? n.intValue() : 12;
-                    maxY = Math.max(maxY, yi + hi);
-                }
-            }
-        }
-        List<Map<String, Object>> chartOps = new ArrayList<>();
-        List<Map<String, Object>> compOps = new ArrayList<>();
-        for (Map<String, Object> op : full.ops()) {
-            String kind = String.valueOf(op.get("op"));
-            if ("upsert_chart".equals(kind)) chartOps.add(op);
-            else if ("upsert_component".equals(kind)) {
-                Map<String, Object> shifted = new LinkedHashMap<>(op);
-                int y = op.get("y") instanceof Number n ? n.intValue() : 0;
-                shifted.put("y", maxY + 2 + (y % 24));
-                compOps.add(shifted);
-            }
-        }
-        int keep = Math.min(2, chartOps.size());
-        List<Map<String, Object>> ops = new ArrayList<>();
-        for (int i = 0; i < keep; i++) {
-            ops.add(chartOps.get(i));
-            String chartId = String.valueOf(chartOps.get(i).get("chartId"));
-            for (Map<String, Object> c : compOps) {
-                if (chartId.equals(String.valueOf(c.get("chartId")))) {
-                    ops.add(c);
-                    break;
-                }
-            }
-        }
-        if (ops.isEmpty()) {
-            return full;
-        }
-        return new DashboardPatch.Patch(dashboardId, ops);
+        return Map.of(
+                "ok", false,
+                "error", "compose-board is disabled; use od_plan_charts then od_board_worker"
+        );
     }
 
     private static List<String> previewLabels(List<List<Object>> data) {

@@ -44,11 +44,11 @@ items:
   - id: PR-QG-04
     title: layout 固化模板无半行留白且查询条不填假区间
     gate: code
-    criterion: 对比图最多 2 张并排；单张对比或折线/面积为 w=72 全宽行；禁止半行空洞。profile 提供 time min/max 时 query 日期项含 fromDefault 与 toDefault；无 profile 统计时不出现近 30 天等编造区间。
+    criterion: 对比图最多 4 张（两行 36+36）；趋势图在 KPI 之后全宽 w=72；单张对比为 w=72 全宽行；禁止半行空洞。profile 提供 time min/max 时 query 日期项含 fromDefault 与 toDefault；无 profile 统计时不出现近 30 天等编造区间。
     method: script
     command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/gen-board.test.js
     expected: 单测覆盖并排/全宽与有统计/无统计两支。
-    evidence: "2026-08-22 固化模板：bar+pie 36+36、line w=72；solo bar w=72；无假近30天"
+    evidence: "2026-08-24 驾驶舱稿面：趋势全宽后最多两行对比图；solo bar w=72；无假近30天。修订：对比图 2→4，因专业出板不能只留两张半宽图。"
     status: pass
     blocker_of_done: true
     requirements_target: PR-QG-04

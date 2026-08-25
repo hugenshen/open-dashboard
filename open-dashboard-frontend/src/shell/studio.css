@@ -214,6 +214,41 @@
   color: inherit;
 }
 
+.asset-item .asset-check {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--as-brand);
+}
+
+.asset-item .asset-hit {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.asset-rail .rail-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: inherit;
+}
+
+.asset-rail .rail-all input {
+  accent-color: var(--as-brand);
+}
+
 .asset-item:hover {
   background: #f7f8fa;
 }

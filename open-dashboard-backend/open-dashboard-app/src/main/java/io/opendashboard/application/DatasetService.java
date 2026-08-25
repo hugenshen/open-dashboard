@@ -106,11 +106,14 @@ public class DatasetService {
     }
 
     public List<DatasetMetaVO> list() {
+        return visibleDatasets(listCatalog());
+    }
+
+    /** All published datasets, without ACL filter. Data plaza uses this to show requestable rows. */
+    public List<DatasetMetaVO> listCatalog() {
         DatasetGateway repo = repository.getIfAvailable();
-        List<DatasetMetaVO> all = repo != null
-                ? repo.list()
-                : mem.values().stream().map(DatasetDetailVO::meta).toList();
-        return visibleDatasets(all);
+        if (repo != null) return repo.list();
+        return mem.values().stream().map(DatasetDetailVO::meta).toList();
     }
 
     private List<DatasetMetaVO> visibleDatasets(List<DatasetMetaVO> all) {

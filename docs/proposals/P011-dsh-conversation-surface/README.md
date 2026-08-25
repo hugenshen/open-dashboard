@@ -109,3 +109,4 @@ P004/P006 的自研对话 UI（Composer、步骤折叠、结果卡）交互跟�
 | 2026-08-23 | **还原顶栏**：用户确认恢复 **轨迹 / 上下文** Tab（`ui-trajectory` + profile bundle `dsh-context`，斜杠 `/context`）；对话流仍藏工具卡 |
 | 2026-08-22 | 对话对外品牌统一 **DataQ**；禁止对用户说 Open Dashboard |
 | 2026-08-21 | 产品壳标改为几何圆标（蓝底白 Q），与 DeepSeek 量级/气质对齐；水獭 IP 仅作营销素材 |
+| 2026-08-24 | **历史入口不在本提案演进**：`/conversations` 看历史改走 [P014](../P014-conversation-history/)。P011 仍禁 dsh 左栏树、Agent cwd 仍是空沙箱；会话分区不再跟 cwd（由 P014 改） |

@@ -4,7 +4,20 @@
  * @module @opendashboard/dsh-od-auth/bridge-state
  */
 
-/** @typedef {{ userId?: string, workspaceId?: string, perms?: string, conversationId?: string, prompt?: string, datasetId?: string }} OdBridge */
+/**
+ * @typedef {{
+ *   userId?: string,
+ *   workspaceId?: string,
+ *   perms?: string,
+ *   conversationId?: string,
+ *   prompt?: string,
+ *   datasetId?: string,
+ *   dashboardId?: string,
+ *   linkedDashboardId?: string,
+ *   dshWorkspaceId?: string,
+ *   dshWorkspacePath?: string,
+ * }} OdBridge
+ */
 
 /** @type {OdBridge} */
 let bridge = {}
@@ -22,7 +35,14 @@ export function setBridge(next) {
 /** Merge fields into bridge (iframe / POST updates). */
 export function patchBridge(next) {
   if (!next || typeof next !== 'object') return getBridge()
-  bridge = { ...bridge, ...next }
+  const cleaned = { ...next }
+  for (const key of ['dashboardId', 'linkedDashboardId', 'datasetId', 'conversationId', 'dshWorkspaceId', 'dshWorkspacePath']) {
+    if (cleaned[key] === '') delete cleaned[key]
+  }
+  if (cleaned.dashboardId && !cleaned.linkedDashboardId) {
+    cleaned.linkedDashboardId = cleaned.dashboardId
+  }
+  bridge = { ...bridge, ...cleaned }
   return getBridge()
 }
 

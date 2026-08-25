@@ -137,6 +137,28 @@ items:
     status: pass
     blocker_of_done: false
     requirements_target: PR-CONV-12
+  - id: PR-CONV-13
+    title: 对话改图原地更新同一草稿
+    gate: code
+    criterion: 已生成 draft 后，用户用对话调整一张或多张图时，走 od_get_board_summary → od_rechart_chart → Java apply-patch mode=merge，只 upsert 原 chartId；dashboardId 不变；未点名的图与布局不被 set_layout / 差集删除。整页重做才允许 od_generate_board，且必须带同一 dashboardId，禁止另开草稿。
+    method: api
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/rechart.test.js · DashboardPatchApplier.merge
+    expected: merge patch 仅 upsert_chart；未知 chartId 失败且无 patch；按标题可命中；board_ready 带同一 dashboardId。
+    evidence: "rechart.test.js：按标题命中一张、两张饼图一次 merge、未知 chartId 失败无 patch、title 当 chartId 仍写回原 id；DashboardPatchApplier merge 忽略 set_layout/set_theme/upsert_component，不清画布。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-13
+  - id: PR-CONV-14
+    title: 专业出板规划（经营驾驶舱 IA）
+    gate: code
+    criterion: 「专业仪表盘」类空主题不得只规划两张饼+一张表。规划/闸门：KPI 必须分行；状态/类型×金额用柱图；至多 1 张饼；高基数维走 hbar TOP-N；layout 可铺最多两行对比图且趋势全宽。对照 refs/JoyAgent chartSuggest 与 P013 模板槽位。
+    method: api
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/goal-planner.test.js · gen-board.test.js cockpit IA
+    expected: shapeCockpitGoals 第二张饼改柱；capability 含 rankDims/composeDims；layout 4 张半宽图分两行；bind hbar 带 resultLimit 10。
+    evidence: "2026-08-24 cockpit tests pass：两饼夹具只留 1 pie；StoreName rank→hbar limit 10；layout 4 halves + trend-first。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-14
   - id: PR-SL-01
     title: 字段统计画像落库
     gate: code

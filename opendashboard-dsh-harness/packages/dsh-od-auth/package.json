@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.js",
     "./bridge-state": "./src/bridge-state.js",
+    "./od-workspace": "./src/od-workspace.js",
     "./package.json": "./package.json"
   },
   "dependencies": {

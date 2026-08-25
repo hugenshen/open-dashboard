@@ -1,8 +1,12 @@
 package io.opendashboard.application;
 
+import io.opendashboard.domain.DashboardDtos.DashboardNodeVO;
+import io.opendashboard.domain.DatasetDtos.DatasetMetaVO;
 import io.opendashboard.domain.context.AuthPrincipal;
 import io.opendashboard.domain.exception.ForbiddenException;
 import io.opendashboard.domain.gateway.IdentityRepository;
+import io.opendashboard.domain.gateway.ResourceAccessPort;
+import io.opendashboard.domain.gateway.ResourceAccessPort.DatasetRequest;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
@@ -24,24 +28,31 @@ public class WorkspaceGovernanceService {
     private final Map<String, List<GroupSeed>> groups = new LinkedHashMap<>();
     private final Map<String, List<RoleSeed>> roles = new LinkedHashMap<>();
     private final Map<String, List<MemberSeed>> members = new LinkedHashMap<>();
-    private final List<AssetSeed> assets = new ArrayList<>();
     private final Set<String> addedAssets = ConcurrentHashMap.newKeySet();
     private final Map<String, DataRequestVO> requests = new ConcurrentHashMap<>();
     private final IdentityRepository identityRepository;
+    private final DatasetService datasets;
+    private final ObjectProvider<DashboardAppService> dashboards;
     private final ObjectProvider<EffectiveAccessService> access;
     private final ObjectProvider<DatasetPermissionService> permissions;
+    private final ObjectProvider<ResourceAccessPort> resourceAccess;
 
     public WorkspaceGovernanceService(
             IdentityRepository identityRepository,
+            DatasetService datasets,
+            ObjectProvider<DashboardAppService> dashboards,
             ObjectProvider<EffectiveAccessService> access,
-            ObjectProvider<DatasetPermissionService> permissions
+            ObjectProvider<DatasetPermissionService> permissions,
+            ObjectProvider<ResourceAccessPort> resourceAccess
     ) {
         this.identityRepository = identityRepository;
+        this.datasets = datasets;
+        this.dashboards = dashboards;
         this.access = access;
         this.permissions = permissions;
+        this.resourceAccess = resourceAccess;
         seedWorkspaces();
         seedSecurity();
-        seedAssets();
     }
 
     public AuthMeVO me(AuthPrincipal principal) {
@@ -72,7 +83,7 @@ public class WorkspaceGovernanceService {
         String current = visibleWorkspaceId(principal, workspaceId);
         List<DataAssetVO> visibleAssets = dataAssets(current, principal);
         long myDataCount = visibleAssets.stream().filter(DataAssetVO::added).count();
-        long pendingCount = requestsFor(principal).stream().filter(r -> "pending".equals(r.status())).count();
+        long pendingCount = requestsFor(current, principal).stream().filter(r -> "pending".equals(r.status())).count();
         return new WorkspaceSummaryVO(
                 workspace(principal, current),
                 groups.getOrDefault(current, List.of()).size(),
@@ -140,16 +151,7 @@ public class WorkspaceGovernanceService {
         if (acl != null) {
             return List.copyOf(acl.grantedDatasetIds(principal));
         }
-        Set<String> visible = new LinkedHashSet<>(visibleWorkspaceIds(principal));
-        return assets.stream()
-                .filter(a -> "dataset".equals(a.type()))
-                .filter(a -> visible.contains(a.workspaceId()))
-                .map(a -> toAssetVO(a, principal))
-                .filter(a -> a.actions().contains("ask"))
-                .map(DataAssetVO::source)
-                .filter(source -> source != null && !source.isBlank())
-                .distinct()
-                .toList();
+        return List.of();
     }
 
     public DataPlazaVO dataPlaza(String workspaceId, AuthPrincipal principal) {
@@ -162,54 +164,52 @@ public class WorkspaceGovernanceService {
                         .toList(),
                 visible,
                 visible.stream().filter(DataAssetVO::added).toList(),
-                requestsFor(principal)
+                requestsFor(current, principal)
         );
     }
 
     public DataAssetVO addToMyData(String workspaceId, String assetId, AuthPrincipal principal) {
         visibleWorkspaceId(principal, workspaceId);
-        AssetSeed asset = findAsset(assetId);
-        DataAssetVO view = toAssetVO(asset, principal);
+        Set<String> pending = pendingDatasetIds(workspaceId, principal);
+        DataAssetVO view = resolveAsset(assetId, workspaceId, principal, pending);
         if (!view.actions().contains("add")) {
             throw new ForbiddenException("资产未授权消费，不能加入我的数据");
         }
         addedAssets.add(addKey(principal, assetId));
-        return toAssetVO(asset, principal);
+        return resolveAsset(assetId, workspaceId, principal, pending);
     }
 
     public DataRequestVO requestAccess(String workspaceId, DataRequestCreateRequest body, AuthPrincipal principal) {
-        visibleWorkspaceId(principal, workspaceId);
+        String current = visibleWorkspaceId(principal, workspaceId);
         if (body == null || body.assetId() == null || body.assetId().isBlank()) {
             throw new IllegalArgumentException("assetId required");
         }
-        AssetSeed asset = findAsset(body.assetId());
-        DataAssetVO view = toAssetVO(asset, principal);
+        DataAssetVO view = resolveAsset(body.assetId(), current, principal, pendingDatasetIds(current, principal));
         if (!view.actions().contains("request")) {
             throw new ForbiddenException("该资产当前无需申请或不可申请");
         }
-        String key = requestKey(principal, asset.id());
+        List<String> requested = body.requestedActions() == null || body.requestedActions().isEmpty()
+                ? ("dashboard".equals(view.type()) ? List.of("view") : List.of("consume"))
+                : List.copyOf(body.requestedActions());
+        String key = requestKey(principal, view.id());
         DatasetPermissionService perms = permissions.getIfAvailable();
         String persistedId = perms == null ? null : perms.recordRequest(
-                asset.workspaceId(),
-                asset.source() == null || asset.source().isBlank() ? asset.id() : asset.source(),
+                current,
+                view.id(),
                 body.purpose() == null || body.purpose().isBlank() ? "用于业务分析" : body.purpose(),
-                body.requestedActions() == null || body.requestedActions().isEmpty()
-                        ? List.of("use")
-                        : body.requestedActions(),
+                requested,
                 principal
         );
         return requests.computeIfAbsent(key, ignored -> new DataRequestVO(
                 persistedId == null ? "req-" + UUID.randomUUID().toString().substring(0, 8) : persistedId,
-                asset.id(),
-                asset.name(),
-                asset.workspaceId(),
+                view.id(),
+                view.name(),
+                current,
                 "pending",
-                asset.owner(),
+                "数据负责人",
                 Instant.now().toEpochMilli(),
                 body.purpose() == null || body.purpose().isBlank() ? "用于业务分析" : body.purpose(),
-                body.requestedActions() == null || body.requestedActions().isEmpty()
-                        ? List.of("consume")
-                        : List.copyOf(body.requestedActions())
+                requested
         ));
     }
 
@@ -220,77 +220,199 @@ public class WorkspaceGovernanceService {
                 .toList();
     }
 
-    private List<DataRequestVO> requestsFor(AuthPrincipal principal) {
+    private List<DataRequestVO> requestsFor(String workspaceId, AuthPrincipal principal) {
+        Map<String, DataRequestVO> byAsset = new LinkedHashMap<>();
+        ResourceAccessPort port = resourceAccess.getIfAvailable();
+        if (port != null) {
+            try {
+                for (DatasetRequest row : port.listRequests(workspaceId)) {
+                    if (!principal.userId().equals(row.applicantId()) || !"pending".equals(row.status())) {
+                        continue;
+                    }
+                    DatasetMetaVO meta = findDatasetOrNull(row.datasetId());
+                    String assetName = meta == null ? null : meta.name();
+                    if (assetName == null) {
+                        DashboardAppService dashSvc = dashboards.getIfAvailable();
+                        assetName = dashSvc == null
+                                ? row.datasetId()
+                                : dashSvc.findNodeMeta(row.datasetId()).map(DashboardNodeVO::name).orElse(row.datasetId());
+                    }
+                    byAsset.put(row.datasetId(), new DataRequestVO(
+                            row.id(),
+                            row.datasetId(),
+                            assetName,
+                            workspaceId,
+                            "pending",
+                            "数据负责人",
+                            row.createdAt(),
+                            row.purpose(),
+                            row.requestedActions() == null || row.requestedActions().isBlank()
+                                    ? List.of("use")
+                                    : List.of(row.requestedActions().split(","))
+                    ));
+                }
+            } catch (RuntimeException ignored) {
+                // ACL 表未就绪时回落到进程内申请
+            }
+        }
         String prefix = principal.userId() + ":";
-        return requests.entrySet().stream()
+        requests.entrySet().stream()
                 .filter(entry -> entry.getKey().startsWith(prefix))
-                .map(Map.Entry::getValue)
+                .forEach(entry -> byAsset.putIfAbsent(entry.getValue().assetId(), entry.getValue()));
+        return byAsset.values().stream()
                 .sorted(Comparator.comparingLong(DataRequestVO::createdAt).reversed())
                 .toList();
     }
 
-    private List<DataAssetVO> dataAssets(String workspaceId, AuthPrincipal principal) {
-        visibleWorkspaceId(principal, workspaceId);
-        return assets.stream()
-                .filter(a -> workspaces.containsKey(a.workspaceId()))
-                .map(a -> toAssetVO(a, principal))
-                .sorted(Comparator.comparing(DataAssetVO::added).reversed()
-                        .thenComparing(DataAssetVO::updatedAt).reversed())
-                .toList();
+    private Set<String> pendingDatasetIds(String workspaceId, AuthPrincipal principal) {
+        return requestsFor(workspaceId, principal).stream()
+                .filter(r -> "pending".equals(r.status()))
+                .map(DataRequestVO::assetId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private DataAssetVO toAssetVO(AssetSeed seed, AuthPrincipal principal) {
-        boolean requested = requests.containsKey(requestKey(principal, seed.id()));
-        boolean added = seed.addedByDefault() || addedAssets.contains(addKey(principal, seed.id()));
-        String status = requested ? "pending" : seed.authStatus();
-        EffectiveAccessService acl = access.getIfAvailable();
-        if (acl != null && "dataset".equals(seed.type()) && seed.source() != null
-                && acl.canUseDataset(principal, seed.source())) {
-            status = "granted";
+    private List<DataAssetVO> dataAssets(String workspaceId, AuthPrincipal principal) {
+        visibleWorkspaceId(principal, workspaceId);
+        Set<String> pending = pendingDatasetIds(workspaceId, principal);
+        List<DataAssetVO> out = new ArrayList<>();
+        for (DatasetMetaVO meta : datasets.listCatalog()) {
+            out.add(toDatasetAsset(meta, workspaceId, principal, pending));
         }
-        List<String> actions = actions(seed, status, added);
-        WorkspaceSeed workspace = workspaces.get(seed.workspaceId());
+        DashboardAppService dashSvc = dashboards.getIfAvailable();
+        if (dashSvc != null) {
+            for (DashboardNodeVO node : dashSvc.listPlazaPublished()) {
+                out.add(toDashboardAsset(node, workspaceId, principal, pending));
+            }
+        }
+        out.sort(Comparator.comparing(DataAssetVO::added).reversed()
+                .thenComparing(DataAssetVO::updatedAt).reversed());
+        return out;
+    }
+
+    private DataAssetVO resolveAsset(String assetId, String workspaceId, AuthPrincipal principal, Set<String> pending) {
+        DatasetMetaVO meta = findDatasetOrNull(assetId);
+        if (meta != null) {
+            return toDatasetAsset(meta, workspaceId, principal, pending);
+        }
+        DashboardAppService dashSvc = dashboards.getIfAvailable();
+        DashboardNodeVO node = dashSvc == null ? null : dashSvc.findNodeMeta(assetId).orElse(null);
+        if (node != null && "dashboard".equals(node.nodeType())) {
+            String status = node.status();
+            if (!"published".equals(status) && !"publishedWithDraft".equals(status)) {
+                throw new ForbiddenException("仅已发布仪表盘可在数据广场申请或添加");
+            }
+            return toDashboardAsset(node, workspaceId, principal, pending);
+        }
+        throw new IllegalArgumentException("asset not found: " + assetId);
+    }
+
+    private DataAssetVO toDatasetAsset(
+            DatasetMetaVO meta,
+            String workspaceId,
+            AuthPrincipal principal,
+            Set<String> pending
+    ) {
+        boolean requested = pending.contains(meta.id());
+        boolean added = addedAssets.contains(addKey(principal, meta.id()));
+        EffectiveAccessService acl = access.getIfAvailable();
+        boolean granted = acl != null && acl.canUseDataset(principal, meta.id());
+        String status = granted ? "granted" : (requested ? "pending" : "requestable");
+        List<String> actions = datasetActions(status, added);
+        WorkspaceSeed workspace = workspaces.get(workspaceId);
+        String folder = meta.folder() == null ? "" : meta.folder().trim();
+        String description = granted
+                ? (folder.isEmpty() ? "已授权数据集" : folder)
+                : (folder.isEmpty() ? "已发布数据集，可申请消费。" : folder + " · 已发布，可申请消费。");
         return new DataAssetVO(
-                seed.id(),
-                seed.name(),
-                seed.type(),
-                seed.workspaceId(),
-                workspace == null ? seed.workspaceId() : workspace.name(),
-                seed.owner(),
-                seed.description(),
-                seed.source(),
-                seed.sensitiveLevel(),
+                meta.id(),
+                meta.name(),
+                "dataset",
+                workspaceId,
+                workspace == null ? workspaceId : workspace.name(),
+                "管理员",
+                description,
+                granted ? meta.id() : "",
+                "low",
                 status,
                 added,
-                seed.tags(),
-                seed.updatedAt(),
-                actions
+                folder.isEmpty() ? List.of() : List.of(folder),
+                meta.updateTime() == null ? 0L : meta.updateTime(),
+                actions,
+                null
         );
     }
 
-    private List<String> actions(AssetSeed seed, String status, boolean added) {
+    private DataAssetVO toDashboardAsset(
+            DashboardNodeVO node,
+            String workspaceId,
+            AuthPrincipal principal,
+            Set<String> pending
+    ) {
+        boolean requested = pending.contains(node.id());
+        boolean added = addedAssets.contains(addKey(principal, node.id()));
+        EffectiveAccessService acl = access.getIfAvailable();
+        boolean granted = acl != null && acl.canViewDashboard(principal, node.id());
+        String status = granted ? "granted" : (requested ? "pending" : "requestable");
+        List<String> actions = dashboardActions(status, added);
+        WorkspaceSeed workspace = workspaces.get(workspaceId);
+        String publishLabel = "publishedWithDraft".equals(node.status()) ? "有未发布改动" : "已发布";
+        String description = granted
+                ? "已授权仪表盘 · " + publishLabel
+                : "已发布仪表盘，可申请查看。";
+        return new DataAssetVO(
+                node.id(),
+                node.name(),
+                "dashboard",
+                workspaceId,
+                workspace == null ? workspaceId : workspace.name(),
+                "管理员",
+                description,
+                granted ? node.id() : "",
+                "low",
+                status,
+                added,
+                List.of(publishLabel),
+                node.updateTime() == null ? 0L : node.updateTime(),
+                actions,
+                node.status()
+        );
+    }
+
+    private List<String> datasetActions(String status, boolean added) {
         List<String> actions = new ArrayList<>();
         if ("granted".equals(status)) {
-            if ("dataset".equals(seed.type())) actions.add("ask");
-            if ("dashboard".equals(seed.type()) || "combo".equals(seed.type())) actions.add("open");
+            actions.add("ask");
             if (!added) actions.add("add");
-        } else if ("requestable".equals(status)) {
+        } else if ("requestable".equals(status) || "pending".equals(status)) {
             actions.add("request");
-        }
-        if ("pending".equals(status)) {
-            actions.add("request");
-        }
-        if ("api".equals(seed.type()) && "granted".equals(status)) {
-            actions.add("open");
         }
         return List.copyOf(actions);
     }
 
-    private AssetSeed findAsset(String assetId) {
-        return assets.stream()
-                .filter(a -> a.id().equals(assetId))
+    private List<String> dashboardActions(String status, boolean added) {
+        List<String> actions = new ArrayList<>();
+        if ("granted".equals(status)) {
+            actions.add("open");
+            if (!added) actions.add("add");
+        } else if ("requestable".equals(status) || "pending".equals(status)) {
+            actions.add("request");
+        }
+        return List.copyOf(actions);
+    }
+
+    private DatasetMetaVO findDataset(String assetId) {
+        DatasetMetaVO meta = findDatasetOrNull(assetId);
+        if (meta == null) {
+            throw new IllegalArgumentException("asset not found: " + assetId);
+        }
+        return meta;
+    }
+
+    private DatasetMetaVO findDatasetOrNull(String assetId) {
+        return datasets.listCatalog().stream()
+                .filter(d -> d.id().equals(assetId))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("asset not found: " + assetId));
+                .orElse(null);
     }
 
     private String visibleWorkspaceId(AuthPrincipal principal, String workspaceId) {
@@ -327,9 +449,9 @@ public class WorkspaceGovernanceService {
     }
 
     private WorkspaceVO workspaceVO(WorkspaceSeed seed, boolean current, Set<String> permissions) {
-        long assetCount = assets.stream().filter(a -> seed.id().equals(a.workspaceId())).count();
+        int assetCount = datasets.listCatalog().size();
         return new WorkspaceVO(seed.id(), seed.name(), seed.description(), seed.mode(), roleFromPermissions(permissions), current,
-                seed.memberCount(), (int) assetCount);
+                seed.memberCount(), assetCount);
     }
 
     private String roleFromPermissions(Set<String> permissions) {
@@ -421,31 +543,6 @@ public class WorkspaceGovernanceService {
         ));
     }
 
-    private void seedAssets() {
-        long now = Instant.now().toEpochMilli();
-        assets.add(new AssetSeed("asset-order", "订单表", "dataset", "workspace-retail", "林数据",
-                "t_pay_order · GMV、订单数、渠道、区域，适合经营问数默认上下文。", "ds_order",
-                "low", "granted", true, List.of("GMV", "订单", "可问"), now - 10 * 60_000L));
-        assets.add(new AssetSeed("asset-weekly", "经营周报仪表板", "dashboard", "workspace-retail", "王业务",
-                "零售经营核心指标看板，含 GMV、渠道、区域、客群趋势。", "dash-weekly",
-                "low", "granted", true, List.of("看板", "已发布"), now - 3_600_000L));
-        assets.add(new AssetSeed("asset-member", "会员画像宽表", "dataset", "workspace-retail", "王业务",
-                "dim_member_profile · 会员等级、生命周期、复购标签，含敏感画像字段。", "ds_member",
-                "high", "requestable", false, List.of("会员", "高敏需审批"), now - 2 * 3_600_000L));
-        assets.add(new AssetSeed("asset-store", "门店日结表", "dataset", "workspace-east", "陈治理",
-                "fact_store_daily · 销售额、客单价、门店等级，仅华东区域行权限。", "ds_store_daily",
-                "medium", "granted", false, List.of("门店", "行权限"), now - 20 * 60_000L));
-        assets.add(new AssetSeed("asset-supply", "供应链库存组合", "combo", "workspace-east", "林数据",
-                "库存、采购和调拨三张表的组合资产，管理员已发布到广场。", "combo-supply",
-                "medium", "granted", false, List.of("数据表组合", "库存"), now - 4 * 3_600_000L));
-        assets.add(new AssetSeed("asset-payment", "支付流水明细", "dataset", "workspace-finance", "王业务",
-                "fact_payment_detail · 支付方式、退款、结算状态，昨天提交申请。", "ds_payment",
-                "high", "requestable", false, List.of("支付", "高敏需审批"), now - 7 * 3_600_000L));
-        assets.add(new AssetSeed("asset-coupon-api", "优惠券核销 API", "api", "workspace-retail", "林数据",
-                "按活动读取核销率和客群分布，适合接入运营日报。", "api-coupon",
-                "medium", "requestable", false, List.of("API 数据", "运营"), now - 90 * 60_000L));
-    }
-
     private record WorkspaceSeed(String id, String name, String description, String mode, String role, int memberCount) {}
 
     private record GroupSeed(String id, String name, String description, int memberCount, List<String> roles) {}
@@ -453,21 +550,6 @@ public class WorkspaceGovernanceService {
     private record RoleSeed(String code, String name, String description, List<String> permissions) {}
 
     private record MemberSeed(String userId, String displayName, String status, List<String> groups, List<String> roles) {}
-
-    private record AssetSeed(
-            String id,
-            String name,
-            String type,
-            String workspaceId,
-            String owner,
-            String description,
-            String source,
-            String sensitiveLevel,
-            String authStatus,
-            boolean addedByDefault,
-            List<String> tags,
-            long updatedAt
-    ) {}
 
     public record AuthMeVO(
             String userId,
@@ -535,7 +617,8 @@ public class WorkspaceGovernanceService {
             boolean added,
             List<String> tags,
             long updatedAt,
-            List<String> actions
+            List<String> actions,
+            String publishStatus
     ) {}
 
     public record DataRequestCreateRequest(

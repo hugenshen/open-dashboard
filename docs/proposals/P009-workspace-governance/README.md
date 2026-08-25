@@ -63,7 +63,7 @@ implementation:
 | 怎么验收 | [acceptance.yaml](./acceptance.yaml) |
 | 依赖 | P004 对话分析、P006 对话问数、P008 权限感知工作台 |
 | 契约 | 本切片已补 Harness run/adopt/trace/memory/knowledge 与 Java workspace/data-plaza 接口到 [`openapi.yaml`](../../design/openapi.yaml)；后续跨端继续先改契约 |
-| 当前范围 | 已确认“同壳双区域”：用户使用端不暴露工作区概念；工作区只出现在管理端。超级管理员可治理全部工作区，工作区管理员通常只管理 1～2 个。`scripts/e2e-auth-ask.sh` 已验证 demo/wsadmin/analyst 可见工作区与 east 广场 403。正式 IAM、RLS/CLS、审批流写库和审计仍后续推进 |
+| 当前范围 | 已确认“同壳双区域”：用户使用端不暴露工作区概念；工作区只出现在管理端。超级管理员可治理全部工作区，工作区管理员通常只管理 1～2 个。`scripts/e2e-auth-ask.sh` 已验证 demo/wsadmin/analyst 可见工作区与 east 广场 403。数据广场资产改为真实数据集目录。正式 IAM、RLS/CLS、审批流写库和审计仍后续推进 |
 
 ## 背景与目标
 
@@ -233,3 +233,4 @@ implementation:
 | 2026-08-20 | 数据广场改为企业资产 / 我的资产分区，去掉左侧数据空间导航；申请中只出现在我的资产 |
 | 2026-08-20 | e2e 三角色：demo 3 工作区、wsadmin 2、analyst 1；analyst 访问 east 广场 403；可问集合分析师 ⊆ 超管（PR-WS-02/04） |
 | 2026-08-22 | 成员权限页改为只读目录：去掉空 CTA；数据边界引导到数据广场 |
+| 2026-08-24 | 数据广场不再返回内存演示资产；列表来自管理端数据集（`de_dataset`） |

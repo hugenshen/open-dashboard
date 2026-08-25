@@ -1,8 +1,22 @@
 # opendashboard-harness：多轮对话 + 单张图改造 优化方案
 
+> **2026-08-25 边界修订（P015）**：本文“默认生成逻辑不动”只说明 P004 不负责改首版生成，不再约束后续演进。首次生成、整页重做的问题路由、数据集选择、`AnalysisBrief`、规划确认、worker 验真、选图和结果摘要以 [P015](../P015-board-task-realize/) 为目标设计；本文继续负责“生成后改单图/多图时同一 draft 原地更新”的边界。
+>
 > 目标：生成看板后，用户能**通过对话**基于现有看板做多轮增量调整——针对不满意的那张图重新生成/换图/改指标、追加新图、删掉某图，都不再触发"整页重新生成"。
 >
 > 关键交互：**不依赖用户点选图表**，全靠对话理解（LLM 结合 `od_get_board_summary` 定位要改的是哪张）；**默认生成逻辑不动**（仍按用户意图 + 数据特征综合判断，`_plan_charts_from_profile` 保留）。
+
+## 现行实现（dsh · 2026-08-24）
+
+Python harness 已删除。本切片在 `opendashboard-dsh-harness` 编码 **改一张或多张图**：
+
+| 用户说 | 工具 | Java `apply-patch` | 草稿 |
+|--------|------|--------------------|------|
+| 改/换成/把某图变成…（可一次多张） | `od_get_board_summary` → `od_rechart_chart` | **`mode=merge`**：只 `upsert_chart` **原 chartId**；忽略 `set_layout` / `set_theme`；不删未出现的图 | **同一 `dashboardId`**，右侧编辑器 `editorEpoch++` 刷新 |
+| 整页重做 / 重新生成全部 | 确认后 `od_board_worker`（last-resort `od_generate_board`） | `mode=replace` 清空再写 | 必须带已链接 id，**禁止另开草稿** |
+| 再加一张 / 删掉某张 | **尚未编码**（下文 A2/C 仍是设计） | — | — |
+
+与下文原方案的差异：改图不走「replace + 精控列出全部保留图」，以免漏列就误删。记住最近草稿：`patchBridge({ dashboardId })` + iframe `#od_bridge` + `agent/pre-step` 注入 linked id。
 
 ---
 

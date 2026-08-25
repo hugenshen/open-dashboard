@@ -67,6 +67,8 @@ const loading = ref(false)
 const learning = ref(false)
 const showStudio = ref(false)
 const saving = ref(false)
+const checkedIds = ref<string[]>([])
+const removing = ref(false)
 const studioEditing = ref(false)
 const poolLoading = ref(false)
 const poolSearch = ref('')
@@ -442,6 +444,83 @@ function goList() {
   const first = items.value[0]?.id
   if (first) void router.push(`/datasets/${first}`)
   else void router.push('/datasets')
+}
+
+const allVisibleChecked = computed(
+  () => filtered.value.length > 0 && filtered.value.every((d) => checkedIds.value.includes(d.id))
+)
+const someVisibleChecked = computed(
+  () => filtered.value.some((d) => checkedIds.value.includes(d.id)) && !allVisibleChecked.value
+)
+
+function setChecked(id: string, on: boolean) {
+  if (on) {
+    if (!checkedIds.value.includes(id)) checkedIds.value = [...checkedIds.value, id]
+    return
+  }
+  checkedIds.value = checkedIds.value.filter((x) => x !== id)
+}
+
+function onCheckChange(id: string, ev: Event) {
+  setChecked(id, (ev.target as HTMLInputElement).checked)
+}
+
+function toggleAllVisible() {
+  const ids = filtered.value.map((d) => d.id)
+  if (allVisibleChecked.value) {
+    checkedIds.value = checkedIds.value.filter((id) => !ids.includes(id))
+    return
+  }
+  checkedIds.value = [...new Set([...checkedIds.value, ...ids])]
+}
+
+function clearChecked() {
+  checkedIds.value = []
+}
+
+async function settleAfterDelete(deleted: string[]) {
+  const gone = new Set(deleted)
+  items.value = items.value.filter((d) => !gone.has(d.id))
+  checkedIds.value = checkedIds.value.filter((id) => !gone.has(id))
+  const currentGone = !!selectedId.value && gone.has(selectedId.value)
+  if (!currentGone) return
+  const next = items.value[0]?.id
+  if (next) {
+    await router.replace(`/datasets/${next}`)
+    return
+  }
+  selectedId.value = null
+  detail.value = null
+  await router.replace('/datasets')
+}
+
+async function removeChecked() {
+  const ids = checkedIds.value.slice()
+  if (!ids.length) return
+  const names = ids
+    .map((id) => items.value.find((d) => d.id === id)?.name || id)
+    .slice(0, 3)
+    .join('、')
+  const extra = ids.length > 3 ? ` 等 ${ids.length} 个` : `（${ids.length} 个）`
+  if (!window.confirm(`确定删除 ${names}${extra}？此操作不可恢复。`)) return
+  removing.value = true
+  error.value = ''
+  const deleted: string[] = []
+  const failed: string[] = []
+  try {
+    for (const id of ids) {
+      try {
+        await datasetApi.remove(id)
+        deleted.push(id)
+      } catch {
+        failed.push(id)
+      }
+    }
+    await settleAfterDelete(deleted)
+    if (failed.length) error.value = `${failed.length} 个数据集删除失败`
+  } finally {
+    removing.value = false
+  }
 }
 
 function goSrc() {
@@ -1077,7 +1156,20 @@ watch(tab, (t) => {
 
     <div class="asset-body">
       <aside class="asset-rail">
-        <div class="rail-head"><span>数据集</span><span>{{ filtered.length }}</span></div>
+        <div class="rail-head">
+          <label class="rail-all">
+            <input
+              type="checkbox"
+              :checked="allVisibleChecked"
+              :indeterminate="someVisibleChecked"
+              :disabled="!filtered.length"
+              aria-label="全选当前列表"
+              @change="toggleAllVisible"
+            />
+            <span>数据集</span>
+          </label>
+          <span>{{ filtered.length }}</span>
+        </div>
         <div class="rail-tools">
           <label class="asset-search">
             <span class="ico">⌕</span>
@@ -1095,26 +1187,34 @@ watch(tab, (t) => {
           </div>
         </div>
         <div class="rail-scroll">
-          <button
+          <div
             v-for="d in filtered"
             :key="d.id"
-            type="button"
             class="asset-item"
             :class="{ on: d.id === selectedId }"
-            @click="openDataset(d.id)"
           >
-            <span class="type-badge" :style="{ background: typeStyle(srcTypeOf(d.datasourceId)).bg }">
-              {{ typeStyle(srcTypeOf(d.datasourceId)).short }}
-            </span>
-            <div class="meta">
-              <div class="name">{{ d.name }}</div>
-              <div class="desc">
-                <span>{{ d.folder || '未分组' }}</span>
-                <span>·</span>
-                <span>{{ srcNameOf(d.datasourceId) }}</span>
+            <input
+              class="asset-check"
+              type="checkbox"
+              :checked="checkedIds.includes(d.id)"
+              :aria-label="`选择 ${d.name}`"
+              @click.stop
+              @change="onCheckChange(d.id, $event)"
+            />
+            <button type="button" class="asset-hit" @click="openDataset(d.id)">
+              <span class="type-badge" :style="{ background: typeStyle(srcTypeOf(d.datasourceId)).bg }">
+                {{ typeStyle(srcTypeOf(d.datasourceId)).short }}
+              </span>
+              <div class="meta">
+                <div class="name">{{ d.name }}</div>
+                <div class="desc">
+                  <span>{{ d.folder || '未分组' }}</span>
+                  <span>·</span>
+                  <span>{{ srcNameOf(d.datasourceId) }}</span>
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
+          </div>
           <div v-if="!filtered.length" class="empty-illus">
             <div class="big">⌀</div>
             {{ items.length ? '无匹配数据集' : '还没有数据集' }}
@@ -1125,6 +1225,13 @@ watch(tab, (t) => {
       <div class="asset-main">
         <div class="asset-bar">
           <div class="spacer"></div>
+          <template v-if="checkedIds.length">
+            <span class="hint">已选 {{ checkedIds.length }} 个数据集</span>
+            <button type="button" class="btn" @click="clearChecked">取消选择</button>
+            <button type="button" class="btn danger" :disabled="removing" @click="removeChecked">
+              {{ removing ? '删除中…' : '删除' }}
+            </button>
+          </template>
           <button type="button" class="btn primary" @click="openStudio('create')">+ 新建数据集</button>
         </div>
         <section class="asset-stage">
@@ -1825,6 +1932,10 @@ watch(tab, (t) => {
   background: var(--primary);
   border-color: var(--primary);
   color: #fff;
+}
+.btn.danger {
+  color: #b42318;
+  border-color: #fecdca;
 }
 .btn.ghost {
   border-color: transparent;

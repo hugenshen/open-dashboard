@@ -3329,7 +3329,7 @@ function renderConversation(app) {
   const q = (sessionStorage.getItem('od.ask.q') || '').trim();
   const autorun = sessionStorage.getItem('od.ask.autorun') === '1';
   sessionStorage.removeItem('od.ask.autorun');
-  const params = new URLSearchParams({ embed: '1', v: '20260821g' });
+  const params = new URLSearchParams({ embed: '1', v: '20260824p014', demo: 'landing' });
   if (autorun && q) {
     params.set('q', q);
     params.set('autorun', '1');

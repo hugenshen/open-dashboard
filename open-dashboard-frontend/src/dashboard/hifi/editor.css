@@ -619,7 +619,7 @@
     .preset-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
     .preset-row button { height: 28px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 11px; color: var(--text-2); cursor: pointer; }
     .preset-row button:hover { border-color: #b7cbff; color: var(--brand); }
-    .empty {
+    .hifi-dash-root .empty {
       position: absolute; inset: 40px; border: 1px dashed #c5cdd6; border-radius: 12px;
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-2);
     }

@@ -11,6 +11,7 @@ import { hasStoredPermission } from '../../api/http'
 const ASK_Q = 'od.ask.q'
 const ASK_DRAFT = 'od.ask.draft'
 const ASK_AUTORUN = 'od.ask.autorun'
+const ASK_DS = 'od.ask.datasetId'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,6 +21,7 @@ const error = ref('')
 const toast = ref('')
 const ask = ref('')
 const askInput = ref<HTMLInputElement | null>(null)
+const askDatasetId = ref('')
 
 const datasources = ref<DatasourceVO[]>([])
 const datasets = ref<DatasetMetaVO[]>([])
@@ -240,6 +242,16 @@ async function load(opts?: { quiet?: boolean }) {
       datasets.value = []
       errs.push(dtsR.reason instanceof Error ? dtsR.reason.message : String(dtsR.reason))
     }
+    if (!askDatasetId.value || !datasets.value.some((d) => d.id === askDatasetId.value)) {
+      let saved = ''
+      try {
+        saved = localStorage.getItem(ASK_DS) || ''
+      } catch {
+        /* ignore */
+      }
+      askDatasetId.value =
+        (saved && datasets.value.some((d) => d.id === saved) ? saved : '') || datasets.value[0]?.id || ''
+    }
     if (convR.status === 'fulfilled') {
       conversations.value = Array.isArray(convR.value) ? convR.value : []
       convError.value = ''
@@ -314,7 +326,17 @@ function goAsk(preset?: string) {
     }, 400)
     return
   }
-  void router.push({ path: '/conversations', query: { q, autorun: '1' } })
+  const ds = askDatasetId.value.trim()
+  if (ds) {
+    try {
+      localStorage.setItem(ASK_DS, ds)
+    } catch {
+      /* ignore */
+    }
+  }
+  const query: Record<string, string> = { q, autorun: '1' }
+  if (ds) query.datasetId = ds
+  void router.push({ path: '/conversations', query })
 }
 
 function onTodoClick(item: TodoItem, e: Event) {
@@ -382,6 +404,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                   <path d="M20 20l-3.5-3.5" />
                 </svg>
               </span>
+              <select
+                v-if="!emptyMode && datasets.length"
+                v-model="askDatasetId"
+                class="wb-ds"
+                aria-label="问数数据集"
+                title="本次问数使用的数据集"
+              >
+                <option v-for="ds in datasets" :key="ds.id" :value="ds.id">{{ ds.name }}</option>
+              </select>
               <input
                 ref="askInput"
                 v-model="ask"
@@ -732,6 +763,21 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
 .wb-search .ico svg {
   width: 16px;
   height: 16px;
+}
+.wb-search .wb-ds {
+  flex: 0 1 148px;
+  max-width: 180px;
+  height: 34px;
+  margin-left: 8px;
+  border: 1px solid #e1e5f0;
+  border-radius: 8px;
+  background: #f7f8fc;
+  color: #3730a3;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  min-width: 0;
 }
 .wb-search input {
   flex: 1;

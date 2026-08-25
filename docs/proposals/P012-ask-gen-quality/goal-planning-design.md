@@ -1,6 +1,6 @@
 # P012 · 出板分析规划（Goal）详细设计
 
-> 状态：方案已定（2026-08-22）· **M1.6 已编码**（`goal-planner.js`；LLM 主路径 + fixture/降级；PR-QG-12 pass）  
+> 状态：方案已定（2026-08-22）· **M1.6 已编码**（`goal-planner.js`）· **2026-08-24 驾驶舱 IA**（PR-CONV-14：KPI 分行、至多 1 饼、hbar 排行；对照 `refs/joyagent-jdgenie-data_agent` ChartUtils + P013 模板槽位）  
 > 总入口：[design.md §4.1](./design.md) · 流水线总览：[quality-upgrade-brief.html §4](./quality-upgrade-brief.html#decomp)
 
 ## 1. 决策摘要
@@ -42,7 +42,8 @@
     回复「确认」/ 点隐含继续 → 仅一次 od_generate_board(同一 goals)
     │
     ▼
-⑤ 生成写入（Harness）layout + 强 replace
+⑤ 任务执行器（P015 · generate 内部）
+    每任务限时取样问数 → 按结果选图 / 单位 / 小数位 → review + layout + replace
     │
     ▼
 ⑥ 编辑器展示（FE）
@@ -148,7 +149,9 @@
 
 ### 3.5 降级
 
-LLM 超时 / JSON 非法 / 全部 goal 被闸掉 → 回退规则 `enumerateGoals`，并在 plan 文案注明「已用基础规则规划」。
+LLM 超时 / JSON 非法 / 全部 Goal 被闸掉 → **plan 失败**（`ok:false`），对话提示检查 key 或改主题；**不得**静默回退 `enumerateGoals`。规则枚举只留给单测与 `pnpm eval`。
+
+通过 bind 的 Goal 必须再跑 `reviewCharts`（同维去饼、高基数禁饼、空 encode 丢弃）；闸后一张不剩同样失败，不凑模板图。
 
 ---
 
@@ -168,6 +171,7 @@ LLM 超时 / JSON 非法 / 全部 goal 被闸掉 → 回退规则 `enumerateGoal
 5. compose 使用低基数 dim，agg=count。
 6. question 用中文、像分析师提问；不要输出字段英文名当标题主文案。
 7. 按与用户主题的相关度排序；不要为凑数重复同维同度量。
+8. 「专业仪表盘」= 经营驾驶舱槽位（KPI 分行 → 趋势 → 柱对比 → 条形排行 → 至多 1 饼 → 表），禁止两张饼凑数。
 
 若无法唯一确定度量或维度，设 mode=clarify，只问一个短问题，goals 为空数组。
 否则 mode=goals，填写 goals。

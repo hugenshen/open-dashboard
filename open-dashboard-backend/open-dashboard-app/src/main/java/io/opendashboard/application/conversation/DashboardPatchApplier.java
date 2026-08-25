@@ -41,8 +41,18 @@ public class DashboardPatchApplier {
     }
 
     public ApplyResult apply(String preferredDashboardId, String title, DashboardPatch.Patch patch, String mode) {
+        boolean merge = mode != null && ("merge".equalsIgnoreCase(mode) || "update".equalsIgnoreCase(mode));
+        boolean replace = !merge && (mode == null || mode.isBlank() || "replace".equalsIgnoreCase(mode));
+        // merge = conversation rechart: upsert existing chartIds only; never wipe canvas or relayout.
+        if (merge) {
+            String existingId = preferredDashboardId != null && !preferredDashboardId.isBlank()
+                    ? preferredDashboardId
+                    : (patch != null ? patch.dashboardId() : null);
+            if (existingId == null || existingId.isBlank() || dashboards.get(existingId, "draft").isEmpty()) {
+                throw new IllegalArgumentException("merge requires an existing dashboardId");
+            }
+        }
         String dashboardId = resolveDashboardId(preferredDashboardId, patch.dashboardId(), title);
-        boolean replace = mode == null || mode.isBlank() || "replace".equalsIgnoreCase(mode);
         List<String> staleCompIds = new ArrayList<>();
         List<String> staleChartIds = new ArrayList<>();
         if (replace) {
@@ -61,10 +71,12 @@ public class DashboardPatchApplier {
             String kind = str(op.get("op"));
             switch (kind) {
                 case "set_layout" -> {
+                    if (merge) break;
                     if (op.get("gridCols") instanceof Number n) gridCols = n.intValue();
                     if (op.get("themeRef") != null) themeRef = str(op.get("themeRef"));
                 }
                 case "set_theme" -> {
+                    if (merge) break;
                     String styleId = str(op.get("styleId"));
                     StylePresetVO style = ConversationStyleCatalog.get(styleId);
                     extStyle.put("conversationStyleId", style.id());
@@ -98,6 +110,7 @@ public class DashboardPatchApplier {
                     }
                 }
                 case "upsert_component" -> {
+                    if (merge) break;
                     String type = str(op.get("type"));
                     if (type.isBlank()) type = "chart";
                     String chartIdRaw = str(op.get("chartId"));
@@ -126,15 +139,17 @@ public class DashboardPatchApplier {
             }
         }
 
-        dashboards.updateLayout(dashboardId, new DashboardLayoutUpdateRequest(
-                gridCols == null ? 72 : gridCols,
-                40,
-                themeRef == null ? "default" : themeRef,
-                null,
-                extStyle.isEmpty() ? null : extStyle,
-                null,
-                null
-        ));
+        if (!merge) {
+            dashboards.updateLayout(dashboardId, new DashboardLayoutUpdateRequest(
+                    gridCols == null ? 72 : gridCols,
+                    40,
+                    themeRef == null ? "default" : themeRef,
+                    null,
+                    extStyle.isEmpty() ? null : extStyle,
+                    null,
+                    null
+            ));
+        }
         // Replace: delete stale first in a dedicated call so upsert never races with leftovers.
         if (replace && !staleCompIds.isEmpty()) {
             dashboards.updateComponents(dashboardId, new DashboardComponentsUpdateRequest(

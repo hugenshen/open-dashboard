@@ -26,6 +26,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -57,6 +58,40 @@ public class DashboardAppService {
         this.permissions = permissions;
         this.access = access;
         seed();
+    }
+
+    /** Published dashboards for data-plaza discovery (no ACL filter). */
+    public List<DashboardNodeVO> listPlazaPublished() {
+        DashboardGateway repo = repository.getIfAvailable();
+        if (repo != null) {
+            return repo.listPlazaPublished();
+        }
+        List<DashboardNodeVO> out = new ArrayList<>();
+        for (MemDash d : mem.values()) {
+            if (!"dashboard".equals(d.meta.nodeType())) continue;
+            String status = d.meta.status();
+            if ("published".equals(status) || "publishedWithDraft".equals(status)) {
+                out.add(d.meta);
+            }
+        }
+        out.sort(Comparator
+                .comparing((DashboardNodeVO n) -> n.updateTime() == null ? 0L : n.updateTime())
+                .reversed());
+        return out;
+    }
+
+    public Optional<DashboardNodeVO> findNodeMeta(String id) {
+        if (id == null || id.isBlank()) return Optional.empty();
+        DashboardGateway repo = repository.getIfAvailable();
+        if (repo != null) {
+            try {
+                return repo.findDetail(Long.parseLong(id), "draft").map(DashboardDetailVO::meta);
+            } catch (NumberFormatException e) {
+                return Optional.empty();
+            }
+        }
+        MemDash d = mem.get(id);
+        return d == null ? Optional.empty() : Optional.of(d.meta);
     }
 
     public List<DashboardTemplateVO> listTemplates() {

@@ -318,6 +318,10 @@ public class DatasetProfileLearner {
         // 1) 时间
         if (isTimeField(f)) return "time";
 
+        // 1b) 名称/注释：商户ID、订单号不当度量；Status/Type 不当 SUM
+        if (FieldSemantics.looksLikeIdentifier(f.name(), f.label())) return "id";
+        if (FieldSemantics.looksLikeCodeDim(f.name(), f.label())) return "dim";
+
         // 2) 标志位：取值 ⊆ {0,1,y/n,true/false} 且低基数
         if (distinct <= 3 && lowCardinalityBoolean(values)) return "flag";
 

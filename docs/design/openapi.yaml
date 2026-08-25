@@ -324,7 +324,7 @@ paths:
   /workspaces/{workspaceId}/data-plaza:
     get:
       tags: [dataPlaza]
-      summary: List visible data assets and user's consumption state
+      summary: List published datasets from the dataset catalog with ACL consumption state
       parameters:
         - name: workspaceId
           in: path
@@ -2638,6 +2638,11 @@ components:
         actions:
           type: array
           items: { type: string, enum: [ask, open, add, request, manage] }
+        publishStatus:
+          type: string
+          nullable: true
+          description: dashboard only — draft | published | publishedWithDraft
+          enum: [draft, published, publishedWithDraft]
 
     DataRequestCreateRequest:
       type: object

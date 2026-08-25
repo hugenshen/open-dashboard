@@ -12,7 +12,7 @@ const loading = ref(false)
 const error = ref('')
 const data = ref<DataPlazaVO | null>(null)
 const keyword = ref('')
-const activeType = ref('all')
+const activeType = ref('dataset')
 const mineView = ref<MineView>('added')
 const displayMode = ref<'grid' | 'list'>('list')
 const requestAsset = ref<DataAssetVO | null>(null)
@@ -133,16 +133,27 @@ async function load() {
 function statusLabel(asset: DataAssetVO) {
   if (asset.added) return '已添加'
   if (asset.authStatus === 'granted') return '已获权'
-  if (asset.authStatus === 'requestable') return '可申请'
+  if (asset.authStatus === 'requestable') return asset.type === 'dashboard' ? '可申请查看' : '可申请'
   if (asset.authStatus === 'pending') return '申请中'
   return '不可用'
 }
 
+function publishLabel(asset: DataAssetVO) {
+  if (asset.type !== 'dashboard') return ''
+  if (asset.publishStatus === 'publishedWithDraft') return '有改动'
+  if (asset.publishStatus === 'published') return '已发布'
+  if (asset.publishStatus === 'draft') return '草稿'
+  return asset.tags.find((t) => t === '已发布' || t === '有未发布改动') || ''
+}
+
 function rowActionLabel(asset: DataAssetVO) {
-  if (asset.added) return asset.actions.includes('ask') ? '开始问数' : '打开'
+  if (asset.added || (asset.type === 'dashboard' && asset.actions.includes('open'))) {
+    if (asset.actions.includes('ask')) return '开始问数'
+    return '打开'
+  }
   if (asset.authStatus === 'pending') return '查看申请'
   if (asset.actions.includes('add')) return '添加'
-  if (asset.actions.includes('request')) return '申请'
+  if (asset.actions.includes('request')) return asset.type === 'dashboard' ? '申请查看' : '申请'
   return '查看'
 }
 
@@ -189,12 +200,13 @@ async function confirmAdd() {
 
 async function submitRequest() {
   if (!requestAsset.value) return
+  const isDash = requestAsset.value.type === 'dashboard'
   try {
     await workspaceApi.requestDataset(workspaceId.value, {
       assetId: requestAsset.value.id,
       purpose: requestPurpose.value,
       expireDays: 90,
-      requestedActions: ['consume', 'ask']
+      requestedActions: isDash ? ['view'] : ['consume', 'ask']
     })
     requestAsset.value = null
     await load()
@@ -207,7 +219,16 @@ async function submitRequest() {
 }
 
 function startAsk(asset: DataAssetVO) {
-  router.push({ path: '/conversations', query: { datasetId: asset.source || asset.id } })
+  const datasetId = asset.source || asset.id
+  try {
+    localStorage.setItem('od.ask.datasetId', datasetId)
+  } catch {
+    /* ignore */
+  }
+  router.push({
+    path: '/conversations',
+    query: { datasetId, datasetName: asset.name }
+  })
 }
 
 function openAsset(asset: DataAssetVO) {
@@ -216,7 +237,7 @@ function openAsset(asset: DataAssetVO) {
 
 function consumeAsset(asset: DataAssetVO) {
   if (asset.actions.includes('ask')) startAsk(asset)
-  else if (asset.type === 'dashboard') router.push('/dashboards')
+  else if (asset.type === 'dashboard') router.push(`/dashboards/${asset.id}/preview`)
   else router.push('/datasets')
 }
 
@@ -289,9 +310,9 @@ onMounted(load)
     </div>
 
     <section class="plaza-body">
-      <div v-if="loading" class="empty">正在加载数据广场资产...</div>
-      <div v-else-if="error" class="empty error">{{ error }}</div>
-      <div v-else-if="!visibleAssets.length" class="empty">
+      <div v-if="loading" class="plaza-empty">正在加载数据广场资产...</div>
+      <div v-else-if="error" class="plaza-empty error">{{ error }}</div>
+      <div v-else-if="!visibleAssets.length" class="plaza-empty">
         <p>{{ emptyCopy() }}</p>
         <button v-if="assetScope === 'mine' && mineView === 'added'" type="button" class="primary" @click="switchScope('org')">
           去企业添加
@@ -334,6 +355,7 @@ onMounted(load)
             <div class="name-line">
               <button type="button" @click="openAsset(asset)">{{ asset.name }}</button>
               <span class="type-text">{{ typeLabels[asset.type] || asset.type }}</span>
+              <span v-if="publishLabel(asset)" class="pub-chip" :data-pub="asset.publishStatus || ''">{{ publishLabel(asset) }}</span>
             </div>
             <p>{{ asset.description }}</p>
           </div>
@@ -345,7 +367,7 @@ onMounted(load)
           </span>
           <div class="row-action">
             <button
-              v-if="asset.added"
+              v-if="asset.added || (asset.type === 'dashboard' && asset.actions.includes('open'))"
               class="link-action row-consume"
               type="button"
               @click="consumeAsset(asset)"
@@ -397,10 +419,16 @@ onMounted(load)
           <p>{{ asset.description }}</p>
           <div class="asset-meta">
             <span>{{ asset.owner }}</span>
+            <span v-if="publishLabel(asset)" class="pub-chip" :data-pub="asset.publishStatus || ''">{{ publishLabel(asset) }}</span>
             <span>{{ dateLabel(asset.updatedAt) }}</span>
           </div>
           <div class="card-actions">
-            <button v-if="asset.added" class="link-action card-add" type="button" @click="consumeAsset(asset)">
+            <button
+              v-if="asset.added || (asset.type === 'dashboard' && asset.actions.includes('open'))"
+              class="link-action card-add"
+              type="button"
+              @click="consumeAsset(asset)"
+            >
               {{ rowActionLabel(asset) }}
             </button>
             <button v-else-if="asset.authStatus === 'pending'" class="link-action card-add" type="button" @click="openRequest(asset)">
@@ -410,7 +438,7 @@ onMounted(load)
               添加
             </button>
             <button v-else-if="asset.actions.includes('request')" class="link-action card-add" type="button" @click="requestAsset = asset">
-              申请
+              {{ asset.type === 'dashboard' ? '申请查看' : '申请' }}
             </button>
           </div>
         </article>
@@ -451,6 +479,7 @@ onMounted(load)
         <div class="preview-meta">
           <span>所有者 <b>{{ previewAsset.owner }}</b></span>
           <span>最近修改于 <b>{{ dateLabel(previewAsset.updatedAt) }}</b></span>
+          <span v-if="publishLabel(previewAsset)">发布状态 <b>{{ publishLabel(previewAsset) }}</b></span>
         </div>
         <p>{{ previewAsset.description }}</p>
         <div class="preview-tabs">
@@ -460,8 +489,23 @@ onMounted(load)
         <div class="preview-empty">未获权资产不展示字段明细、样例数据或查询结果。</div>
         <div class="modal-actions">
           <button v-if="previewAsset.actions.includes('add')" type="button" @click="openAddDialog(previewAsset)">添加</button>
-          <button v-if="previewAsset.actions.includes('request')" class="primary" type="button" @click="requestAsset = previewAsset; previewAsset = null">申请消费</button>
+          <button
+            v-if="previewAsset.actions.includes('request')"
+            class="primary"
+            type="button"
+            @click="requestAsset = previewAsset; previewAsset = null"
+          >
+            {{ previewAsset.type === 'dashboard' ? '申请查看' : '申请消费' }}
+          </button>
           <button v-if="previewAsset.actions.includes('ask')" class="primary" type="button" @click="consumeAsset(previewAsset)">开始问数</button>
+          <button
+            v-if="previewAsset.actions.includes('open') || (previewAsset.added && previewAsset.type === 'dashboard')"
+            class="primary"
+            type="button"
+            @click="consumeAsset(previewAsset)"
+          >
+            打开
+          </button>
         </div>
       </section>
     </div>
@@ -493,8 +537,9 @@ onMounted(load)
 
     <div v-if="requestAsset" class="modal-mask" @click.self="requestAsset = null">
       <section class="request-modal">
-        <h2>申请消费 {{ requestAsset.name }}</h2>
+        <h2>{{ requestAsset.type === 'dashboard' ? '申请查看' : '申请消费' }} {{ requestAsset.name }}</h2>
         <p>{{ requestAsset.description }}</p>
+        <p v-if="publishLabel(requestAsset)" class="purpose">发布状态：{{ publishLabel(requestAsset) }}</p>
         <label>
           <span>用途说明</span>
           <textarea v-model="requestPurpose" rows="4" />
@@ -755,7 +800,9 @@ onMounted(load)
   overflow: auto;
   background: #fff;
 }
-.empty {
+.plaza-empty {
+  position: relative;
+  inset: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -763,11 +810,13 @@ onMounted(load)
   gap: 12px;
   flex: 1;
   min-height: 280px;
+  border: 0;
+  background: transparent;
   color: var(--muted);
   font-size: 13.5px;
 }
-.empty p { margin: 0; }
-.empty.error {
+.plaza-empty p { margin: 0; }
+.plaza-empty.error {
   color: #b42318;
 }
 
@@ -878,6 +927,25 @@ onMounted(load)
   color: #9ca3af;
   font-size: 12px;
   font-weight: 600;
+}
+
+.pub-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border: 1px solid #dbe4ff;
+  border-radius: 999px;
+  background: #f4f6ff;
+  color: #4338ca;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 680;
+}
+.pub-chip[data-pub='publishedWithDraft'] {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #b45309;
 }
 
 .asset-copy p,

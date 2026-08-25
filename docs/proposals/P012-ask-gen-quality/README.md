@@ -27,7 +27,7 @@ depends: [P004, P006, P010, P011]
 
 > **状态** `done` · 路线图 [已完成](../../product/roadmap/done/) · 高保 none · 代码 merged · 验收 passed · 2026-08-23
 >
-> 只追溯，不驱动新开发。基线见 [requirements §2.10](../../product/requirements.md)。后续缺口（对话改图、斜杠菜单、M3、Eval E0.2+）另开 Pxxx。
+> 只追溯，不驱动新开发。基线见 [requirements §2.10](../../product/requirements.md)。出板「先任务后取样问数再选图」见 [P015](../P015-board-task-realize/)（修订本提案 PR-QG-06 的 generate 不 probe 表述，P012 保持 done）。
 
 ## 开发入口
 
@@ -91,7 +91,8 @@ P011 把对话迁到 dsh 后，出板收成 `od_generate_board` one-shot，换�
 ## 非目标
 
 - 新对话 UI / 新高保
-- 恢复 Python harness 或 live probe 出板
+- 恢复 Python harness
+- 让**对话模型**在 `/board` 上自循环 `od_run_query`（P015 只允许 generate **内部**限时取样）
 - 让模型自拼 DashboardPatch
 - 改仪表盘编辑器、数据集管理、P007 壳
 - P005 洞察报告
@@ -192,3 +193,6 @@ P011 把对话迁到 dsh 后，出板收成 `od_generate_board` one-shot，换�
 | 2026-08-23 | 用户确认：中间探查不出图；`presentAnswer` 门控（默认折叠工具+表）；仅最终答案卡出图/表+SQL；停用 autoChart 改写 chartType |
 | 2026-08-23 | **问数验真**：多子问题每问一卡 `presentAnswer`；散文禁无卡造数；采样角标「采样估算·非全表精确」；Java `extra.sampled/sampleN/estRows/scaleFactor`；LLM 文本标明采样 |
 | 2026-08-23 | **done**：阻塞验收 PR-QG-01…11 + PR-QG-12 均 pass；requirements §2.10 回写；路线图挪 `done/`；PR-DSH-05 主写路径改为 `od_generate_board` |
+| 2026-08-24 | 对话出板去掉规则静默回退：`od_plan_charts` 必须 LLM；bind + `reviewCharts` 全失败则 plan 失败，不再 `enumerateGoals` 凑图 |
+| 2026-08-24 | 规划质量（P004 PR-CONV-14）：驾驶舱 IA；至多 1 饼；layout 对比图 4 张；对照 refs/JoyAgent 选图。P012 仍 done，增量挂 P004 |
+| 2026-08-24 | **冲突修订（P015）**：PR-QG-06「generate 路径不调用 query/chart」只约束**对话 LLM 工具环**。P015 允许 `od_generate_board` 内部对每个任务限时 `POST /query/chart`（table，≤20 行，8s）；失败丢任务。规划阶段仍 schema/profile-only。P012 保持 done。 |
