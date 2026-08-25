@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>图 vs .teamai · Co-TeamAI 对比</title>
+  <style>
+    :root {
+      --bg: #f7f4ef;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #d6d3d1;
+      --card: #fffcf8;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --warn: #9a3412;
+      --warn-soft: #ffedd5;
+      --ok: #166534;
+      --ok-soft: #dcfce7;
+      --mid: #9a3412;
+      --ink-2: #44403c;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 8% -12%, #ddf4f0 0%, transparent 55%),
+        radial-gradient(900px 420px at 100% 0%, #f3e8d8 0%, transparent 48%),
+        var(--bg);
+      line-height: 1.65;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 2.25rem 1.25rem 4rem; }
+    header.hero {
+      padding: 0.5rem 0 1.5rem;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 1.5rem;
+    }
+    .eyebrow {
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin: 0 0 0.55rem;
+    }
+    h1 {
+      font-family: "Source Serif 4", "Noto Serif SC", "Songti SC", Georgia, serif;
+      font-size: clamp(1.7rem, 4vw, 2.35rem);
+      font-weight: 650;
+      line-height: 1.22;
+      margin: 0 0 0.8rem;
+    }
+    .lead { color: var(--muted); margin: 0; max-width: 46rem; font-size: 1.05rem; }
+    .verdict {
+      display: grid;
+      gap: 0.75rem;
+      margin: 1.25rem 0 0;
+    }
+    @media (min-width: 720px) { .verdict { grid-template-columns: 1fr 1fr 1fr; } }
+    .vcard {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+    }
+    .vcard strong { display: block; margin-bottom: 0.25rem; }
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      border-radius: 999px;
+      padding: 0.12rem 0.5rem;
+      margin-bottom: 0.45rem;
+    }
+    .tag.ok { background: var(--ok-soft); color: var(--ok); }
+    .tag.diff { background: var(--warn-soft); color: var(--warn); }
+    .tag.mid { background: #fef3c7; color: #92400e; }
+    nav.toc {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin: 1.5rem 0 2rem;
+    }
+    nav.toc strong { display: block; margin-bottom: 0.45rem; }
+    nav.toc ol { margin: 0; padding-left: 1.25rem; }
+    @media (min-width: 720px) { nav.toc ol { columns: 2; column-gap: 2rem; } }
+    nav.toc a { color: var(--accent); text-decoration: none; }
+    nav.toc a:hover { text-decoration: underline; }
+    h2 {
+      font-size: 1.28rem;
+      margin: 2.4rem 0 0.7rem;
+      padding-top: 0.7rem;
+      border-top: 1px solid var(--line);
+    }
+    h3 { font-size: 1.05rem; margin: 1.35rem 0 0.45rem; }
+    p, li { color: var(--ink); }
+    .muted { color: var(--muted); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 0.7rem 0 1rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th { background: #f5f5f4; font-weight: 650; }
+    tr:last-child td { border-bottom: 0; }
+    td.mark { white-space: nowrap; font-weight: 700; font-size: 0.82rem; }
+    td.mark.ok { color: var(--ok); }
+    td.mark.diff { color: var(--warn); }
+    td.mark.mid { color: #92400e; }
+    code, .path {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.86em;
+      background: #f5f5f4;
+      padding: 0.08em 0.35em;
+      border-radius: 4px;
+    }
+    pre {
+      background: #1c1917;
+      color: #fafaf9;
+      padding: 1rem 1.1rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 0.84rem;
+      line-height: 1.5;
+    }
+    pre code { background: none; color: inherit; padding: 0; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 0.85rem 1rem;
+      border-radius: 0 10px 10px 0;
+      margin: 1rem 0;
+    }
+    .callout.warn {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+    .grid2 {
+      display: grid;
+      gap: 0.85rem;
+      margin: 0.85rem 0 1.1rem;
+    }
+    @media (min-width: 760px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+    }
+    .card h3 { margin-top: 0; }
+    .chain {
+      display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;
+      margin: 0.8rem 0 1rem; font-size: 0.9rem; font-weight: 650;
+    }
+    .chain span {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 8px;
+      padding: 0.28rem 0.55rem;
+    }
+    .chain i { font-style: normal; color: var(--muted); font-weight: 500; }
+    figure { margin: 1rem 0 1.2rem; padding: 0; }
+    figure img {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+      display: block;
+    }
+    figure figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; }
+    a { color: var(--accent); }
+    ul.compact { margin: 0.4rem 0 0; padding-left: 1.15rem; }
+    ul.compact li { margin: 0.2rem 0; }
+    .stack {
+      display: grid;
+      gap: 0.45rem;
+      margin: 0.85rem 0 1.1rem;
+    }
+    .stack .row {
+      display: grid;
+      grid-template-columns: 7.5rem 1fr;
+      gap: 0.75rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.7rem 0.9rem;
+      align-items: start;
+    }
+    .stack .k {
+      font-weight: 700;
+      font-size: 0.82rem;
+      color: var(--accent);
+      padding-top: 0.12rem;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    @media print {
+      body { background: #fff; }
+      nav.toc { break-after: avoid; }
+      .card, table, pre, .vcard { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <p class="eyebrow">Open Dashboard · Co-TeamAI</p>
+      <h1>这张图表达的流程，和仓库里的 .teamai 是不是同一套？</h1>
+      <p class="lead">对比对象：<a href="./od-coteamai-role-flow.png">od-coteamai-role-flow.png</a> 所画的逻辑，以及本仓往 AI Native 转型时落地的框架（<span class="path">.teamai/</span> + <a href="../process.md">process.md</a>）。结论先说：<strong>下半角色链对齐，上半不是本仓流程，整张图是对照海报，不是运行手册。</strong></p>
+    </header>
+
+    <div class="verdict">
+      <div class="vcard">
+        <span class="tag ok">对齐</span>
+        <strong>下半 Co-TeamAI</strong>
+        <p class="muted" style="margin:0;">五棒名字和顺序与 <span class="path">process.md</span> 一致：需求(BA) → 高保(BA) → 方案设计(开发) → 实现(开发) → 测试。</p>
+      </div>
+      <div class="vcard">
+        <span class="tag diff">对照物</span>
+        <strong>上半传统 Agent</strong>
+        <p class="muted" style="margin:0;">画的是「被替代的管道」：<code>CLAUDE.md</code> / Researcher·Writer / 模型表盘 / I/O 意大利面。不是本仓 AI 约束层。</p>
+      </div>
+      <div class="vcard">
+        <span class="tag mid">文图差</span>
+        <strong>process / share 的配文</strong>
+        <p class="muted" style="margin:0;">正文仍写「上半是 AI 怎么被约束」。那是上一版本地化图的说明，和当前这张对照图已经对不上。</p>
+      </div>
+    </div>
+
+    <nav class="toc" aria-label="目录">
+      <strong>本页目录</strong>
+      <ol>
+        <li><a href="#diagram">图在讲什么</a></li>
+        <li><a href="#same">哪里一样</a></li>
+        <li><a href="#diff">哪里不一样</a></li>
+        <li><a href="#map6">六步对照表</a></li>
+        <li><a href="#framework">本仓 AI Native 框架实际长什么样</a></li>
+        <li><a href="#missing">图没画出、仓里真正起作用的东西</a></li>
+        <li><a href="#read">以后怎么读这张图</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="diagram">1. 图在讲什么</h2>
+    <figure>
+      <img src="./od-coteamai-role-flow.png" alt="传统 AI Agent 工作流 vs Co-TeamAI 角色链" />
+      <figcaption>修辞结构是「对照」：上半复杂管道 vs 下半 @ 一条人链。不是「上半=本仓 AI、下半=本仓人」。</figcaption>
+    </figure>
+    <div class="grid2">
+      <div class="card">
+        <h3>上半：传统 AI Agent</h3>
+        <p class="muted">主张：把协同做成可编程智能体，就要配齐管道。</p>
+        <ol>
+          <li>配置文件 <code>CLAUDE.md</code>（目标 + 工具权限）</li>
+          <li>智能体定义 <code>Agents.md</code>（Researcher / Writer）</li>
+          <li>模型选择（GPT-4o、Claude、Gemini、Llama…）</li>
+          <li>I/O 路由与编排（用户输入 / 文件 / DB / API / 网页 ↔ LLM / 工具 / 发消息）</li>
+          <li>触发条件 A / B / C</li>
+          <li>动作定义（参数、模板、通知、字段映射、分支）</li>
+        </ol>
+        <p class="muted" style="margin:0;">右侧圆柱：上下文、变量、历史、任务队列。状态在「系统里」，不在契约树里。</p>
+      </div>
+      <div class="card">
+        <h3>下半：Co-TeamAI</h3>
+        <p class="muted">主张：不要配一窝 Agent，<code>@</code> 当前角色即可。</p>
+        <p class="chain">
+          <span>需求(BA)</span><i>→</i>
+          <span>高保(BA)</span><i>→</i>
+          <span>方案设计(开发)</span><i>→</i>
+          <span>实现(开发)</span><i>→</i>
+          <span>测试</span>
+        </p>
+        <ul class="compact">
+          <li>人发起，用 <code>@</code> 交接</li>
+          <li>角色是研发棒次，不是 Researcher / Writer</li>
+          <li>没有画出 Pxxx、gate、docs、skills</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout">
+      这张图回答的是「和传统 Agent 编排比，我们换了一种<b>形状</b>」。本仓真正落地的是另一句话：<b>人与 AI 走同一条角色链，真相在 <code>.teamai/docs/</code>，AI 不是第五工种。</b>
+    </div>
+
+    <h2 id="same">2. 哪里一样</h2>
+    <table>
+      <thead>
+        <tr><th>点</th><th>图</th><th>仓库</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>五棒顺序</td>
+          <td>需求 → 高保 → 方案设计 → 实现 → 测试</td>
+          <td><code>@需求(BA) → @高保(BA) → @方案设计(开发) → @实现(开发) → @测试</code></td>
+        </tr>
+        <tr>
+          <td>谁做方案</td>
+          <td>方案设计标了「开发」</td>
+          <td>BA 不写技术方案；<code>od-solution-design</code> 挂在 <code>dev</code></td>
+        </tr>
+        <tr>
+          <td>交接方式</td>
+          <td>左边一个人 + <code>@</code></td>
+          <td>聊天用 <code>@角色</code> 交棒；未回写 Pxxx 的口头结论不能当下一棒输入</td>
+        </tr>
+        <tr>
+          <td>核心修辞</td>
+          <td>不要配 Researcher/Writer 管道，要一条人链</td>
+          <td>AI 跟<b>当前角色</b>走，不另开第五工种、不另立 Agent 树</td>
+        </tr>
+        <tr>
+          <td>模型不锁死</td>
+          <td>上半用表盘讽刺「先选模型」；下半没有模型</td>
+          <td><span class="path">process.md</span>：人自选 Cursor / Claude / Codex，不锁模型</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="diff">3. 哪里不一样</h2>
+    <table>
+      <thead>
+        <tr><th></th><th>图表达的逻辑</th><th>本仓实际逻辑</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>图的体裁</td>
+          <td>传统 vs 新范式的对照海报</td>
+          <td>可执行的协作操作系统：契约 + Role + skill + gate</td>
+          <td class="mark diff">不同</td>
+        </tr>
+        <tr>
+          <td>上半是谁</td>
+          <td>被否定的传统 Agent 管道</td>
+          <td>约束 AI 的是 <code>AGENTS.md</code>、<span class="path">.teamai/rules/</span>、<span class="path">process.md</span></td>
+          <td class="mark diff">不同</td>
+        </tr>
+        <tr>
+          <td>智能体</td>
+          <td><code>Agents.md</code> 里并排 Researcher / Writer</td>
+          <td>三个 Role：<code>ba</code> / <code>dev</code> / <code>test</code>，覆盖五棒；不是平行自治 Agent</td>
+          <td class="mark diff">不同</td>
+        </tr>
+        <tr>
+          <td>状态存在哪</td>
+          <td>圆柱：上下文 / 变量 / 历史 / 任务队列</td>
+          <td>Git 里的 docs：当前 Pxxx、<code>gates</code>、snapshots、roadmap、tag</td>
+          <td class="mark diff">不同</td>
+        </tr>
+        <tr>
+          <td>I/O</td>
+          <td>用户输入、网页、DB、发消息、存结果</td>
+          <td>只经 <span class="path">.teamai/docs/</span> 进出：roadmap、Pxxx、hi-fi、OpenAPI、代码、yaml、4A</td>
+          <td class="mark diff">不同</td>
+        </tr>
+        <tr>
+          <td>何时动手</td>
+          <td>条件 A/B/C 满足就触发执行</td>
+          <td>条目在 <code>in-progress/</code> + 对应 gate + <b>人确认</b>。条件不齐不跑下一棒</td>
+          <td class="mark mid">形似</td>
+        </tr>
+        <tr>
+          <td>AI 的位置</td>
+          <td>下半看起来像五个人依次干活，AI 隐身</td>
+          <td>每一棒都可以有 AI，但必须走该棒的入口和产出</td>
+          <td class="mark mid">图没画全</td>
+        </tr>
+        <tr>
+          <td>能不能跳棒</td>
+          <td>一条橙箭头，看起来必经五人</td>
+          <td><code>hi-fi: none</code> 可跳过高保；跨端/改边界<b>不能</b>跳过方案设计</td>
+          <td class="mark mid">图简化了</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout warn">
+      <span class="path">process.md</span> §角色链、<span class="path">share.html</span> 配图说明仍写「上半是 AI 怎么被约束」。那套配文对应的是<b>把六步改成本仓术语</b>的那一版图。当前图把上半改回了「传统 Agent」，配文还没改，所以会看起来「图和仓库流程一样」——其实只是下半一样。
+    </div>
+
+    <h2 id="map6">4. 六步对照表</h2>
+    <p><span class="path">process.md</span> 有一张「AI 工作流（对应图上半）」——那是仓库<b>想让上半表达</b>的映射。当前图上半画的是左边；仓库跑的是右边。</p>
+    <table>
+      <thead>
+        <tr><th>步</th><th>图上半实际画的</th><th>本仓真实落点</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1 配置</td>
+          <td><code>CLAUDE.md</code> 目标 + 工具权限</td>
+          <td><code>AGENTS.md</code> · <span class="path">process.md</span> · <span class="path">.teamai/rules/</span>（可读 docs、可写提案与代码、禁改 snapshots）</td>
+        </tr>
+        <tr>
+          <td>2 角色 / 智能体</td>
+          <td>Researcher / Writer 两个 Agent</td>
+          <td>交接五棒；skill 只分 <code>ba</code> / <code>dev</code> / <code>test</code></td>
+        </tr>
+        <tr>
+          <td>3 模型</td>
+          <td>表盘锁 Claude 3.5 Sonnet 等</td>
+          <td>不锁模型</td>
+        </tr>
+        <tr>
+          <td>4 I/O</td>
+          <td>通用 LLM/工具/网页意大利面</td>
+          <td>输入：<code>@</code>、roadmap、Pxxx、hi-fi、OpenAPI、代码；输出：回写提案、快照、契约、PR、4A、yaml</td>
+        </tr>
+        <tr>
+          <td>5 触发</td>
+          <td>条件 A? B? C?</td>
+          <td><code>in-progress/</code> · 对应 gate · 人确认</td>
+        </tr>
+        <tr>
+          <td>6 动作</td>
+          <td>工具参数、模板、通知渠道、字段映射、分支逻辑</td>
+          <td>写 Pxxx、打快照、改 OpenAPI、改代码、改 yaml <code>status</code>；pass 才写 requirements</td>
+        </tr>
+        <tr>
+          <td>状态</td>
+          <td>上下文 / 变量 / 历史 / 任务队列</td>
+          <td>上下文=当前 Pxxx；变量=<code>gates</code>；历史=snapshots 与 git tag</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="framework">5. 本仓 AI Native 框架实际长什么样</h2>
+    <p>转型引入的不是「五个头像流水线」，而是一套<b>跟 clone 走的团队 Harness</b>：官方 TeamAI CLI（<code>mode: self</code>）+ 本仓契约树。对外品牌 Co-TeamAI，目录仍是 <span class="path">.teamai/</span>。</p>
+<pre><code>.teamai/
+├── teamai.yaml          # 单仓、recall、强制规则
+├── culture.md           # pull 时注入
+├── manifest/roles.yaml  # ba / dev / test
+├── rules/               # 短规则，与 process 同一套真相
+│     od-docs-truth · od-roles · od-dev-entry · od-hi-fi · od-delivery
+├── skills/              # 按角色裁剪，不另写真相
+│     common/  od-rd-loop · od-local-verify
+│     ba/      od-write-proposal · od-hi-fi
+│     dev/     od-solution-design · od-implement-proposal
+│     test/    od-acceptance
+├── learnings/           # 0→1 踩坑（聊天不是真相、先对齐再代码…）
+└── docs/                # 唯一产品/工程契约
+      product/  roadmap · requirements
+      proposals/Pxxx-name/  req/ · design/ · test/
+      design/   architecture.html · openapi.yaml
+      prototypes/  hi-fi/ · snapshots/</code></pre>
+
+    <div class="stack">
+      <div class="row">
+        <div class="k">主键</div>
+        <div>Pxxx。提案目录不搬家；进度看 <span class="path">roadmap/&lt;状态&gt;/</span> 和文首 <code>status</code> / <code>gates</code>。</div>
+      </div>
+      <div class="row">
+        <div class="k">真相分层</div>
+        <div>未交付只在提案；4A 只写已实现；<span class="path">requirements.md</span> 只写已验收。聊天确认的边界当轮回写 Pxxx。</div>
+      </div>
+      <div class="row">
+        <div class="k">四个 gate</div>
+        <div><code>proposal</code> / <code>hi-fi</code> / <code>code</code> / <code>acceptance</code> 不能互相替代。高保通过或代码存在，都不能当产品验收。</div>
+      </div>
+      <div class="row">
+        <div class="k">Role × 棒</div>
+        <div>人按五棒交接；skill 只分三个工种。同一人可兼角，不能跳棒（高保可按 gate 省略）。</div>
+      </div>
+      <div class="row">
+        <div class="k">开发入口</div>
+        <div>实现只打开 in-progress 提案 README 的「开发入口」。已 <code>hi-fi: accepted</code> 对照 snapshot，不对照最新 hi-fi。</div>
+      </div>
+      <div class="row">
+        <div class="k">交付顺序</div>
+        <div>OpenAPI → 实现与验证 → architecture 同提交 → yaml pass → 回写 requirements → 挪到 <code>done/</code>。</div>
+      </div>
+    </div>
+
+    <h3>人怎么开工（仓里真实触发，不是图上的条件 A/B/C）</h3>
+    <ol>
+      <li>clone 后仓库根 <code>teamai init .</code>，<code>teamai roles set ba|dev|test</code>，<code>teamai pull</code>。</li>
+      <li>只看 <a href="../product/roadmap/in-progress/">roadmap/in-progress</a>。</li>
+      <li>打开对应 Pxxx README「开发入口」。</li>
+      <li>按当前 Role 走 skill：先 <code>od-rd-loop</code> 分类，未对齐不改产品代码。</li>
+      <li>测试只改 <code>acceptance.yaml</code> 的 <code>status</code> / <code>evidence</code>。</li>
+    </ol>
+
+    <h2 id="missing">6. 图没画出、仓里真正起作用的东西</h2>
+    <p>这些才是「往 AI Native 转」时引入的骨架。图为了对照传统 Agent，把它们全省略了：</p>
+    <table>
+      <thead>
+        <tr><th>仓里的机制</th><th>干什么</th><th>图上有没有</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Pxxx 主键 + 开发入口</td><td>下一棒只认提案，不认聊天</td><td class="mark diff">无</td></tr>
+        <tr><td>文档真相分层</td><td>未实现不进 4A，未验收不进 requirements</td><td class="mark diff">无</td></tr>
+        <tr><td>四层 gate</td><td>高保 / 代码 / 产品验收分开记</td><td class="mark diff">无</td></tr>
+        <tr><td>3 Role × 5 棒</td><td>skill 裁剪，不是五个独立 Agent</td><td class="mark mid">只画了五棒人名</td></tr>
+        <tr><td>rules 注入</td><td>每个 IDE 会话自动带短规则</td><td class="mark diff">无（上半还是 CLAUDE.md）</td></tr>
+        <tr><td>skills</td><td>先对齐再实现、按棒写提案/方案/验收</td><td class="mark diff">无</td></tr>
+        <tr><td>learnings</td><td>质量闸不是 prompt、权限 fail-closed、真实路径验证</td><td class="mark diff">无</td></tr>
+        <tr><td>hi-fi vs snapshot</td><td>accepted 对照冻结版</td><td class="mark diff">无</td></tr>
+        <tr><td>OpenAPI 同 PR</td><td>跨端契约与代码一起合</td><td class="mark diff">无</td></tr>
+        <tr><td>AI 跟当前角色</td><td>BA 会话不写 design.md；测试会话不改 criterion</td><td class="mark mid">下半把 AI 画没了</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="read">7. 以后怎么读这张图</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3>适合用这张图讲的</h3>
+        <ul class="compact">
+          <li>我们不配 Researcher/Writer 管道</li>
+          <li>交接是 <code>@角色</code>，不是另开 Agent 编排</li>
+          <li>五棒名字：BA 两棒，开发两棒，测试一棒</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>不要用这张图当运行手册</h3>
+        <ul class="compact">
+          <li>上半不是本仓配置；本仓入口是 <code>AGENTS.md</code></li>
+          <li>怎么开工看 <a href="../guide.html">guide.html</a> / <a href="../share.html">share.html</a></li>
+          <li>当前任务只看 in-progress + 提案开发入口</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout">
+      若要让「图 = 仓」，有两条路，不要混：<br />
+      <b>A.</b> 保持这张对照海报，改 <span class="path">process.md</span> / share 配文为「上半=传统 Agent，下半=本仓角色链」。<br />
+      <b>B.</b> 把上半改回本仓六步落点（<code>AGENTS.md</code>、三 Role、不锁模型、docs I/O、in-progress+gate、yaml/PR），下半继续五棒。那才是「人与 AI 同一条链」的结构图。
+    </div>
+    <p>本页只对比，不改图、不改规范正文。规范仍以 <a href="../process.md">process.md</a> 为准。</p>
+
+    <footer>
+      打开：浏览器打开 <span class="path">.teamai/docs/diagrams/od-coteamai-compare.html</span>。
+      对照图：<a href="./od-coteamai-role-flow.png">od-coteamai-role-flow.png</a> ·
+      操作：<a href="../guide.html">guide.html</a> ·
+      介绍：<a href="../share.html">share.html</a> ·
+      规范：<a href="../process.md">process.md</a>
+    </footer>
+  </div>
+</body>
+</html>
