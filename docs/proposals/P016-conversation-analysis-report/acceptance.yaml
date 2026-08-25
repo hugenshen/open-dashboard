@@ -1,0 +1,90 @@
+# P016 acceptance — 对话分析报告
+proposal: P016
+status: in-progress
+
+items:
+  - id: PR-ANR-01
+    title: /report 入口与 Lead 一次 spawn
+    gate: code
+    criterion: slash /report 进入分析报告轨；Lead 只调用一次 od_board_worker（prompt 含 ANALYSIS_REPORT=1），不得调 get_data/insight 细工具。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/commands.js
+    expected: /report 文案含 ANALYSIS_REPORT=1 与一次 od_board_worker。
+    status: pass
+    evidence: "2026-08-25 analysis-worker.test.js · buildReportFollowup 含 ANALYSIS_REPORT=1 / 一次 od_board_worker；不含 od_insight"
+    blocker_of_done: true
+
+  - id: PR-ANR-02
+    title: 右侧 HTML / MD 文件预览
+    gate: code
+    criterion: 报告提交后右侧文件栏可预览 HTML（iframe srcdoc，无 allow-scripts）或 Markdown；对齐 JoyAgent ActionPanel 文件展示。
+    method: manual
+    command_or_path: open-dashboard-frontend/src/conversation/views/ConversationDshSurface.vue
+    expected: od-open-report 打开文件栏；HTML/MD 可切换；可下载当前格式。
+    status: wip
+    blocker_of_done: true
+
+  - id: PR-ANR-03
+    title: 产物不是 dashboardId
+    gate: code
+    criterion: od_commit_report 的 presentation meta 为 odKind=report_ready，无 dashboardId；不调用 apply-patch。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
+    expected: commit 返回 html/markdown，dashboardId 为空。
+    status: pass
+    evidence: "2026-08-25 analysis-worker.test + od-eval ANR-REPORT-COMMIT-01"
+    blocker_of_done: true
+
+  - id: PR-ANR-04
+    title: 细工具 Lead 不可调
+    gate: code
+    criterion: od_insight / od_save_insight / od_commit_report 与 get_data 一样 depth≥1；Lead 被 guard 拒绝。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
+    expected: depth 0 拒绝分析细工具。
+    status: pass
+    evidence: "2026-08-25 denies Lead on od_insight/od_save_insight/od_commit_report"
+    blocker_of_done: true
+
+  - id: PR-ANR-05
+    title: 分析取数 ≤200 行 / 15s
+    gate: code
+    criterion: purpose=analysis 时 resultLimit≤200、timeout≤15s；禁止 10k/90s。出板路径仍 ≤20/8s。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
+    expected: analysis get_data 上限 200/15s；board 不受影响。
+    status: pass
+    evidence: "2026-08-25 analysis get_data resultLimit=200 timeoutMs=15000"
+    blocker_of_done: true
+
+  - id: PR-ANR-06
+    title: 图种在有数后由 harness 确定
+    gate: code
+    criterion: 模型不能传 chartType；有行后才有 suggestedChartType。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
+    expected: suggestedChartType 来自行数/DATE，chartType 参数无效。
+    status: pass
+    evidence: "2026-08-25 ignores model chartType=pie/line；ANR-REPORT-COMMIT-01 suggestedChartType=pie"
+    blocker_of_done: true
+
+  - id: PR-ANR-07
+    title: 取完可换维再取
+    gate: code
+    criterion: 同一会话可用新 question/dim 再次 od_get_data；空结果提示换维。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
+    expected: get_data 可复用或新发 handle；空结果 note 含 retry dim。
+    status: pass
+    evidence: "2026-08-25 PR-ANR-07 unit + od-eval ANR-REPORT-RETRY-01"
+    blocker_of_done: true
+
+  - id: PR-ANR-08
+    title: 与 P005 边界
+    gate: proposal
+    criterion: P016 是对话快照 HTML/MD，允许内嵌本次聚合表；P005 是看板解读进 Umo、禁止内嵌结果行、未接受不实现。
+    method: manual
+    command_or_path: docs/proposals/P016-conversation-analysis-report/README.md
+    expected: README 写明与 P005 对照表。
+    status: pass
+    blocker_of_done: true

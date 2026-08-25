@@ -1,0 +1,8 @@
+{
+  "id": "BOARD-WORKER-GUARD-01",
+  "track": "board",
+  "stage": "worker",
+  "pr": "PR-REAL-09",
+  "input": { "mode": "guard", "tool": "od_get_data", "depth": 0 },
+  "expect": { "denied": true, "leadDenied": true }
+}

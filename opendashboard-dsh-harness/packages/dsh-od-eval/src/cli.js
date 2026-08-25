@@ -24,7 +24,7 @@ function parseArgs(argv) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2))
   if (opts.help) {
-    console.log(`Usage: od-eval [--track ask|board] [--stage plan,bind,layout,guard,ex,viz] [--id ID] [--report file.json]`)
+    console.log(`Usage: od-eval [--track ask|board|analysis] [--stage plan,bind,layout,guard,ex,viz,realize,review,worker,analysis,cockpit] [--id ID] [--report file.json]`)
     process.exit(0)
   }
   const report = await runEval({

@@ -11,5 +11,5 @@
     ],
     "requested": "auto"
   },
-  "expect": { "chartType": "pie" }
+  "expect": { "chartType": "bar" }
 }

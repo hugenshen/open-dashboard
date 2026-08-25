@@ -1,0 +1,36 @@
+{
+  "id": "BOARD-WORKER-TRANS-RANK-01",
+  "track": "board",
+  "stage": "worker",
+  "pr": "PR-REAL-04",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": {
+    "transType": "rank",
+    "save": false,
+    "task": {
+      "datasetId": "ds_orders",
+      "intent": "compare",
+      "dim": "Status",
+      "measure": "MchIncome",
+      "agg": "sum",
+      "title": "状态入账",
+      "question": "状态入账"
+    },
+    "results": {
+      "状态入账": {
+        "rowCount": 4,
+        "rows": [
+          { "Status": "A", "MchIncome": 90 },
+          { "Status": "B", "MchIncome": 40 },
+          { "Status": "C", "MchIncome": 20 },
+          { "Status": "D", "MchIncome": 10 }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "suggestedChartType": "bar",
+    "noModelChartType": true,
+    "transType": "hbar"
+  }
+}

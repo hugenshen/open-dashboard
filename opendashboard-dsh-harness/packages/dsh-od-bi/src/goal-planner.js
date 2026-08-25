@@ -1,5 +1,6 @@
 /**
- * M1.6 board Goal planning: LLM / fixture JSON → bind → review; rules fallback.
+ * Board Goal planning: LLM or injected goals → bind → reviewCharts.
+ * Live /board does not fall back to enumerateGoals.
  * @module @opendashboard/dsh-od-bi/goal-planner
  */
 
@@ -8,37 +9,46 @@ import path from 'node:path'
 import {
   bindGoals,
   buildCapabilityCard,
-  enumerateGoals,
   planChartsFromFields,
   reviewCharts,
+  typeFromIntent,
 } from './gen-board.js'
 
-export const GOAL_PLAN_SYSTEM = `你是 DataQ 出板分析规划器。根据「用户主题」和「能力卡」枚举 3～6 个分析目标（Goal）。
-每个 Goal 是一个要回答的业务问题，并给出 intent 与字段绑定。
+export const GOAL_PLAN_SYSTEM = `你是 DataQ 出板分析规划器。先根据数据特征（能力卡）按经营驾驶舱拆「有业务展示意义」的分析任务，不要在规划阶段锁死图种。
 
-硬规则（违反则改写，不要输出非法绑定）：
-1. compare / table 的 measure 必须来自 capability.additive，agg 只能是 sum 或 count。
-2. ratio 字段只能做 kpi_ratio（agg=avg），禁止与维度做 SUM 对比柱/饼/表。
-3. 不得使用 capability.junk 中的字段。
-4. trend 仅当对应 time.dayBucket 为 true；否则不要输出 trend。
-5. compose 使用低基数 dim，agg=count。
-6. question 用中文、像分析师提问；不要输出字段英文名当标题主文案。
-7. 按与用户主题的相关度排序；不要为凑数重复同维同度量。
+每个任务只回答一个业务问题：选维、选度量、写清决策意义。禁止把两个指标塞进同一条。图种由确认后的 board worker：按任务 od_get_data 取样问数 → harness 按结果形态选图（含单位、小数位）。你不要输出 chartType。
 
-若无法唯一确定度量或维度，设 mode=clarify，只问一个短问题，goals 为空数组。
-否则 mode=goals，填写 goals。
+对照专业稿面槽位（有字段就填，按此顺序输出 6～10 条任务）：
+1. 全景 KPI：记录数/笔数 count 一条；每个 additive 度量各一条 kpi_sum（最多再加一条 kpi_ratio）。至少 3 条 KPI 任务。
+2. 趋势：仅当 capability.time 存在且 dayBucket=true → 主度量 intent=trend。没有 dayBucket 就跳过，不要用构成任务填洞。
+3. 结构对比：低基数 dim（dims）× 主 additive，intent=compare。状态/类型/渠道对金额必须是对比任务，禁止写成构成（compose）。
+4. 排行：若有 rankDims，对主度量 intent=rank（TOP10），不要用明细表冒充排行。
+5. 构成：最多 1 条 compose，且 dim 必须在 composeDims（distinct 约 2～8）。禁止第二条构成。
+6. 明细：一条 table，按最重要的业务维汇总主度量。
 
-intent 枚举：kpi_count | kpi_sum | kpi_ratio | compare | compose | trend | table
-只输出 JSON，不要 Markdown 围栏。`
+硬规则：
+1. compare / table / rank 的 measure 必须来自 additive，agg 只能是 sum 或 count。
+2. ratio 只能 kpi_ratio（agg=avg），禁止与维度做 SUM 对比。
+3. 不得使用 junk。
+4. trend 仅当对应 time.dayBucket 为 true。
+5. question 用中文、像分析师提问（「各支付状态下入账差多少」而不是「状态分布」）；rationale 写清本任务回答什么决策问题。
+6. 用户说「专业仪表盘」而主题空：仍按驾驶舱出全槽，不要只出两条构成+一张表。
+
+若无法唯一确定度量（≥2 additive 且用户词撞上多个），mode=clarify，只问一个短问题。
+否则 mode=goals。
+
+intent：kpi_count | kpi_sum | kpi_ratio | compare | rank | compose | trend | table
+只输出 JSON，不要 Markdown 围栏。不要写 chartType。`
 
 export function buildGoalPlanUserMessage(userMessage, capabilityCard) {
-  return `用户主题：${userMessage || '（未提供，请按数据集给出通用经营分析目标）'}
+  return `用户主题：${userMessage || '（未提供：请按经营驾驶舱给出专业分析目标，不要只做分布饼图）'}
 
 能力卡：
 ${JSON.stringify(capabilityCard, null, 2)}
 
 请输出：
-{"mode":"goals"|"clarify","clarifyQuestion":string|null,"goals":[{"question","intent","dim","measure","agg","chartType","rationale"}]}`
+{"mode":"goals"|"clarify","clarifyQuestion":string|null,"goals":[{"question","intent","dim","measure","agg","rationale","slot"}]}
+slot 取 overview|trend|compare|rank|compose|detail。不要写 chartType。`
 }
 
 export function parseGoalPlanJson(text) {
@@ -72,23 +82,71 @@ export function normalizeGoalPlan(doc) {
   return { ok: true, mode: 'goals', clarifyQuestion: null, goals }
 }
 
+/** Cap pies, map rank/hbar, never invent fields. Call after parse, before bind. */
+export function shapeCockpitGoals(goals, card = {}) {
+  const list = (Array.isArray(goals) ? goals : []).filter((g) => g && typeof g === 'object').map((g) => ({ ...g }))
+  const rankFields = new Set((card.rankDims || []).map((d) => d.field))
+  const composeFields = new Set((card.composeDims || []).map((d) => d.field))
+  let pieKept = false
+  for (const g of list) {
+    const type = String(g.chartType || g.type || '').toLowerCase()
+    const dim = String(g.dim || g.encode?.category || '')
+    const isPie = type === 'pie' || type === 'donut' || g.intent === 'compose'
+    if (g.intent === 'rank' || type === 'hbar') {
+      g.chartType = 'hbar'
+      g.type = 'hbar'
+      g.intent = 'rank'
+      continue
+    }
+    if (!isPie) continue
+    if (dim && rankFields.has(dim) && !composeFields.has(dim)) {
+      g.chartType = 'hbar'
+      g.type = 'hbar'
+      g.intent = 'rank'
+      if (!g.measure && !g.encode?.value && card.additive?.[0]) {
+        g.measure = card.additive[0].field
+        g.agg = g.agg || 'sum'
+      }
+      continue
+    }
+    if (pieKept) {
+      g.chartType = 'bar'
+      g.type = 'bar'
+      g.intent = 'compare'
+      if (!g.measure && !g.encode?.value && card.additive?.[0]) {
+        g.measure = card.additive[0].field
+        g.agg = g.agg || 'sum'
+      }
+      continue
+    }
+    pieKept = true
+    g.chartType = 'pie'
+    g.intent = g.intent || 'compose'
+  }
+  return list
+}
+
 export function llmGoalsToBindInput(goals) {
-  return (Array.isArray(goals) ? goals : []).map((g) => ({
-    intent: g.intent,
-    type: g.chartType || g.type || 'bar',
-    chartType: g.chartType || g.type,
-    question: g.question,
-    title: g.title || g.question,
-    rationale: g.rationale,
-    encode: {
-      value: g.measure || g.encode?.value,
-      category: g.dim || g.encode?.category,
-      agg: g.agg || g.encode?.agg,
-    },
-    measure: g.measure,
-    dim: g.dim,
-    agg: g.agg,
-  }))
+  return (Array.isArray(goals) ? goals : []).map((g) => {
+    const type = g.chartType || g.type || typeFromIntent(g.intent, 'bar')
+    return {
+      intent: g.intent,
+      type,
+      chartType: type,
+      question: g.question,
+      title: g.title || g.question,
+      rationale: g.rationale,
+      slot: g.slot,
+      encode: {
+        value: g.measure || g.encode?.value,
+        category: g.dim || g.encode?.category,
+        agg: g.agg || g.encode?.agg,
+      },
+      measure: g.measure,
+      dim: g.dim,
+      agg: g.agg,
+    }
+  })
 }
 
 function chartsFromBound(goals) {
@@ -97,6 +155,8 @@ function chartsFromBound(goals) {
     title: g.title || g.question,
     question: g.question,
     intent: g.intent,
+    rationale: g.rationale,
+    slot: g.slot,
     datasetId: g.datasetId,
     encode: g.encode,
   }))
@@ -183,7 +243,7 @@ export async function callGoalPlanLlm(userMessage, capabilityCard, opts = {}) {
       },
       body: JSON.stringify({
         model,
-        temperature: 0,
+        temperature: 0.2,
         messages: [
           { role: 'system', content: GOAL_PLAN_SYSTEM },
           { role: 'user', content: buildGoalPlanUserMessage(userMessage, capabilityCard) },
@@ -205,7 +265,7 @@ export async function callGoalPlanLlm(userMessage, capabilityCard, opts = {}) {
 }
 
 function bindWithRescue(datasetId, rawGoals, fields, card, opts) {
-  const bindIn = llmGoalsToBindInput(rawGoals)
+  const bindIn = llmGoalsToBindInput(shapeCockpitGoals(rawGoals, card))
   let bound = bindGoals(datasetId, bindIn, fields, {
     capabilityCard: card,
     profile: opts.profile,
@@ -234,11 +294,44 @@ function bindWithRescue(datasetId, rawGoals, fields, card, opts) {
   })
 }
 
-function finalizeBound({ datasetId, fields, message, profile, datasetName, card, boundGoals, source, note, model }) {
-  const reviewed = reviewCharts(chartsFromBound(boundGoals), { fields, profile, message })
-  const { dims, time } = enumerateGoals(datasetId, fields, { message, profile, datasetName })
-  // query from rule helper path
+function qualityFail({ card, model, source, error, note, quality }) {
+  return {
+    ok: false,
+    needClarify: false,
+    clarifyQuestion: null,
+    charts: [],
+    goals: [],
+    query: null,
+    capabilityCard: card,
+    source,
+    error,
+    note: note || error,
+    model: model || null,
+    quality: quality || null,
+  }
+}
+
+function finalizeBound({ datasetId, fields, message, profile, datasetName, card, boundGoals, source, note, model, llmGoalCount }) {
+  const boundCharts = chartsFromBound(boundGoals)
+  const reviewed = reviewCharts(boundCharts, { fields, profile, message })
   const planned = planChartsFromFields(datasetId, fields, { message, profile, datasetName })
+  const quality = {
+    llmGoalCount: llmGoalCount == null ? boundGoals.length : llmGoalCount,
+    boundCount: boundGoals.length,
+    reviewedCount: reviewed.length,
+    droppedCount: Math.max(0, (llmGoalCount == null ? boundGoals.length : llmGoalCount) - reviewed.length),
+  }
+  if (!reviewed.length) {
+    return qualityFail({
+      card,
+      model,
+      source: 'quality-rejected',
+      error: 'LLM goals failed reviewCharts (empty after quality gate)',
+      note: '质量闸丢弃全部 Goal（同维饼、高基数碎饼、非法绑定等）。请改主题后重新 od_plan_charts，不要用规则模板凑图。',
+      quality,
+    })
+  }
+  const dropped = quality.droppedCount
   return {
     ok: true,
     needClarify: false,
@@ -248,24 +341,9 @@ function finalizeBound({ datasetId, fields, message, profile, datasetName, card,
     query: planned.query,
     capabilityCard: card,
     source,
-    note: note || '',
+    note: note || (dropped > 0 ? `质量闸丢弃 ${dropped} 个非法 Goal` : ''),
     model: model || null,
-  }
-}
-
-function rulesFallback(datasetId, fields, message, profile, datasetName, card, note, model, source = 'rules-fallback') {
-  const planned = planChartsFromFields(datasetId, fields, { message, profile, datasetName })
-  return {
-    ok: true,
-    needClarify: false,
-    clarifyQuestion: null,
-    charts: planned.charts,
-    goals: planned.goals || [],
-    query: planned.query,
-    capabilityCard: card,
-    source,
-    note: note || '已用基础规则规划',
-    model: model || null,
+    quality,
   }
 }
 
@@ -283,28 +361,28 @@ export function planBoardFromGoalPlan(input = {}) {
   if (Array.isArray(input.goals) && input.goals.length) {
     const bound = bindWithRescue(datasetId, input.goals, fields, card, { profile, message, datasetName })
     if (!bound.length) {
-      return {
-        ok: false,
-        needClarify: false,
-        clarifyQuestion: null,
-        charts: [],
-        goals: [],
-        query: null,
-        capabilityCard: card,
+      return qualityFail({
+        card,
         source: 'goals-rejected',
-        note: '用户目标无法绑定到合法字段；未回退规则模板（避免覆盖删饼/改维意图）。请改用 od_plan_charts(message=用户改后的原话) 重新规划，展示 goalsForConfirm 后再等确认；不要空 goals 调用 od_generate_board。',
         error: 'provided goals rejected by bind',
-        model: null,
-      }
+        note: '用户目标无法绑定到合法字段。请改用 od_plan_charts(message=用户改后的原话) 重新走 LLM 规划，展示后再等确认；不要空 goals 调用 od_generate_board。',
+        quality: { llmGoalCount: input.goals.length, boundCount: 0, reviewedCount: 0, droppedCount: input.goals.length },
+      })
     }
     return finalizeBound({
       datasetId, fields, message, profile, datasetName, card, boundGoals: bound, source: 'provided', note: '',
+      llmGoalCount: input.goals.length,
     })
   }
 
   const parsed = normalizeGoalPlan(input.goalPlan)
   if (!parsed.ok) {
-    return rulesFallback(datasetId, fields, message, profile, datasetName, card, parsed.error)
+    return qualityFail({
+      card,
+      source: 'fixture-invalid',
+      error: parsed.error || 'invalid goalPlan',
+      note: '注入的 Goal JSON 无效；未回退规则规划。',
+    })
   }
   if (parsed.mode === 'clarify') {
     return {
@@ -320,17 +398,24 @@ export function planBoardFromGoalPlan(input = {}) {
       model: null,
     }
   }
-  const bound = bindWithRescue(datasetId, parsed.goals, fields, card, { profile, message, datasetName })
+  const bound = bindWithRescue(datasetId, shapeCockpitGoals(parsed.goals, card), fields, card, { profile, message, datasetName })
   if (!bound.length) {
-    return rulesFallback(datasetId, fields, message, profile, datasetName, card, 'fixture goals rejected; 已用基础规则规划')
+    return qualityFail({
+      card,
+      source: 'quality-rejected',
+      error: 'fixture goals rejected by bind',
+      note: 'Goal 全部未通过 bind 闸；未回退规则规划。',
+      quality: { llmGoalCount: parsed.goals.length, boundCount: 0, reviewedCount: 0, droppedCount: parsed.goals.length },
+    })
   }
   return finalizeBound({
     datasetId, fields, message, profile, datasetName, card, boundGoals: bound, source: 'fixture', note: '',
+    llmGoalCount: parsed.goals.length,
   })
 }
 
 /**
- * Runtime path: optional goalPlan / goals / LLM / rules.
+ * Runtime: goals[] / goalPlan skip LLM; otherwise must call LLM then bind+review.
  */
 export async function planBoardAnalysis(input = {}) {
   const datasetId = input.datasetId || 'ds'
@@ -346,9 +431,6 @@ export async function planBoardAnalysis(input = {}) {
   if (input.goalPlan && typeof input.goalPlan === 'object') {
     return planBoardFromGoalPlan(input)
   }
-  if (input.skipLlm) {
-    return rulesFallback(datasetId, fields, message, profile, datasetName, card, 'skipLlm', null, 'rules')
-  }
 
   const llm = await callGoalPlanLlm(message, card, {
     signal: input.signal,
@@ -358,19 +440,23 @@ export async function planBoardAnalysis(input = {}) {
     credentials: input.credentials,
   })
   if (!llm.ok) {
-    return rulesFallback(
-      datasetId, fields, message, profile, datasetName, card,
-      `LLM unavailable (${llm.error}); 已用基础规则规划`,
-      llm.model,
-    )
+    return qualityFail({
+      card,
+      model: llm.model,
+      source: 'llm-unavailable',
+      error: llm.error || 'LLM unavailable',
+      note: `规划必须走 LLM（${llm.error}）。未使用规则模板。请检查 DEEPSEEK_API_KEY 后重试。`,
+    })
   }
   const parsed = parseGoalPlanJson(llm.text)
   if (!parsed.ok) {
-    return rulesFallback(
-      datasetId, fields, message, profile, datasetName, card,
-      `LLM JSON failed (${parsed.error}); 已用基础规则规划`,
-      llm.model,
-    )
+    return qualityFail({
+      card,
+      model: llm.model,
+      source: 'llm-invalid',
+      error: parsed.error || 'invalid LLM JSON',
+      note: `LLM 规划 JSON 无法解析（${parsed.error}）。未使用规则模板，请重试 od_plan_charts。`,
+    })
   }
   if (parsed.mode === 'clarify') {
     return {
@@ -384,15 +470,24 @@ export async function planBoardAnalysis(input = {}) {
       source: 'llm',
       note: '',
       model: llm.model,
+      quality: { llmGoalCount: 0, boundCount: 0, reviewedCount: 0, droppedCount: 0 },
     }
   }
-  const bound = bindWithRescue(datasetId, parsed.goals, fields, card, { profile, message, datasetName })
+  const bound = bindWithRescue(datasetId, shapeCockpitGoals(parsed.goals, card), fields, card, { profile, message, datasetName })
   if (!bound.length) {
-    return rulesFallback(
-      datasetId, fields, message, profile, datasetName, card,
-      'LLM goals all rejected by bind; 已用基础规则规划',
-      llm.model,
-    )
+    return qualityFail({
+      card,
+      model: llm.model,
+      source: 'quality-rejected',
+      error: 'LLM goals all rejected by bind',
+      note: 'LLM 目标全部未通过字段绑定闸。请换主题或先澄清指标/维度，不要用规则模板凑图。',
+      quality: {
+        llmGoalCount: parsed.goals.length,
+        boundCount: 0,
+        reviewedCount: 0,
+        droppedCount: parsed.goals.length,
+      },
+    })
   }
   return finalizeBound({
     datasetId,
@@ -405,5 +500,6 @@ export async function planBoardAnalysis(input = {}) {
     source: 'llm',
     note: '',
     model: llm.model,
+    llmGoalCount: parsed.goals.length,
   })
 }

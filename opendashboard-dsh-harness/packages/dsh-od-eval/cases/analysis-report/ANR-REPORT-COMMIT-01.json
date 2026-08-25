@@ -1,0 +1,35 @@
+{
+  "id": "ANR-REPORT-COMMIT-01",
+  "track": "analysis",
+  "stage": "analysis",
+  "pr": "PR-ANR-03",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": {
+    "title": "支付状态归因",
+    "message": "写分析报告：支付状态构成",
+    "modelChartType": "line",
+    "task": {
+      "datasetId": "ds_orders",
+      "intent": "compose",
+      "dim": "Status",
+      "measure": "Status",
+      "agg": "count",
+      "title": "状态构成",
+      "question": "状态构成"
+    },
+    "results": {
+      "状态构成": {
+        "rowCount": 3,
+        "rows": [["成功", 80], ["失败", 15], ["处理中", 5]]
+      }
+    }
+  },
+  "expect": {
+    "suggestedChartType": "pie",
+    "noModelChartType": true,
+    "minRows": 3,
+    "requireHtml": true,
+    "requireMarkdown": true,
+    "footerIncludes": ["非可刷新看板", "200"]
+  }
+}

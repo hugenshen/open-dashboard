@@ -1,0 +1,13 @@
+{
+  "name": "merchant-order-untyped",
+  "fields": [
+    { "name": "PayOrderId", "label": "支付订单号", "group": "dim", "dataType": "STRING" },
+    { "name": "MchId", "label": "商户ID", "group": "quota", "dataType": "DECIMAL" },
+    { "name": "MchType", "label": "商户类型:1-平台账户,2-私有账户", "group": "quota", "dataType": "DECIMAL", "distinctCount": 3 },
+    { "name": "Status", "label": "支付状态,0-订单生成,1-支付中,2-支付成功,3-业务处理完成,4-已退款", "group": "quota", "dataType": "DECIMAL", "distinctCount": 5 },
+    { "name": "Amount", "label": "支付金额,单位分", "group": "quota", "dataType": "DECIMAL" },
+    { "name": "MchIncome", "label": "商户入账,单位分", "group": "quota", "dataType": "DECIMAL" },
+    { "name": "FeeRate", "label": "商户费率", "group": "quota", "dataType": "DECIMAL" },
+    { "name": "ExpireTime", "label": "订单失效时间", "group": "dim", "role": "time", "dataType": "TIME" }
+  ]
+}

@@ -50,7 +50,7 @@ export async function runEval(opts = {}) {
     const t0 = Date.now()
     let outcome
     try {
-      outcome = runner(caseCtx)
+      outcome = await Promise.resolve(runner(caseCtx))
     } catch (err) {
       outcome = { ok: false, reason: String(err?.message || err), actual: {} }
     }

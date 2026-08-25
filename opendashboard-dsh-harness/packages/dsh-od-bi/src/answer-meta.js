@@ -94,6 +94,12 @@ export function answerPresentationMeta(value, opts = {}) {
  * @param {object} value - od_emit_patch result
  */
 export function boardPresentationMeta(value) {
+  if (value?.needClarify) {
+    return { odKind: 'board_clarify', error: value.clarifyQuestion || 'clarify' }
+  }
+  if (value?.regenerate) {
+    return { odKind: 'board_regenerate' }
+  }
   if (!value?.ok) {
     return { odKind: 'board_error', error: value?.error || 'unknown' }
   }
@@ -107,4 +113,23 @@ export function boardPresentationMeta(value) {
     editPath: dashboardId ? `/dashboards/${dashboardId}/edit` : null,
     source: value.source || 'java',
   }
+}
+
+/** Browser-safe analysis-report card — snapshot HTML/MD, never a dashboardId. */
+export function reportPresentationMeta(value) {
+  if (!value?.ok) {
+    return { odKind: 'report_error', error: value?.error || 'unknown' }
+  }
+  const meta = {
+    odKind: 'report_ready',
+    title: value.title,
+    format: value.format || 'html',
+    filename: value.filename,
+    html: value.html,
+    markdown: value.markdown,
+    insightCount: value.insightCount,
+    dashboardId: null,
+    source: value.source || 'analysis-worker',
+  }
+  return omitUndefined(meta)
 }

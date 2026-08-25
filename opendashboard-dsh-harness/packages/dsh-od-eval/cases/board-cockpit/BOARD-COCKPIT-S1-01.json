@@ -1,0 +1,95 @@
+{
+  "id": "BOARD-COCKPIT-S1-01",
+  "track": "board",
+  "stage": "cockpit",
+  "pr": "PR-REAL-04",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": {
+    "title": "商户经营驾驶舱",
+    "message": "专业仪表盘",
+    "tasks": [
+      {
+        "type": "kpi",
+        "intent": "kpi_count",
+        "title": "记录数",
+        "datasetId": "ds_orders",
+        "encode": { "value": "Status", "agg": "count" }
+      },
+      {
+        "type": "kpi",
+        "intent": "kpi_sum",
+        "title": "入账合计",
+        "datasetId": "ds_orders",
+        "encode": { "value": "MchIncome", "agg": "sum" }
+      },
+      {
+        "type": "bar",
+        "intent": "compare",
+        "title": "状态入账对比",
+        "datasetId": "ds_orders",
+        "encode": { "category": "Status", "value": "MchIncome", "agg": "sum" }
+      },
+      {
+        "type": "pie",
+        "intent": "compose",
+        "title": "状态构成",
+        "datasetId": "ds_orders",
+        "encode": { "category": "Status", "value": "Status", "agg": "count" }
+      },
+      {
+        "type": "pie",
+        "intent": "compose",
+        "title": "类型构成",
+        "datasetId": "ds_orders",
+        "encode": { "category": "MchType", "value": "MchType", "agg": "count" }
+      },
+      {
+        "type": "hbar",
+        "intent": "rank",
+        "title": "商户类型排行",
+        "datasetId": "ds_orders",
+        "encode": { "category": "MchType", "value": "MchIncome", "agg": "sum" }
+      },
+      {
+        "type": "bar",
+        "intent": "compare",
+        "title": "空渠道",
+        "datasetId": "ds_orders",
+        "encode": { "category": "MchType", "value": "Amount", "agg": "sum" }
+      }
+    ],
+    "results": {
+      "状态入账对比": {
+        "rowCount": 4,
+        "rows": [["0", 8000000], ["2", 12000000], ["3", 3000000], ["5", 1000000]]
+      },
+      "状态构成": {
+        "rowCount": 4,
+        "rows": [["0", 10], ["2", 80], ["3", 6], ["5", 4]]
+      },
+      "类型构成": {
+        "rowCount": 8,
+        "rows": [["a", 1], ["b", 2], ["c", 3], ["d", 4], ["e", 5], ["f", 6], ["g", 7], ["h", 8]]
+      },
+      "商户类型排行": {
+        "rowCount": 8,
+        "rows": [["a", 9], ["b", 8], ["c", 7], ["d", 6], ["e", 5], ["f", 4], ["g", 3], ["h", 2]]
+      },
+      "空渠道": { "rowCount": 0, "rows": [] }
+    }
+  },
+  "expect": {
+    "minCharts": 5,
+    "minKpi": 2,
+    "maxPie": 1,
+    "mustTypes": ["kpi", "bar", "hbar"],
+    "compareNeverPie": true,
+    "typesByTitle": {
+      "入账合计": "kpi",
+      "状态入账对比": "bar",
+      "商户类型排行": "hbar"
+    },
+    "fenAxisUnit": "wan",
+    "minComponents": 5
+  }
+}

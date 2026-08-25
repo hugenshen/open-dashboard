@@ -1,0 +1,46 @@
+{
+  "id": "BOARD-REALIZE-EMPTY-01",
+  "track": "board",
+  "stage": "realize",
+  "pr": "PR-REAL-06",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": {
+    "message": "经营看板",
+    "tasks": [
+      {
+        "type": "kpi",
+        "intent": "kpi_sum",
+        "title": "入账",
+        "datasetId": "ds_orders",
+        "encode": { "value": "MchIncome", "agg": "sum" }
+      },
+      {
+        "type": "bar",
+        "intent": "compare",
+        "title": "空对比",
+        "datasetId": "ds_orders",
+        "encode": { "category": "Status", "value": "MchIncome", "agg": "sum" }
+      },
+      {
+        "type": "pie",
+        "intent": "compose",
+        "title": "状态构成",
+        "datasetId": "ds_orders",
+        "encode": { "category": "Status", "value": "Status", "agg": "count" }
+      }
+    ],
+    "results": {
+      "空对比": { "rowCount": 0, "rows": [] },
+      "状态构成": {
+        "rowCount": 3,
+        "rows": [["成功", 1], ["失败", 2], ["处理中", 3]]
+      }
+    }
+  },
+  "expect": {
+    "minCharts": 2,
+    "minKpi": 1,
+    "droppedTitles": ["空对比"],
+    "typesByTitle": { "状态构成": "pie", "入账": "kpi" }
+  }
+}

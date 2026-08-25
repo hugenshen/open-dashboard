@@ -11,7 +11,7 @@
 - 已禁用：`bash` / `fs` / `fs-search` / 改文件 / `agent-instructions`（不读仓内 `AGENTS.md`）/ `skill-filesystem`
 - 进程 **cwd** = `$DSH_HOME/runtime`（空沙箱，不挂 monorepo）
 - 每轮注入的是 **OD workspaceId / userId**，不是本机路径
-- 写看板唯一出口：`od_generate_board`（或 `od_emit_patch`）→ Java `apply-patch`
+- 写看板唯一出口：worker <code>od_commit_board</code>（或 last-resort <code>od_generate_board</code> / <code>od_emit_patch</code>）→ Java <code>apply-patch</code>
 
 正式部署应跑在服务器/容器内，镜像不挂业务源码；用 Nginx 把 dsh 的 `/plugins` `/assets` 与 dsh `/api` 和 Java `/api` 分开。
 
@@ -41,9 +41,9 @@ pnpm approve-builds --all   # 首次：允许 node-pty / koffi 等原生构建
 | **问数出表** | 左栏「对话分析」→ 自然语言，如「华东本月 GMV 同比」 | Agent：`od_list_datasets` → schema → `od_run_query` → 对话里出表 |
 | **问数出图** | 「按城市画柱状图」等 | 同上，带 `chartType` → `od-answer-chart` 预览（含轴标签、可点柱、可展开 SELECT） |
 | **澄清/空数据** | 工作区无数据集或问题含糊 | Agent 说明 `datasets(0)` 或追问；用户去配数据后再问 |
-| **一句话生成看板** | 「用销售数据生成一张经营看板」 | Agent：`od_plan_charts`（对话里列出 KPI/柱/饼/折线/表）→ `od_generate_board` 写入 draft → **右侧展开完整编辑器** |
-| **新开对话** | 会话顶栏右上 **「新对话」**（在「历史」左侧） | `workspaces.startSession` → 空白会话落地页 |
-| **看历史会话** | 会话顶栏右上 **「历史」** → 点开某条 | `sessions.open`；会话落在 `$DSH_HOME` |
+| **一句话生成看板** | 「用销售数据生成一张经营看板」 | Agent：`od_plan_charts`（对话列出分析任务，图种待取数后定）→ 确认后 `od_board_worker` 按任务取数再选图并写入 draft → **右侧展开完整编辑器** |
+| **新开对话** | 会话顶栏右上 **「新对话」**（落地页也始终可见） | `workspaces.startSession(odWorkspaceId)` → 空白会话落地页 |
+| **看历史会话** | 顶栏 **「历史」** / 落地「最近对话」（[P014](../docs/proposals/P014-conversation-history/)） | `GET /od/sessions` → `sessions.open`；分区键 `od:{workspaceId}:{userId}`（`$DSH_HOME/tenants/…`），不跟 Agent cwd |
 | **看上下文** | 顶栏 **「上下文」** Tab，或输入 `/context` | `dsh-context`：当前窗口组成（系统提示 / 工具 schema / 消息）与演变 |
 | **看轨迹** | 顶栏 **「轨迹」** Tab | `ui-trajectory`：本轮工具调用与步骤回放 |
 
@@ -79,7 +79,7 @@ FE 嵌入：开发直连 `:3090`；生产同域反代。编辑器侧栏同为 ds
 ## 工具链摘要
 
 - **问数**：`od_list_datasets` → `od_get_schema` → `od_run_query` / `od_run_sql` → `od_finish`
-- **生成看板**：`od_list_datasets` → **`od_plan_charts`**（对话可见规划）→ **`od_generate_board`**（同一套 plan + layout + apply-patch；禁止 `od_run_sql` / `od_layout_board`）
+- **生成看板**：`od_list_datasets` → **`od_plan_charts`**（对话可见任务，不定图种）→ **`od_board_worker`**（`od_get_data` / `od_data_trans` / `od_save_chart` / `od_commit_board`；选图由 harness；禁止 Lead 调用 `od_run_sql` / `od_layout_board`）
 - 单测：`pnpm test`
 
 ## 包结构

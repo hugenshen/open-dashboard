@@ -1,0 +1,29 @@
+{
+  "id": "BOARD-WORKER-CHARTTYPE-01",
+  "track": "board",
+  "stage": "worker",
+  "pr": "PR-REAL-10",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": {
+    "task": {
+      "datasetId": "ds_orders",
+      "intent": "compose",
+      "dim": "Status",
+      "measure": "Status",
+      "agg": "count",
+      "title": "状态构成",
+      "question": "状态构成"
+    },
+    "results": {
+      "状态构成": {
+        "rowCount": 3,
+        "rows": [["成功", 1], ["失败", 2], ["处理中", 3]]
+      }
+    }
+  },
+  "expect": {
+    "suggestedChartType": "pie",
+    "savedType": "pie",
+    "noModelChartType": true
+  }
+}

@@ -91,6 +91,20 @@ window.__ModuleLoader__.load({
       }
     }
 
+    function notifyOpenReport(payload) {
+      if (!isEmbedded()) return
+      notifyParent({
+        type: 'od-open-report',
+        title: payload.title || '',
+        format: payload.format || 'html',
+        filename: payload.filename || '',
+        html: payload.html || '',
+        markdown: payload.markdown || '',
+        insightCount: payload.insightCount,
+        nonce: Date.now(),
+      })
+    }
+
     function notifyOpenDashboard(payload, { force = true } = {}) {
       const id = String(payload.dashboardId || '')
       if (!id) return
@@ -127,6 +141,61 @@ window.__ModuleLoader__.load({
       })
     }
 
+    /** sessionStorage key for last opened dsh session in this OD tenant (survives refresh). */
+    function odLastSessionKey(tenantKey) {
+      return `od:lastSession:${tenantKey || 'unknown'}`
+    }
+
+    function rememberOdLastSession(sessionId) {
+      const id = String(sessionId || '').trim()
+      const tenant = SessionChromeAction._odTenantKey
+      if (!id || !tenant) return
+      try {
+        sessionStorage.setItem(odLastSessionKey(tenant), id)
+      } catch {
+        /* ignore quota / private mode */
+      }
+    }
+
+    function readOdLastSession() {
+      const tenant = SessionChromeAction._odTenantKey
+      if (!tenant) return ''
+      try {
+        return String(sessionStorage.getItem(odLastSessionKey(tenant)) || '').trim()
+      } catch {
+        return ''
+      }
+    }
+
+    /** Prefer last opened / most recent active session in this OD workspace. */
+    function pickResumeSessionId(ctx, dshWorkspaceId) {
+      const snap = ctx.workspaces?.list?.getSnapshot?.()
+      const ws = snap?.items?.find((item) => item.workspaceId === dshWorkspaceId)
+      const sessions = ctx.sessions?.list?.getSnapshot?.()
+      if (!sessions?.byId) return ''
+
+      const last = readOdLastSession()
+      if (last && sessions.byId[last]) return last
+
+      const memberIds = new Set(ws?.sessionIds || [])
+      const path = ws?.path
+      const rows = (sessions.ids || [])
+        .map((id) => sessions.byId[id])
+        .filter((row) => {
+          if (!row || row.origin === 'subagent') return false
+          if (memberIds.has(row.id)) return true
+          if (path && row.cwd === path) return true
+          return false
+        })
+
+      const active = rows
+        .filter((row) => row.running || !row.blank)
+        .slice()
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      if (active[0]) return active[0].id
+      return ''
+    }
+
     /** New chat / history switch lives inside the iframe — tell OD to fold the right pane. */
     function pinSessionBridge(ctx) {
       const ws = ctx.workspaces
@@ -143,7 +212,10 @@ window.__ModuleLoader__.load({
       if (sessions && typeof sessions.open === 'function' && !sessions.open.__odPinned) {
         const orig = sessions.open.bind(sessions)
         const wrapped = (id, ...rest) => {
-          notifySessionChanged({ sessionId: String(id || ''), blank: false })
+          const sid = String(id || '')
+          rememberOdLastSession(sid)
+          const blank = Boolean(sessions.list?.getSnapshot?.()?.byId?.[sid]?.blank)
+          notifySessionChanged({ sessionId: sid, blank })
           return orig(id, ...rest)
         }
         wrapped.__odPinned = true
@@ -660,12 +732,14 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         if (!data.dashboardId) return
+        // Same draft id is reused for generate replace and rechart merge —
+        // always notify so the split editor remounts (editorEpoch++).
         notifyOpenDashboard({
           dashboardId: data.dashboardId,
           title: data.title,
           editPath,
-        }, { force: false })
-      }, [data.dashboardId, data.title, editPath])
+        }, { force: true })
+      }, [data.dashboardId, data.title, data.mode, data.chartCount, editPath])
 
       const btn = (label, onClick, primary) => h('button', {
         type: 'button',
@@ -722,8 +796,47 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function ReportPreviewView({ node }) {
+      const data = node?.data || {}
+      useEffect(() => {
+        if (!data.html && !data.markdown) return
+        notifyOpenReport({
+          title: data.title,
+          format: data.format,
+          filename: data.filename,
+          html: data.html,
+          markdown: data.markdown,
+          insightCount: data.insightCount,
+        })
+      }, [data.title, data.format, data.filename, data.html, data.markdown, data.insightCount])
+
+      return shell(
+        data.title || '分析报告',
+        `${data.filename || 'analysis-report.html'} · 静态快照 · 非可刷新看板`,
+        h('div', { style: { padding: '12px 14px' } },
+          h('p', { style: { margin: '0 0 10px', color: '#444' } },
+            '报告已生成。右侧打开的是会话快照文件，刷新不会重新查询。'),
+          h('button', {
+            type: 'button',
+            onClick: () => notifyOpenReport(data),
+            style: {
+              display: 'inline-block',
+              padding: '8px 14px',
+              background: '#2563eb',
+              color: '#fff',
+              border: 0,
+              borderRadius: 6,
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: 'pointer',
+            },
+          }, '在右侧打开'),
+        ),
+      )
+    }
+
     function makeDefinition(kind, odKind) {
-      const deferUntilTurnEnd = odKind === 'board_ready'
+      const deferUntilTurnEnd = odKind === 'board_ready' || odKind === 'report_ready'
       return {
         kind,
         target: 'chat',
@@ -751,13 +864,18 @@ window.__ModuleLoader__.load({
           return {
             turn: match.event.data.turn,
             step: match.event.data.step,
-            title: meta.title || (odKind === 'answer_chart' ? '临时图' : odKind === 'board_ready' ? '生成看板' : '问数结果'),
+            title: meta.title || (odKind === 'answer_chart' ? '临时图' : odKind === 'board_ready' ? '生成看板' : odKind === 'report_ready' ? '分析报告' : '问数结果'),
             chartType: meta.chartType || (odKind === 'answer_chart' ? 'bar' : 'table'),
             datasetId: meta.datasetId,
             dashboardId: meta.dashboardId,
             editPath: meta.editPath,
             chartCount: meta.chartCount,
             mode: meta.mode,
+            format: meta.format,
+            filename: meta.filename,
+            html: meta.html,
+            markdown: meta.markdown,
+            insightCount: meta.insightCount,
             rowCount: meta.rowCount ?? (meta.rows?.length || 0),
             fields: meta.fields || [],
             rows: meta.rows || [],
@@ -804,6 +922,11 @@ window.__ModuleLoader__.load({
               editPath: context.state.editPath,
               chartCount: context.state.chartCount,
               mode: context.state.mode,
+              format: context.state.format,
+              filename: context.state.filename,
+              html: context.state.html,
+              markdown: context.state.markdown,
+              insightCount: context.state.insightCount,
               rowCount: context.state.rowCount,
               fields: context.state.fields,
               rows: context.state.rows,
@@ -823,6 +946,7 @@ window.__ModuleLoader__.load({
     const answerTableDefinition = makeDefinition('od-answer-table', 'answer_table')
     const answerChartDefinition = makeDefinition('od-answer-chart', 'answer_chart')
     const boardPreviewDefinition = makeDefinition('od-board-preview', 'board_ready')
+    const reportPreviewDefinition = makeDefinition('od-report-preview', 'report_ready')
 
     const inject = ['conversationEvents', 'slots', 'commandUi', 'workspaces', 'sessions']
 
@@ -879,20 +1003,88 @@ window.__ModuleLoader__.load({
       }))
     }
 
+    /** Format relative-ish time for history rows. */
+    function formatSessionWhen(updatedAt) {
+      const t = Number(updatedAt) || 0
+      if (!t) return ''
+      const d = new Date(t)
+      const now = new Date()
+      const sameDay = d.toDateString() === now.toDateString()
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mm = String(d.getMinutes()).padStart(2, '0')
+      if (sameDay) return `今天 ${hh}:${mm}`
+      const yesterday = new Date(now)
+      yesterday.setDate(yesterday.getDate() - 1)
+      if (d.toDateString() === yesterday.toDateString()) return `昨天 ${hh}:${mm}`
+      return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`
+    }
+
+    /** Prefer GET /od/sessions (P014 partition); surface errors — never fake empty. */
+    function useOdSessions(refreshKey) {
+      const [rows, setRows] = React.useState(null)
+      const [error, setError] = React.useState('')
+      React.useEffect(() => {
+        if (refreshKey < 0) return undefined
+        let cancelled = false
+        setError('')
+        fetch('/od/sessions', { credentials: 'same-origin' })
+          .then(async (res) => {
+            const data = await res.json().catch(() => ({}))
+            if (res.status === 401) {
+              throw new Error(data.error || '请先登录后再查看历史')
+            }
+            if (!res.ok || data.ok === false) {
+              throw new Error(data.error || `历史加载失败 (${res.status})`)
+            }
+            if (data.dshWorkspaceId) SessionChromeAction._dshWorkspaceId = String(data.dshWorkspaceId)
+            return Array.isArray(data.sessions) ? data.sessions : []
+          })
+          .then((list) => {
+            if (!cancelled) setRows(list)
+          })
+          .catch((err) => {
+            if (!cancelled) {
+              setRows(null)
+              setError(String(err?.message || err))
+            }
+          })
+        return () => { cancelled = true }
+      }, [refreshKey])
+      return { rows, error }
+    }
+
+    function startOdSession(ctx) {
+      const id = SessionChromeAction._dshWorkspaceId
+      try {
+        if (id) ctx?.workspaces?.startSession(id)
+        else ctx?.workspaces?.startSession()
+      } catch (e) {
+        console.warn('new session failed', e)
+      }
+    }
+
+    function openOdSession(ctx, sessionId) {
+      try {
+        ctx?.sessions?.open(sessionId)
+      } catch (e) {
+        console.warn('open session failed', e)
+      }
+    }
+
     /** Right header: 新对话 + 历史 + 旅程回放. */
     function SessionChromeAction({ useSessions }) {
       const ctx = SessionChromeAction._ctx
       const [open, setOpen] = React.useState(false)
       const [hover, setHover] = React.useState(null)
-      const ids = useSessions((s) => s.ids)
-      const byId = useSessions((s) => s.byId)
+      const [tick, setTick] = React.useState(0)
       const current = useSessions((s) => s.current)
-      const rows = (ids || [])
-        .map((id) => byId?.[id])
-        .filter((row) => row && row.origin !== 'subagent')
-        .slice()
-        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-        .slice(0, 40)
+      const { rows, error } = useOdSessions(open ? tick : -1)
+
+      React.useEffect(() => {
+        if (!open) return undefined
+        setTick((n) => n + 1)
+        return undefined
+      }, [open])
 
       const paint = (key, active) => ({
         ...btnBase,
@@ -900,6 +1092,57 @@ window.__ModuleLoader__.load({
         color: active || hover === key ? '#4d6bfe' : '#646a73',
         borderColor: active || hover === key ? 'rgba(77, 107, 254, 0.16)' : 'transparent',
       })
+
+      let panelBody
+      if (error) {
+        panelBody = h('div', {
+          style: { padding: '14px 10px', fontSize: 13, color: '#b45309' },
+        }, error)
+      } else if (rows == null) {
+        panelBody = h('div', {
+          style: { padding: '14px 10px', fontSize: 13, color: '#9ca3af' },
+        }, '加载中…')
+      } else if (rows.length === 0) {
+        panelBody = h('div', {
+          style: { padding: '14px 10px', fontSize: 13, color: '#9ca3af' },
+        }, '暂无历史会话')
+      } else {
+        panelBody = rows.map((row) => h('button', {
+          key: row.id,
+          type: 'button',
+          onClick: () => {
+            setOpen(false)
+            openOdSession(ctx, row.id)
+          },
+          style: {
+            display: 'block', width: '100%', textAlign: 'left',
+            padding: '9px 10px', border: 0, borderRadius: 10, cursor: 'pointer',
+            background: row.id === current ? 'rgba(77, 107, 254, 0.08)' : 'transparent',
+            color: '#1f2329', fontSize: 13, lineHeight: 1.35,
+          },
+          onMouseEnter: (e) => {
+            if (row.id !== current) e.currentTarget.style.background = 'rgba(77, 107, 254, 0.05)'
+          },
+          onMouseLeave: (e) => {
+            e.currentTarget.style.background = row.id === current ? 'rgba(77, 107, 254, 0.08)' : 'transparent'
+          },
+        },
+        h('div', {
+          style: {
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            fontWeight: row.id === current ? 600 : 500,
+          },
+        }, row.displayTitle || row.title || row.id),
+        h('div', {
+          style: {
+            display: 'flex', justifyContent: 'space-between', gap: 8,
+            fontSize: 11.5, color: '#9ca3af', marginTop: 2,
+          },
+        },
+        h('span', null, row.blank ? '空白会话' : '已结束'),
+        h('span', null, formatSessionWhen(row.updatedAt)),
+        )))
+      }
 
       return h('div', {
         style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 },
@@ -912,7 +1155,7 @@ window.__ModuleLoader__.load({
         onMouseLeave: () => setHover(null),
         onClick: () => {
           setOpen(false)
-          try { ctx?.workspaces?.startSession() } catch (e) { console.warn('new session failed', e) }
+          startOdSession(ctx)
         },
       }, h(IconPlus), '新对话'),
       h('button', {
@@ -948,45 +1191,88 @@ window.__ModuleLoader__.load({
             color: '#9ca3af', letterSpacing: '0.02em',
           },
         }, '最近会话'),
-        rows.length === 0
-          ? h('div', { style: { padding: '14px 10px', fontSize: 13, color: '#9ca3af' } }, '暂无历史会话')
-          : rows.map((row) => h('button', {
-            key: row.id,
-            type: 'button',
-            onClick: () => {
-              setOpen(false)
-              try { ctx?.sessions?.open(row.id) } catch (e) { console.warn('open session failed', e) }
-            },
-            style: {
-              display: 'block', width: '100%', textAlign: 'left',
-              padding: '9px 10px', border: 0, borderRadius: 10, cursor: 'pointer',
-              background: row.id === current ? 'rgba(77, 107, 254, 0.08)' : 'transparent',
-              color: '#1f2329', fontSize: 13, lineHeight: 1.35,
-            },
-            onMouseEnter: (e) => {
-              if (row.id !== current) e.currentTarget.style.background = 'rgba(77, 107, 254, 0.05)'
-            },
-            onMouseLeave: (e) => {
-              e.currentTarget.style.background = row.id === current ? 'rgba(77, 107, 254, 0.08)' : 'transparent'
-            },
-          },
-          h('div', {
-            style: {
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              fontWeight: row.id === current ? 600 : 500,
-            },
-          }, row.displayTitle || row.title || row.id),
-          h('div', {
-            style: { fontSize: 11.5, color: '#9ca3af', marginTop: 2 },
-          }, row.blank ? '空白会话' : (row.running ? '进行中' : '已结束')),
-          ))
+        panelBody,
         )
         : null,
       )
     }
 
+    /** Landing only: recent list under the hero composer (P014). */
+    function OdRecentConversations({ useSessions }) {
+      const ctx = SessionChromeAction._ctx
+      const blank = useSessions((s) => {
+        const id = s.current
+        if (!id) return true
+        const row = s.byId?.[id]
+        return row ? Boolean(row.blank) : true
+      })
+      const [tick, setTick] = React.useState(0)
+      const { rows, error } = useOdSessions(blank ? tick : -2)
+
+      React.useEffect(() => {
+        if (!blank) return undefined
+        setTick((n) => n + 1)
+        const t = setInterval(() => setTick((n) => n + 1), 12000)
+        return () => clearInterval(t)
+      }, [blank])
+
+      if (!blank) return null
+
+      const recent = (rows || []).filter((r) => !r.blank).slice(0, 5)
+
+      return h('div', {
+        'data-od-recent': '1',
+        style: {
+          order: 10,
+          width: '100%',
+          maxWidth: 'min(calc(var(--dsh-composer-card-max-width, 780px) + 32px), 100%)',
+          alignSelf: 'center',
+          marginTop: 4,
+          padding: '0 12px 8px',
+          boxSizing: 'border-box',
+          textAlign: 'left',
+        },
+      },
+      h('div', {
+        style: {
+          fontSize: 12, fontWeight: 600, color: '#9ca3af',
+          letterSpacing: '0.02em', margin: '8px 4px 6px',
+        },
+      }, '最近对话'),
+      error
+        ? h('div', { style: { padding: '8px 4px', fontSize: 13, color: '#b45309' } }, error)
+        : rows == null
+          ? h('div', { style: { padding: '8px 4px', fontSize: 13, color: '#9ca3af' } }, '加载中…')
+          : recent.length === 0
+            ? h('div', { style: { padding: '8px 4px', fontSize: 13, color: '#9ca3af' } }, '暂无历史会话')
+            : recent.map((row) => h('button', {
+              key: row.id,
+              type: 'button',
+              onClick: () => openOdSession(ctx, row.id),
+              style: {
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: 12, width: '100%', textAlign: 'left',
+                padding: '10px 8px', border: 0, borderRadius: 10, cursor: 'pointer',
+                background: 'transparent', color: '#1f2329', fontSize: 13, lineHeight: 1.35,
+              },
+              onMouseEnter: (e) => { e.currentTarget.style.background = 'rgba(77, 107, 254, 0.05)' },
+              onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent' },
+            },
+            h('span', {
+              style: {
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                fontWeight: 500,
+              },
+            }, row.displayTitle || row.title || row.id),
+            h('span', {
+              style: { flex: 'none', fontSize: 12, color: '#9ca3af' },
+            }, formatSessionWhen(row.updatedAt)),
+            )),
+      )
+    }
+
     /** Analyst slash menu: BI commands + /model + /context inspector. */
-    const OD_SLASH_ALLOW = new Set(['ask', 'board', 'datasets', 'model', 'context'])
+    const OD_SLASH_ALLOW = new Set(['ask', 'board', 'report', 'datasets', 'model', 'context'])
 
     function pinSlashMenu(ctx) {
       const ui = ctx.commandUi
@@ -1040,6 +1326,11 @@ window.__ModuleLoader__.load({
         ':root{--dsw-alias-bg-base:#ffffff;--dsw-alias-state-business-primary:#4d6bfe;--dsw-alias-label-primary:#1f2329;--dsw-alias-label-tertiary:#8b8f97;--dsw-alias-border-l2:#eceef2}',
         '.wSkVaW_root{background:#ffffff!important}',
         '.wSkVaW_header{border-bottom-color:transparent!important;padding:4px 16px 0!important;display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:flex-end!important;justify-content:center!important;gap:28px!important}',
+        /* P014: blank/hero hides the whole header — keep utilities visible top-right. */
+        '.wSkVaW_headerHidden{display:flex!important;position:absolute!important;top:0!important;right:0!important;left:0!important;z-index:30!important;pointer-events:none!important;border:none!important;padding:8px 16px 0!important;background:transparent!important;min-height:0!important;align-items:flex-start!important;justify-content:flex-end!important}',
+        '.wSkVaW_headerHidden:after{display:none!important}',
+        '.wSkVaW_headerHidden .wSkVaW_titleRow,.wSkVaW_headerHidden .wSkVaW_tabs{display:none!important}',
+        '.wSkVaW_headerHidden .wSkVaW_headerUtilities{pointer-events:auto!important;margin-left:auto!important}',
         '.wSkVaW_titleRow{min-height:28px!important;width:auto!important;flex:none!important;order:2}',
         '.wSkVaW_titleCluster{display:none!important}',
         '.wSkVaW_tabs{order:1;margin-top:0!important;padding-left:0!important;gap:20px!important;flex:none!important}',
@@ -1050,7 +1341,8 @@ window.__ModuleLoader__.load({
         '.wSkVaW_tabActive:after{background:#4d6bfe!important}',
         /* Soft blue glow behind hero composer (DeepSeek landing) */
         '.wSkVaW_heroGlow{opacity:.85!important;filter:saturate(1.05)}',
-        '.wSkVaW_composerHero{padding-bottom:48px!important}',
+        '.wSkVaW_composerHero{padding-bottom:48px!important;display:flex!important;flex-direction:column!important}',
+        '.wSkVaW_composerHero [data-od-recent]{order:10}',
       ].join('')
       let tag = document.getElementById(STYLE_ID)
       if (!tag) {
@@ -1157,11 +1449,94 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /**
+     * Bind iframe to OD tenant workspace.
+     * Refresh must restore the last/active session — never force a blank landing
+     * unless the user had explicitly started a new chat (or there is nothing to resume).
+     */
+    function pinOdWorkspaceBind(ctx) {
+      let boundKey = ''
+      let settled = false
+      const tryBind = () => {
+        fetch('/od/bridge', { credentials: 'same-origin' })
+          .then((r) => r.json())
+          .then((data) => {
+            const bridge = data?.bridge || {}
+            const id = bridge.dshWorkspaceId ? String(bridge.dshWorkspaceId) : ''
+            if (!id) return
+            SessionChromeAction._dshWorkspaceId = id
+            SessionChromeAction._odTenantKey = `${bridge.workspaceId || ''}:${bridge.userId || ''}`
+            const snap = ctx.workspaces?.list?.getSnapshot?.()
+            const ready = snap?.baselinesReady && snap?.items?.some((item) => item.workspaceId === id)
+            if (!ready) return
+            const key = `${SessionChromeAction._odTenantKey}:${id}`
+            if (key !== boundKey) {
+              boundKey = key
+              settled = false
+            }
+            if (settled) return
+
+            const sessions = ctx.sessions?.list?.getSnapshot?.()
+            if (!sessions || sessions.phase !== 'ready') return
+
+            const resumeId = pickResumeSessionId(ctx, id)
+            const current = sessions.current
+
+            if (resumeId) {
+              if (current !== resumeId) {
+                try {
+                  ctx.sessions.open(resumeId)
+                } catch (e) {
+                  console.warn('od resume session failed', e)
+                }
+                return
+              }
+              rememberOdLastSession(resumeId)
+              settled = true
+              return
+            }
+
+            // Nothing to resume: land on blank only if we are not already on this workspace.
+            const cur = current ? sessions.byId?.[current] : null
+            const onOdWs = Boolean(cur && snap.items.some((item) => (
+              item.workspaceId === id && item.sessionIds?.includes(current)
+            )))
+            if (!onOdWs) {
+              try {
+                ctx.workspaces.startSession(id)
+              } catch (e) {
+                console.warn('od workspace bind failed', e)
+                return
+              }
+            }
+            settled = true
+          })
+          .catch(() => { /* bridge may not be ready */ })
+      }
+      tryBind()
+      const timer = setInterval(tryBind, 800)
+      window.addEventListener('beforeunload', () => clearInterval(timer), { once: true })
+    }
+
+    /** Shell → iframe: open a dsh session without remounting the frame. */
+    function pinShellOpenSession(ctx) {
+      window.addEventListener('message', (event) => {
+        const data = event.data
+        if (!data || data.source !== 'opendashboard-shell') return
+        if (data.type !== 'od-open-session') return
+        const id = String(data.sessionId || '').trim()
+        if (!id) return
+        openOdSession(ctx, id)
+      })
+    }
+
     function apply(ctx) {
       pinEmbedChrome()
       pinOdLandingCopy()
       pinSlashMenu(ctx)
       pinSessionBridge(ctx)
+      pinOdWorkspaceBind(ctx)
+      pinShellOpenSession(ctx)
       pinProductChatSurface(ctx)
       SessionChromeAction._ctx = ctx
       ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({
@@ -1173,9 +1548,16 @@ window.__ModuleLoader__.load({
         order: 10,
         label: '会话',
       }, SessionChromeAction))
+      ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+        name: 'conversation.input.dock',
+        id: 'od-recent-conversations',
+        order: 20,
+        label: '最近对话',
+      }, OdRecentConversations))
       ctx.conversationEvents.register(answerTableDefinition)
       ctx.conversationEvents.register(answerChartDefinition)
       ctx.conversationEvents.register(boardPreviewDefinition)
+      ctx.conversationEvents.register(reportPreviewDefinition)
       ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
         name: 'conversation.chat.node',
         key: 'od-answer-table',
@@ -1188,11 +1570,16 @@ window.__ModuleLoader__.load({
         name: 'conversation.chat.node',
         key: 'od-board-preview',
       }, BoardPreviewView))
+      ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+        name: 'conversation.chat.node',
+        key: 'od-report-preview',
+      }, ReportPreviewView))
     }
 
     exports.AnswerTableView = AnswerTableView
     exports.AnswerChartView = AnswerChartView
     exports.BoardPreviewView = BoardPreviewView
+    exports.ReportPreviewView = ReportPreviewView
     exports.apply = apply
     exports.inject = inject
     return module.exports

@@ -14,6 +14,8 @@
 
 | Pxxx | 状态 | Gates（高保 / 代码 / 验收） | 里程碑 | 开发先看 |
 |------|------|----------------------------|--------|----------|
+| [P016](./P016-conversation-analysis-report/) 对话分析报告 | in-progress | wip / wip / partial | v0.6 | [README](./P016-conversation-analysis-report/README.md#开发入口) · [设计](./P016-conversation-analysis-report/design.md) |
+| [P015](./P015-board-task-realize/) 对话式仪表盘规划、生成与质量闭环 | in-progress | none / wip / none | v0.6 | [README](./P015-board-task-realize/README.md#开发入口) · [端到端设计](./P015-board-task-realize/design.md) · [质量发布门](./P015-board-task-realize/quality-evaluation.md) · [`t_pay_order` 反例](./P015-board-task-realize/t-pay-order-case-study.md) |
 | [P004](./P004-conversation/) 对话分析 | in-progress | wip / wip / blocked | v0.5 | [README](./P004-conversation/README.md#开发入口) · [4A 生成](../design/architecture.html#gen)（表面已由 P011 承接） |
 | [P006](./P006-ask-data/) 对话问数 | in-progress | wip / wip / blocked | v0.5 | [README](./P006-ask-data/README.md#开发入口) · [4A 问数](../design/architecture.html#ask)（表面已由 P011 承接） |
 | [P007](./P007-app-shell/) 产品壳与工作台 | in-progress | accepted / wip / blocked | v0.5 | [README 开发入口](./P007-app-shell/README.md#开发入口) |
@@ -26,6 +28,7 @@
 
 | Pxxx | 状态 | 里程碑 | 说明 |
 |------|------|--------|------|
+| [P014](./P014-conversation-history/) 对话历史 | in-progress | v0.6 | `/conversations` 新对话/历史 + 按 userId+workspaceId 索引 dsh session |
 | [P005](./P005-insight-report/) 洞察报告 | draft | v0.6 | 未接受，不要实现 |
 
 ### 已完成（`done`）
@@ -38,7 +41,7 @@
 | [P002](./P002-vue-java-scaffold/) Vue + Java 脚手架 | v0.3 | [4A](../design/architecture.html) · [OpenAPI](../design/openapi.yaml) | NFR-05 |
 | [P003](./P003-report-umo-charts/) 在线报告 | v0.4 | [BA](../design/architecture.html#business) · [AA](../design/architecture.html#application) | PR-RPT-01…07 |
 
-下一号：`P014`。
+下一号：`P017`。
 
 > `docs/design/` 只保留 `architecture.html` 与 `openapi.yaml`。提案详细设计不得复制回 `design/`。
 

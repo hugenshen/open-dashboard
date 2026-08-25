@@ -2,6 +2,28 @@
 
 正在做或已承诺推进（Now）。只做本页写了「当前做到哪」的条目。细节与验收在提案。
 
+## P016 对话分析报告
+
+| | |
+|--|--|
+| 给谁 | 分析师：在对话里要一份归因/解读报告文件，而不是问数卡或可刷新看板 |
+| 要解决什么 | 「写分析报告」被误当成出板；JoyAgent 式右侧 HTML/MD 预览在 OD 里没有第三轨 |
+| 范围 | **做** `/report`、分析 worker（get_data → data_trans → insight → save_insight → commit_report）、右侧 HTML/MD 快照预览、聚合上限 200 行/15s。**不做** Dashboard draft、P005 Umo 看板解读、JoyAgent 10k/90s、细工具给 Lead、第二 spawn 槽 |
+| 里程碑 | v0.6 |
+| 当前做到哪 | harness 分析工具链 + `/report` + 右侧 HTML/MD 文件栏已编码；单测/eval PR-ANR-01/03/04/05/06/07 pass（od-eval 22/22）；**手验** PR-ANR-02（右侧预览）仍待 |
+| 提案 | [P016](../../../proposals/P016-conversation-analysis-report/) |
+
+## P015 对话式仪表盘规划、生成与质量闭环
+
+| | |
+|--|--|
+| 给谁 | 分析师：从一句业务问题得到可解释、可修改、可发布的仪表盘，而不是一张“生成成功但不敢用”的板 |
+| 要解决什么 | 问题路由、数据集选择、业务规划、真实验真、图表选择和结果披露没有形成闭环，也缺少 baseline 证明新版质量提升 |
+| 范围 | **做**ask/gen/改图/重做路由、授权数据集置信度选择、AnalysisBrief、规划确认、单 worker 逐任务真查与受控修复、结果摘要、固定基准与发布门。**不做**细工具给 Lead、每图一个 agent、持久化结果行、预览态变换直接提交 |
+| 里程碑 | v0.6 |
+| 当前做到哪 | worker 主路径已手验（dashboard 11）；`pnpm eval` 20 条确定性金标；`od_compose_board` / Java compose-board 已 fail-closed。`t_pay_order` 画像 0 行时仍缺 semanticReady 闸。问题路由、确认/结果交互、KPI 真查和 48 例盲评仍待实现 |
+| 提案 | [P015](../../../proposals/P015-board-task-realize/) |
+
 ## P007 产品壳与工作台
 
 | | |
@@ -21,7 +43,7 @@
 | 要解决什么 | 「帮我做一张销售看板」无法落到可发布的 draft，只能停在聊天里 |
 | 范围 | **做**对话工作区、SSE 生成、Patch 写入 draft、回滚。**不做**问数结果卡交互（[P006](../../../proposals/P006-ask-data/)）、可问权限（P008）、告警推送 |
 | 里程碑 | v0.5 |
-| 当前做到哪 | 高保 / 代码均 wip；验收 **PR-CONV-01…08** |
+| 当前做到哪 | 高保 / 代码均 wip；验收 **PR-CONV-01…08**。对话改图 **PR-CONV-13**。专业出板规划 **PR-CONV-14** |
 | 提案 | [P004](../../../proposals/P004-conversation/) |
 
 ## P006 对话问数
@@ -67,6 +89,17 @@
 | 里程碑 | v0.6 |
 | 当前做到哪 | Harness H1/H3 骨架编码；Harness 文件会话、知识和用户记忆按 `X-Workspace-Id` 过滤；Java public API 已补 `/api/workspaces`、工作区/用户组/角色/成员/数据广场/申请消费；Vue 已接显式登录、退出、用户使用端/管理端菜单、工作区切换、数据广场和成员权限页 |
 | 提案 | [P009](../../../proposals/P009-workspace-governance/) |
+
+## P014 对话页历史会话
+
+| | |
+|--|--|
+| 给谁 | 分析师：要回看自己问过的数、打开过的出板对话，而不是每次从空白落地页重来 |
+| 要解决什么 | `/conversations` 看不到、打不开历史；会话跟本机目录走，一换启动方式列表就空 |
+| 范围 | **做**画布右上角「新对话 / 历史」、落地「最近对话」、按 `userId+workspaceId` 列 dsh 会话并打开回放。**不做**恢复 Vue 对话壳、打开 dsh 左栏树、跨工作区翻别人的会话 |
+| 里程碑 | v0.6 |
+| 当前做到哪 | 高保 wip；代码 wip：`/od/sessions` + tenants 分区 + 落地页常驻 chrome |
+| 提案 | [P014](../../../proposals/P014-conversation-history/) |
 
 ## P013 仪表盘页面模板、阅读态主题与多端即默认
 

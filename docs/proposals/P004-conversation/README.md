@@ -21,7 +21,7 @@ gates:
   acceptance: in-progress
 architecture: docs/design/architecture.html
 contract: docs/design/openapi.yaml
-implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backend/, opendashboard-harness/]
+implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backend/, opendashboard-dsh-harness/]
 ---
 
 # P004 · 对话分析（内测一期）
@@ -45,18 +45,18 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | Harness 质量评测（指标 / 案例 / 分层） | [harness-evaluation.md](./harness-evaluation.md) |
 | 数据集自学习 / 运行时语义增强（P004 POC，记忆与知识库产品化归 P010） | [memory-knowledge-design.md](./memory-knowledge-design.md) |
 | 原型 | 当前增量 [`conversation-workspace.html`](../../prototypes/hi-fi/conversation-workspace.html)；**尚未冻结快照** |
-| 代码落点 | `open-dashboard-frontend/src/conversation/` · `opendashboard-harness/` · Java `/api/internal/bi/*` |
+| 代码落点 | `open-dashboard-frontend/src/conversation/` · `opendashboard-dsh-harness/` · Java `/api/internal/bi/*` |
 | 不要做 | 问数结果卡双按钮（归 P006）；权限消费面（归 P008）；记忆/知识库（归 P010）；SQLBot 出现在非编辑器页（归 P007） |
-| 当前范围 | [路线图 · 进行中](../../product/roadmap/in-progress/)：PR-CONV-01…08 |
+| 当前范围 | [路线图 · 进行中](../../product/roadmap/in-progress/)：PR-CONV-01…08；对话改图 **PR-CONV-13**；专业出板规划 **PR-CONV-14**。出板「先任务后取数再选图」见 [P015](../P015-board-task-realize/) |
 
 ## 波及
 
 | 列 | 内容 |
 |----|------|
 | 依赖 | 已交付仪表盘 draft / chartQuery；问数默认轨配合 [P006](../P006-ask-data/) |
-| 改动面 | FE `src/conversation/` · `opendashboard-harness/` · Java `/api/internal/bi/*` · OpenAPI |
+| 改动面 | FE `src/conversation/` · `opendashboard-dsh-harness/` · Java `/api/internal/bi/*` · OpenAPI |
 | 不改 | 问数结果卡交互（P006）；工作台「我的资源」（P008）；产品壳收缩规则（P007） |
-| 回归 | PR-CONV-01…08；P006 的 PR-ASK-02 / 05；P007 的 PR-SH-08（SQLBot 范围） |
+| 回归 | PR-CONV-01…08、PR-CONV-13、PR-CONV-14；P006 的 PR-ASK-02 / 05；P007 的 PR-SH-08（SQLBot 范围） |
 
 ## 范围
 
@@ -70,7 +70,8 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 
 - 监控告警、定时推送、多模型 Skills/MCP（见 roadmap 二期）
 - 替代仪表盘作为运行时真相
-- 洞察报告（→ [P005](../P005-insight-report/README.md)，v0.6）
+- 对话分析报告（会话快照 HTML/MD，右侧文件预览；→ [P016](../P016-conversation-analysis-report/README.md)）
+- 看板解读进 Umo（live 图引用，禁止内嵌结果行；→ [P005](../P005-insight-report/README.md)，v0.6，未接受不要实现）
 - 跨会话用户记忆、术语/SQL 示例知识库（→ [P010](../P010-user-memory-ask-knowledge/)）
 - 可问集合产品化与工作台 ACL 消费面（→ [P008](../P008-permission-aware-workbench/)；Harness 身份贯穿由 P008 承担）
 
@@ -116,6 +117,8 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | PR-CONV-06 | Vue 直连 Python Harness |
 | PR-CONV-07 | Harness 只经内部 Token 调 Java BI |
 | PR-CONV-08 | 可问数据集 = conversation:use ∩ dataset:use |
+| PR-CONV-13 | 对话改图：同一草稿原地更新（merge） |
+| PR-CONV-14 | 专业出板规划：驾驶舱 IA（至多 1 饼、KPI 分行、排行 hbar） |
 
 评测 runner（工程，非正式产品验收 ID）：`opendashboard-harness/eval/runner.py`（L1 每次提交；L2 mock BI）。
 
@@ -127,7 +130,7 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 - 设计：[design.md](./design.md) · [dashboard-generation-design.md](./dashboard-generation-design.md) · [harness-design.md](./harness-design.md) · [multi-turn-design.md](./multi-turn-design.md) · [harness-comparison.md](./harness-comparison.md) · [harness-evaluation.md](./harness-evaluation.md)
 - 原型：`docs/prototypes/hi-fi/conversation-workspace.html`
 - 权限与可问数据：[P008](../P008-permission-aware-workbench/)
-- Roadmap：v0.5 / P1；洞察报告 → v0.6 / P005
+- Roadmap：v0.5 / P1；对话分析报告 → v0.6 / P016；看板解读进 Umo → v0.6 / P005（未接受）
 
 ## 修订记录
 
@@ -149,4 +152,7 @@ implementation: [open-dashboard-frontend/src/conversation/, open-dashboard-backe
 | 2026-08-19 | 收口 [memory-knowledge-design.md](./memory-knowledge-design.md)：P004 只承接数据集自学习、confirmed 语义消费、字段解释与 emit 探活；跨会话记忆、知识库管理面与长期治理归 [P010](../P010-user-memory-ask-knowledge/)，工作区隔离归 [P009](../P009-workspace-governance/) |
 | 2026-08-22 | 出板质检现行方案改由 [P012](../P012-ask-gen-quality/) 承接：`od_generate_board` 内置 review，不再实现可跳过的 `od_review_charts` 工具或 live probe。生成设计文首已标注冲突 |
 | 2026-08-22 | Java last-resort 去业务词典：`FieldSemantics` / `DeterministicPlanner` / `IntentResolver` 只认 schema 角色与字段名/label 重叠；`ConversationHarness` 不再跑本地规划。见 P012 |
+| 2026-08-24 | 对照 refs/JoyAgent 选图 + P013 驾驶舱稿面：规划提示改为 KPI 分行 / 至多 1 饼 / 排行 hbar；layout 对比图 2→4。验收 PR-CONV-14 |
+| 2026-08-24 | 对话改图落地 dsh：`od_rechart_chart` → apply-patch `merge`，同一 dashboardId / 原 chartId；整页重做仍 generate 但必须带已链接 id。验收 ID PR-CONV-13。加图/删图仍按 multi-turn 后续 |
+| 2026-08-25 | 边界修订：P004 保留同一 draft 的 rechart 不变量；首次生成与整页重做的路由、选表、brief、规划、worker 验真和结果质量由 [P015](../P015-board-task-realize/) 演进，`multi-turn-design` 的“默认生成逻辑不动”不再约束 P015 |
 | 2026-08-20 | 落地 PR-CONV-01/06/07/08：Java public runs 410；internal BI 无/错 Token 401；Harness run 缺 conversation:use 403；可问集合走 GET /api/dataset/askable。e2e-auth-ask.sh pass |

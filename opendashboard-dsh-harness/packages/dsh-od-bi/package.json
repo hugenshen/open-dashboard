@@ -12,6 +12,9 @@
     "./ask-enrich": "./src/ask-enrich.js",
     "./knowledge-merge": "./src/knowledge-merge.js",
     "./goal-planner": "./src/goal-planner.js",
+    "./realize-task": "./src/realize-task.js",
+    "./board-worker": "./src/board-worker.js",
+    "./analysis-worker": "./src/analysis-worker.js",
     "./quality-cases": "./src/quality-cases.js",
     "./package.json": "./package.json"
   },

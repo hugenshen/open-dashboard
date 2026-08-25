@@ -11,6 +11,9 @@ import {
   planBoardFromGoalPlan,
   llmGoalsToBindInput,
   resolvePlanApiKey,
+  planBoardAnalysis,
+  shapeCockpitGoals,
+  GOAL_PLAN_SYSTEM,
 } from './goal-planner.js'
 import { MERCHANT_ORDER_FIELDS } from './quality-cases.js'
 
@@ -143,10 +146,10 @@ describe('PR-QG-12 fixture Goal path', () => {
       planned.charts.some((c) => c.type === 'bar' && c.encode?.value === 'FeeRate'),
       false,
     )
-    // either kpi_ratio or rules-fallback charts without FeeRate bar
-    if (planned.source === 'fixture') {
-      assert.ok(planned.charts.some((c) => c.type === 'kpi' && c.encode?.value === 'FeeRate' && c.encode?.agg === 'avg'))
-    }
+    // bind rescue → kpi_ratio; never rules-fallback
+    assert.equal(planned.ok, true)
+    assert.equal(planned.source, 'fixture')
+    assert.ok(planned.charts.some((c) => c.type === 'kpi' && c.encode?.value === 'FeeRate' && c.encode?.agg === 'avg'))
   })
 
   it('llmGoalsToBindInput maps dim/measure', () => {
@@ -170,7 +173,7 @@ describe('PR-QG-12 fixture Goal path', () => {
     assert.equal(planned.ok, false)
     assert.equal(planned.source, 'goals-rejected')
     assert.equal(planned.charts.length, 0)
-    assert.match(String(planned.note || planned.error), /未回退|rejected/i)
+    assert.match(String(planned.note || planned.error), /无法绑定|未回退|rejected/i)
   })
 
   it('ChannelType label binds without falling back to MchType', () => {
@@ -192,6 +195,79 @@ describe('PR-QG-12 fixture Goal path', () => {
     const bar = planned.charts.find((c) => c.type === 'bar')
     assert.equal(bar?.encode?.category, 'ChannelType')
     assert.equal(bar?.encode?.value, 'Amount')
+  })
+})
+
+describe('planBoardAnalysis live path (no rules fallback)', () => {
+  it('LLM HTTP fail → ok:false, not rules-fallback', async () => {
+    const planned = await planBoardAnalysis({
+      datasetId: 'ds_orders',
+      fields: S1_FIELDS,
+      message: '生成仪表盘',
+      apiKey: 'sk-test',
+      fetch: async () => ({
+        ok: false,
+        status: 401,
+        text: async () => 'unauthorized',
+      }),
+    })
+    assert.equal(planned.ok, false)
+    assert.equal(planned.source, 'llm-unavailable')
+    assert.equal(planned.charts.length, 0)
+    assert.match(String(planned.note), /未使用规则模板/)
+  })
+
+  it('LLM goals pass bind + reviewCharts', async () => {
+    const planned = await planBoardAnalysis({
+      datasetId: 'ds_orders',
+      fields: S1_FIELDS,
+      message: '按支付状态看入账',
+      apiKey: 'sk-test',
+      fetch: async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify(S1_GOAL_PLAN) } }],
+        }),
+      }),
+    })
+    assert.equal(planned.ok, true)
+    assert.equal(planned.source, 'llm')
+    assert.ok(planned.charts.length >= 3)
+    assert.equal(planned.quality?.reviewedCount, planned.charts.length)
+    assert.equal(
+      planned.charts.some((c) => c.type === 'bar' && c.encode?.value === 'FeeRate'),
+      false,
+    )
+  })
+
+  it('LLM junk-only goals → quality-rejected', async () => {
+    const planned = await planBoardAnalysis({
+      datasetId: 'ds_orders',
+      fields: S1_FIELDS,
+      message: '生成仪表盘',
+      apiKey: 'sk-test',
+      fetch: async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                mode: 'goals',
+                goals: [{
+                  question: '假维',
+                  intent: 'compose',
+                  dim: 'TotallyFakeDim',
+                  chartType: 'pie',
+                }],
+              }),
+            },
+          }],
+        }),
+      }),
+    })
+    assert.equal(planned.ok, false)
+    assert.equal(planned.source, 'quality-rejected')
+    assert.equal(planned.charts.length, 0)
   })
 })
 
@@ -223,5 +299,52 @@ describe('resolvePlanApiKey / callGoalPlanLlm harness credentials', () => {
     })
     assert.equal(auth, 'Bearer sk-from-dsh')
     assert.equal(r.ok, true)
+  })
+})
+
+describe('cockpit goal shaping', () => {
+  it('system prompt plans tasks without locking chart type', () => {
+    assert.match(GOAL_PLAN_SYSTEM, /经营驾驶舱/)
+    assert.match(GOAL_PLAN_SYSTEM, /不要在规划阶段锁死图种/)
+    assert.match(GOAL_PLAN_SYSTEM, /禁止第二条构成/)
+    assert.match(GOAL_PLAN_SYSTEM, /不要输出 chartType/)
+  })
+
+  it('second pie becomes a bar; rank dim pie becomes hbar', () => {
+    const shaped = shapeCockpitGoals([
+      { intent: 'compose', chartType: 'pie', dim: 'Status', question: '状态占比' },
+      { intent: 'compose', chartType: 'pie', dim: 'ChannelType', question: '渠道占比' },
+      { intent: 'compose', chartType: 'pie', dim: 'StoreName', question: '门店占比' },
+    ], {
+      composeDims: [{ field: 'Status' }, { field: 'ChannelType' }],
+      rankDims: [{ field: 'StoreName' }],
+    })
+    assert.equal(shaped[0].chartType, 'pie')
+    assert.equal(shaped[1].chartType, 'bar')
+    assert.equal(shaped[1].intent, 'compare')
+    assert.equal(shaped[2].chartType, 'hbar')
+    assert.equal(shaped[2].intent, 'rank')
+  })
+
+  it('two-pie fixture still generates and does not keep two pies', () => {
+    const planned = planBoardFromGoalPlan({
+      datasetId: 'ds_orders',
+      fields: S1_FIELDS,
+      message: '帮我生成专业的仪表盘',
+      goalPlan: {
+        mode: 'goals',
+        goals: [
+          { question: '订单量', intent: 'kpi_count', dim: 'Status', chartType: 'kpi' },
+          { question: '入账合计', intent: 'kpi_sum', measure: 'MchIncome', agg: 'sum', chartType: 'kpi' },
+          { question: '状态占比', intent: 'compose', dim: 'Status', chartType: 'pie' },
+          { question: '渠道占比', intent: 'compose', dim: 'ChannelType', chartType: 'pie' },
+          { question: '状态入账对比', intent: 'compare', dim: 'Status', measure: 'MchIncome', agg: 'sum', chartType: 'bar' },
+        ],
+      },
+    })
+    assert.equal(planned.ok, true)
+    assert.equal(planned.charts.filter((c) => c.type === 'pie').length, 1)
+    assert.ok(planned.charts.some((c) => c.type === 'bar'))
+    assert.ok(planned.charts.filter((c) => c.type === 'kpi').length >= 2)
   })
 })

@@ -1,0 +1,14 @@
+{
+  "id": "BOARD-BIND-JUNK-ID-01",
+  "track": "board",
+  "stage": "bind",
+  "pr": "PR-REAL-18",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields-untyped.json" },
+  "input": { "message": "专业经营仪表盘" },
+  "expect": {
+    "minCharts": 3,
+    "forbidEncodeValues": ["PayOrderId", "MchId"],
+    "barValueIn": ["Amount", "MchIncome"],
+    "forbidRatioSum": true
+  }
+}

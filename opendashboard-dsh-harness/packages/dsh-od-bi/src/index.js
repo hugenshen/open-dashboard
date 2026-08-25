@@ -13,11 +13,17 @@ import {
   slimQuestions,
   slimTerms,
 } from './ask-enrich.js'
-import { registerOdCommands } from './commands.js'
+import { getBridge, patchBridge } from '@opendashboard/dsh-od-auth/bridge-state'
+import { planRechart } from './rechart.js'
 import {
   layoutBoardPatch,
+  parseValueMapFromLabel,
+  reviewCharts,
 } from './gen-board.js'
 import { planBoardAnalysis, planBoardFromGoalPlan } from './goal-planner.js'
+import { registerAnalysisWorkerTools } from './analysis-worker.js'
+import { registerBoardWorkerTools } from './board-worker.js'
+import { realizeBoundCharts } from './realize-task.js'
 import { biFetch, PREVIEW_ROW_LIMIT, toLosslessJson } from './http.js'
 import {
   coerceEncodeAgg,
@@ -25,6 +31,7 @@ import {
 } from './knowledge-merge.js'
 import { sampleWarningForLlm, withSampleMeta } from './sample-meta.js'
 import { assertAllowedTables } from './sql-guard.js'
+import { registerOdCommands } from './commands.js'
 
 function countChartsInPatch(patch) {
   const ops = patch?.ops
@@ -51,6 +58,7 @@ async function applyDashboardPatch({ title, mode, patch, dashboardId, signal }) 
       preview: false,
     }, signal)
     const id = applied?.dashboardId || dash
+    if (id) patchBridge({ dashboardId: String(id) })
     const appliedIds = Array.isArray(applied?.chartIds) ? applied.chartIds : null
     const appliedCount = appliedIds
       ? appliedIds.length
@@ -87,7 +95,15 @@ async function loadSchemaAndProfile(datasetId, signal) {
       undefined,
       signal,
     )
-    out.fields = Array.isArray(schema?.fields) ? schema.fields : []
+    out.fields = Array.isArray(schema?.fields) ? schema.fields.map((f) => {
+      if (!f || typeof f !== 'object') return f
+      const next = { ...f }
+      if (!next.valueMap) {
+        const vm = parseValueMapFromLabel(next.label)
+        if (vm) next.valueMap = vm
+      }
+      return next
+    }) : []
     out.name = schema?.name || ''
   } catch (err) {
     out.error = `schema failed: ${String(err?.message || err)}`
@@ -178,9 +194,10 @@ function attachAskFieldCfg(encode, fields) {
     const entry = { ...(cfg[key] || {}) }
     const alias = f.alias || f.label
     if (alias && alias !== key) entry.alias = String(alias)
-    if (f.valueMap && typeof f.valueMap === 'object' && !Array.isArray(f.valueMap)) {
-      entry.valueMap = { ...f.valueMap }
-    }
+    const vm = (f.valueMap && typeof f.valueMap === 'object' && !Array.isArray(f.valueMap))
+      ? f.valueMap
+      : parseValueMapFromLabel(f.label)
+    if (vm) entry.valueMap = { ...vm }
     if (Object.keys(entry).length) cfg[key] = entry
   }
   if (Object.keys(cfg).length) enc.fieldCfg = cfg
@@ -190,10 +207,14 @@ function attachAskFieldCfg(encode, fields) {
 export const name = 'od-bi'
 export const inject = ['tools', 'commands']
 
+function rememberedDashboardId(explicit) {
+  const b = getBridge()
+  return String(explicit || b.dashboardId || b.linkedDashboardId || '').trim()
+}
+
+/** Same key the conversation LLM uses (Models page / credentials service). */
 function harnessCredentials(ctx) {
-  if (!ctx) return undefined
-  if (typeof ctx.get === 'function') return ctx.get('credentials')
-  return ctx.credentials
+  return ctx?.get?.('credentials')
 }
 
 function fieldLabels(fields) {
@@ -255,6 +276,8 @@ function askResultTextForLlm(value, prefix = 'query') {
  */
 export function apply(ctx) {
   registerOdCommands(ctx)
+  registerBoardWorkerTools(ctx, { applyDashboardPatch, rememberedDashboardId })
+  registerAnalysisWorkerTools(ctx)
   ctx.tools.register(defineTool({
     name: 'od_list_datasets',
     description:
@@ -616,7 +639,7 @@ export function apply(ctx) {
     description:
       'SQLBot Ask-3: execute a SELECT generated from M-Schema. '
       + 'Only SELECT/WITH against the current dataset physical table. '
-      + 'Do NOT use this to generate a dashboard (use od_generate_board). '
+      + 'Do NOT use this to generate a dashboard (use od_board_worker). '
       + 'Do NOT GROUP BY a fact table without a tight WHERE — LIMIT on the outer query still full-scans and will time out. '
       + 'Prefer od_run_query for aggregations (server samples large tables). '
       + 'Prefer after od_get_schema. '
@@ -841,8 +864,8 @@ export function apply(ctx) {
   ctx.tools.register(defineTool({
     name: 'od_profile_dataset',
     description:
-      'Optional field stats for ask-data. Do NOT use on /board — od_generate_board already loads stats profile (no live GROUP BY). '
-      + 'Prefer od_generate_board for creating a dashboard. Do not call od_run_query / od_run_sql on the board path.',
+      'Optional field stats for ask-data. Do NOT use on /board — od_plan_charts already loads stats profile (no live GROUP BY). '
+      + 'Prefer od_board_worker for creating a dashboard. Do not call od_run_query / od_run_sql on the board path.',
     parameters: {
       datasetId: { type: 'string', required: true },
     },
@@ -943,10 +966,13 @@ export function apply(ctx) {
   ctx.tools.register(defineTool({
     name: 'od_plan_charts',
     description:
-      'Plan dashboard analysis goals (CapabilityCard → LLM Goal → bind gate). '
-      + 'Shows question list and ALWAYS ends the turn — do NOT call od_generate_board '
-      + 'in the same turn. If needClarify, only ask the user. '
-      + 'After the user replies 确认/生成, call od_generate_board once (same message; pass goals[]). '
+      'Plan dashboard analysis tasks from schema/profile (CapabilityCard → LLM tasks → bind + review). '
+      + 'Each task is a business question + dim/measure — do NOT lock chartType here. '
+      + 'Live path NEVER uses rule enumerateGoals. If LLM is unavailable or all tasks fail the quality gate, '
+      + 'return error — do not invent charts. Shows question list and ALWAYS ends the turn — do NOT call '
+      + 'od_board_worker or od_generate_board in the same turn. If needClarify, only ask the user. '
+      + 'After the user replies 确认/生成, call od_board_worker once (prompt must include datasetId, title, '
+      + 'goalsForConfirm JSON, linked dashboardId). Last-resort only: od_generate_board. '
       + 'Pass datasetId + message. No od_run_query/od_run_sql. Do not invent a patch.',
     parameters: {
       datasetId: { type: 'string', required: true },
@@ -977,23 +1003,32 @@ export function apply(ctx) {
       },
       render: (_args, value) => {
         if (!value.ok) {
-          return [{ type: 'text', text: `plan failed: ${value.error || 'unknown'}` }]
+          return [{ type: 'text', text: `plan failed: ${value.note || value.error || 'unknown'}` }]
         }
         if (value.needClarify) {
           return [{
             type: 'text',
-            text: `需要澄清后再规划：${value.clarifyQuestion || '请补充指标或维度'}\n（本轮不要调用 od_generate_board）`,
+            text: `需要澄清后再规划：${value.clarifyQuestion || '请补充指标或维度'}\n（本轮不要调用 od_board_worker / od_generate_board）`,
           }]
         }
         const charts = Array.isArray(value.charts) ? value.charts : []
+        const SLOT_ZH = {
+          kpi_count: '全景', kpi_sum: '全景', kpi_ratio: '全景', kpi: '全景',
+          trend: '趋势', compare: '结构', rank: '排行', compose: '构成', table: '明细',
+        }
         const lines = charts.map((c, i) => {
-          const type = c?.type || '?'
           const q = c?.question || c?.title || ''
-          return `${i + 1}. ${q}（${type}）`
+          const slot = SLOT_ZH[c?.intent] || ''
+          const why = c?.rationale ? ` — ${c.rationale}` : ''
+          return `${i + 1}. ${slot ? `【${slot}】` : ''}${q}（图种待取数后定）${why}`
         })
         const queryItems = value.query?.items
         const queryLine = Array.isArray(queryItems) && queryItems.length
           ? `\n查询条：${queryItems.map((q) => q.label || q.field).join('、')}`
+          : ''
+        const q = value.quality
+        const qualityLine = q
+          ? `\n质量闸：LLM ${q.llmGoalCount || 0} → bind ${q.boundCount || 0} → review ${q.reviewedCount || 0}`
           : ''
         const note = value.note ? `\n${value.note}` : ''
         const src = value.source ? ` · ${value.source}` : ''
@@ -1002,18 +1037,18 @@ export function apply(ctx) {
           : charts).map((g) => ({
           intent: g.intent || undefined,
           question: g.question || g.title || '',
-          chartType: g.type || g.chartType || 'bar',
           dim: g.encode?.category || g.dim || undefined,
           measure: g.encode?.value || g.measure || undefined,
           agg: g.encode?.agg || g.agg || undefined,
+          slot: g.slot || undefined,
         }))
         const goalsBlock = slimGoals.length
-          ? `\ngoalsForConfirm=${JSON.stringify(slimGoals)}\n（确认生成时把上述 goalsForConfirm 原样传入 od_generate_board.goals；用户改目标时先 od_plan_charts(message=改后原话) 再等确认，禁止空 goals 硬生成）`
+          ? `\ngoalsForConfirm=${JSON.stringify(slimGoals)}\n（确认生成时把上述 goalsForConfirm 原样写入 od_board_worker.prompt；用户改目标时先 od_plan_charts(message=改后原话) 再等确认）`
           : ''
         return [{
           type: 'text',
-          text: `分析目标 ${charts.length} 个（待确认${src}）\n${lines.join('\n')}${queryLine}${note}${goalsBlock}`
-            + `\n\n本轮不要调用 od_generate_board。回复「确认」后再生成；或说明要增加/删除/修改的目标。`,
+          text: `经营驾驶舱规划 ${charts.length} 个分析任务（待确认${src}）\n${lines.join('\n')}${queryLine}${qualityLine}${note}${goalsBlock}`
+            + `\n\n本轮不要调用 od_board_worker / od_generate_board。回复「确认」后由 board worker 按任务取数再定图种；要改任务请直接说。`,
         }]
       },
     },
@@ -1060,6 +1095,7 @@ export function apply(ctx) {
           needClarify: false,
           charts: [],
           goals: [],
+          quality: planned.quality || null,
         })
       }
       return toLosslessJson({
@@ -1075,6 +1111,7 @@ export function apply(ctx) {
         source: planned.source,
         note: planned.note || '',
         model: planned.model || null,
+        quality: planned.quality || null,
       })
     },
   }))
@@ -1082,7 +1119,7 @@ export function apply(ctx) {
   ctx.tools.register(defineTool({
     name: 'od_layout_board',
     description:
-      'DEPRECATED for dashboard creation. Prefer od_generate_board (plan+review+layout+apply in one call). '
+      'DEPRECATED for dashboard creation. Prefer od_board_worker. '
       + 'This only turns charts into a DashboardPatch; do not use on /board path.',
     parameters: {
       title: { type: 'string' },
@@ -1132,8 +1169,8 @@ export function apply(ctx) {
   ctx.tools.register(defineTool({
     name: 'od_compose_board',
     description:
-      'LAST-RESORT: Java template plan + apply-patch in one call. Prefer od_generate_board. '
-      + 'Returns dashboardId; the OD shell opens the editor on the right.',
+      'DISABLED. Do not call. Planning failed or missing worker must NOT invent a template board. '
+      + 'Tell the user to retry od_plan_charts / od_board_worker. Never SUM identifier fields.',
     parameters: {
       message: { type: 'string', required: true },
       datasetIds: { type: 'array', required: true },
@@ -1176,40 +1213,188 @@ export function apply(ctx) {
       }
       return { card: 'generic', title: 'compose', content: result.content }
     },
+    async execute() {
+      return toLosslessJson({
+        ok: false,
+        error: 'od_compose_board is disabled. Retry od_plan_charts, then od_board_worker after the user confirms. Do not invent a template board.',
+      })
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'od_get_board_summary',
+    description:
+      'Read charts on the current conversation draft (chartId, title, type, encode). '
+      + 'Required before changing charts. Does not create a dashboard.',
+    parameters: {
+      dashboardId: { type: 'string', description: 'Defaults to the last generated / linked draft' },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => {
+        if (!value.ok) return [{ type: 'text', text: `board summary failed: ${value.error || 'unknown'}` }]
+        const charts = Array.isArray(value.charts) ? value.charts : []
+        const lines = charts.map((c, i) => `${i + 1}. ${c.title || c.chartId}（${c.chartType || '?'} · ${c.chartId}）`)
+        return [{ type: 'text', text: `看板 ${value.dashboardId} · ${charts.length} 图\n${lines.join('\n') || '（空）'}` }]
+      },
+    },
+    presentCall: (args) => ({ card: 'generic', title: `summary · ${args.dashboardId || 'linked'}`, kind: 'search' }),
+    presentResult: (args, result) => ({ card: 'generic', title: 'board summary', content: result.content }),
     async execute(args, exec) {
+      const id = rememberedDashboardId(args.dashboardId)
+      if (!id) return toLosslessJson({ ok: false, error: 'dashboardId required (no linked draft yet)' })
       try {
-        const body = await biFetch('POST', '/api/internal/bi/compose-board', {
-          message: args.message || '',
-          datasetIds: args.datasetIds || [],
-          dashboardId: args.dashboardId,
-          styleId: args.styleId || 'feishu-blue',
-          mode: args.mode || 'replace',
-        }, exec.signal)
-        return toLosslessJson({ ...(body || {}), source: 'java' })
+        const body = await biFetch('GET', `/api/internal/bi/board-summary?dashboardId=${encodeURIComponent(id)}`, undefined, exec.signal)
+        const charts = Array.isArray(body?.charts) ? body.charts : []
+        patchBridge({ dashboardId: id })
+        return toLosslessJson({ ok: true, dashboardId: id, charts, components: body?.components || [], name: body?.name || '' })
       } catch (err) {
-        return toLosslessJson({ ok: false, error: String(err?.message || err), source: 'java-error' })
+        return toLosslessJson({ ok: false, dashboardId: id, error: String(err?.message || err) })
       }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'od_rechart_chart',
+    description:
+      'Update one or more EXISTING charts on the linked draft in place (same chartId, merge patch). '
+      + 'Use after a board exists when the user wants to change type/metric/title of specific charts. '
+      + 'Do NOT call od_generate_board for that (it would wipe or spawn another draft). '
+      + 'Pass dashboardId of the open draft + message. Optional chartIds[]. '
+      + 'LLM plans which charts to change, then bind+reviewCharts. Untouched charts stay. '
+      + 'If the model returns regenerate, tell the user to confirm a full rewrite, then od_board_worker with the SAME dashboardId.',
+    parameters: {
+      dashboardId: { type: 'string', description: 'Existing draft; defaults to last generated' },
+      message: { type: 'string', required: true, description: 'User edit, e.g. 把类型分布改成柱图' },
+      chartIds: { type: 'array', description: 'Optional explicit chartId list' },
+      datasetId: { type: 'string' },
+      changes: { type: 'array', description: 'Optional injected changes for tests' },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => {
+        if (value.needClarify) {
+          return [{ type: 'text', text: `需要澄清：${value.clarifyQuestion || '请指出要改哪张图'}` }]
+        }
+        if (value.regenerate) {
+          return [{ type: 'text', text: '用户要求整页重做：确认后 od_board_worker(同一 dashboardId)，不要新建草稿。' }]
+        }
+        if (!value.ok) return [{ type: 'text', text: `rechart failed: ${value.note || value.error || 'unknown'}` }]
+        const titles = (value.charts || []).map((c) => c.title || c.chartId)
+        return [{ type: 'text', text: `已原地更新 ${value.chartCount} 图（${value.dashboardId}）：${titles.join('、')}` }]
+      },
+      presentationMeta(_args, value) {
+        return boardPresentationMeta(value)
+      },
+    },
+    presentCall: (args) => ({ card: 'generic', title: `rechart · ${args.dashboardId || 'linked'}`, kind: 'write' }),
+    presentResult: (args, result) => {
+      if (result.isError) {
+        return { card: 'generic', title: 'rechart failed', content: result.content }
+      }
+      const meta = result.meta
+      if (meta?.odKind === 'board_ready') {
+        return {
+          card: 'generic',
+          title: `看板已更新 · ${meta.title || args.message || ''}`,
+          kind: 'write',
+          content: [{
+            type: 'text',
+            text: `${meta.chartCount} 图已原地写入同一 draft${meta.editPath ? ` → ${meta.editPath}` : ''}`,
+          }],
+        }
+      }
+      return { card: 'generic', title: 'rechart', content: result.content }
+    },
+    async execute(args, exec) {
+      const id = rememberedDashboardId(args.dashboardId)
+      if (!id) return toLosslessJson({ ok: false, error: 'dashboardId required (generate a board first)' })
+      let summary
+      try {
+        summary = await biFetch('GET', `/api/internal/bi/board-summary?dashboardId=${encodeURIComponent(id)}`, undefined, exec.signal)
+      } catch (err) {
+        return toLosslessJson({ ok: false, dashboardId: id, error: String(err?.message || err) })
+      }
+      const charts = Array.isArray(summary?.charts) ? summary.charts : []
+      if (!charts.length) {
+        return toLosslessJson({ ok: false, dashboardId: id, error: 'draft has no charts' })
+      }
+      const dsIds = [...new Set(charts.map((c) => c.datasetId).filter(Boolean))]
+      if (args.datasetId) dsIds.unshift(String(args.datasetId))
+      const fieldsByDataset = {}
+      let fallbackFields = []
+      for (const ds of dsIds) {
+        const loaded = await loadSchemaAndProfile(ds, exec.signal)
+        fieldsByDataset[ds] = loaded.fields || []
+        if (!fallbackFields.length) fallbackFields = loaded.fields || []
+      }
+      const planned = await planRechart({
+        charts,
+        message: args.message || '',
+        chartIds: args.chartIds,
+        fieldsByDataset,
+        opts: {
+          fields: fallbackFields,
+          changes: args.changes,
+          signal: exec.signal,
+          credentials: harnessCredentials(ctx),
+        },
+      })
+      if (planned.needClarify) {
+        return toLosslessJson({
+          ok: true,
+          dashboardId: id,
+          needClarify: true,
+          clarifyQuestion: planned.clarifyQuestion,
+        })
+      }
+      if (planned.regenerate) {
+        return toLosslessJson({ ok: true, dashboardId: id, regenerate: true, source: planned.source })
+      }
+      if (!planned.ok) {
+        return toLosslessJson({
+          ok: false,
+          dashboardId: id,
+          error: planned.error,
+          note: planned.note,
+          source: planned.source,
+        })
+      }
+      const applied = await applyDashboardPatch({
+        title: summary?.name || 'AI 生成看板',
+        mode: 'merge',
+        patch: planned.patch,
+        dashboardId: id,
+        signal: exec.signal,
+      })
+      if (!applied.ok) return applied
+      return toLosslessJson({
+        ...applied,
+        charts: planned.charts,
+        chartTitles: planned.charts.map((c) => c.title).filter(Boolean),
+        planSource: planned.source,
+        quality: planned.quality,
+      })
     },
   }))
 
   ctx.tools.register(defineTool({
     name: 'od_generate_board',
     description:
-      'Write the dashboard draft ONLY after the user confirms plan goals '
-      + '(reply contains 确认/生成/可以/OK). Never call in the same turn as od_plan_charts. '
-      + 'Prefer passing goals[] = goalsForConfirm from od_plan_charts (copy JSON as-is). '
-      + 'If goals[] all fail bind, returns error — then re-run od_plan_charts with the '
-      + 'user edit as message and wait for confirm again; NEVER call this with empty goals '
-      + 'after the user deleted/changed charts (empty goals falls back to rules and undoes edits). '
-      + 'Pass datasetId, title, message. Do not call od_run_sql / od_run_query / od_layout_board / od_emit_patch. '
-      + 'If prior plan needClarify=true, do not call this yet. '
-      + 'After this returns ok, END THE TURN immediately — one short sentence, no more tools, no extra thinking.',
+      'LAST-RESORT write of a full dashboard draft when od_board_worker is unavailable. '
+      + 'Prefer od_board_worker after the user confirms plan tasks (确认/生成/可以/OK). '
+      + 'Never call in the same turn as od_plan_charts. '
+      + 'This path realizes each task with a sampled chartQuery then picks chart type — still do NOT call od_run_query yourself. '
+      + 'If a draft is already linked, ALWAYS pass that dashboardId so this overwrites the SAME board. '
+      + 'To change one/several existing charts, use od_rechart_chart instead. '
+      + 'Prefer passing goals[] = goalsForConfirm from od_plan_charts. '
+      + 'After ok, END THE TURN immediately.',
     parameters: {
       datasetId: { type: 'string', required: true },
       title: { type: 'string', description: 'Dashboard title' },
       message: { type: 'string', description: 'User theme; same weighting as od_plan_charts' },
       styleId: { type: 'string' },
-      dashboardId: { type: 'string', description: 'Existing draft to replace; omit to create' },
+      dashboardId: { type: 'string', description: 'Existing draft to replace in place; defaults to last generated' },
       goals: {
         type: 'array',
         description: 'Goals from od_plan_charts (preferred; keeps plan/generate consistent)',
@@ -1329,10 +1514,40 @@ export function apply(ctx) {
           source: planned.source,
         })
       }
+      const realized = await realizeBoundCharts(planned.charts, {
+        fields,
+        message: args.message || '',
+        signal: exec.signal,
+      })
+      if (!realized.ok || !realized.charts?.length) {
+        return toLosslessJson({
+          ok: false,
+          datasetId: ds,
+          title,
+          error: realized.note || 'all tasks empty or timed out after realize',
+          dropped: realized.dropped,
+          source: 'realize-rejected',
+        })
+      }
+      const reviewed = reviewCharts(realized.charts, {
+        fields,
+        profile: loaded.profile,
+        message: args.message || '',
+      })
+      if (!reviewed.length) {
+        return toLosslessJson({
+          ok: false,
+          datasetId: ds,
+          title,
+          error: 'no charts after realize/review',
+          dropped: realized.dropped,
+          source: 'realize-review-rejected',
+        })
+      }
       const built = layoutBoardPatch({
         title,
         styleId: args.styleId,
-        charts: planned.charts,
+        charts: reviewed,
         query: planned.query,
       })
       if (!built.ok) {
@@ -1348,15 +1563,17 @@ export function apply(ctx) {
         title: layout.title || title,
         mode: 'replace',
         patch: layout.patch,
-        dashboardId: args.dashboardId,
+        dashboardId: rememberedDashboardId(args.dashboardId),
         signal: exec.signal,
       })
       if (!applied.ok) return applied
       return toLosslessJson({
         ...applied,
-        chartTitles: planned.charts.map((c) => c.title || c.question).filter(Boolean),
+        chartTitles: reviewed.map((c) => c.title || c.question).filter(Boolean),
         planSource: planned.source,
         goals: planned.goals,
+        droppedTasks: realized.dropped,
+        realizeNote: realized.note || undefined,
       })
     },
   }))
@@ -1364,7 +1581,7 @@ export function apply(ctx) {
   ctx.tools.register(defineTool({
     name: 'od_emit_patch',
     description:
-      'DEPRECATED for new boards. Prefer od_generate_board. '
+      'DEPRECATED for new boards. Prefer od_board_worker. '
       + 'Only use to apply a patch already returned by od_layout_board (legacy).',
     parameters: {
       title: { type: 'string', required: true },
@@ -1423,7 +1640,7 @@ export function apply(ctx) {
         title: String(args.title || 'AI 生成看板'),
         mode: String(args.mode || 'replace'),
         patch: args.patch && typeof args.patch === 'object' ? args.patch : null,
-        dashboardId: args.dashboardId,
+        dashboardId: rememberedDashboardId(args.dashboardId),
         signal: exec.signal,
       })
     },

@@ -26,9 +26,37 @@ export function flabel(f) {
   return raw
 }
 
+export function looksLikeIdentifier(f) {
+  const n = String(fname(f) || '')
+  const lab = String(flabel(f) || f?.label || '')
+  const blob = `${n} ${lab}`
+  if (/金额|入账|利润|成本|数量|笔数|费率|销售额|收入|amount|income|profit|qty|count|fee|rate/i.test(blob)) {
+    return false
+  }
+  if (n.length > 2 && /(^id$|id$|_id$|_no$|no$|uuid$|guid$)/i.test(n)) return true
+  const head = lab.replace(/，/g, ',').split(',')[0].trim()
+  if (/(ID|Id)$/.test(head) || /号$/.test(head) || /编号$/.test(head)) {
+    return !/类型|状态/.test(head)
+  }
+  return false
+}
+
+/** Parse `支付状态,0-订单生成,2-支付成功` comment enumerations. */
+export function parseValueMapFromLabel(label) {
+  const raw = String(label || '').replace(/，/g, ',')
+  const map = {}
+  const re = /(-?\d+)\s*[-:：]\s*([^,;]+)/g
+  let m
+  while ((m = re.exec(raw))) {
+    map[m[1]] = String(m[2]).trim()
+  }
+  return Object.keys(map).length >= 2 ? map : undefined
+}
+
 export function semanticRole(f) {
   const r = String(f?.role || '').toLowerCase()
   if (r === 'junk' || r === 'text' || r === 'id') return 'junk'
+  if (looksLikeIdentifier(f)) return 'junk'
   if (r === 'flag') return 'dim'
   if (r === 'measure' || r === 'quota') return 'measure'
   if (r === 'time') return 'time'
@@ -150,7 +178,7 @@ export function measureKind(f) {
   return 'additive'
 }
 
-function encodeOf(datasetId, valueField, agg, categoryField) {
+function encodeOf(datasetId, valueField, agg, categoryField, extra = {}) {
   const encode = {
     datasetId,
     value: fname(valueField),
@@ -161,6 +189,7 @@ function encodeOf(datasetId, valueField, agg, categoryField) {
     encode.category = fname(categoryField)
     encode.x = [fname(categoryField)]
   }
+  if (extra.resultLimit != null) encode.resultLimit = extra.resultLimit
   return encode
 }
 
@@ -170,6 +199,18 @@ function lowCardDim(f) {
   // Only reject high-cardinality dims. Keep n=1 (e.g. single ChannelType) bindable.
   if (n != null && n > 20) return false
   return true
+}
+
+/** High-card categorical dims for TOP-N ranking (hbar). IDs are junk, not rank. */
+export function isRankDim(f) {
+  if (!f || semanticRole(f) !== 'dim') return false
+  const n = f.distinctCount
+  if (n != null && (n < 8 || n > 200)) return false
+  const blob = `${fname(f)} ${flabel(f)} ${f?.label || ''}`.toLowerCase()
+  if (/status$|type$|状态|类型|flag|渠道|方式/.test(blob) && (n == null || n <= 20)) return false
+  if (n != null && n > 20) return true
+  if (n == null) return !/status$|type$|状态|类型|渠道|方式/.test(blob)
+  return n >= 8
 }
 
 /**
@@ -512,9 +553,10 @@ function attachFieldAliases(chart, byName) {
     const entry = { ...(cfg[key] || {}) }
     const alias = f.alias || flabel(f)
     if (alias && alias !== key) entry.alias = alias
-    if (f.valueMap && typeof f.valueMap === 'object' && !Array.isArray(f.valueMap)) {
-      entry.valueMap = { ...f.valueMap }
-    }
+    const vm = (f.valueMap && typeof f.valueMap === 'object' && !Array.isArray(f.valueMap))
+      ? f.valueMap
+      : parseValueMapFromLabel(f.label)
+    if (vm) entry.valueMap = { ...vm }
     if (Object.keys(entry).length) cfg[key] = entry
   }
   if (Object.keys(cfg).length) enc.fieldCfg = cfg
@@ -527,11 +569,19 @@ function attachFieldAliases(chart, byName) {
 export function buildCapabilityCard(datasetId, fields, opts = {}) {
   const list = mergeProfile(fields, opts.profile)
   const message = opts.message || ''
-  const dims = pickByRole(list, 'dim', message, 8).filter(lowCardDim).map((f) => ({
+  const dimFields = pickByRole(list, 'dim', message, 12)
+  const dims = dimFields.filter(lowCardDim).map((f) => ({
     field: fname(f),
     label: flabel(f),
     distinctCount: f.distinctCount ?? null,
-    valueMap: f.valueMap || undefined,
+    valueMap: f.valueMap || parseValueMapFromLabel(f.label) || undefined,
+  }))
+  const composeDims = dims.filter((d) => d.distinctCount == null || (d.distinctCount >= 2 && d.distinctCount <= 8))
+  const rankDims = dimFields.filter(isRankDim).map((f) => ({
+    field: fname(f),
+    label: flabel(f),
+    distinctCount: f.distinctCount ?? null,
+    resultLimit: 10,
   }))
   const measures = pickByRole(list, 'measure', message, 12)
   const additive = measures.filter((m) => measureKind(m) === 'additive').map((f) => ({
@@ -560,15 +610,30 @@ export function buildCapabilityCard(datasetId, fields, opts = {}) {
     ratio,
     time,
     junk,
+    composeDims,
+    rankDims,
     rules: [
-      'compare/table value only from additive; agg=sum|count',
+      'Cockpit IA (required slots, this order): 3–4 separate KPI goals; trend line if any time.dayBucket; 1–2 compare bars on low-card dims; 1 rank hbar if rankDims; at most ONE pie on composeDims; one grouptable',
+      'Never two pies. Never combine two KPIs into one goal. Status/type × amount is bar, not pie',
+      'compare/table/hbar value only from additive; agg=sum|count; rank uses rankDims + resultLimit 10',
       'ratio only kpi_ratio with agg=avg; never SUM with dim',
-      'compose default category=dim agg=count',
-      'trend only when time.dayBucket=true',
+      'compose (pie) only on composeDims, agg=count, max 1',
+      'trend only when time.dayBucket=true; if false do not invent extra pies to fill',
       'do not use junk fields',
-      'prefer 3–6 goals ordered by theme relevance',
     ],
   }
+}
+
+/** Provisional chart type from analysis intent. Final type is chosen after sampled query (P015). */
+export function typeFromIntent(intent, fallback = 'bar') {
+  const i = String(intent || '')
+  if (i === 'kpi_count' || i === 'kpi_sum' || i === 'kpi_ratio' || i === 'kpi') return 'kpi'
+  if (i === 'trend') return 'line'
+  if (i === 'rank') return 'hbar'
+  if (i === 'compose') return 'pie'
+  if (i === 'table') return 'grouptable'
+  if (i === 'compare') return 'bar'
+  return fallback
 }
 
 /**
@@ -597,7 +662,7 @@ export function bindGoals(datasetId, goals, fields, opts = {}) {
   for (const raw of Array.isArray(goals) ? goals : []) {
     if (!raw || typeof raw !== 'object') continue
     const intent = String(raw.intent || '')
-    const type = String(raw.chartType || raw.type || 'bar')
+    const type = String(raw.chartType || raw.type || typeFromIntent(intent, 'bar'))
     let value = resolveFieldRef(
       String(raw.encode?.value || raw.measure || raw.valueField || '').trim(),
       list,
@@ -633,11 +698,12 @@ export function bindGoals(datasetId, goals, fields, opts = {}) {
       if (!dimSet.has(category)) continue
       value = category
       agg = 'count'
-    } else if (intent === 'compare' || type === 'bar' || type === 'grouptable' || intent === 'table') {
+    } else if (intent === 'compare' || intent === 'rank' || type === 'bar' || type === 'hbar'
+        || type === 'grouptable' || intent === 'table') {
       if (!additiveSet.has(value)) continue
-      if (category && !dimSet.has(category)) continue
+      if (category && !dimSet.has(category) && !timeSet.has(category)) continue
       agg = agg === 'count' ? 'count' : 'sum'
-    } else if (intent === 'trend' || type === 'line') {
+    } else if (intent === 'trend' || type === 'line' || type === 'area') {
       if (!additiveSet.has(value)) continue
       const t = card.time?.find((x) => x.field === category)
       if (!t?.dayBucket) continue
@@ -657,13 +723,22 @@ export function bindGoals(datasetId, goals, fields, opts = {}) {
     }
     const vf = byName.get(value)
     const cf = category ? byName.get(category) : null
+    const rank = intent === 'rank' || type === 'hbar'
     out.push({
       intent: intent || type,
       question: raw.question || raw.title || `${type}:${value}`,
-      type,
+      rationale: raw.rationale,
+      slot: raw.slot,
+      type: rank ? 'hbar' : type,
       title: raw.title || raw.question || flabel(vf) || value,
       datasetId,
-      encode: encodeOf(datasetId, vf || { name: value }, agg, cf || (category ? { name: category } : null)),
+      encode: encodeOf(
+        datasetId,
+        vf || { name: value },
+        agg,
+        cf || (category ? { name: category } : null),
+        rank ? { resultLimit: 10 } : {},
+      ),
     })
   }
   return out
@@ -784,13 +859,24 @@ export function reviewCharts(charts, ctx) {
     return true
   })
 
-  // At most two half-width compare charts (bar/pie/…)
+  // At most one pie; extra pies become bars (JoyAgent: pie only for <6 categories).
+  let pieKept = false
+  next = next.map((c) => {
+    if (c.type !== 'pie' && c.type !== 'donut') return c
+    if (!pieKept) {
+      pieKept = true
+      return c
+    }
+    return { ...c, type: 'bar', title: String(c.title || '').replace(/占比|构成/, '对比') || c.title }
+  })
+
+  // At most four half-width compare charts (two rows of 36+36).
   const halfTypes = new Set(['bar', 'hbar', 'pie', 'donut', 'column'])
   let halfCount = 0
   next = next.filter((c) => {
     const t = String(c.type || '')
     if (!halfTypes.has(t)) return true
-    if (halfCount >= 2) return false
+    if (halfCount >= 4) return false
     halfCount += 1
     return true
   })
@@ -821,9 +907,9 @@ export function reviewCharts(charts, ctx) {
     if (disp) {
       c.style = {
         ...(c.style || {}),
-        formatter: disp.formatter,
-        axisUnit: disp.axisUnit || c.style?.axisUnit || 'none',
-        valueSuffix: disp.valueSuffix != null ? disp.valueSuffix : (c.style?.valueSuffix || ''),
+        formatter: c.style?.formatter || disp.formatter,
+        axisUnit: c.style?.axisUnit || disp.axisUnit || 'none',
+        valueSuffix: c.style?.valueSuffix != null ? c.style.valueSuffix : (disp.valueSuffix || ''),
       }
     }
     attachFieldAliases(c, byName)
@@ -934,8 +1020,7 @@ export function layoutBoardPatch(input) {
     y += 10
   }
 
-  // Fixed template: pair half-width charts; line/area always full row; never leave a half-empty hole.
-  // Cap density so conversation boards stay readable (≤2 compare + ≤1 trend).
+  // Cockpit: KPI row → trend full-width → up to 4 half charts in pairs → one table.
   const halfTypes = new Set(['bar', 'hbar', 'pie', 'donut', 'column'])
   const halves = []
   const fulls = []
@@ -945,9 +1030,13 @@ export function layoutBoardPatch(input) {
     else if (halfTypes.has(t) || t === 'bar') halves.push(spec)
     else fulls.push(spec)
   }
-  const halfPack = halves.slice(0, 2)
+  const halfPack = halves.slice(0, 4)
   const fullPack = fulls.slice(0, 1)
 
+  for (const spec of fullPack) {
+    addChart(spec, 0, y, 72, 18)
+    y += 18
+  }
   for (let i = 0; i < halfPack.length; i += 2) {
     const a = halfPack[i]
     const b = halfPack[i + 1]
@@ -958,10 +1047,6 @@ export function layoutBoardPatch(input) {
       addChart(a, 0, y, 72, 20)
     }
     y += 20
-  }
-  for (const spec of fullPack) {
-    addChart(spec, 0, y, 72, 18)
-    y += 18
   }
 
   tables.slice(0, 1).forEach((spec) => {

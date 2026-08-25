@@ -1,6 +1,7 @@
 # 仪表盘生成流程方案
 
-> **2026-08-22 修订**：出板质检不再以本文的 `od_review_charts` 工具、live probe、`_enrich_count_profile` 为现行方案。对话可见路径是 `od_list_datasets` → **`od_plan_charts`（列出图表类型与标题）** → **`od_generate_board` 一次写入**（内部再跑同一套 plan + layout + apply-patch）。禁止生成时 `od_run_query` / `od_run_sql`，禁止模型自拼 `od_layout_board` / `od_emit_patch`。质量闸（确定性 review、不 live probe）见 **[P012](../P012-ask-gen-quality/)**（草案）。同维柱+饼默认去饼（不再「允许同维并存」）。Java `compose-board` / `DeterministicPlanner` 为 last-resort，**禁止**订单/金额/商户等业务词典，只认 schema 角色 + 用户原文重叠。下文保留 P004 当时设计，供追溯。
+> **2026-08-22 修订**：出板质检不再以本文的 `od_review_charts` 工具、live probe、`_enrich_count_profile` 为现行方案。  
+> **2026-08-24 修订（P015）**：规划不定图种；确认后主路径是 `od_board_worker`（细工具 get_data / data_trans / save / commit），不是对话 Lead 一次 `od_generate_board`。`od_generate_board` 仅 last-resort。禁止生成时 Lead 调 `od_run_query` / `od_run_sql` / worker 细工具。质量闸见 [P012](../P012-ask-gen-quality/)（done）与 [P015](../P015-board-task-realize/)。下文保留 P004 当时设计，供追溯。
 >
 > 现行代码中的生成交互与管道已写入 [architecture.html · 生成看板](../../design/architecture.html#gen) 与 [业界对照](../../design/architecture.html#compare)（已编码未验收）。本文仍是提案详细设计，不是 4A 现行架构。
 > 交互真相：[design.md](./design.md) · **AI 总架构（问数优先）**：[P006 design](../P006-ask-data/design.md) · Harness：[harness-design.md](./harness-design.md) · 契约：[openapi.yaml](../../design/openapi.yaml) · 提案：[P004](./README.md) · [P006](../P006-ask-data/README.md)
@@ -153,7 +154,8 @@ Plan 模式：`finish.reason=awaiting_confirm`，Harness 把 patch 存在 run.pe
 
 1. **问数轨（默认，P006）** — 会话内表/临时图；**不**改看板；本期结果卡不提供「保存到仪表盘」。
 2. **配置写入轨（生成）** — NL → `DashboardPatch` → draft → 预览 → 编辑器（本文件）。
-3. **洞察报告轨（v0.6 / P005）** — 统计洞察 + 叙事 → Umo 块（引用 live 图）。
+3. **对话分析报告轨（P016）** — 静态 HTML/MD 快照文件，不是 Dashboard。
+4. **看板解读进 Umo（v0.6 / P005，未接受）** — 统计洞察 + 叙事 → Umo 块（引用 live 图，禁止内嵌结果行）。
 
 ## 成功标准（生成路径）
 

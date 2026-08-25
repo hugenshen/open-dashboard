@@ -1,0 +1,39 @@
+{
+  "id": "ANR-REPORT-RETRY-01",
+  "track": "analysis",
+  "stage": "analysis",
+  "pr": "PR-ANR-07",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": {
+    "title": "渠道归因",
+    "message": "归因解读",
+    "task": {
+      "datasetId": "ds_orders",
+      "intent": "compose",
+      "dim": "Status",
+      "measure": "MchIncome",
+      "agg": "sum",
+      "title": "按状态",
+      "question": "按状态"
+    },
+    "results": {
+      "按状态": { "rowCount": 0, "rows": [] }
+    },
+    "retry": {
+      "dim": "MchType",
+      "question": "改成按商户类型看",
+      "results": {
+        "改成按商户类型看": {
+          "rowCount": 2,
+          "rows": [["直营", 90], ["代理", 10]]
+        }
+      }
+    }
+  },
+  "expect": {
+    "noModelChartType": true,
+    "requireHtml": true,
+    "requireMarkdown": true,
+    "footerIncludes": ["静态快照"]
+  }
+}

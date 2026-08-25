@@ -1,0 +1,37 @@
+{
+  "id": "BOARD-REVIEW-PIE-CAP-01",
+  "track": "board",
+  "stage": "review",
+  "pr": "PR-QG-03",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": {
+    "charts": [
+      {
+        "type": "pie",
+        "intent": "compose",
+        "title": "状态构成",
+        "datasetId": "ds_orders",
+        "encode": { "category": "Status", "value": "Status", "agg": "count" }
+      },
+      {
+        "type": "pie",
+        "intent": "compose",
+        "title": "类型构成",
+        "datasetId": "ds_orders",
+        "encode": { "category": "MchType", "value": "MchType", "agg": "count" }
+      },
+      {
+        "type": "bar",
+        "intent": "compare",
+        "title": "状态入账",
+        "datasetId": "ds_orders",
+        "encode": { "category": "Status", "value": "MchIncome", "agg": "sum" }
+      }
+    ]
+  },
+  "expect": {
+    "maxPie": 1,
+    "compareNeverPie": true,
+    "mustTypes": ["bar"]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "BOARD-REALIZE-COMPOSE-01",
+  "track": "board",
+  "stage": "realize",
+  "pr": "PR-REAL-04",
+  "dataset": { "id": "ds_orders", "fixture": "merchant-order-fields.json" },
+  "input": {
+    "suggest": [
+      { "intent": "compose", "agg": "count", "rowCount": 3 },
+      { "intent": "compose", "agg": "count", "rowCount": 8 },
+      { "intent": "compare", "agg": "sum", "rowCount": 3 },
+      { "intent": "rank", "rowCount": 9 },
+      { "intent": "trend", "rowCount": 12, "categoryIsTime": true },
+      { "intent": "compare", "rowCount": 0 }
+    ]
+  },
+  "expect": {
+    "suggestTypes": ["pie", "bar", "bar", "hbar", "line", null]
+  }
+}

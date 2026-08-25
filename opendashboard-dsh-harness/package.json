@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "./start.sh",
-    "test": "node --test packages/dsh-od-bi/src/sql-guard.test.js packages/dsh-od-bi/src/gen-board.test.js packages/dsh-od-bi/src/ask-enrich.test.js packages/dsh-od-bi/src/knowledge-merge.test.js packages/dsh-od-bi/src/goal-planner.test.js packages/dsh-od-bi/src/answer-meta.test.js packages/dsh-od-eval/src/result-set.test.js packages/dsh-od-eval/src/runner.test.js",
+    "test": "node --test packages/dsh-od-bi/src/sql-guard.test.js packages/dsh-od-bi/src/gen-board.test.js packages/dsh-od-bi/src/ask-enrich.test.js packages/dsh-od-bi/src/knowledge-merge.test.js packages/dsh-od-bi/src/goal-planner.test.js packages/dsh-od-bi/src/answer-meta.test.js packages/dsh-od-bi/src/rechart.test.js packages/dsh-od-bi/src/realize-task.test.js packages/dsh-od-bi/src/board-worker.test.js packages/dsh-od-bi/src/analysis-worker.test.js packages/dsh-od-eval/src/result-set.test.js packages/dsh-od-eval/src/runner.test.js",
     "eval": "node packages/dsh-od-eval/src/cli.js",
     "dump-config": "DSH_HOME=\"$PWD/dsh-home\" ./node_modules/.bin/dsh --profile od-conversation --dump-config"
   },

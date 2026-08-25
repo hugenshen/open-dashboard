@@ -6,12 +6,17 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   bindGoals,
+  buildCapabilityCard,
   buildReviewedBoard,
+  looksLikeIdentifier,
+  isRankDim,
   layoutBoardPatch,
   measureKind,
+  parseValueMapFromLabel,
   planChartsFromFields,
   resolveFieldRef,
   reviewCharts,
+  semanticRole,
 } from './gen-board.js'
 import { boardPresentationMeta } from './answer-meta.js'
 import { MERCHANT_ORDER_FIELDS, OPS_FIELDS } from './quality-cases.js'
@@ -42,6 +47,22 @@ describe('planChartsFromFields', () => {
     )
   })
 
+  it('does not SUM MchId even when schema marks it quota without role=id', () => {
+    const untyped = MERCHANT_ORDER_FIELDS.map((f) => {
+      const { role, ...rest } = f
+      return rest
+    })
+    const { charts } = planChartsFromFields('ds_orders', untyped, { message: '专业经营仪表盘' })
+    assert.equal(
+      charts.some((c) => ['MchId', 'PayOrderId'].includes(String(c.encode?.value))),
+      false,
+    )
+    assert.equal(
+      charts.some((c) => String(c.encode?.category) === 'PayOrderId'),
+      false,
+    )
+  })
+
   it('enumerates analysis goals before charts (question visible)', () => {
     const { charts } = planChartsFromFields('ds_orders', MERCHANT_ORDER_FIELDS, {
       message: '按支付状态看入账',
@@ -56,6 +77,22 @@ describe('planChartsFromFields', () => {
     const pie = charts.find((c) => c.type === 'pie')
     assert.ok(pie, 'compose COUNT pie can coexist with compare SUM bar')
     assert.equal(String(pie.encode?.agg || '').toLowerCase(), 'count')
+  })
+})
+
+describe('identifier + comment enum', () => {
+  it('treats quota MchId / 支付订单号 as junk identifiers', () => {
+    assert.equal(looksLikeIdentifier({ name: 'MchId', label: '商户ID', group: 'quota' }), true)
+    assert.equal(semanticRole({ name: 'MchId', label: '商户ID', group: 'quota', dataType: 'DECIMAL' }), 'junk')
+    assert.equal(looksLikeIdentifier({ name: 'PayOrderId', label: '支付订单号', group: 'dim' }), true)
+    assert.equal(looksLikeIdentifier({ name: 'Amount', label: '支付金额,单位分', group: 'quota' }), false)
+  })
+
+  it('parses status comment into valueMap', () => {
+    const vm = parseValueMapFromLabel('支付状态,0-订单生成,1-支付中,2-支付成功,3-业务处理完成,4-已退款')
+    assert.equal(vm['0'], '订单生成')
+    assert.equal(vm['2'], '支付成功')
+    assert.equal(vm['4'], '已退款')
   })
 })
 
@@ -121,28 +158,46 @@ describe('PR-QG-03 review', () => {
 })
 
 describe('PR-QG-04 layout and query defaults', () => {
-  it('pairs two compares; trend is full-width; no half-empty hole', () => {
+  it('pairs compares after a full-width trend; no half-empty hole', () => {
     const r = layoutBoardPatch({
       charts: [
         { type: 'bar', title: 'a', datasetId: 'ds1', encode: { category: 'x', value: 'v' } },
         { type: 'pie', title: 'b', datasetId: 'ds1', encode: { category: 'y', value: 'v' } },
         { type: 'line', title: 'c', datasetId: 'ds1', encode: { category: 'z', value: 'v' } },
-        { type: 'bar', title: 'dropped', datasetId: 'ds1', encode: { category: 'w', value: 'v' } },
+        { type: 'bar', title: 'd', datasetId: 'ds1', encode: { category: 'w', value: 'v' } },
       ],
     })
     const comps = r.patch.ops.filter((o) => o.op === 'upsert_component' && o.type === 'chart')
-    assert.equal(comps.length, 3)
-    assert.equal(comps[0].w, 36)
+    assert.equal(comps.length, 4)
+    assert.equal(comps[0].w, 72)
+    assert.equal(comps[0].x, 0)
     assert.equal(comps[1].w, 36)
-    assert.equal(comps[1].x, 36)
-    assert.equal(comps[2].w, 72)
-    assert.equal(comps[2].x, 0)
-    // solo half-width chart expands to full row
+    assert.equal(comps[2].w, 36)
+    assert.equal(comps[2].x, 36)
+    assert.equal(comps[3].w, 72)
     const solo = layoutBoardPatch({
       charts: [{ type: 'bar', title: 'only', datasetId: 'ds1', encode: { category: 'x', value: 'v' } }],
     })
     const one = solo.patch.ops.find((o) => o.op === 'upsert_component' && o.type === 'chart')
     assert.equal(one.w, 72)
+  })
+
+  it('places two rows of half charts (up to 4)', () => {
+    const r = layoutBoardPatch({
+      charts: [
+        { type: 'bar', title: 'a', datasetId: 'ds1', encode: { category: 'x', value: 'v' } },
+        { type: 'hbar', title: 'b', datasetId: 'ds1', encode: { category: 'y', value: 'v' } },
+        { type: 'pie', title: 'c', datasetId: 'ds1', encode: { category: 'z', value: 'v' } },
+        { type: 'bar', title: 'd', datasetId: 'ds1', encode: { category: 'w', value: 'v' } },
+      ],
+    })
+    const comps = r.patch.ops.filter((o) => o.op === 'upsert_component' && o.type === 'chart')
+    assert.equal(comps.length, 4)
+    assert.equal(comps[0].w, 36)
+    assert.equal(comps[1].w, 36)
+    assert.equal(comps[2].w, 36)
+    assert.equal(comps[3].w, 36)
+    assert.equal(comps[2].y > comps[0].y, true)
   })
 
   it('fills date defaults from profile min/max and never invents 近30天', () => {
@@ -315,5 +370,67 @@ describe('boardPresentationMeta', () => {
     assert.equal(meta.odKind, 'board_ready')
     assert.equal(meta.editPath, '/dashboards/d1/edit')
     assert.equal(meta.patch, undefined)
+  })
+})
+
+describe('cockpit IA', () => {
+  it('capability card exposes compose/rank slots and cockpit rules', () => {
+    const fields = [
+      ...MERCHANT_ORDER_FIELDS,
+      { name: 'StoreName', label: '门店', group: 'd', role: 'dim', distinctCount: 48 },
+    ]
+    const card = buildCapabilityCard('ds_orders', fields, { datasetName: '订单表' })
+    assert.ok(card.rules.some((r) => /Cockpit|Never two pies/.test(r)))
+    assert.ok(card.composeDims.some((d) => d.field === 'Status' || d.field === 'MchType'))
+    assert.ok(isRankDim(fields.find((f) => f.name === 'StoreName')))
+    assert.ok(card.rankDims.some((d) => d.field === 'StoreName'))
+    assert.equal(card.rankDims.some((d) => d.field === 'MchId'), false)
+  })
+
+  it('review keeps one pie and turns the second into a bar', () => {
+    const out = reviewCharts([
+      {
+        type: 'pie',
+        title: '状态占比',
+        encode: { category: 'Status', value: 'Status', agg: 'count' },
+      },
+      {
+        type: 'pie',
+        title: '渠道占比',
+        encode: { category: 'ChannelType', value: 'ChannelType', agg: 'count' },
+      },
+    ], { fields: MERCHANT_ORDER_FIELDS })
+    assert.equal(out.filter((c) => c.type === 'pie').length, 1)
+    assert.equal(out.filter((c) => c.type === 'bar').length, 1)
+  })
+
+  it('binds rank as hbar with resultLimit 10', () => {
+    const fields = [
+      ...MERCHANT_ORDER_FIELDS,
+      { name: 'StoreName', label: '门店', group: 'd', role: 'dim', distinctCount: 48 },
+    ]
+    const bound = bindGoals('ds_orders', [{
+      intent: 'rank',
+      chartType: 'hbar',
+      question: '门店入账 TOP10',
+      dim: 'StoreName',
+      measure: 'MchIncome',
+      agg: 'sum',
+    }], fields)
+    assert.equal(bound.length, 1)
+    assert.equal(bound[0].type, 'hbar')
+    assert.equal(bound[0].encode?.category, 'StoreName')
+    assert.equal(bound[0].encode?.resultLimit, 10)
+  })
+
+  it('infers chart type from intent when chartType omitted', () => {
+    const bound = bindGoals('ds_orders', [
+      { intent: 'kpi_sum', question: '入账合计', measure: 'MchIncome', agg: 'sum' },
+      { intent: 'compare', question: '状态入账', dim: 'Status', measure: 'MchIncome', agg: 'sum' },
+      { intent: 'compose', question: '状态构成', dim: 'Status' },
+    ], MERCHANT_ORDER_FIELDS)
+    assert.equal(bound.find((c) => c.intent === 'kpi_sum')?.type, 'kpi')
+    assert.equal(bound.find((c) => c.intent === 'compare')?.type, 'bar')
+    assert.equal(bound.find((c) => c.intent === 'compose')?.type, 'pie')
   })
 })

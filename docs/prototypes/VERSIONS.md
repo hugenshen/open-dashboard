@@ -23,8 +23,8 @@
 | `2026-08-21-p006-ask-data` | 2026-08-21 | [P006](../proposals/P006-ask-data/) | **acceptance** | 冻结迁 dsh 前的自研问数壳（`conversation-workspace` 结果卡 / 步骤折叠 / 工作台 autorun）；**P006 旧交互实现对照此版**；其后问数表面改走 [P011](../proposals/P011-dsh-conversation-surface/) | [snapshots/…](./snapshots/2026-08-21-p006-ask-data/) |
 | `2026-08-23-pre-p013` | 2026-08-23 | [P013](../proposals/P013-dashboard-page-templates/) | increment | 相对 P006/P007 快照之后的 hi-fi：冻结 P008/P009/P010 目录治理与壳增量，作为 P013 模板市场开工前档 | [snapshots/…](./snapshots/2026-08-23-pre-p013/) |
 
-当前 hi-fi 增量（未打 acceptance 快照）：[P013](../proposals/P013-dashboard-page-templates/) 仪表盘模板市场（`dashboard.html?v=p013t15#/templates`，Quick BI 质感浮卡、无精选 Hero，封面图种与稿面一致，≥20 张、模板自带移动布局）。P008 数据广场 / P009 治理页 / P010 知识库仍叠在同一 hi-fi 上。  
-[P011](../proposals/P011-dsh-conversation-surface/) 问数表面 `conversation-ask-dsh.html` 已 **accepted**（落地/澄清/运行中/已回答/生成看板）；产品壳 `conversation.html` 嵌此页。旧 `conversation-workspace.html` 仅作生成/对照。
+当前 hi-fi 增量（未打 acceptance 快照）：[P013](../proposals/P013-dashboard-page-templates/) 模板市场（`dashboard.html?v=p013t15#/templates`）；[P014](../proposals/P014-conversation-history/) 对话「新对话 / 历史」抽屉；[P016](../proposals/P016-conversation-analysis-report/) 对话分析报告 chip + 右侧 HTML 快照栏（叠在已 accepted 的 `conversation-ask-dsh.html` 上，尚未冻结）。P008 / P009 / P010 仍叠在同一 hi-fi。  
+[P011](../proposals/P011-dsh-conversation-surface/) 问数表面基线仍是该页的落地/澄清/运行中/已回答/生成看板；产品壳 `conversation.html` 嵌此页。旧 `conversation-workspace.html` 仅作生成/对照。
 
 预览某快照：
 
