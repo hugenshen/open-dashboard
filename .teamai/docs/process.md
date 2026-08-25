@@ -6,7 +6,7 @@ domain: technical
 
 # 协作规范（process）
 
-所有人（含 AI）按本文推进需求。使用说明（HTML）：[guide.html](./guide.html)。对外品牌 **Co-TeamAI**；目录与命令仍是 `.teamai/` / `teamai`。
+所有人（含 AI）按本文推进需求。使用说明（HTML）：[guide.html](./guide.html)。对外介绍：[share.html](./share.html)。对外品牌 **Co-TeamAI**；目录与命令仍是 `.teamai/` / `teamai`。
 
 ## 目录角色
 

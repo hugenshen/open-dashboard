@@ -65,5 +65,5 @@ domain: technical
 5. Pxxx 目录不搬家；状态看文首，进度看 `roadmap/<状态>/README.md`。
 6. `.teamai/docs/design/` 只留现行 4A HTML、OpenAPI 与检索用 `architecture.md`；未实现方案留在提案 `design/`；未验收能力不进 `requirements.md`。
 7. Commit / PR 标题带 Pxxx；跨端契约与实现同 PR；架构变化与代码同 commit。
-8. 改流转时同步：`AGENTS.md`、`process.md`、本文、`guide.html`、`proposals/README.md`。
+8. 改流转时同步：`AGENTS.md`、`process.md`、本文、`guide.html`、`share.html`、`proposals/README.md`。
 9. Harness 改 `.teamai/rules|skills|culture`；会话踩坑写入 `.teamai/learnings/`（YAML frontmatter）；不要在仓库根再建 `docs/`。

@@ -102,6 +102,7 @@ open-dashboard/
 | [.teamai/docs/product/README.md](.teamai/docs/product/README.md) | 产品定位、用户、模块与边界 |
 | [.teamai/docs/product/requirements.md](.teamai/docs/product/requirements.md) | **已交付需求基线**（演进起点） |
 | [.teamai/docs/product/roadmap/](.teamai/docs/product/roadmap/) | 进度（进行中 / 已完成 / 计划中） |
+| [.teamai/docs/share.html](.teamai/docs/share.html) | 给新人：TeamAI 背景、本仓规范、角色怎么用、P015 案例 |
 | [.teamai/docs/guide.html](.teamai/docs/guide.html) | 规划 / BA / 开发 / 测试 / AI 怎么读、怎么迭代 |
 | [.teamai/docs/design/architecture.html](.teamai/docs/design/architecture.html) | 4A 现行架构（业务 / 应用 / 数据 / 技术） |
 | [.teamai/docs/design/openapi.yaml](.teamai/docs/design/openapi.yaml) | REST / OpenAPI 硬契约 |

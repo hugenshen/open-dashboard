@@ -6,9 +6,10 @@
 
 1. [.teamai/docs/process.md](.teamai/docs/process.md) — 完整协作与流转规范
 2. [.teamai/docs/README.md](.teamai/docs/README.md) — 文档导航
-3. [.teamai/docs/guide.html](.teamai/docs/guide.html) — 人类可读使用说明
-4. `.teamai/rules/` — 注入各 AI 工具的短规则（与 process 同一套，不另写真相）
-5. `.teamai/skills/` · `.teamai/learnings/` — 怎么干活，以及 0→1 踩坑；新任务先走 `od-rd-loop`
+3. [.teamai/docs/share.html](.teamai/docs/share.html) — 给新人的协同介绍
+4. [.teamai/docs/guide.html](.teamai/docs/guide.html) — 人类可读使用说明
+5. `.teamai/rules/` — 注入各 AI 工具的短规则（与 process 同一套，不另写真相）
+6. `.teamai/skills/` · `.teamai/learnings/` — 怎么干活，以及 0→1 踩坑；新任务先走 `od-rd-loop`
 
 ## 文档真相分层
 
