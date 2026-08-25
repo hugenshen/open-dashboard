@@ -7,11 +7,20 @@
 
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { boardPresentationMeta } from './answer-meta.js'
-import { layoutBoardPatch, reviewCharts } from './gen-board.js'
-import { getBoardSession, getFrame, putFrame, resetBoardSession } from './board-store.js'
+import { boardPresentationMeta, spawnWorkerPresentationMeta } from './answer-meta.js'
+import { layoutBoardPatch, reviewCharts, retargetWeakTableDim } from './gen-board.js'
+import {
+  boardSessionKey,
+  consumePresentation,
+  getBoardSession,
+  getFrame,
+  putFrame,
+  rememberPresentation,
+  resetBoardSession,
+} from './board-store.js'
 import { transformRows } from './data-trans.js'
 import { biFetch, toLosslessJson } from './http.js'
+import { assessSemanticReadiness, semanticNotReadyMessage } from './semantic-readiness.js'
 import {
   applyDisplayFromData,
   categoryIsTimeField,
@@ -65,6 +74,23 @@ function isKpiTask(chart) {
   const intent = String(chart?.intent || '')
   const type = String(chart?.type || '')
   return intent.startsWith('kpi') || type === 'kpi'
+}
+
+function scalarValue(rows) {
+  const first = Array.isArray(rows) ? rows[0] : null
+  if (Array.isArray(first)) return first[first.length - 1]
+  if (first && typeof first === 'object') {
+    const values = Object.values(first)
+    return values[values.length - 1]
+  }
+  return first
+}
+
+function validKpiRows(rows, rowCount) {
+  if (Number(rowCount) !== 1) return false
+  const raw = scalarValue(rows)
+  if (raw == null || raw === '') return false
+  return Number.isFinite(Number(raw))
 }
 
 function taskToChart(args) {
@@ -138,33 +164,12 @@ export async function runGetData(args, opts = {}) {
   if (analysis) session.meta.purpose = 'analysis'
   chart.encode.resultLimit = analysis ? ANALYSIS_RESULT_LIMIT : resultLimitFor(chart)
 
-  if (isKpiTask(chart) && !analysis) {
-    const suggestedChartType = 'kpi'
-    const ready = applyDisplayFromData({ ...chart, type: suggestedChartType, rowCount: 1 }, {
-      fields,
-      message: args.message || session.meta.message || '',
-      rows: [],
-    })
-    putFrame(session, handle, {
-      handle,
-      chart: ready,
-      fields,
-      rows: [],
-      rowCount: 1,
-      suggestedChartType,
-      datasetId: ds,
-    })
-    return toLosslessJson({
-      ok: true,
-      handle,
-      taskId: handle,
-      rowCount: 1,
-      sample: [],
-      suggestedChartType,
-      note: analysis
-        ? 'KPI snapshot for analysis. Next: od_insight / od_save_insight (not od_save_chart).'
-        : 'KPI: no warehouse sample; formatter from field profile. Call od_save_chart.',
-    })
+  const rewritten = retargetWeakTableDim(chart, fields)
+  if (rewritten?.encode?.category && rewritten.encode.category !== chart.encode.category) {
+    chart.encode.category = rewritten.encode.category
+    if (Array.isArray(rewritten.encode.x)) chart.encode.x = rewritten.encode.x
+    if (rewritten.title) chart.title = rewritten.title
+    if (rewritten.question) chart.question = rewritten.question
   }
 
   if (!chart.encode.value) {
@@ -194,6 +199,17 @@ export async function runGetData(args, opts = {}) {
   }
   const rowCount = Number(q.rowCount) || 0
   const rows = Array.isArray(q.rows) ? q.rows : []
+  if (isKpiTask(chart) && !validKpiRows(rows, rowCount)) {
+    return toLosslessJson({
+      ok: true,
+      handle,
+      taskId: handle,
+      rowCount: 0,
+      sample: [],
+      suggestedChartType: null,
+      note: 'KPI query returned empty/null/NaN or non-scalar data — skip this task',
+    })
+  }
   const suggestedChartType = suggestForFrame(chart, fields, rows, rowCount)
   const ready = applyDisplayFromData({
     ...chart,
@@ -212,6 +228,7 @@ export async function runGetData(args, opts = {}) {
     rowCount,
     suggestedChartType,
     datasetId: ds,
+    previewOnlyTransform: false,
   })
   session.meta.datasetId = ds
   if (args.message) session.meta.message = String(args.message)
@@ -275,6 +292,7 @@ export function runDataTrans(args, opts = {}) {
     rowCount: trans.rows.length,
     suggestedChartType,
     derivedColumn: trans.derivedColumn,
+    previewOnlyTransform: true,
   })
   const analysis = session.meta.purpose === 'analysis'
   return toLosslessJson({
@@ -298,6 +316,16 @@ export function runSaveChart(args, opts = {}) {
   const handle = String(args.handle || '')
   const frame = getFrame(session, handle)
   if (!frame) return { ok: false, error: 'unknown handle — call od_get_data first' }
+  if (frame.previewOnlyTransform) {
+    session.dropped.push({
+      title: frame.chart?.title || handle,
+      error: 'preview-only transform cannot be reproduced by dashboard runtime',
+    })
+    return {
+      ok: false,
+      error: 'preview-only transform cannot be committed until encode.transforms is supported by Java runtime',
+    }
+  }
   if (!frame.suggestedChartType || !frame.rowCount) {
     session.dropped.push({
       title: frame.chart?.title || handle,
@@ -341,6 +369,7 @@ export async function runCommitBoard(args, opts = {}) {
   const datasetId = String(args.datasetId || session.meta.datasetId || charts[0]?.datasetId || '')
   let fields = charts[0] && getFrame(session, [...session.frames.keys()][0])?.fields
   let profile = null
+  let knowledge = null
   if (datasetId && opts.loadProfile !== false) {
     try {
       const schema = await biFetch(
@@ -352,8 +381,27 @@ export async function runCommitBoard(args, opts = {}) {
       fields = Array.isArray(schema?.fields) ? schema.fields : (fields || [])
       const body = await biFetch('POST', '/api/internal/bi/profile-dataset', { datasetId }, opts.signal)
       profile = body || null
-    } catch {
-      /* review still runs on fields */
+      knowledge = await biFetch(
+        'GET',
+        `/api/internal/bi/knowledge?datasetIds=${encodeURIComponent(datasetId)}`,
+        undefined,
+        opts.signal,
+      )
+    } catch (err) {
+      return {
+        ok: false,
+        error: `semantic readiness check failed: ${String(err?.message || err)}`,
+        source: 'semantic-readiness-error',
+      }
+    }
+    const semanticReadiness = assessSemanticReadiness({ fields: fields || [], profile, knowledge })
+    if (!semanticReadiness.ready) {
+      return {
+        ok: false,
+        error: semanticNotReadyMessage(semanticReadiness),
+        semanticReadiness,
+        source: 'semantic-not-ready',
+      }
     }
   }
   const reviewed = reviewCharts(charts, {
@@ -393,13 +441,18 @@ export async function runCommitBoard(args, opts = {}) {
   })
   if (!applied.ok) return applied
   const dropped = session.dropped
-  resetBoardSession(session.key)
-  return toLosslessJson({
+  const committed = toLosslessJson({
     ...applied,
     chartTitles: reviewed.map((c) => c.title || c.question).filter(Boolean),
     droppedTasks: dropped,
     source: applied.source || 'board-worker',
   })
+  const meta = boardPresentationMeta(committed)
+  rememberPresentation(meta, session.key)
+  const liveKey = boardSessionKey()
+  if (liveKey !== session.key) rememberPresentation(meta, liveKey)
+  resetBoardSession(session.key)
+  return committed
 }
 
 function workerToolMeta(name) {
@@ -417,9 +470,82 @@ function workerToolMeta(name) {
   }
 }
 
+function spawnPresentationMeta(args, value) {
+  const expectedKind = String(args?.prompt || '').includes('ANALYSIS_REPORT=1')
+    ? 'report_ready'
+    : 'board_ready'
+  return spawnWorkerPresentationMeta(value, { consume: consumePresentation, expectedKind })
+}
+spawnPresentationMeta.__odSpawnMeta = true
+
+function withSpawnPresentation(definition) {
+  if (!definition || definition.name !== 'od_board_worker') return definition
+  const prev = definition.output?.presentationMeta
+  if (typeof prev === 'function' && prev.__odSpawnMeta) return definition
+  const presentationMeta = typeof prev === 'function'
+    ? (args, value) => {
+      const m = prev(args, value)
+      if (m && (m.odKind === 'board_ready' || m.odKind === 'report_ready')) return m
+      return spawnPresentationMeta(args, value)
+    }
+    : spawnPresentationMeta
+  presentationMeta.__odSpawnMeta = true
+  return {
+    ...definition,
+    output: {
+      ...definition.output,
+      presentationMeta,
+    },
+  }
+}
+
+function attachSpawnMetaToTool(tool) {
+  if (!tool || tool.name !== 'od_board_worker' || !tool.output) return tool
+  const prev = tool.output.presentationMeta
+  if (typeof prev === 'function' && prev.__odSpawnMeta) return tool
+  try {
+    tool.output.presentationMeta = spawnPresentationMeta
+    return tool
+  } catch {
+    return {
+      ...tool,
+      output: { ...tool.output, presentationMeta: spawnPresentationMeta },
+    }
+  }
+}
+
+function patchExistingSpawnTool(ctx) {
+  const tool = ctx.tools.get?.('od_board_worker')
+  attachSpawnMetaToTool(tool)
+}
+
+/** Lift child commit meta onto Lead's spawn tool so the parent chat gets board_ready. */
+export function installSpawnWorkerPresentation(ctx) {
+  if (!ctx?.tools) return
+  if (typeof ctx.tools.register === 'function' && !ctx.tools.register.__odSpawnMeta) {
+    const orig = ctx.tools.register.bind(ctx.tools)
+    const wrapped = (definition) => orig(withSpawnPresentation(definition))
+    wrapped.__odSpawnMeta = true
+    ctx.tools.register = wrapped
+  }
+  // resolveExecution uses this.get at call time — wrap even if register already ran.
+  if (typeof ctx.tools.get === 'function' && !ctx.tools.get.__odSpawnMeta) {
+    const origGet = ctx.tools.get.bind(ctx.tools)
+    const wrappedGet = (name, scope) => attachSpawnMetaToTool(origGet(name, scope))
+    wrappedGet.__odSpawnMeta = true
+    ctx.tools.get = wrappedGet
+  }
+  patchExistingSpawnTool(ctx)
+  if (typeof ctx.on === 'function' && !ctx.__odSpawnMetaChange) {
+    ctx.__odSpawnMetaChange = true
+    ctx.on('tools/change', () => patchExistingSpawnTool(ctx))
+  }
+}
+
 export function registerBoardWorkerTools(ctx, deps) {
   const { applyDashboardPatch, rememberedDashboardId } = deps
 
+  installSpawnWorkerPresentation(ctx)
   ctx.tools.guard((exec) => workerGuardReason(exec))
 
   ctx.tools.register(defineTool({

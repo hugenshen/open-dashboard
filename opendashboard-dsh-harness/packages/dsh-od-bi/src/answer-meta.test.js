@@ -5,7 +5,11 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
-import { answerPresentationMeta } from './answer-meta.js'
+import {
+  answerPresentationMeta,
+  spawnWorkerPresentationMeta,
+} from './answer-meta.js'
+import { consumePresentation, rememberPresentation, resetPresentation } from './board-store.js'
 
 function assertLossless(value) {
   assert.notEqual(snapshotJsonValue(value), undefined, 'dsh lossless JSON snapshot')
@@ -86,5 +90,132 @@ describe('answerPresentationMeta presentAnswer gate', () => {
     assert.equal(m.estRows, 1000000)
     assert.equal(m.scaleFactor, 20)
     assertLossless(m)
+  })
+})
+
+describe('spawnWorkerPresentationMeta', () => {
+  it('lifts stored board_ready from child commit', () => {
+    resetPresentation('lift-board')
+    rememberPresentation({
+      odKind: 'board_ready',
+      dashboardId: '13',
+      title: '销售分析看板',
+      chartCount: 9,
+      mode: 'replace',
+      editPath: '/dashboards/13/edit',
+      source: 'board-worker',
+    }, 'lift-board')
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r1',
+      output: [{ type: 'text', text: 'done' }],
+    }, { consume: () => consumePresentation('lift-board') })
+    assert.equal(meta.odKind, 'board_ready')
+    assert.equal(meta.dashboardId, '13')
+    assert.equal(meta.editPath, '/dashboards/13/edit')
+    assert.equal(consumePresentation('lift-board'), null)
+    assertLossless(meta)
+  })
+
+  it('lifts stored report_ready', () => {
+    resetPresentation('lift-report')
+    rememberPresentation({
+      odKind: 'report_ready',
+      title: '归因报告',
+      html: '<p>ok</p>',
+      markdown: 'ok',
+      dashboardId: null,
+      source: 'analysis-worker',
+    }, 'lift-report')
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r1',
+      output: [],
+    }, { consume: () => consumePresentation('lift-report') })
+    assert.equal(meta.odKind, 'report_ready')
+    assert.equal(meta.html, '<p>ok</p>')
+    assertLossless(meta)
+  })
+
+  it('parses board ready text when store is empty', () => {
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r1',
+      output: [{ type: 'text', text: 'board ready: 13 (9 charts)\n1. 总支付金额' }],
+    }, { consume: () => null })
+    assert.equal(meta.odKind, 'board_ready')
+    assert.equal(meta.dashboardId, '13')
+    assert.equal(meta.chartCount, 9)
+    assert.equal(meta.editPath, '/dashboards/13/edit')
+    assertLossless(meta)
+  })
+
+  it('parses worker summary text that is not board ready:', () => {
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r1',
+      output: [{
+        type: 'text',
+        text: '看板已提交完成 ✅ 订单经营仪表盘（board 12 · 8 charts · ds_012eb19e）',
+      }],
+    }, { consume: () => null })
+    assert.equal(meta.odKind, 'board_ready')
+    assert.equal(meta.dashboardId, '12')
+    assert.equal(meta.chartCount, 8)
+    assert.equal(meta.title, '订单经营仪表盘')
+    assert.equal(meta.editPath, '/dashboards/12/edit')
+    assertLossless(meta)
+  })
+
+  it('parses Chinese worker board ready: id，含 N 个图表', () => {
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r1',
+      output: [{
+        type: 'text',
+        text: '订单经营仪表盘已生成完成（board ready: 11，含 9 个图表）。',
+      }],
+    }, { consume: () => null })
+    assert.equal(meta.odKind, 'board_ready')
+    assert.equal(meta.dashboardId, '11')
+    assert.equal(meta.chartCount, 9)
+    assert.equal(meta.title, '订单经营仪表盘')
+    assert.equal(meta.editPath, '/dashboards/11/edit')
+    assertLossless(meta)
+  })
+
+  it('ignores prompt text that is not a board id', () => {
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r1',
+      output: [{
+        type: 'text',
+        text: 'od_rechart_chart（同一 dashboardId，merge，禁止另开草稿） board ready: 11，含 board 11，含 · 8 charts',
+      }],
+    }, { consume: () => null })
+    assert.deepEqual(meta, {})
+  })
+
+  it('returns empty object when worker produced nothing', () => {
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r1',
+      output: [{ type: 'text', text: 'skipped' }],
+    }, { consume: () => null })
+    assert.deepEqual(meta, {})
+    assertLossless(meta)
+  })
+
+  it('does not lift stale board meta into an analysis-report spawn', () => {
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r-report',
+      output: [{ type: 'text', text: 'done' }],
+    }, {
+      expectedKind: 'report_ready',
+      consume: () => ({ odKind: 'board_ready', dashboardId: 'old-board' }),
+    })
+    assert.deepEqual(meta, {})
+    assertLossless(meta)
   })
 })

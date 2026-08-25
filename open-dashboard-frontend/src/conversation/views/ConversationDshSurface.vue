@@ -13,6 +13,7 @@ const router = useRouter()
 const ready = ref(false)
 const hasDash = ref(false)
 const hasReport = ref(false)
+const hasReportProcess = ref(false)
 const linkedDashboardId = ref('')
 const boardTitle = ref('')
 const editorEpoch = ref(0)
@@ -21,8 +22,32 @@ const reportTitle = ref('')
 const reportFilename = ref('')
 /** Viewing format — commit always ships both HTML and Markdown payloads. */
 const reportFormat = ref<'html' | 'markdown'>('html')
+const reportView = ref<'process' | 'html' | 'markdown'>('process')
 const reportHtml = ref('')
 const reportMarkdown = ref('')
+type ReportProcessStep = {
+  id: string
+  nodeName?: string
+  category?: string
+  title: string
+  detail?: string
+  status: 'pending' | 'running' | 'done' | 'error'
+  depth?: number
+  durationMs?: number
+  inputs?: Array<{ label: string; value: string }>
+  output?: string
+}
+const reportProcessSteps = ref<ReportProcessStep[]>([])
+const reportProcessStatus = ref<'running' | 'done' | 'error'>('running')
+const reportActiveNode = ref('')
+const completedReportNodes = computed(() => reportProcessSteps.value.filter((step) => step.status === 'done').length)
+
+function formatDuration(ms?: number) {
+  const value = Number(ms || 0)
+  if (value < 1000) return value > 0 ? `${Math.round(value)} ms` : ''
+  if (value < 60_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)} s`
+  return `${Math.floor(value / 60_000)}m ${Math.round((value % 60_000) / 1000)}s`
+}
 
 const reportDisplayName = computed(() => {
   const base = String(reportFilename.value || 'analysis-report').replace(/\.(html?|md|markdown)$/i, '')
@@ -77,7 +102,7 @@ const fullEditPath = computed(() =>
   linkedDashboardId.value ? `/dashboards/${linkedDashboardId.value}/edit` : '',
 )
 
-const splitOpen = computed(() => hasDash.value || hasReport.value)
+const splitOpen = computed(() => hasDash.value || hasReport.value || hasReportProcess.value)
 
 const reportMdHtml = computed(() => renderMarkdownLite(reportMarkdown.value))
 
@@ -156,6 +181,11 @@ function setReportFormat(fmt: 'html' | 'markdown') {
   if (fmt === 'markdown' && !reportMarkdown.value) return
   if (fmt === 'html' && !reportHtml.value) return
   reportFormat.value = fmt
+  reportView.value = fmt
+}
+
+function showReportProcess() {
+  if (reportProcessSteps.value.length) reportView.value = 'process'
 }
 
 function downloadReport() {
@@ -195,11 +225,53 @@ function postOpenSession(sessionId: string) {
 
 function closeReport() {
   hasReport.value = false
+  hasReportProcess.value = false
   reportTitle.value = ''
   reportFilename.value = ''
   reportHtml.value = ''
   reportMarkdown.value = ''
   reportFormat.value = 'html'
+  reportView.value = 'process'
+  reportProcessSteps.value = []
+  reportProcessStatus.value = 'running'
+  reportActiveNode.value = ''
+}
+
+function openReportProcess(payload: {
+  title?: string
+  status?: string
+  activeNode?: string
+  steps?: ReportProcessStep[]
+}) {
+  closeDash()
+  hasReport.value = false
+  hasReportProcess.value = true
+  reportView.value = 'process'
+  reportTitle.value = String(payload.title || reportTitle.value || '分析报告')
+  reportProcessStatus.value = payload.status === 'error'
+    ? 'error'
+    : payload.status === 'done'
+      ? 'done'
+      : 'running'
+  reportActiveNode.value = String(payload.activeNode || '')
+  reportProcessSteps.value = Array.isArray(payload.steps)
+    ? payload.steps.map((step, index) => ({
+      id: String(step.id || `step-${index + 1}`),
+      nodeName: step.nodeName ? String(step.nodeName) : undefined,
+      category: step.category ? String(step.category) : undefined,
+      title: String(step.title || `步骤 ${index + 1}`),
+      detail: step.detail ? String(step.detail) : undefined,
+      status: ['pending', 'running', 'done', 'error'].includes(step.status)
+        ? step.status
+        : 'pending',
+      depth: Math.max(0, Number(step.depth || 0)),
+      durationMs: Math.max(0, Number(step.durationMs || 0)),
+      inputs: Array.isArray(step.inputs)
+        ? step.inputs.map((item) => ({ label: String(item.label || ''), value: String(item.value || '') })).filter((item) => item.label && item.value)
+        : [],
+      output: step.output ? String(step.output) : undefined,
+    }))
+    : reportProcessSteps.value
 }
 
 function openReport(payload: {
@@ -210,9 +282,16 @@ function openReport(payload: {
   markdown?: string
 }) {
   closeDash()
+  hasReportProcess.value = false
   reportTitle.value = String(payload.title || '分析报告')
   reportFilename.value = String(payload.filename || (payload.format === 'markdown' ? 'analysis-report.md' : 'analysis-report.html'))
   reportFormat.value = String(payload.format || '').toLowerCase() === 'markdown' ? 'markdown' : 'html'
+  reportView.value = reportFormat.value
+  reportProcessStatus.value = 'done'
+  reportActiveNode.value = '报告已生成'
+  reportProcessSteps.value = reportProcessSteps.value.map((step) => (
+    step.status === 'running' ? { ...step, status: 'done' } : step
+  ))
   reportHtml.value = String(payload.html || '')
   reportMarkdown.value = String(payload.markdown || '')
   hasReport.value = true
@@ -260,6 +339,14 @@ function onMessage(event: MessageEvent) {
       filename: data.filename ? String(data.filename) : undefined,
       html: data.html ? String(data.html) : undefined,
       markdown: data.markdown ? String(data.markdown) : undefined,
+    })
+    return
+  }
+  if (data.type === 'od-report-progress') {
+    openReportProcess({
+      title: data.title ? String(data.title) : undefined,
+      status: data.status ? String(data.status) : undefined,
+      steps: Array.isArray(data.steps) ? data.steps : undefined,
     })
     return
   }
@@ -328,19 +415,30 @@ function onFrameLoad() {
       <p v-else class="od-dsh-surface__loading">正在加载对话…</p>
     </div>
 
-    <aside v-if="hasReport" class="od-dsh-surface__dash od-dsh-surface__file" aria-label="分析报告预览">
+    <aside v-if="hasReport || hasReportProcess" class="od-dsh-surface__dash od-dsh-surface__file" aria-label="分析报告预览">
       <header class="od-dsh-surface__dash-bar">
         <span class="od-dsh-surface__file-glyph" aria-hidden="true"></span>
         <div class="od-dsh-surface__dash-title" :title="reportTitle">{{ reportTitle }}</div>
-        <span class="od-dsh-surface__dash-id">{{ reportDisplayName }} · 静态快照</span>
+        <span class="od-dsh-surface__dash-id">
+          {{ reportView === 'process' ? '节点执行轨迹' : `${reportDisplayName} · 静态快照` }}
+        </span>
         <span class="od-dsh-surface__sp" />
-        <div class="od-dsh-surface__fmt" role="tablist" aria-label="报告格式">
+        <div v-if="hasReport" class="od-dsh-surface__fmt" role="tablist" aria-label="报告格式">
+          <button
+            v-if="reportProcessSteps.length"
+            type="button"
+            role="tab"
+            class="od-dsh-surface__fmt-btn"
+            :class="{ on: reportView === 'process' }"
+            :aria-selected="reportView === 'process'"
+            @click="showReportProcess"
+          >过程</button>
           <button
             type="button"
             role="tab"
             class="od-dsh-surface__fmt-btn"
-            :class="{ on: reportFormat === 'html' }"
-            :aria-selected="reportFormat === 'html'"
+            :class="{ on: reportView === 'html' }"
+            :aria-selected="reportView === 'html'"
             :disabled="!reportHtml"
             @click="setReportFormat('html')"
           >HTML</button>
@@ -348,18 +446,78 @@ function onFrameLoad() {
             type="button"
             role="tab"
             class="od-dsh-surface__fmt-btn"
-            :class="{ on: reportFormat === 'markdown' }"
-            :aria-selected="reportFormat === 'markdown'"
+            :class="{ on: reportView === 'markdown' }"
+            :aria-selected="reportView === 'markdown'"
             :disabled="!reportMarkdown"
             @click="setReportFormat('markdown')"
           >MD</button>
         </div>
-        <button type="button" class="od-dsh-surface__btn" @click="downloadReport">下载</button>
+        <button v-if="hasReport && reportView !== 'process'" type="button" class="od-dsh-surface__btn" @click="downloadReport">下载</button>
         <button type="button" class="od-dsh-surface__btn ghost" @click="closeReport">收起</button>
       </header>
       <div class="od-dsh-surface__dash-body">
+        <div v-if="reportView === 'process'" class="od-dsh-surface__report-process">
+          <div class="od-dsh-surface__process-head">
+            <span class="od-dsh-surface__process-pulse" :class="reportProcessStatus" />
+            <div class="od-dsh-surface__process-head-copy">
+              <strong>{{ reportProcessStatus === 'error' ? '分析未完成' : reportProcessStatus === 'done' ? '正在整理报告' : '正在分析数据' }}</strong>
+              <p>{{ reportActiveNode ? `当前节点：${reportActiveNode}` : '正在等待分析 Agent 下发节点' }}</p>
+            </div>
+            <span class="od-dsh-surface__process-count">{{ completedReportNodes }} / {{ reportProcessSteps.length }} 节点</span>
+          </div>
+          <div class="od-dsh-surface__process-section-title">
+            <strong>节点执行轨迹</strong>
+            <span>点击节点查看输入与产出</span>
+          </div>
+          <ol class="od-dsh-surface__process-list">
+            <li
+              v-for="(step, index) in reportProcessSteps"
+              :key="step.id"
+              :class="step.status"
+              :style="{ '--node-depth': Math.min(step.depth || 0, 3) }"
+            >
+              <span class="od-dsh-surface__process-rail">
+                <span class="od-dsh-surface__process-dot" />
+              </span>
+              <details class="od-dsh-surface__node" :open="step.status === 'running' || step.status === 'error'">
+                <summary>
+                  <span class="od-dsh-surface__node-index">{{ String(index + 1).padStart(2, '0') }}</span>
+                  <span class="od-dsh-surface__node-main">
+                    <span class="od-dsh-surface__node-line">
+                      <strong>{{ step.title }}</strong>
+                      <code v-if="step.nodeName">{{ step.nodeName }}</code>
+                    </span>
+                    <span v-if="step.detail" class="od-dsh-surface__node-summary">{{ step.detail }}</span>
+                  </span>
+                  <span v-if="formatDuration(step.durationMs)" class="od-dsh-surface__node-duration">{{ formatDuration(step.durationMs) }}</span>
+                  <span class="od-dsh-surface__process-state">
+                    {{ step.status === 'done' ? '已完成' : step.status === 'running' ? '执行中' : step.status === 'error' ? '失败' : '等待' }}
+                  </span>
+                </summary>
+                <div class="od-dsh-surface__node-detail">
+                  <div class="od-dsh-surface__node-meta">
+                    <span>节点类型</span><strong>{{ step.category || '工具调用' }}</strong>
+                  </div>
+                  <div v-if="step.inputs?.length" class="od-dsh-surface__node-block">
+                    <div class="od-dsh-surface__node-block-title">输入</div>
+                    <dl>
+                      <template v-for="item in step.inputs" :key="`${step.id}-${item.label}`">
+                        <dt>{{ item.label }}</dt><dd>{{ item.value }}</dd>
+                      </template>
+                    </dl>
+                  </div>
+                  <div class="od-dsh-surface__node-block">
+                    <div class="od-dsh-surface__node-block-title">输出</div>
+                    <pre v-if="step.output">{{ step.output }}</pre>
+                    <p v-else class="od-dsh-surface__node-empty">{{ step.status === 'running' ? '节点正在执行，产出将实时更新' : '该节点无额外输出' }}</p>
+                  </div>
+                </div>
+              </details>
+            </li>
+          </ol>
+        </div>
         <iframe
-          v-if="reportFormat === 'html'"
+          v-else-if="reportView === 'html'"
           class="od-dsh-surface__report-frame"
           title="分析报告"
           sandbox=""
@@ -535,6 +693,191 @@ function onFrameLoad() {
   height: 100%;
   border: 0;
   background: #fff;
+}
+.od-dsh-surface__report-process {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 28px 32px 40px;
+  background: #fbfcfe;
+}
+.od-dsh-surface__process-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid #e3e8f2;
+  border-radius: 10px;
+  background: #fff;
+}
+.od-dsh-surface__process-head-copy { flex: 1; min-width: 0; }
+.od-dsh-surface__process-head strong { color: #1f2329; font-size: 15px; }
+.od-dsh-surface__process-head p,
+.od-dsh-surface__process-list p { margin: 4px 0 0; color: #7b828c; font-size: 12px; line-height: 1.55; }
+.od-dsh-surface__process-count {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f1f4ff;
+  color: #4d6bfe;
+  font-size: 11px;
+  font-weight: 650;
+}
+.od-dsh-surface__process-pulse {
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: #4d6bfe;
+  box-shadow: 0 0 0 5px rgba(77, 107, 254, 0.12);
+  animation: od-report-pulse 1.4s ease-in-out infinite;
+}
+.od-dsh-surface__process-pulse.done { background: #16a34a; box-shadow: 0 0 0 5px rgba(22, 163, 74, 0.12); animation: none; }
+.od-dsh-surface__process-pulse.error { background: #dc2626; box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.12); animation: none; }
+.od-dsh-surface__process-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 22px 2px 10px;
+  color: #1f2329;
+  font-size: 13px;
+}
+.od-dsh-surface__process-section-title span { color: #8f959e; font-size: 11px; }
+.od-dsh-surface__process-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.od-dsh-surface__process-list li {
+  --node-depth: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+  margin-left: calc(var(--node-depth) * 12px);
+}
+.od-dsh-surface__process-rail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.od-dsh-surface__process-rail::after {
+  content: '';
+  position: absolute;
+  top: 24px;
+  bottom: -8px;
+  width: 1px;
+  background: #dfe3eb;
+}
+.od-dsh-surface__process-list li:last-child .od-dsh-surface__process-rail::after { display: none; }
+.od-dsh-surface__process-list strong { color: #4e5969; font-size: 13px; font-weight: 600; }
+.od-dsh-surface__process-list li.running strong { color: #1f2329; }
+.od-dsh-surface__process-list li.done strong { color: #374151; }
+.od-dsh-surface__process-dot {
+  position: relative;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  margin-top: 20px;
+  border-radius: 50%;
+  border: 2px solid #c7cbd1;
+  background: #fff;
+}
+.od-dsh-surface__process-list li.running .od-dsh-surface__process-dot { border-color: #4d6bfe; background: #4d6bfe; }
+.od-dsh-surface__process-list li.done .od-dsh-surface__process-dot { border-color: #16a34a; background: #16a34a; }
+.od-dsh-surface__process-list li.error .od-dsh-surface__process-dot { border-color: #dc2626; background: #dc2626; }
+.od-dsh-surface__node {
+  min-width: 0;
+  margin-bottom: 10px;
+  border: 1px solid #e3e8f2;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.od-dsh-surface__node[open] { border-color: #cfd8ff; box-shadow: 0 4px 16px rgba(38, 58, 120, 0.06); }
+.od-dsh-surface__node summary {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.od-dsh-surface__node summary::-webkit-details-marker { display: none; }
+.od-dsh-surface__node-index {
+  color: #a2a8b2;
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.od-dsh-surface__node-main { min-width: 0; }
+.od-dsh-surface__node-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.od-dsh-surface__node-line code {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f3f4f7;
+  color: #697180;
+  font: 500 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.od-dsh-surface__node-summary {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #7b828c;
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.od-dsh-surface__node-duration { color: #8f959e; font: 500 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.od-dsh-surface__process-state { color: #9aa0a9; font-size: 11px; line-height: 20px; white-space: nowrap; }
+.od-dsh-surface__process-list li.running .od-dsh-surface__process-state { color: #4d6bfe; }
+.od-dsh-surface__process-list li.done .od-dsh-surface__process-state { color: #16a34a; }
+.od-dsh-surface__process-list li.error .od-dsh-surface__process-state { color: #dc2626; }
+.od-dsh-surface__node-detail {
+  padding: 0 14px 14px 52px;
+  border-top: 1px solid #eef1f5;
+  background: #fbfcfe;
+}
+.od-dsh-surface__node-meta {
+  display: flex;
+  gap: 12px;
+  padding: 11px 0;
+  color: #8f959e;
+  font-size: 11px;
+}
+.od-dsh-surface__node-meta strong { color: #4e5969; font-size: 11px; }
+.od-dsh-surface__node-block { margin-top: 8px; }
+.od-dsh-surface__node-block-title { margin-bottom: 6px; color: #8f959e; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.od-dsh-surface__node-block dl {
+  display: grid;
+  grid-template-columns: minmax(72px, 18%) minmax(0, 1fr);
+  margin: 0;
+  border: 1px solid #e5e8ee;
+  border-radius: 7px;
+  overflow: hidden;
+  font-size: 11px;
+}
+.od-dsh-surface__node-block dt,
+.od-dsh-surface__node-block dd { margin: 0; padding: 7px 9px; border-bottom: 1px solid #eceff3; }
+.od-dsh-surface__node-block dt { background: #f4f6f9; color: #727986; }
+.od-dsh-surface__node-block dd { background: #fff; color: #303846; overflow-wrap: anywhere; }
+.od-dsh-surface__node-block dt:nth-last-of-type(1),
+.od-dsh-surface__node-block dd:nth-last-of-type(1) { border-bottom: 0; }
+.od-dsh-surface__node-block pre {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #e5e8ee;
+  border-radius: 7px;
+  background: #fff;
+  color: #303846;
+  font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.od-dsh-surface__node-empty { margin: 0 !important; padding: 8px 10px; border-radius: 7px; background: #f4f6f9; color: #8f959e !important; }
+@keyframes od-report-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.84); }
 }
 .od-dsh-surface__report-md {
   position: absolute;

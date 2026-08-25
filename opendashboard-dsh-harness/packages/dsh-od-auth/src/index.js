@@ -8,6 +8,11 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { getBridge, loadBridgeFromEnv, patchBridge, setBridge } from './bridge-state.js'
 import { ensureOdDshWorkspace } from './od-workspace.js'
+import {
+  displaySessionTitle,
+  lastEventTime,
+  sessionHasHumanMessage,
+} from './session-list-title.js'
 
 export const name = 'od-auth'
 export const inject = ['webServer', 'workspaceRegistry', 'sessionPersistence']
@@ -17,6 +22,7 @@ export const inject = ['webServer', 'workspaceRegistry', 'sessionPersistence']
  */
 export function apply(ctx) {
   loadBridgeFromEnv()
+  const titleCache = new Map()
 
   ctx.provide('odAuth', {
     getBridge,
@@ -165,38 +171,58 @@ export function apply(ctx) {
             return
           }
 
-          const headers = await ctx.sessionPersistence.list()
+          const persist = ctx.sessionPersistence
+          const snapshots = typeof persist.listSnapshots === 'function'
+            ? await persist.listSnapshots()
+            : (await persist.list()).map((header) => ({ header, revision: '' }))
           const sessionsSvc = ctx.get?.('sessions')
           const titleSvc = ctx.get?.('sessionTitle')
 
           /** @type {Array<{ id: string, title: string, displayTitle: string, updatedAt: number, blank: boolean, origin?: string }>} */
           const rows = []
-          for (const header of headers || []) {
+          for (const snap of snapshots || []) {
+            const header = snap?.header
             if (!header || header.origin === 'subagent') continue
             if (header.cwd !== path) continue
             const id = String(header.id)
-            let title = ''
-            let blank = false
-            let updatedAt = Number(header.createdAt) || 0
-            try {
-              const live = sessionsSvc?.get?.(id)
-              if (live) {
-                const folded = titleSvc?.get?.(live)
-                if (folded?.title) title = String(folded.title)
-                const events = live.events || []
-                blank = !events.some((e) => e?.type === 'user/message')
-                if (events.length) {
-                  const last = events[events.length - 1]
-                  if (typeof last?.time === 'number') updatedAt = last.time
-                }
+            const rev = String(snap.revision || '')
+            let events = []
+            let folded = ''
+            const live = sessionsSvc?.get?.(id)
+            if (live) {
+              events = live.events || []
+              try {
+                const shot = titleSvc?.get?.(live)
+                if (shot?.title) folded = String(shot.title)
+              } catch { /* live title optional */ }
+            } else if (rev && titleCache.get(id)?.revision === rev) {
+              const cached = titleCache.get(id)
+              rows.push({
+                id,
+                title: cached.displayTitle,
+                displayTitle: cached.displayTitle,
+                updatedAt: cached.updatedAt,
+                blank: cached.blank,
+                origin: header.origin,
+              })
+              continue
+            } else {
+              try {
+                const inspected = await persist.inspect(id)
+                events = inspected?.events || []
+              } catch {
+                events = []
               }
-            } catch {
-              /* live title optional */
             }
-            const displayTitle = title || (blank ? '新会话' : id.slice(0, 8))
+            const blank = !sessionHasHumanMessage(events)
+            const updatedAt = lastEventTime(events, Number(header.createdAt) || 0)
+            const displayTitle = displaySessionTitle(events, folded)
+            if (rev && !live) {
+              titleCache.set(id, { revision: rev, displayTitle, blank, updatedAt })
+            }
             rows.push({
               id,
-              title: title || displayTitle,
+              title: displayTitle,
               displayTitle,
               updatedAt,
               blank,

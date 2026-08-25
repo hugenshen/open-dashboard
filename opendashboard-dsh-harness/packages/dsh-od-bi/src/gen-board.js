@@ -213,6 +213,96 @@ export function isRankDim(f) {
   return n >= 8
 }
 
+/** Order / ticket identifiers — never a summary-table subject. */
+export function isTransactionIdDim(f) {
+  if (!f) return false
+  const blob = `${fname(f)} ${flabel(f)} ${f?.label || ''}`
+  return /payorderid|mchorderno|channelorderno|订单号|流水号/i.test(blob)
+}
+
+/** Status / type / channel: fine for compare, not as the only table row. */
+export function isLowCardEnumDim(f) {
+  if (!f) return false
+  const blob = `${fname(f)} ${flabel(f)} ${f?.label || ''}`
+  if (/status$|_status|type$|_type|状态|类型|渠道|方式|flag/i.test(blob)) return true
+  const n = f.distinctCount
+  return n != null && n >= 2 && n <= 8
+}
+
+/**
+ * Business entity for detail/rank category (merchant / app / agent / store).
+ * May be role=id (junk as measure) but legal as a table row.
+ */
+export function isEntitySubjectDim(f) {
+  if (!f) return false
+  const role = semanticRole(f)
+  if (role === 'measure' || role === 'time') return false
+  if (isTransactionIdDim(f)) return false
+  const n = String(fname(f) || '')
+  const lab = `${flabel(f)} ${f?.label || ''}`
+  const blob = `${n} ${lab}`
+  if (/mchtype|商户类型|mchrate|商户费率|mchincome/i.test(blob)) return false
+  if (/^(mchid|appid|agentid|channelmchid|storeid|storename)$/i.test(n)) return true
+  if (/(^|[^a-z])(mchid|appid|agentid|channelmchid|storeid)([^a-z]|$)/i.test(n)) return true
+  if (/商户(?!类型|费率|入账)|应用(?!状态)|代理商|门店/.test(lab)) return true
+  return isRankDim(f)
+}
+
+function entitySubjectScore(f) {
+  const n = String(fname(f) || '').toLowerCase()
+  const lab = `${flabel(f)} ${f?.label || ''}`
+  if (n === 'mchid' || (/商户/.test(lab) && !/类型|费率/.test(lab))) return 40
+  if (n === 'appid' || /应用/.test(lab)) return 30
+  if (/agent/.test(n) || /代理/.test(lab)) return 25
+  if (isRankDim(f)) return 20
+  return 10
+}
+
+/** Prefer an unused merchant/app/store field as the detail-table row. */
+export function pickTableSubject(fields, occupied = []) {
+  const occ = new Set((Array.isArray(occupied) ? occupied : []).map(String).filter(Boolean))
+  const cands = (Array.isArray(fields) ? fields : []).filter(isEntitySubjectDim)
+  const unused = cands.filter((f) => !occ.has(fname(f)))
+  const pool = unused.length ? unused : cands
+  const ranked = [...pool].sort((a, b) => (
+    entitySubjectScore(b) - entitySubjectScore(a)
+    || String(fname(a)).localeCompare(String(fname(b)))
+  ))
+  return ranked[0] || null
+}
+
+/**
+ * If a table row is a low-card enum (Status/Type), retarget to an entity subject.
+ * Used by worker get_data so the query is not Status×measure.
+ */
+export function retargetWeakTableDim(chart, fields, occupied = []) {
+  if (!chart) return chart
+  const type = String(chart.type || chart.intent || '')
+  const isTable = type === 'table' || type === 'grouptable' || String(chart.intent || '') === 'table'
+  if (!isTable) return chart
+  const cat = String(chart.encode?.category || chart.dim || '')
+  const f = (Array.isArray(fields) ? fields : []).find((x) => fname(x) === cat)
+  const weak = !cat || (f && isLowCardEnumDim(f) && !isEntitySubjectDim(f))
+  if (!weak) return chart
+  const subject = pickTableSubject(fields, occupied)
+  if (!subject) return chart
+  const name = fname(subject)
+  if (!name || name === cat) return chart
+  const val = String(chart.encode?.value || chart.measure || '')
+  const mf = (Array.isArray(fields) ? fields : []).find((x) => fname(x) === val)
+  const title = `按${flabel(subject)}汇总${mf ? flabel(mf) : (val || '主度量')}`
+  const next = { ...chart, dim: name, title, question: title }
+  if (next.encode && typeof next.encode === 'object') {
+    next.encode = {
+      ...next.encode,
+      category: name,
+      x: [name],
+      resultLimit: next.encode.resultLimit || 12,
+    }
+  }
+  return next
+}
+
 /**
  * Resolve a goal dim/measure ref to a real field name (exact, case, or label).
  * @param {string} ref
@@ -349,14 +439,15 @@ export function enumerateGoals(datasetId, fields, opts) {
     })
   }
 
-  if (dim && m0) {
+  const tableDim = pickTableSubject(list, dim ? [fname(dim)] : [])
+  if (tableDim && m0) {
     goals.push({
       intent: 'table',
-      question: `按${flabel(dim)}汇总${flabel(m0)}`,
+      question: `按${flabel(tableDim)}汇总${flabel(m0)}`,
       type: 'grouptable',
-      title: `按${flabel(dim)}汇总${flabel(m0)}`,
+      title: `按${flabel(tableDim)}汇总${flabel(m0)}`,
       datasetId,
-      encode: encodeOf(datasetId, m0, 'sum', dim),
+      encode: encodeOf(datasetId, m0, 'sum', tableDim, { resultLimit: 12 }),
     })
   }
 
@@ -601,6 +692,15 @@ export function buildCapabilityCard(datasetId, fields, opts = {}) {
     dayBucket: looksDayBucket(f),
   }))
   const junk = list.filter((f) => semanticRole(f) === 'junk').map((f) => fname(f))
+  const entityDims = list.filter(isEntitySubjectDim).map((f) => ({
+    field: fname(f),
+    label: flabel(f),
+    distinctCount: f.distinctCount ?? null,
+  })).sort((a, b) => {
+    const fa = list.find((f) => fname(f) === a.field)
+    const fb = list.find((f) => fname(f) === b.field)
+    return entitySubjectScore(fb) - entitySubjectScore(fa)
+  })
   return {
     datasetId,
     datasetName: opts.datasetName || '',
@@ -612,14 +712,16 @@ export function buildCapabilityCard(datasetId, fields, opts = {}) {
     junk,
     composeDims,
     rankDims,
+    entityDims,
     rules: [
-      'Cockpit IA (required slots, this order): 3–4 separate KPI goals; trend line if any time.dayBucket; 1–2 compare bars on low-card dims; 1 rank hbar if rankDims; at most ONE pie on composeDims; one grouptable',
+      'Cockpit IA (required slots, this order): 3–4 separate KPI goals; trend line if any time.dayBucket; 1–2 compare bars on low-card dims; 1 rank hbar if rankDims; at most ONE pie on composeDims; one grouptable on entityDims',
       'Never two pies. Never combine two KPIs into one goal. Status/type × amount is bar, not pie',
       'compare/table/hbar value only from additive; agg=sum|count; rank uses rankDims + resultLimit 10',
       'ratio only kpi_ratio with agg=avg; never SUM with dim',
       'compose (pie) only on composeDims, agg=count, max 1',
       'trend only when time.dayBucket=true; if false do not invent extra pies to fill',
-      'do not use junk fields',
+      'do not SUM/AVG junk; entityDims IDs may be table/rank category only, never a measure',
+      'detail table row must be entityDims (merchant/app/agent/store); never Status/Type/channel as the only row; skip table if no entityDims',
     ],
   }
 }
@@ -657,12 +759,17 @@ export function bindGoals(datasetId, goals, fields, opts = {}) {
     if (semanticRole(f) === 'measure' && measureKind(f) === 'ratio') ratioSet.add(n)
   }
   const junkSet = new Set(card.junk || [])
+  const entitySet = new Set((card.entityDims || []).map((x) => x.field))
+  for (const f of list) {
+    if (isEntitySubjectDim(f)) entitySet.add(fname(f))
+  }
   const byName = fieldIndex(list)
   const out = []
   for (const raw of Array.isArray(goals) ? goals : []) {
     if (!raw || typeof raw !== 'object') continue
     const intent = String(raw.intent || '')
     const type = String(raw.chartType || raw.type || typeFromIntent(intent, 'bar'))
+    const tableOrRank = intent === 'table' || type === 'grouptable' || intent === 'rank' || type === 'hbar'
     let value = resolveFieldRef(
       String(raw.encode?.value || raw.measure || raw.valueField || '').trim(),
       list,
@@ -671,10 +778,11 @@ export function bindGoals(datasetId, goals, fields, opts = {}) {
     let category = resolveFieldRef(
       String(raw.encode?.category || raw.dim || raw.categoryField || '').trim(),
       list,
-      new Set([...dimSet, ...timeSet]),
+      new Set([...dimSet, ...timeSet, ...entitySet]),
     )
     let agg = String(raw.encode?.agg || raw.agg || '').toLowerCase()
-    if (junkSet.has(value) || junkSet.has(category)) continue
+    if (junkSet.has(value)) continue
+    if (junkSet.has(category) && !(tableOrRank && entitySet.has(category))) continue
     // degrade ratio SUM compare → kpi_ratio
     if ((intent === 'compare' || type === 'bar' || intent === 'table' || type === 'grouptable')
         && ratioSet.has(value)) {
@@ -698,10 +806,13 @@ export function bindGoals(datasetId, goals, fields, opts = {}) {
       if (!dimSet.has(category)) continue
       value = category
       agg = 'count'
-    } else if (intent === 'compare' || intent === 'rank' || type === 'bar' || type === 'hbar'
-        || type === 'grouptable' || intent === 'table') {
+    } else if (intent === 'compare' || type === 'bar') {
       if (!additiveSet.has(value)) continue
       if (category && !dimSet.has(category) && !timeSet.has(category)) continue
+      agg = agg === 'count' ? 'count' : 'sum'
+    } else if (intent === 'rank' || type === 'hbar' || type === 'grouptable' || intent === 'table') {
+      if (!additiveSet.has(value)) continue
+      if (category && !dimSet.has(category) && !timeSet.has(category) && !entitySet.has(category)) continue
       agg = agg === 'count' ? 'count' : 'sum'
     } else if (intent === 'trend' || type === 'line' || type === 'area') {
       if (!additiveSet.has(value)) continue
@@ -724,6 +835,7 @@ export function bindGoals(datasetId, goals, fields, opts = {}) {
     const vf = byName.get(value)
     const cf = category ? byName.get(category) : null
     const rank = intent === 'rank' || type === 'hbar'
+    const table = intent === 'table' || type === 'grouptable'
     out.push({
       intent: intent || type,
       question: raw.question || raw.title || `${type}:${value}`,
@@ -737,7 +849,7 @@ export function bindGoals(datasetId, goals, fields, opts = {}) {
         vf || { name: value },
         agg,
         cf || (category ? { name: category } : null),
-        rank ? { resultLimit: 10 } : {},
+        rank ? { resultLimit: 10 } : (table ? { resultLimit: 12 } : {}),
       ),
     })
   }
@@ -879,6 +991,60 @@ export function reviewCharts(charts, ctx) {
     if (halfCount >= 4) return false
     halfCount += 1
     return true
+  })
+
+  // R6b detail table must have an entity subject — never Status/Type clone of a compare chart
+  const plotKeys = new Set()
+  const occupiedCats = []
+  for (const c of next) {
+    const t = String(c.type || '')
+    if (['bar', 'hbar', 'pie', 'donut', 'column'].includes(t)) {
+      plotKeys.add(`${categoryOf(c)}|${valueOf(c)}`)
+      occupiedCats.push(categoryOf(c))
+    }
+  }
+  next = next.flatMap((c) => {
+    if (c.type !== 'grouptable' && c.type !== 'table') return [c]
+    const cat = categoryOf(c)
+    const val = valueOf(c)
+    const f = cat ? byName.get(cat) : null
+    const entity = f && isEntitySubjectDim(f)
+    const enumOnly = f && isLowCardEnumDim(f) && !entity
+    const dupPlot = plotKeys.has(`${cat}|${val}`)
+    if (entity && dupPlot) {
+      const other = pickTableSubject(fields, [cat, ...occupiedCats])
+      if (other && fname(other) !== cat) {
+        const vf = byName.get(val)
+        return [{
+          ...c,
+          title: `按${flabel(other)}汇总${vf ? flabel(vf) : val}`,
+          question: `按${flabel(other)}汇总${vf ? flabel(vf) : val}`,
+          encode: {
+            ...(c.encode || {}),
+            category: fname(other),
+            x: [fname(other)],
+            resultLimit: c.encode?.resultLimit || 12,
+          },
+        }]
+      }
+      return [c]
+    }
+    if (entity && !enumOnly) return [c]
+    if (!enumOnly && cat && !dupPlot) return [c]
+    const subject = pickTableSubject(fields, occupiedCats)
+    if (!subject || fname(subject) === cat) return []
+    const vf = byName.get(val)
+    return [{
+      ...c,
+      title: `按${flabel(subject)}汇总${vf ? flabel(vf) : val}`,
+      question: `按${flabel(subject)}汇总${vf ? flabel(vf) : val}`,
+      encode: {
+        ...(c.encode || {}),
+        category: fname(subject),
+        x: [fname(subject)],
+        resultLimit: c.encode?.resultLimit || 12,
+      },
+    }]
   })
 
   // R6 at most 1 grouptable (template: one summary table under plots)

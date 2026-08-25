@@ -6,7 +6,7 @@
 
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { reportPresentationMeta } from './answer-meta.js'
-import { getBoardSession, getFrame, resetBoardSession } from './board-store.js'
+import { getBoardSession, getFrame, rememberPresentation, resetBoardSession, boardSessionKey } from './board-store.js'
 import { toLosslessJson } from './http.js'
 import { computeInsights } from './insight.js'
 import { renderReport } from './report-render.js'
@@ -111,6 +111,10 @@ export function runCommitReport(args, opts = {}) {
     source: 'analysis-worker',
     note: 'Static snapshot report. Not a refreshable dashboard.',
   })
+  const meta = reportPresentationMeta(result)
+  rememberPresentation(meta, session.key)
+  const liveKey = boardSessionKey()
+  if (liveKey !== session.key) rememberPresentation(meta, liveKey)
   resetBoardSession(session.key)
   return result
 }

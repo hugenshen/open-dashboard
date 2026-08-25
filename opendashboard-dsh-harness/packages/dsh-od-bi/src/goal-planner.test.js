@@ -107,6 +107,9 @@ describe('PR-QG-12 fixture Goal path', () => {
     assert.equal(bar?.encode?.category, 'Status')
     assert.equal(bar?.encode?.value, 'MchIncome')
     assert.ok(planned.charts.some((c) => c.question?.includes('入账')))
+    const table = planned.charts.find((c) => c.type === 'grouptable')
+    assert.ok(table)
+    assert.equal(table.encode?.category, 'MchId')
   })
 
   it('clarify mode returns no charts', () => {
@@ -308,6 +311,8 @@ describe('cockpit goal shaping', () => {
     assert.match(GOAL_PLAN_SYSTEM, /不要在规划阶段锁死图种/)
     assert.match(GOAL_PLAN_SYSTEM, /禁止第二条构成/)
     assert.match(GOAL_PLAN_SYSTEM, /不要输出 chartType/)
+    assert.match(GOAL_PLAN_SYSTEM, /entityDims/)
+    assert.match(GOAL_PLAN_SYSTEM, /经营主体/)
   })
 
   it('second pie becomes a bar; rank dim pie becomes hbar', () => {
@@ -324,6 +329,31 @@ describe('cockpit goal shaping', () => {
     assert.equal(shaped[1].intent, 'compare')
     assert.equal(shaped[2].chartType, 'hbar')
     assert.equal(shaped[2].intent, 'rank')
+  })
+
+  it('rewrites Status-only detail table to merchant entity', () => {
+    const shaped = shapeCockpitGoals([
+      { intent: 'compare', dim: 'Status', measure: 'MchIncome', question: '状态入账' },
+      { intent: 'table', dim: 'Status', measure: 'MchIncome', question: '按支付状态汇总商户入账' },
+    ], {
+      composeDims: [{ field: 'Status' }],
+      entityDims: [{ field: 'MchId', label: '商户ID' }],
+      rankDims: [],
+    })
+    const table = shaped.find((g) => g.intent === 'table')
+    assert.equal(table?.dim, 'MchId')
+  })
+
+  it('drops detail table when there is no entity subject', () => {
+    const shaped = shapeCockpitGoals([
+      { intent: 'compare', dim: 'Status', measure: 'Amount' },
+      { intent: 'table', dim: 'Status', measure: 'Amount' },
+    ], {
+      composeDims: [{ field: 'Status' }],
+      entityDims: [],
+      rankDims: [],
+    })
+    assert.equal(shaped.some((g) => g.intent === 'table'), false)
   })
 
   it('two-pie fixture still generates and does not keep two pies', () => {

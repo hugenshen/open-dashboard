@@ -34,6 +34,9 @@ window.__ModuleLoader__.load({
 
     /** Dedupe auto postMessage per dashboardId within this iframe session. */
     const postedBoardIds = new Set()
+    /** First /od/bridge dashboardId after load or session switch — do not auto-open. */
+    let primedBridgeDash = false
+    let seenBridgeDash = ''
 
     function isEmbedded() {
       try {
@@ -105,6 +108,146 @@ window.__ModuleLoader__.load({
       })
     }
 
+    function parseToolArgs(raw) {
+      try {
+        const value = JSON.parse(String(raw || '{}'))
+        return value && typeof value === 'object' ? value : {}
+      } catch {
+        return {}
+      }
+    }
+
+    function toolBlockName(block) {
+      return block?.kind === 'tool-result' ? block.call?.name : block?.name
+    }
+
+    function flattenToolBlocks(blocks, out = [], depth = 1) {
+      for (const block of blocks || []) {
+        if (!block) continue
+        out.push({ block, depth })
+        flattenToolBlocks(block.subCalls, out, depth + 1)
+      }
+      return out
+    }
+
+    const REPORT_NODE_META = {
+      od_get_data: { title: '取数并核对结果', category: '数据读取' },
+      od_data_trans: { title: '计算占比、排名或变化', category: '数据处理' },
+      od_insight: { title: '识别趋势与归因洞察', category: '分析推理' },
+      od_save_insight: { title: '保存分析结论与证据', category: '证据固化' },
+      od_commit_report: { title: '生成 HTML/Markdown 报告', category: '产物生成' },
+    }
+
+    function compactValue(value, max = 420) {
+      if (value == null || value === '') return ''
+      const text = typeof value === 'string' ? value : JSON.stringify(value)
+      const clean = String(text).replace(/\s+/g, ' ').trim()
+      return clean.length > max ? `${clean.slice(0, max)}…` : clean
+    }
+
+    function contentText(content) {
+      return compactValue((content || []).map((item) => {
+        if (typeof item === 'string') return item
+        if (item?.type === 'text') return item.text || ''
+        return item?.text || item?.content || ''
+      }).filter(Boolean).join('\n'))
+    }
+
+    function reportNodeInputs(name, args) {
+      const fields = name === 'od_get_data'
+        ? [['数据集', args.datasetId], ['业务问题', args.question || args.message], ['维度', args.dim], ['指标', args.measure], ['聚合', args.agg], ['意图', args.intent]]
+        : name === 'od_data_trans'
+          ? [['数据句柄', args.handle], ['转换方式', args.transType || args.trans_type], ['分组列', args.column], ['指标', args.measure]]
+          : name === 'od_insight'
+            ? [['数据句柄', args.handle], ['拆解维度', args.breakdown], ['分析指标', args.measure]]
+            : name === 'od_save_insight'
+              ? [['数据句柄', args.handle], ['洞察标题', args.title], ['分析说明', args.process]]
+              : [['报告标题', args.title], ['文件名', args.filename], ['格式', args.format]]
+      return fields
+        .filter(([, value]) => value != null && value !== '')
+        .map(([label, value]) => ({ label, value: compactValue(value, 240) }))
+    }
+
+    function reportStageDetail(name, args) {
+      if (name === 'od_get_data') {
+        return args.question || args.message || [args.dim, args.measure].filter(Boolean).join(' · ')
+      }
+      if (name === 'od_data_trans') return [args.trans_type || args.transType, args.measure].filter(Boolean).join(' · ')
+      if (name === 'od_insight') return [args.breakdown, args.measure].filter(Boolean).join(' · ')
+      if (name === 'od_save_insight') return args.title || args.process || ''
+      if (name === 'od_commit_report') return args.title || args.filename || ''
+      return ''
+    }
+
+    function reportProcessFromCalls(runningCalls) {
+      const root = (runningCalls || []).find((call) => {
+        if (call?.name !== 'od_board_worker') return false
+        const args = parseToolArgs(call.argsRaw)
+        return String(args.prompt || call.argsRaw || '').includes('ANALYSIS_REPORT=1')
+      })
+      if (!root) return null
+      const workerArgs = parseToolArgs(root.argsRaw)
+      const child = flattenToolBlocks(root.subCalls).filter(({ block }) => REPORT_NODE_META[toolBlockName(block)])
+      const seen = new Set()
+      const steps = [{
+        id: `worker-${root.callId}`,
+        nodeName: 'od_board_worker',
+        category: '分析 Agent',
+        title: workerArgs.description || '分析报告',
+        detail: '编排数据读取、分析洞察与报告生成节点',
+        status: 'running',
+        depth: 0,
+        durationMs: Math.max(0, Date.now() - Number(root.time || Date.now())),
+        inputs: [{ label: '任务', value: compactValue(workerArgs.description || '分析报告') }],
+        output: '',
+      }]
+      for (const entry of child) {
+        const { block, depth } = entry
+        const name = toolBlockName(block)
+        const key = String(block.callId || block.seq || `${name}-${steps.length}`)
+        if (seen.has(key)) continue
+        seen.add(key)
+        const args = parseToolArgs(block.kind === 'tool-result' ? block.call?.argsRaw : block.argsRaw)
+        const meta = REPORT_NODE_META[name]
+        const startTime = Number(block.kind === 'tool-result' ? block.callTime : block.time)
+        const endTime = Number(block.kind === 'tool-result' ? block.time : Date.now())
+        steps.push({
+          id: key,
+          nodeName: name,
+          category: meta.category,
+          title: meta.title,
+          detail: reportStageDetail(name, args),
+          status: block.kind === 'tool-result' ? (block.isError ? 'error' : 'done') : 'running',
+          depth,
+          durationMs: Number.isFinite(startTime) && Number.isFinite(endTime) ? Math.max(0, endTime - startTime) : 0,
+          inputs: reportNodeInputs(name, args),
+          output: block.kind === 'tool-result' ? contentText(block.content) : '',
+        })
+      }
+      return {
+        title: workerArgs.description || '分析报告',
+        status: steps.some((step) => step.status === 'error') ? 'error' : 'running',
+        activeNode: [...steps].reverse().find((step) => step.status === 'running')?.title || '等待执行节点',
+        steps,
+      }
+    }
+
+    /** Mirror the foreground analysis worker's nested calls into OD's right pane. */
+    function ReportProcessBridge({ useSession }) {
+      const runningCalls = useSession((snapshot) => snapshot.runningCalls || [])
+      const process = reportProcessFromCalls(runningCalls)
+      const payloadKey = process ? JSON.stringify(process) : ''
+      React.useEffect(() => {
+        if (!process || !isEmbedded()) return
+        notifyParent({
+          type: 'od-report-progress',
+          ...process,
+          nonce: Date.now(),
+        })
+      }, [payloadKey])
+      return null
+    }
+
     function notifyOpenDashboard(payload, { force = true } = {}) {
       const id = String(payload.dashboardId || '')
       if (!id) return
@@ -134,11 +277,29 @@ window.__ModuleLoader__.load({
 
     function notifySessionChanged({ blank = false, sessionId = '' } = {}) {
       postedBoardIds.clear()
+      primedBridgeDash = false
+      seenBridgeDash = ''
       notifyParent({
         type: 'od-session-changed',
         blank: Boolean(blank),
         sessionId: String(sessionId || ''),
       })
+    }
+
+    function maybeOpenDashboardFromBridge(bridge) {
+      const dashId = bridge?.dashboardId ? String(bridge.dashboardId) : ''
+      if (!primedBridgeDash) {
+        primedBridgeDash = true
+        seenBridgeDash = dashId
+        return
+      }
+      if (!dashId || dashId === seenBridgeDash) return
+      seenBridgeDash = dashId
+      notifyOpenDashboard({
+        dashboardId: dashId,
+        title: '',
+        editPath: `/dashboards/${dashId}/edit`,
+      }, { force: true })
     }
 
     /** sessionStorage key for last opened dsh session in this OD tenant (survives refresh). */
@@ -835,6 +996,76 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function collectToolResultText(blocks, parts = []) {
+      for (const block of blocks || []) {
+        if (!block || typeof block !== 'object') continue
+        if ((block.type === 'text' || block.kind === 'text') && typeof block.text === 'string') {
+          parts.push(block.text)
+        }
+        const nested = block.content
+        if (Array.isArray(nested)) collectToolResultText(nested, parts)
+        else if (typeof nested === 'string') parts.push(nested)
+      }
+      return parts
+    }
+
+    function toolResultText(event) {
+      const content = event?.data?.message?.content
+      if (!Array.isArray(content)) return typeof content === 'string' ? content : ''
+      return collectToolResultText(content).join('\n')
+    }
+
+    function parseBoardReadyFromText(text) {
+      const raw = String(text || '')
+      if (!raw.trim()) return null
+      const titleMatch = raw.match(/✅\s*([^（(\n]+?)\s*[（(]/)
+        || raw.match(/^\s*([^\n（(]{1,40}?)已生成完成/)
+      const title = titleMatch ? titleMatch[1].trim() : undefined
+      const readyEn = raw.match(/\bboard ready:\s*([A-Za-z0-9][A-Za-z0-9_-]{0,63})\s*\((\d+)\s*charts?\)/i)
+      if (readyEn) {
+        const chartCount = Number(readyEn[2])
+        return {
+          dashboardId: readyEn[1],
+          chartCount: Number.isFinite(chartCount) ? chartCount : 0,
+          ...(title ? { title } : {}),
+        }
+      }
+      const readyZh = raw.match(/\bboard ready:\s*([A-Za-z0-9][A-Za-z0-9_-]{0,63})\s*[，,]\s*含\s*(\d+)\s*个图表/i)
+      if (readyZh) {
+        const chartCount = Number(readyZh[2])
+        return {
+          dashboardId: readyZh[1],
+          chartCount: Number.isFinite(chartCount) ? chartCount : 0,
+          ...(title ? { title } : {}),
+        }
+      }
+      const compact = raw.match(/\bboard\s+([A-Za-z0-9][A-Za-z0-9_-]{0,63})\s*[·•・]\s*(\d+)\s*charts?/i)
+      if (compact) {
+        const chartCount = Number(compact[2])
+        return {
+          dashboardId: compact[1],
+          chartCount: Number.isFinite(chartCount) ? chartCount : 0,
+          ...(title ? { title } : {}),
+        }
+      }
+      return null
+    }
+
+    function boardReadyMetaFromEvent(event) {
+      const meta = event?.data?.meta
+      if (meta && meta.odKind === 'board_ready' && meta.dashboardId) return meta
+      const parsed = parseBoardReadyFromText(toolResultText(event))
+      if (!parsed) return null
+      return {
+        odKind: 'board_ready',
+        dashboardId: parsed.dashboardId,
+        title: parsed.title,
+        chartCount: parsed.chartCount,
+        editPath: `/dashboards/${parsed.dashboardId}/edit`,
+        source: 'spawn-text',
+      }
+    }
+
     function makeDefinition(kind, odKind) {
       const deferUntilTurnEnd = odKind === 'board_ready' || odKind === 'report_ready'
       return {
@@ -842,7 +1073,9 @@ window.__ModuleLoader__.load({
         target: 'chat',
         match(event) {
           if (event.type === 'tool/result') {
-            const meta = event.data?.meta
+            const meta = odKind === 'board_ready'
+              ? boardReadyMetaFromEvent(event)
+              : event.data?.meta
             if (!meta || meta.odKind !== odKind) return null
             // Board nodes key by turn so turn/end can publish the same node.
             // Never key by dashboardId: replace-mode regenerate reuses the draft id.
@@ -860,7 +1093,9 @@ window.__ModuleLoader__.load({
           return null
         },
         start(_context, match) {
-          const meta = match.event.data.meta
+          const meta = odKind === 'board_ready'
+            ? (boardReadyMetaFromEvent(match.event) || match.event.data.meta || {})
+            : match.event.data.meta
           return {
             turn: match.event.data.turn,
             step: match.event.data.step,
@@ -1019,6 +1254,12 @@ window.__ModuleLoader__.load({
       return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`
     }
 
+    function sessionRowTitle(row) {
+      const t = String(row?.displayTitle || row?.title || '').trim()
+      if (t && !/^session-/i.test(t)) return t
+      return '对话'
+    }
+
     /** Prefer GET /od/sessions (P014 partition); surface errors — never fake empty. */
     function useOdSessions(refreshKey) {
       const [rows, setRows] = React.useState(null)
@@ -1132,7 +1373,7 @@ window.__ModuleLoader__.load({
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             fontWeight: row.id === current ? 600 : 500,
           },
-        }, row.displayTitle || row.title || row.id),
+        }, sessionRowTitle(row)),
         h('div', {
           style: {
             display: 'flex', justifyContent: 'space-between', gap: 8,
@@ -1263,7 +1504,7 @@ window.__ModuleLoader__.load({
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 fontWeight: 500,
               },
-            }, row.displayTitle || row.title || row.id),
+            }, sessionRowTitle(row)),
             h('span', {
               style: { flex: 'none', fontSize: 12, color: '#9ca3af' },
             }, formatSessionWhen(row.updatedAt)),
@@ -1462,6 +1703,7 @@ window.__ModuleLoader__.load({
           .then((r) => r.json())
           .then((data) => {
             const bridge = data?.bridge || {}
+            maybeOpenDashboardFromBridge(bridge)
             const id = bridge.dshWorkspaceId ? String(bridge.dshWorkspaceId) : ''
             if (!id) return
             SessionChromeAction._dshWorkspaceId = id
@@ -1548,6 +1790,12 @@ window.__ModuleLoader__.load({
         order: 10,
         label: '会话',
       }, SessionChromeAction))
+      ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
+        name: 'conversation.session.header.utilities',
+        id: 'od-report-process-bridge',
+        order: 11,
+        label: '分析过程',
+      }, ReportProcessBridge))
       ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
         name: 'conversation.input.dock',
         id: 'od-recent-conversations',
@@ -1580,6 +1828,7 @@ window.__ModuleLoader__.load({
     exports.AnswerChartView = AnswerChartView
     exports.BoardPreviewView = BoardPreviewView
     exports.ReportPreviewView = ReportPreviewView
+    exports.ReportProcessBridge = ReportProcessBridge
     exports.apply = apply
     exports.inject = inject
     return module.exports

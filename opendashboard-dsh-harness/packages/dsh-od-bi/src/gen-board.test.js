@@ -385,6 +385,7 @@ describe('cockpit IA', () => {
     assert.ok(isRankDim(fields.find((f) => f.name === 'StoreName')))
     assert.ok(card.rankDims.some((d) => d.field === 'StoreName'))
     assert.equal(card.rankDims.some((d) => d.field === 'MchId'), false)
+    assert.ok(card.entityDims.some((d) => d.field === 'MchId'))
   })
 
   it('review keeps one pie and turns the second into a bar', () => {
@@ -432,5 +433,91 @@ describe('cockpit IA', () => {
     assert.equal(bound.find((c) => c.intent === 'kpi_sum')?.type, 'kpi')
     assert.equal(bound.find((c) => c.intent === 'compare')?.type, 'bar')
     assert.equal(bound.find((c) => c.intent === 'compose')?.type, 'pie')
+  })
+})
+
+describe('detail table requires an entity subject', () => {
+  it('rewrites Status×MchIncome grouptable to MchId when a compare bar already uses Status', () => {
+    const out = reviewCharts([
+      {
+        type: 'bar',
+        title: '各支付状态商户入账金额对比',
+        encode: { category: 'Status', value: 'MchIncome', agg: 'sum' },
+      },
+      {
+        type: 'grouptable',
+        title: '按支付状态汇总订单明细',
+        encode: { category: 'Status', value: 'MchIncome', agg: 'sum' },
+      },
+    ], { fields: MERCHANT_ORDER_FIELDS })
+    const table = out.find((c) => c.type === 'grouptable')
+    assert.ok(table)
+    assert.equal(table.encode?.category, 'MchId')
+    assert.equal(table.encode?.value, 'MchIncome')
+    assert.equal(out.some((c) => c.type === 'grouptable' && c.encode?.category === 'Status'), false)
+  })
+
+  it('prefers unused merchant over app already used by rank', () => {
+    const fields = [
+      ...MERCHANT_ORDER_FIELDS,
+      { name: 'AppId', label: '应用ID', role: 'id', group: 'dim', dataType: 'STRING' },
+    ]
+    const out = reviewCharts([
+      {
+        type: 'hbar',
+        title: '应用 Top10',
+        encode: { category: 'AppId', value: 'MchIncome', agg: 'sum', resultLimit: 10 },
+      },
+      {
+        type: 'grouptable',
+        title: '按应用汇总',
+        encode: { category: 'AppId', value: 'MchIncome', agg: 'sum' },
+      },
+    ], { fields })
+    const table = out.find((c) => c.type === 'grouptable')
+    assert.equal(table?.encode?.category, 'MchId')
+  })
+
+  it('drops enum-only table when there is no entity subject', () => {
+    const out = reviewCharts([
+      {
+        type: 'bar',
+        title: '状态对比',
+        encode: { category: 'Status', value: 'Amount', agg: 'sum' },
+      },
+      {
+        type: 'grouptable',
+        title: '按状态汇总',
+        encode: { category: 'Status', value: 'Amount', agg: 'sum' },
+      },
+    ], { fields: [
+      { name: 'Status', label: '支付状态', role: 'dim', group: 'd', distinctCount: 3 },
+      { name: 'Amount', label: '金额', role: 'measure', group: 'q' },
+    ] })
+    assert.equal(out.some((c) => c.type === 'grouptable'), false)
+  })
+
+  it('binds MchId as table category even though it is junk as a measure', () => {
+    const bound = bindGoals('ds_orders', [{
+      intent: 'table',
+      question: '按商户汇总入账',
+      dim: 'MchId',
+      measure: 'MchIncome',
+      agg: 'sum',
+    }], MERCHANT_ORDER_FIELDS)
+    assert.equal(bound.length, 1)
+    assert.equal(bound[0].type, 'grouptable')
+    assert.equal(bound[0].encode?.category, 'MchId')
+    assert.equal(bound[0].encode?.value, 'MchIncome')
+  })
+
+  it('enumerates merchant-order table on MchId not Status', () => {
+    const { charts } = planChartsFromFields('ds_orders', MERCHANT_ORDER_FIELDS, {
+      message: '专业经营仪表盘',
+    })
+    const table = charts.find((c) => c.type === 'grouptable')
+    assert.ok(table)
+    assert.equal(table.encode?.category, 'MchId')
+    assert.equal(['Amount', 'MchIncome'].includes(String(table.encode?.value)), true)
   })
 })

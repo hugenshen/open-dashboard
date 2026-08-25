@@ -7,12 +7,14 @@ import { transformRows } from './data-trans.js'
 import { resetBoardSession } from './board-store.js'
 import {
   callerDepth,
+  installSpawnWorkerPresentation,
   runCommitBoard,
   runDataTrans,
   runGetData,
   runSaveChart,
   workerGuardReason,
 } from './board-worker.js'
+import { consumePresentation, resetPresentation } from './board-store.js'
 
 describe('transformRows', () => {
   const rows = [
@@ -138,6 +140,10 @@ describe('runGetData / save / commit', () => {
     })
     assert.equal(committed.ok, true)
     assert.ok(committed.chartCount >= 1)
+    const lifted = consumePresentation(s.key)
+    assert.equal(lifted.odKind, 'board_ready')
+    assert.equal(lifted.dashboardId, 'd1')
+    assert.equal(lifted.editPath, '/dashboards/d1/edit')
   })
 
   it('rank trans updates suggestedChartType to hbar', async () => {
@@ -161,5 +167,91 @@ describe('runGetData / save / commit', () => {
     const trans = runDataTrans({ handle: got.handle, transType: 'rank', measure: 'MchIncome' }, { session: s })
     assert.equal(trans.ok, true)
     assert.equal(trans.suggestedChartType, 'hbar')
+  })
+})
+
+describe('installSpawnWorkerPresentation', () => {
+  it('adds presentationMeta to od_board_worker on register', () => {
+    resetPresentation()
+    const registered = []
+    const ctx = {
+      tools: {
+        register(def) {
+          registered.push(def)
+          return () => {}
+        },
+        get() { return undefined },
+      },
+      on() {},
+    }
+    installSpawnWorkerPresentation(ctx)
+    ctx.tools.register({
+      name: 'od_board_worker',
+      output: { schema: {}, render: () => [] },
+    })
+    const tool = registered[0]
+    assert.equal(typeof tool.output.presentationMeta, 'function')
+    const meta = tool.output.presentationMeta({}, {
+      kind: 'foreground',
+      runId: 'r',
+      output: [{ type: 'text', text: 'board ready: 13 (2 charts)' }],
+    })
+    assert.equal(meta.odKind, 'board_ready')
+    assert.equal(meta.dashboardId, '13')
+    assert.equal(meta.editPath, '/dashboards/13/edit')
+  })
+
+  it('injects presentationMeta through tools.get when spawn already registered', () => {
+    resetPresentation()
+    const stored = {
+      name: 'od_board_worker',
+      output: { schema: {}, render: () => [] },
+    }
+    const ctx = {
+      tools: {
+        register(def) { return def },
+        get(name) { return name === 'od_board_worker' ? stored : undefined },
+      },
+      on() {},
+    }
+    installSpawnWorkerPresentation(ctx)
+    const tool = ctx.tools.get('od_board_worker')
+    assert.equal(typeof tool.output.presentationMeta, 'function')
+    const meta = tool.output.presentationMeta({}, {
+      kind: 'foreground',
+      runId: 'r',
+      output: [{ type: 'text', text: 'board ready: 42 (3 charts)' }],
+    })
+    assert.equal(meta.odKind, 'board_ready')
+    assert.equal(meta.dashboardId, '42')
+  })
+
+  it('injects board_ready from worker summary text via tools.get', () => {
+    resetPresentation()
+    const stored = {
+      name: 'od_board_worker',
+      output: { schema: {}, render: () => [] },
+    }
+    const ctx = {
+      tools: {
+        register(def) { return def },
+        get(name) { return name === 'od_board_worker' ? stored : undefined },
+      },
+      on() {},
+    }
+    installSpawnWorkerPresentation(ctx)
+    const tool = ctx.tools.get('od_board_worker')
+    const meta = tool.output.presentationMeta({}, {
+      kind: 'foreground',
+      runId: 'r',
+      output: [{
+        type: 'text',
+        text: '看板已提交完成 ✅ 订单支付分析仪表盘（board 12 · 8 charts）',
+      }],
+    })
+    assert.equal(meta.odKind, 'board_ready')
+    assert.equal(meta.dashboardId, '12')
+    assert.equal(meta.chartCount, 8)
+    assert.equal(meta.title, '订单支付分析仪表盘')
   })
 })

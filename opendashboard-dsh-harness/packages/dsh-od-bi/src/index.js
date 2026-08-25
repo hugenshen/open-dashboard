@@ -30,6 +30,7 @@ import {
   mergeKnowledgeIntoFields,
 } from './knowledge-merge.js'
 import { sampleWarningForLlm, withSampleMeta } from './sample-meta.js'
+import { assessSemanticReadiness, semanticNotReadyMessage } from './semantic-readiness.js'
 import { assertAllowedTables } from './sql-guard.js'
 import { registerOdCommands } from './commands.js'
 
@@ -87,7 +88,7 @@ async function applyDashboardPatch({ title, mode, patch, dashboardId, signal }) 
 
 /** Schema + stored stats profile + confirmed knowledge (P0/P1). Never includeProbes. */
 async function loadSchemaAndProfile(datasetId, signal) {
-  const out = { fields: [], profile: null, name: '', knowledge: null, error: '' }
+  const out = { fields: [], profile: null, name: '', knowledge: null, semanticReadiness: null, error: '' }
   try {
     const schema = await biFetch(
       'GET',
@@ -143,6 +144,7 @@ async function loadSchemaAndProfile(datasetId, signal) {
   } catch {
     // knowledge optional
   }
+  out.semanticReadiness = assessSemanticReadiness(out)
   return out
 }
 
@@ -1073,6 +1075,21 @@ export function apply(ctx) {
           datasetId: ds,
         })
       }
+      const semanticReadiness = assessSemanticReadiness({
+        fields,
+        profile: loaded.profile,
+        knowledge: loaded.knowledge,
+      })
+      if (!semanticReadiness.ready) {
+        return toLosslessJson({
+          ok: false,
+          datasetId: ds,
+          error: semanticNotReadyMessage(semanticReadiness),
+          note: 'semanticReady=false; full-board planning is fail-closed',
+          source: 'semantic-not-ready',
+          semanticReadiness,
+        })
+      }
       const planned = await planBoardAnalysis({
         datasetId: ds,
         fields,
@@ -1471,6 +1488,21 @@ export function apply(ctx) {
           title,
           error: loaded.error || 'dataset has no fields',
           source: loaded.error ? 'java-error' : 'ts-deterministic',
+        })
+      }
+      const semanticReadiness = assessSemanticReadiness({
+        fields,
+        profile: loaded.profile,
+        knowledge: loaded.knowledge,
+      })
+      if (!semanticReadiness.ready) {
+        return toLosslessJson({
+          ok: false,
+          datasetId: ds,
+          title,
+          error: semanticNotReadyMessage(semanticReadiness),
+          source: 'semantic-not-ready',
+          semanticReadiness,
         })
       }
       const planned = await planBoardAnalysis({

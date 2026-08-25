@@ -70,6 +70,8 @@ public class DatasetProfiler {
         // Learned stats first; else schema group / JDBC type.
         Map<String, FieldProfileVO> stats = loadFieldStats(datasetId);
         Map<String, String> learned = learnedRolesFrom(stats);
+        int matchedProfileFields = 0;
+        int totalFields = detail.fields() == null ? 0 : detail.fields().size();
         if (detail.fields() != null) {
             for (DatasetFieldVO f : detail.fields()) {
                 String role = learned.getOrDefault(f.name(), roleOf(f));
@@ -80,6 +82,7 @@ public class DatasetProfiler {
                 row.put("dataType", f.dataType());
                 row.put("role", role);
                 FieldProfileVO p = stats.get(f.name());
+                if (p != null) matchedProfileFields++;
                 String src = "schema";
                 if (p != null && p.roleSource() != null && !p.roleSource().isBlank()) {
                     src = p.roleSource();
@@ -113,6 +116,11 @@ public class DatasetProfiler {
         out.put("tableName", detail.meta().tableName());
         out.put("folder", detail.meta().folder());
         out.put("weakDataset", DeterministicPlanner.isWeakDataset(detail));
+        double profileCoverage = totalFields == 0 ? 0D : (double) matchedProfileFields / totalFields;
+        out.put("profileFieldCount", matchedProfileFields);
+        out.put("profileCoverage", profileCoverage);
+        // P015 M0 evidence only. Final semanticReady also considers confirmed metrics in Harness.
+        out.put("profileReady", matchedProfileFields > 0 && profileCoverage >= 0.5D);
         out.put("fields", fields);
         out.put("measures", names(measures, 6));
         out.put("dims", names(dims, 6));

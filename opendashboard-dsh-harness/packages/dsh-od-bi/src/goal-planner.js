@@ -24,12 +24,12 @@ export const GOAL_PLAN_SYSTEM = `你是 DataQ 出板分析规划器。先根据�
 3. 结构对比：低基数 dim（dims）× 主 additive，intent=compare。状态/类型/渠道对金额必须是对比任务，禁止写成构成（compose）。
 4. 排行：若有 rankDims，对主度量 intent=rank（TOP10），不要用明细表冒充排行。
 5. 构成：最多 1 条 compose，且 dim 必须在 composeDims（distinct 约 2～8）。禁止第二条构成。
-6. 明细：一条 table，按最重要的业务维汇总主度量。
+6. 明细：至多一条 table。行维必须用 entityDims（商户/应用/代理商/门店等经营主体）；禁止只用 Status/Type/渠道等已用于 compare/compose 的低基数分类当唯一行维。没有 entityDims 且没有 rankDims 时跳过明细，不要硬凑。明细不要与排行使用同一主体同一度量。
 
 硬规则：
 1. compare / table / rank 的 measure 必须来自 additive，agg 只能是 sum 或 count。
 2. ratio 只能 kpi_ratio（agg=avg），禁止与维度做 SUM 对比。
-3. 不得使用 junk。
+3. 不得把 junk 当度量（禁止 SUM 商户ID/订单号）。entityDims 中的商户/应用 ID 只能当明细或排行的分类维。
 4. trend 仅当对应 time.dayBucket 为 true。
 5. question 用中文、像分析师提问（「各支付状态下入账差多少」而不是「状态分布」）；rationale 写清本任务回答什么决策问题。
 6. 用户说「专业仪表盘」而主题空：仍按驾驶舱出全槽，不要只出两条构成+一张表。
@@ -123,7 +123,43 @@ export function shapeCockpitGoals(goals, card = {}) {
     g.chartType = 'pie'
     g.intent = g.intent || 'compose'
   }
-  return list
+  const compareOrCompose = new Set()
+  const rankUsed = []
+  for (const g of list) {
+    const dim = String(g.dim || g.encode?.category || '')
+    const t = String(g.chartType || g.type || '').toLowerCase()
+    if (g.intent === 'rank' || t === 'hbar') {
+      if (dim) rankUsed.push(dim)
+      continue
+    }
+    if (g.intent === 'compare' || g.intent === 'compose' || t === 'bar' || t === 'pie' || t === 'donut') {
+      if (dim) compareOrCompose.add(dim)
+    }
+  }
+  const entityFields = [...(card.entityDims || []), ...(card.rankDims || [])]
+  const pickDetail = () => {
+    const unused = entityFields.find((d) => d.field && !rankUsed.includes(d.field) && !compareOrCompose.has(d.field))
+    if (unused) return unused
+    return entityFields.find((d) => d.field && !compareOrCompose.has(d.field)) || entityFields[0]
+  }
+  return list.filter((g) => {
+    const t = String(g.chartType || g.type || '').toLowerCase()
+    if (g.intent !== 'table' && t !== 'grouptable' && t !== 'table') return true
+    const dim = String(g.dim || g.encode?.category || '')
+    const weak = !dim || compareOrCompose.has(dim) || composeFields.has(dim)
+    if (!weak) return true
+    const subject = pickDetail()
+    if (!subject?.field) return false
+    g.dim = subject.field
+    if (g.encode && typeof g.encode === 'object') {
+      g.encode = { ...g.encode, category: subject.field }
+    }
+    const lab = subject.label || subject.field
+    g.question = `按${lab}汇总主度量`
+    g.title = `按${lab}汇总主度量`
+    g.slot = 'detail'
+    return true
+  })
 }
 
 export function llmGoalsToBindInput(goals) {

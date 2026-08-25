@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { computeInsights } from './insight.js'
 import { renderReport } from './report-render.js'
-import { resetBoardSession } from './board-store.js'
+import { consumePresentation, resetBoardSession } from './board-store.js'
 import { runGetData, runSaveChart, runCommitBoard, workerGuardReason } from './board-worker.js'
 import { runInsight, runSaveInsight, runCommitReport } from './analysis-worker.js'
 import { buildReportFollowup } from './commands.js'
@@ -180,5 +180,8 @@ describe('analysis worker', () => {
     assert.equal(meta.dashboardId, null)
     assert.ok(meta.html)
     assert.ok(meta.markdown)
+    const lifted = consumePresentation(session.key)
+    assert.equal(lifted.odKind, 'report_ready')
+    assert.ok(lifted.html)
   })
 })
