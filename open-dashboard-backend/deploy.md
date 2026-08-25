@@ -1,6 +1,6 @@
 # 后端部署与本地运行
 
-本目录是产品 API。契约见 [`../docs/design/openapi.yaml`](../docs/design/openapi.yaml)。
+本目录是产品 API。契约见 [`../.teamai/docs/design/openapi.yaml`](../.teamai/docs/design/openapi.yaml)。
 
 - `Dockerfile`：容器内 Maven 构建
 - `Dockerfile.runtime`：宿主机先打 JAR

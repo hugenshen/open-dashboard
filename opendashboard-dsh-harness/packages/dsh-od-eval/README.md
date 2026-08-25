@@ -2,7 +2,7 @@
 
 分段评测：独立于对话，驱动 `dsh-od-bi` 确定性模块（P012 E0 + P015 出板质量）。
 
-详设：`docs/proposals/P012-ask-gen-quality/eval-design.md` · 出板质量目录：[P015 quality-evaluation.md](../../../docs/proposals/P015-board-task-realize/quality-evaluation.md)
+详设：`.teamai/docs/proposals/P012-ask-gen-quality/design/eval-design.md` · 出板质量目录：[P015 quality-evaluation.md](../../../.teamai/docs/proposals/P015-board-task-realize/design/quality-evaluation.md)
 
 ## 跑默认门禁（CI）
 

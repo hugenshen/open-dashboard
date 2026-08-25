@@ -2,7 +2,7 @@
 
 JDK 21 · Spring Boot 3 · PostgreSQL · Flyway · COLA 多模块。
 
-契约：[`../docs/design/openapi.yaml`](../docs/design/openapi.yaml)。  
+契约：[`../.teamai/docs/design/openapi.yaml`](../.teamai/docs/design/openapi.yaml)。  
 运行、Docker、生产注意：[`deploy.md`](./deploy.md)。
 
 ```

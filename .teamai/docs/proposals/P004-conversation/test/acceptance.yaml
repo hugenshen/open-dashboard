@@ -1,0 +1,315 @@
+# P004 acceptance
+
+# P011 M4（2026-08-21）：基于 Python harness SSE（`/harness/v1`）的对话表面验收已 **superseded**。
+# 对话主路径改由 P011（dsh SessionEvent → ConversationNode）承接；下列 ID 保留历史 pass/todo，不再作为切流门禁。
+
+proposal: P004
+items:
+  - id: PR-CONV-01
+    title: 开关与权限闸门
+    gate: code
+    criterion: 功能关闭或缺少 conversation:use 时，菜单和 run 均不可用。
+    method: api
+    command_or_path: scripts/e2e-auth-ask.sh · /harness/v1/conversations/{id}/runs
+    expected: 请求被拒绝且不会调用 BI 工具。
+    evidence: "2026-08-20 e2e：Harness POST /v1/conversations/{id}/runs 仅带 report:view → 403 missing conversation:use。test_auth_gates.py：无 ask 权限时 QUERY_TOOLS 不暴露且 execute→TOOL_FORBIDDEN。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-CONV-01
+  - id: PR-CONV-02
+    title: 两段式对话工作区
+    gate: acceptance
+    criterion: 用户可从落地页选择数据集、提问并进入带结果的对话工作区。
+    method: ui
+    command_or_path: /conversations
+    expected: 不停在空页面；会话和上下文可恢复。
+    evidence: "回归：打开历史会话 #11 正常渲染 4 KPI + 6 图表，消息 3 条不重复触发；新会话 gen 生成看板 #55（10 charts）并可回溯。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-CONV-02
+  - id: PR-CONV-03
+    title: SSE 与 Patch 闭环
+    gate: code
+    criterion: Harness 按契约发送 run、step、answer、patch、chart_ready、finish 事件；run、confirm-plan、adopt 均由 Harness 承担并可应用 DashboardPatch。
+    method: api
+    command_or_path: /harness/v1/conversations/{id}/runs
+    expected: 事件顺序可复核；adopt 从 run artifact 生成 Patch；失败返回 error 和 finish。
+    evidence: "回归：gen 与 ask 均按 run→step→patch→chart_ready→board_ready→finish 顺序发事件；ask 路径 answer_sql+answer_table+finish(answered/sqlbot)。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-CONV-03
+  - id: PR-CONV-04
+    title: 看板配置真相
+    gate: acceptance
+    criterion: 对话产物为可编辑 dashboard draft，布局不持久化查询结果行。
+    method: ui
+    command_or_path: /conversations
+    expected: 编辑器打开同一 draft；刷新经 chartQuery 或 datasetQuery。
+    evidence: "回归：对话产物为 draft 看板 #55/#56，'在编辑器打开' 走新标签页；历史会话预览从 draft 重建 charts/queryBar。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-CONV-04
+  - id: PR-CONV-05
+    title: SQLBot 显示范围
+    gate: hi-fi
+    criterion: SQLBot 只在仪表盘编辑器展示，工作台、对话和资源模块无入口。
+    method: ui
+    command_or_path: .teamai/docs/prototypes/hi-fi/dashboard.html
+    expected: 只有编辑态存在 SQLBot 入口。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-CONV-05
+  - id: PR-CONV-06
+    title: Harness 进程边界
+    gate: code
+    criterion: Vue 直连 Python Harness；Java public conversation runs 不承担 Agent 编排，Java public adopt 入口不存在。
+    method: api
+    command_or_path: scripts/e2e-auth-ask.sh · POST /api/conversations/{id}/runs
+    expected: LLM、Agent loop、confirm-plan 与 adopt 运行时状态只存在于 Harness；Java 仅暴露 internal BI 工具和已废弃 runs 错误入口。
+    evidence: "2026-08-20 e2e：POST /api/conversations/any/runs → 410 {code:HARNESS_DIRECT} JSON（不再误标 SSE）。ConversationController.startRun 为退役入口。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-CONV-06
+  - id: PR-CONV-07
+    title: 内部 BI 工具安全
+    gate: code
+    criterion: Harness 只能通过带内部 Token 的 /api/internal/bi/* 查询或写配置。
+    method: api
+    command_or_path: scripts/e2e-auth-ask.sh · GET /api/internal/bi/datasets
+    expected: 缺失或错误 Token 返回拒绝，外部请求不可直接调用。
+    evidence: "2026-08-20 e2e：GET /api/internal/bi/datasets 无 Token 与 X-OD-Internal-Token:wrong 均 401。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-CONV-07
+  - id: PR-CONV-08
+    title: 可问数据权限
+    gate: acceptance
+    criterion: run 只能使用同时满足 conversation:use 与 dataset:use 的数据集。
+    method: api
+    command_or_path: scripts/e2e-auth-ask.sh · GET /api/dataset/askable
+    expected: 无权数据集不进入 Schema、提示词、SQL 或 Patch。
+    evidence: "2026-08-20 AskableDatasetService：conversation:use ∩ (dataset:use|dataset:manage)；分析师按广场 granted ask 收口。e2e askable 分析师真子集。Harness ToolGateway QUERY_TOOLS 同步要求 ask 权限；写看板工具要求 dashboard:manage|edit。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-CONV-08
+  - id: PR-CONV-09
+    title: 思考过程持久化与历史回溯
+    gate: acceptance
+    criterion: 每次生成的工具步骤链（od_profile_dataset/od_plan_charts/od_review_charts/od_layout_board/od_emit_patch 及质检说明）随 assistant 消息持久化到后端；打开历史会话可在「已思考」区回溯完整推理/执行过程。问数会话同时从 Harness replay（events + artifact）回填步骤与结果卡，不重新 POST /runs。
+    method: ui
+    command_or_path: /conversations
+    expected: 新生成会话重新打开后展示完整步骤链；问数历史展示结果卡（表/临时图）；有 linkedDashboardId 的会话打开不重复触发生成。
+    evidence: "回归：UI gen 后 assistant 消息 attachments 含 trace（SQLBot→读取 Schema→试查询→只读校验→选择图表）；重新打开无 POST /runs，'已思考' 展示步骤链；问数历史走 GET /harness/v1/conversations/{id}/replay 回填 answer_*；#11 旧数据无 trace/artifact 属预期。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-09
+  - id: PR-CONV-10
+    title: 生成版本记录与回滚
+    gate: acceptance
+    criterion: 每次看板落盘自动记录 revision（patch+权威快照）；对话工作台提供版本历史列表，可回滚到任一版本并刷新预览。
+    method: ui
+    command_or_path: /conversations
+    expected: 版本历史展示 label/#dashboardId/时间；最新版回滚禁用；回滚后看板内容恢复为快照。
+    evidence: "回归：harness 生成自动落 revision（含 runId/patch/snapshot）；UI 版本历史面板 2 条；点旧版回滚 POST /revisions/{rev}/restore 成功；后端 restoreSnapshot 先删旧组件再替换，看板 components 11↔11 精确恢复。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-10
+  - id: PR-CONV-11
+    title: 工具治理中间件
+    gate: code
+    criterion: 工具执行经统一管线（pre guard → 超时 → 重试退避 → 归一化）；查询类工具超时/瞬时失败自动重试，错误结构化返回不崩溃。
+    method: api
+    command_or_path: opendashboard-harness/tools/guard.py
+    expected: 缺参被 guard 拦截；超时兜底返回结构化错误；可重试错误退避重试；正常生成不误伤。
+    evidence: "单测：guard 拦截缺参、1s 超时 kill 3s 任务、Connection refused 重试 2 次；回归：gen/ask 多轮走管线全部正常完成。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-11
+  - id: PR-CONV-12
+    title: 多数据集并行规划
+    gate: acceptance
+    criterion: 多数据集 gen 时各数据集独立 ToolState 并行规划，合并 charts/query/标题到一张看板；empty/失败数据集跳过。
+    method: api
+    command_or_path: /harness/v1/conversations/{id}/runs
+    expected: 并行分析 N 个数据集并合并；看板含多数据集图表；标题拼接数据集名。
+    evidence: "回归：确定性并行分析 2 数据集→合并 14 张图→chart_ready 分布 ds_78f81f1b:10+ds_861730f6:1；看板标题'问数日志数据集分析 + data_agent_application_data_insight_record分析'；ds_sales/ds_4f137714 empty 正确跳过。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-12
+  - id: PR-CONV-13
+    title: 对话改图原地更新同一草稿
+    gate: code
+    criterion: 已生成 draft 后，用户用对话调整一张或多张图时，走 od_get_board_summary → od_rechart_chart → Java apply-patch mode=merge，只 upsert 原 chartId；dashboardId 不变；未点名的图与布局不被 set_layout / 差集删除。整页重做才允许 od_generate_board，且必须带同一 dashboardId，禁止另开草稿。
+    method: api
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/rechart.test.js · DashboardPatchApplier.merge
+    expected: merge patch 仅 upsert_chart；未知 chartId 失败且无 patch；按标题可命中；board_ready 带同一 dashboardId。
+    evidence: "rechart.test.js：按标题命中一张、两张饼图一次 merge、未知 chartId 失败无 patch、title 当 chartId 仍写回原 id；DashboardPatchApplier merge 忽略 set_layout/set_theme/upsert_component，不清画布。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-13
+  - id: PR-CONV-14
+    title: 专业出板规划（经营驾驶舱 IA）
+    gate: code
+    criterion: 「专业仪表盘」类空主题不得只规划两张饼+一张表。规划/闸门：KPI 必须分行；状态/类型×金额用柱图；至多 1 张饼；高基数维走 hbar TOP-N；layout 可铺最多两行对比图且趋势全宽。对照 refs/JoyAgent chartSuggest 与 P013 模板槽位。
+    method: api
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/goal-planner.test.js · gen-board.test.js cockpit IA
+    expected: shapeCockpitGoals 第二张饼改柱；capability 含 rankDims/composeDims；layout 4 张半宽图分两行；bind hbar 带 resultLimit 10。
+    evidence: "2026-08-24 cockpit tests pass：两饼夹具只留 1 pie；StoreName rank→hbar limit 10；layout 4 halves + trend-first。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-CONV-14
+  - id: PR-SL-01
+    title: 字段统计画像落库
+    gate: code
+    criterion: 数据集录入/手动触发后，de_dataset_field_profile 有每字段统计特征（distinct/null/数值范围/采样）。
+    method: api
+    command_or_path: POST /api/internal/bi/learn-dataset
+    expected: 返回 ok:true；schema 接口 fields 的 roleSource=learned。
+    evidence: "CSV 导入 ds_74ef3b81 自动触发；ds_1ea87e50 手动 learn-dataset 后 schema 返回 20 行采样，全部 src=learned。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SL-01
+  - id: PR-SL-02
+    title: 角色判定正确（统计判定，非关键词）
+    gate: acceptance
+    criterion: 字段角色由统计特征判定：ID 类（config_id/scene_id/tenant_id）→id，标志位（status/enable_flag/forward_auth_enabled）→flag，时间→time，名称→dim，正文→junk。
+    method: api
+    command_or_path: GET /api/internal/bi/datasets/{id}/schema
+    expected: 期望角色与 learned role 一致。
+    evidence: "ds_1ea87e50 全部关键字段通过：config_id/scene_id/tenant_id→id、status/enable_flag/forward_auth_enabled→flag、created_date→time、report_name→dim、report_summary→junk。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SL-02
+  - id: PR-SL-03
+    title: 采样进 schema
+    gate: code
+    criterion: od_get_schema 返回体含 ≥10 行真实采样，供 LLM 语义解释。
+    method: api
+    command_or_path: GET /api/internal/bi/datasets/{id}/schema
+    expected: sample 字段存在且 ≥10 行。
+    evidence: "ds_1ea87e50 schema sample=20 行（含真实 SQL 配置/状态值）。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SL-03
+  - id: PR-SL-04
+    title: 生成回归（无 ID/标志位聚合）
+    gate: acceptance
+    criterion: 无业务度量的数据集生成看板时，不产出「平均配置ID」「均值标志位」类无意义图。
+    method: ui
+    command_or_path: /conversations
+    expected: 看板图表全基于计数/合法度量维度，无 ID/标志位作为 value 聚合。
+    evidence: "ds_1ea87e50 确定性生成看板 #62：记录数 KPI + 产品标识汇总，value 均为 product（dim 计数），无 ID/标志位聚合。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SL-04
+  - id: PR-SL-05
+    title: 重新学习 LLM 复核角色
+    gate: code
+    criterion: POST /api/dataset/{id}/learn 先写规则画像，再调 Harness review-fields；LLM 可改 role_learned/别名；confirmed 指标与词表不被覆盖。Harness/LLM 不可用时仍返回 ok 且保留规则结果。
+    method: api
+    command_or_path: POST /api/dataset/{id}/learn · POST /harness/v1/datasets/{id}/review-fields
+    expected: 响应含 llmReviewed/llmSource/llmChanged；pytest test_review_fields.py 覆盖 LLM/stats 回包。
+    evidence: ""
+    status: todo
+    blocker_of_done: false
+    requirements_target: PR-SL-05
+  - id: PR-KB-01
+    title: 指标注册表 CRUD
+    gate: code
+    criterion: de_indicator 可 CRUD，含 agg/unit/口径/status/confidence；Learner 录入时写 draft 候选。
+    method: api
+    command_or_path: GET /api/indicators/dataset/{id} · POST /api/indicators/{id}/confirm
+    expected: 自学习产出 draft 候选（agg/unit 启发式）；确认后 status=confirmed。
+    evidence: "ds_77daa311 learn 后产出 amount(SUM,元)/qty(SUM,件) draft；确认 id=1 → confirmed。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-KB-01
+  - id: PR-KB-02
+    title: 词表对齐（别名命中）
+    gate: acceptance
+    criterion: 用户自然语言词（如「销售额」「门店」）经 de_glossary 别名命中 canonical 字段。
+    method: api
+    command_or_path: POST /api/internal/bi/resolve-intent
+    expected: glossary term/alias 命中字段，mapping 含该词，unresolved 为空。
+    evidence: "词表加「门店→channel」后问「各门店销售额对比」：mapping=[('商户','channel'),('收入','amount')]，unresolved=[]；无词表时该词无法命中。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-KB-02
+  - id: PR-KB-03
+    title: 知识注入（<knowledge> 冻结快照）
+    gate: code
+    criterion: harness transform_context 生成的 system 含 <knowledge> 块（confirmed 指标+词表），静态 prompt 不含知识。
+    method: api
+    command_or_path: opendashboard-harness/agent/context.py
+    expected: <knowledge> 作为独立块注入；同数据集集合走 120s 冻结缓存。
+    evidence: "context.transform_context 注入 format_knowledge_block 产物；lead 生成 run 正常消费（ds_77daa311 含 amount(SUM) confirmed 指标）。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-KB-03
+  - id: PR-KB-04
+    title: skills 指标字典
+    gate: code
+    criterion: skills/od-metrics/SKILL.md 存在，含已确认指标与词表，模型可读取。
+    method: api
+    command_or_path: opendashboard-harness/skills/od-metrics/SKILL.md
+    expected: frontmatter(name/description)+正文；confirmed 指标行含 agg/unit。
+    evidence: "SKILL.md 含「- amount → amount（SUM，元）」与「- 门店 → channel」。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-KB-04
+  - id: PR-SA-01
+    title: LLM 见采样
+    gate: code
+    criterion: od_get_schema 返回体含真实采样行（阶段1 sample 聚合列），供 LLM 语义解释。
+    method: api
+    command_or_path: GET /api/internal/bi/datasets/{id}/schema
+    expected: sample 字段存在且 ≥10 行。
+    evidence: "ds_1ea87e50 schema sample=20 行；od_interpret_fields 返回体带字段采样（config_id 采样为 JSON 长文本，可判 id/junk）。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-01
+  - id: PR-SA-02
+    title: 字段解释回写（自学习闭环）
+    gate: code
+    criterion: od_interpret_fields 对字段输出合理 role/含义，并回写 de_indicator.confidence 提升 + 别名进词表。
+    method: api
+    command_or_path: POST /api/internal/bi/interpret-fields
+    expected: measure 字段解释后 confidence 提升；别名写 de_glossary。
+    evidence: "interpret-fields amount(measure,aliases=[销售额,GMV])：amount confidence 0.5→0.77，glossary 新增 销售额/GMV→amount。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-02
+  - id: PR-SA-03
+    title: 意图→图表（趋势/对比/占比）
+    gate: acceptance
+    criterion: 「趋势/走势」→line；「对比/排行」→hbar；「占比/构成」→pie。
+    method: ui
+    command_or_path: /conversations
+    expected: 生成看板含对应图型。
+    evidence: "ds_77daa311「各区域对比」→region hbar；「渠道占比」→channel pie；ds_1ea87e50「按月份看趋势」→created_date line（enrich 补 line probe）。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-03
+  - id: PR-SA-04
+    title: emit 前数据探活
+    gate: code
+    criterion: rowCount=0 / 全 null / 查询失败 的图在 emit 前被剔除，不进看板。
+    method: api
+    command_or_path: opendashboard-harness/tools/od_bi.py _probe_patch
+    expected: 空图不进 apply-patch；全空则返回错误不生成看板。
+    evidence: "od_emit_patch 走 _probe_patch：每图先 query/chart 探活，空图剔除 chart+component ops；全部为空返回「所有图表数据为空」。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-04
+  - id: PR-SA-05
+    title: confirmed 指标进生成（KPI agg/unit 权威）
+    gate: acceptance
+    criterion: 数据集有 confirmed 指标时，生成看板 KPI 从 de_indicator 取 agg/unit，title 含指标名与单位。
+    method: ui
+    command_or_path: /conversations
+    expected: KPI title/encode 含 confirmed 指标名与单位。
+    evidence: "ds_77daa311 confirmed amount(SUM,元) → 生成 KPI「amount（元）」agg=SUM；用户记忆含万元偏好时 →「amount（万元）」。"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-SA-05

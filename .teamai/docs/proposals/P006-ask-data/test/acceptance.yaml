@@ -1,0 +1,150 @@
+# P006 acceptance
+
+# P011 M4（2026-08-21）：依赖 `opendashboard-harness` / `/harness/v1` SSE 的问数验收已 **superseded**。
+# 问数 UI+Agent 改由 P011（opendashboard-dsh-harness）承接；下列 ID 保留历史状态。
+
+proposal: P006
+items:
+  - id: PR-ASK-01
+    title: 对话默认问数
+    gate: acceptance
+    criterion: 普通自然语言问题默认返回会话内表、图或 SQL 证据，不自动修改画布。
+    method: ui
+    command_or_path: /conversations
+    expected: 至少出现一个 answer_* 事件和可复核结果。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-01
+  - id: PR-ASK-02
+    title: 问数结果不写入看板
+    gate: acceptance
+    criterion: 问数结果卡与编辑器 SQLBot 不展示「保存到仪表盘」，不调用 Harness /runs/{runId}/adopt；结果只留在会话预览。
+    method: ui
+    command_or_path: /conversations
+    expected: 问数完成后无保存按钮、无 adopt 请求；看板 draft 不因问数增加图表。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-02
+  - id: PR-ASK-03
+    title: 独立整页生成意图
+    gate: acceptance
+    criterion: 落地页或 Composer 的生成看板意图可创建整页 draft。
+    method: ui
+    command_or_path: /conversations
+    expected: 结果卡不承担该入口；生成后可打开编辑器。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-03
+  - id: PR-ASK-04
+    title: Schema Guard
+    gate: code
+    criterion: 缺少可用 Schema 时拒答或澄清，不生成 SQL 或 Patch。
+    method: api
+    command_or_path: /harness/v1/conversations/{id}/runs
+    expected: finish 原因可解释且无 BI 写调用。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-04
+  - id: PR-ASK-05
+    title: 结果卡无保存、无整页生成主按钮
+    gate: hi-fi
+    criterion: 问数结果卡不展示保存到仪表盘，也不展示直接生成仪表盘主按钮。
+    method: ui
+    command_or_path: .teamai/docs/prototypes/hi-fi/conversation-workspace.html
+    expected: 整页生成只存在于落地页、Composer 或追问 Chip。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-05
+  - id: PR-ASK-06
+    title: 工作台问题自动执行
+    gate: acceptance
+    criterion: 工作台提交问题后跳转对话并自动执行原问题。
+    method: ui
+    command_or_path: .teamai/docs/prototypes/hi-fi/workbench.html
+    expected: 对话中保留原问题并出现 answer_*，不落在空落地页。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-06
+  - id: PR-ASK-07
+    title: 可问集合一致
+    gate: acceptance
+    criterion: 工作台、对话和编辑器 SQLBot 只列 conversation:use 与 dataset:use 的交集。
+    method: api
+    command_or_path: scripts/e2e-auth-ask.sh · GET /api/dataset/askable
+    expected: 三个入口集合一致，无权数据集不可通过手工 ID 绕过。
+    evidence: "2026-08-20 e2e-auth-ask.sh：分析师 askable 真子集；三入口共用 GET /api/dataset/askable。与 PR-ACL-04 同一实现。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-ASK-07
+  - id: PR-ASK-08
+    title: Python Harness 边界
+    gate: code
+    criterion: Agent loop、LLM 和 NL2SQL 在 Python Harness；Java 仅执行内部 BI 工具。
+    method: script
+    command_or_path: scripts/e2e-auth-ask.sh · POST /api/conversations/{id}/runs
+    expected: Java 无模型调用，旧 runs 入口不代理 Agent。
+    evidence: "2026-08-20 e2e：Java POST /api/conversations/any/runs → 410 HARNESS_DIRECT。与 PR-CONV-06 同一实现。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-ASK-08
+  - id: PR-ASK-09
+    title: 换题反问后出 SQL
+    gate: code
+    criterion: 已选数据集时，「换一个问数问题」或无法识别问数需求时，按当前表字段反问具体问题 Chip；点击 Chip 后生成 SQL 并展示表/图，不再把元指令送进 NL2SQL。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_sqlbot_suggest.py
+    expected: is_suggest_request 命中元指令；suggest_questions 产出基于字段的具体问法；follows 不含「换一个问数问题」。
+    evidence: "2026-08-20 pytest tests/test_sqlbot_suggest.py：is_suggest_request 命中「换一个问数问题」等元指令；suggest_questions/suggest_follows 产出字段问法且不含元指令。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-ASK-09
+  - id: PR-ASK-10
+    title: 历史问数回放思考与结果
+    gate: code
+    criterion: 打开已完成的问数历史会话时，展示「已思考」步骤链和结果卡（表/临时图/SQL），不重新 POST /runs。数据来自 Harness replay（run events + artifact），Java 消息 attachments 作降级。
+    method: ui
+    command_or_path: /conversations/{id}
+    expected: 刷新或从历史列表进入后结果卡仍在；网络里没有新的 POST /harness/v1/conversations/{id}/runs；GET replay 200。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-10
+  - id: PR-ASK-11
+    title: 0 行问数说明无数据且不重复思考
+    gate: acceptance
+    criterion: SQL 执行 0 行时结果卡说明无数据（可带样本时间范围），不出空白图；同一用户问题只保留一段「已思考」；打开已完成历史会话不因缺少 Java assistant 气泡而再次 POST /runs。
+    method: ui
+    command_or_path: /conversations/{id}
+    expected: finish detail=empty 或 answer_insight「查询无有效数据」；无空白 ASK 图；网络无新的 POST /harness/v1/conversations/{id}/runs；连续重复「问数完成。」气泡被折叠。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ASK-11
+  - id: PR-ASK-12
+    title: 高频问法 few-shot
+    gate: code
+    criterion: 数据集页可维护 NL→SQL；SQLBot 生成前按问题相似度注入最多 3 条；无重叠时回退 hit_count 排序的前 N 条；表白名单仍拒绝示例里的未授权表。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_sqlbot_ask_context.py
+    expected: pick_few_shots 命中相似问法；compose_ask_knowledge 含 <few-shot-examples>。
+    evidence: "2026-08-20 pytest tests/test_sqlbot_ask_context.py：pick_few_shots 按问题重叠优先，无重叠回退第一条；compose_ask_knowledge 含 <few-shot-examples>。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-ASK-12
+  - id: PR-ASK-13
+    title: 维度值进入 SQL 生成
+    gate: code
+    criterion: confirmed 公共维度 values 挂到 schema 字段；SQLBot prompt 含 <dimension-values> 原文字面量；未确认候选不注入。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_sqlbot_ask_context.py
+    expected: value_hints 在问到 CNY 时带出 Currency 取值；format_knowledge_block 含 值:CNY。
+    evidence: "2026-08-20 pytest tests/test_sqlbot_ask_context.py：value_hints 问到 CNY 时带出 Currency；小枚举始终注入 <dimension-values>。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-ASK-13

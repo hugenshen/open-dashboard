@@ -1,0 +1,17 @@
+version: 1
+roles:
+  - id: ba
+    description: 规划与 BA。锁需求与验收 ID，做高保交互。不写技术方案、不改 OpenAPI、不改产品代码。
+    resources:
+      knowledge: [common, ba]
+      skills: [common, ba]
+  - id: dev
+    description: 开发。先写方案设计（design.md / OpenAPI / 代码落点），再按开发入口实现。
+    resources:
+      knowledge: [common, dev]
+      skills: [common, dev]
+  - id: test
+    description: 测试。只改 acceptance.yaml 的 status / evidence，判定能否上线。
+    resources:
+      knowledge: [common, test]
+      skills: [common, test]

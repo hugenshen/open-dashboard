@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Dashboard 用户操作手册</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --ink: #1a1d24;
+      --muted: #5c6573;
+      --line: #e4e7ec;
+      --brand: #2563eb;
+      --brand-soft: #eff4ff;
+      --ok: #059669;
+      --warn: #d97706;
+      --tip: #0e7490;
+      --radius: 12px;
+      --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px rgba(16, 24, 40, .06);
+      --sidebar: 240px;
+      --max: none;
+      --font: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font);
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.65;
+      font-size: 15px;
+      overflow: hidden;
+    }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Layout: 左侧固定菜单 + 右侧全屏内容 */
+    .layout {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 30;
+      width: var(--sidebar);
+      height: 100vh;
+      overflow: auto;
+      background: #111827;
+      color: #e5e7eb;
+      padding: 20px 0 40px;
+    }
+    .sidebar .brand {
+      display: flex; align-items: center; gap: 10px;
+      padding: 4px 20px 18px; border-bottom: 1px solid rgba(255,255,255,.08);
+      margin-bottom: 12px;
+    }
+    .sidebar .brand-mark {
+      width: 28px; height: 28px; border-radius: 7px;
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      display: grid; place-items: center; font-weight: 700; font-size: 12px; color: #fff;
+    }
+    .sidebar .brand strong { display: block; font-size: 14px; color: #fff; }
+    .sidebar .brand span { font-size: 11px; color: #9ca3af; }
+    .sidebar nav a {
+      display: block; color: #cbd5e1; padding: 7px 20px; font-size: 13px;
+      border-left: 3px solid transparent;
+    }
+    .sidebar nav a:hover { background: rgba(255,255,255,.04); color: #fff; text-decoration: none; }
+    .sidebar nav a.active { color: #fff; background: rgba(37,99,235,.18); border-left-color: #3b82f6; }
+    .sidebar .group {
+      margin: 14px 20px 6px; font-size: 11px; letter-spacing: .06em;
+      text-transform: uppercase; color: #6b7280; font-weight: 600;
+    }
+
+    .main {
+      margin-left: var(--sidebar);
+      width: calc(100% - var(--sidebar));
+      height: 100vh;
+      overflow: auto;
+      min-width: 0;
+    }
+    .hero {
+      background:
+        radial-gradient(900px 320px at 10% -10%, rgba(37,99,235,.18), transparent 60%),
+        radial-gradient(700px 280px at 90% 0%, rgba(14,116,144,.12), transparent 55%),
+        linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+      color: #f8fafc; padding: 40px 32px 36px;
+    }
+    .hero-inner { max-width: none; margin: 0; width: 100%; }
+    .hero .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 12px; color: #93c5fd; letter-spacing: .04em; margin-bottom: 14px;
+    }
+    .hero h1 { margin: 0 0 12px; font-size: 36px; letter-spacing: -.02em; font-weight: 700; }
+    .hero p.lead { margin: 0 0 22px; max-width: none; color: #cbd5e1; font-size: 16px; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 999px; font-size: 12px;
+      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); color: #e2e8f0;
+    }
+
+    .content { max-width: none; margin: 0; padding: 20px 24px 64px; width: 100%; }
+    section.chapter {
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: 12px; padding: 28px 28px; margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .chapter h2 {
+      margin: 0 0 8px; font-size: 24px; letter-spacing: -.01em;
+      padding-bottom: 12px; border-bottom: 1px solid var(--line);
+    }
+    .chapter h3 { margin: 28px 0 10px; font-size: 17px; }
+    .chapter h4 { margin: 18px 0 8px; font-size: 15px; color: #334155; }
+    .chapter p { margin: 0 0 12px; color: #334155; }
+    .chapter ul, .chapter ol { margin: 0 0 14px; padding-left: 1.25em; color: #334155; }
+    .chapter li { margin: 4px 0; }
+    .muted { color: var(--muted); }
+    .kicker { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+
+    /* Callouts */
+    .callout {
+      border-radius: 10px; padding: 12px 14px; margin: 14px 0 16px;
+      border: 1px solid var(--line); background: #f8fafc; display: flex; gap: 10px;
+    }
+    .callout .icon {
+      flex: 0 0 22px; height: 22px; border-radius: 6px;
+      display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff;
+    }
+    .callout.tip { background: #ecfeff; border-color: #a5f3fc; }
+    .callout.tip .icon { background: var(--tip); }
+    .callout.note { background: var(--brand-soft); border-color: #bfdbfe; }
+    .callout.note .icon { background: var(--brand); }
+    .callout.warn { background: #fffbeb; border-color: #fde68a; }
+    .callout.warn .icon { background: var(--warn); }
+    .callout .body { flex: 1; font-size: 13.5px; color: #334155; }
+    .callout .body strong { color: var(--ink); }
+
+    /* Steps */
+    .steps { counter-reset: step; list-style: none; padding: 0; margin: 12px 0 18px; }
+    .steps > li {
+      position: relative; padding: 12px 14px 12px 52px; margin: 0 0 10px;
+      background: #f8fafc; border: 1px solid var(--line); border-radius: 10px;
+    }
+    .steps > li::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 14px; top: 12px;
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--brand); color: #fff; font-size: 13px; font-weight: 700;
+      display: grid; place-items: center;
+    }
+    .steps > li strong { display: block; margin-bottom: 2px; color: var(--ink); }
+    .steps > li span { color: var(--muted); font-size: 13.5px; }
+
+    /* Figure / screenshots — soft matte frame, matches light chapter */
+    figure.shot {
+      margin: 16px 0 20px;
+      padding: 14px 14px 0;
+      background: linear-gradient(180deg, #eef2f7 0%, #e8eef5 100%);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #d8dee8;
+    }
+    figure.shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #fff;
+      border: 1px solid #d0d7e2;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, .06);
+    }
+    figure.shot figcaption {
+      padding: 11px 2px 13px;
+      font-size: 12.5px;
+      color: var(--muted);
+      background: transparent;
+      line-height: 1.5;
+    }
+    figure.shot figcaption em { color: var(--ink); font-style: normal; font-weight: 500; }
+
+    /* Tables */
+    table {
+      width: 100%; border-collapse: collapse; margin: 10px 0 16px;
+      font-size: 13.5px; background: #fff;
+    }
+    th, td {
+      border: 1px solid var(--line); padding: 9px 11px; text-align: left; vertical-align: top;
+    }
+    th { background: #f8fafc; color: #334155; font-weight: 600; }
+    code, kbd {
+      font-family: var(--mono); font-size: 12.5px;
+      background: #f1f5f9; border: 1px solid #e2e8f0;
+      border-radius: 4px; padding: 1px 5px;
+    }
+    kbd { background: #fff; box-shadow: 0 1px 0 #cbd5e1; }
+
+    .flow {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;
+      margin: 14px 0 18px;
+    }
+    .flow .card {
+      background: linear-gradient(180deg, #fff, #f8fafc);
+      border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+    }
+    .flow .card .n {
+      font-size: 11px; font-weight: 700; color: var(--brand); letter-spacing: .04em;
+      margin-bottom: 6px;
+    }
+    .flow .card h4 { margin: 0 0 4px; font-size: 14px; }
+    .flow .card p { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+    .mini {
+      border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: #f8fafc;
+    }
+    .mini h4 { margin: 0 0 6px; font-size: 14px; }
+    .mini p { margin: 0; font-size: 13px; color: var(--muted); }
+
+    .tag {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 11.5px; font-weight: 600; border: 1px solid transparent;
+    }
+    .tag.draft { background: #f1f5f9; color: #475569; }
+    .tag.pub { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+    .tag.dirty { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+
+    .toc-quick {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px;
+    }
+    .toc-quick a {
+      display: block; padding: 12px 14px; border-radius: 10px;
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+      color: #e2e8f0; text-decoration: none; font-size: 13px;
+    }
+    .toc-quick a:hover { background: rgba(59,130,246,.2); border-color: rgba(147,197,253,.35); }
+    .toc-quick a strong { display: block; color: #fff; margin-bottom: 2px; font-size: 14px; }
+
+    footer.doc-foot {
+      max-width: none; margin: 0; padding: 0 28px 48px;
+      color: var(--muted); font-size: 12.5px;
+    }
+    .chapter figure.shot img { max-height: none; }
+
+    .back-top {
+      position: fixed; right: 22px; bottom: 22px; z-index: 20;
+      width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
+      background: #fff; box-shadow: var(--shadow); cursor: pointer; color: var(--ink);
+      display: grid; place-items: center; font-size: 16px;
+    }
+    .back-top:hover { background: var(--brand); color: #fff; border-color: var(--brand); }
+
+    @media (max-width: 720px) {
+      .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+        max-height: 40vh;
+      }
+      .main {
+        margin-left: 0;
+        width: 100%;
+        height: auto;
+        overflow: visible;
+      }
+      body { overflow: auto; }
+      .hero, .content, footer.doc-foot { padding-left: 16px; padding-right: 16px; }
+      .chapter { padding: 20px 16px; }
+      .flow, .grid-2, .toc-quick { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 28px; }
+    }
+    @media print {
+      .sidebar, .back-top { display: none !important; }
+      body { background: #fff; }
+      .chapter { box-shadow: none; break-inside: avoid; }
+      figure.shot { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" aria-label="目录">
+      <div class="brand">
+        <div class="brand-mark">OD</div>
+        <div>
+          <strong>用户操作手册</strong>
+          <span>Open Dashboard v0.3 / v0.4</span>
+        </div>
+      </div>
+      <div class="group">入门</div>
+      <nav>
+        <a href="#intro">产品简介</a>
+        <a href="#quickstart">快速开始</a>
+        <a href="#concepts">核心概念</a>
+        <a href="#nav">界面与导航</a>
+      </nav>
+      <div class="group">功能模块</div>
+      <nav>
+        <a href="#workbench">工作台</a>
+        <a href="#conversation">对话分析</a>
+        <a href="#datasource">数据源</a>
+        <a href="#dataset">数据集</a>
+        <a href="#dashboard">仪表盘</a>
+        <a href="#editor">仪表盘编辑器</a>
+        <a href="#publish-share">发布与分享</a>
+        <a href="#mobile">移动端布局</a>
+        <a href="#report">在线报告</a>
+      </nav>
+      <div class="group">附录</div>
+      <nav>
+        <a href="#checklist">日常操作清单</a>
+        <a href="#faq">常见问题</a>
+      </nav>
+    </aside>
+
+    <div class="main">
+      <header class="hero" id="top">
+        <div class="hero-inner">
+          <div class="eyebrow">PRODUCT USER GUIDE · 用户操作手册</div>
+          <h1>Open Dashboard</h1>
+          <p class="lead">
+            开源仪表盘 / BI 画布。从接入数据、问一句数，到编排看板、撰写在线报告——
+            本手册按真实界面截图，给出可照做的操作步骤。
+          </p>
+          <div class="hero-meta">
+            <span class="pill">适用版本 v0.5 · 左侧产品壳 + 工作台问数 + 编辑器 SQLBot</span>
+            <span class="pill">人手链路：数据源 → 数据集 → 仪表盘 → 报告</span>
+            <span class="pill">问数链路：工作台 / 对话 → 结果卡 → 保存到仪表盘</span>
+            <span class="pill">更新于 2026-08-18</span>
+          </div>
+          <div class="toc-quick" style="margin-top:28px">
+            <a href="#quickstart"><strong>5 分钟上手</strong>从零完成一条分析链路</a>
+            <a href="#conversation"><strong>对话问数</strong>先出表/图，再决定是否落看板</a>
+            <a href="#editor"><strong>画布编辑</strong>组件、编码槽、SQLBot</a>
+            <a href="#report"><strong>在线报告</strong>引用看板图 / 新建图表</a>
+          </div>
+        </div>
+      </header>
+
+      <div class="content">
+
+        <!-- 1. 简介 -->
+        <section class="chapter" id="intro">
+          <h2>1. 产品简介</h2>
+          <p class="kicker">Open Dashboard 面向分析师与业务同学，把「连库 → 建模 → 问数 / 出图 → 成文」串成一条清晰工作流。</p>
+
+          <div class="flow">
+            <div class="card">
+              <div class="n">01 数据源</div>
+              <h4>连接业务库</h4>
+              <p>MySQL / PostgreSQL 等 JDBC 连接，测通后浏览表目录。</p>
+            </div>
+            <div class="card">
+              <div class="n">02 数据集</div>
+              <h4>定义语义字段</h4>
+              <p>选表，划分维度 / 指标，预览取数，供图表与问数绑定。</p>
+            </div>
+            <div class="card">
+              <div class="n">03 问数</div>
+              <h4>先问一句数</h4>
+              <p>工作台或对话里用自然语言出表/图；满意后再保存到看板。</p>
+            </div>
+            <div class="card">
+              <div class="n">04 仪表盘</div>
+              <h4>网格画布编排</h4>
+              <p>拖入图表与筛选控件，编码后发布、分享；编辑器可开 SQLBot。</p>
+            </div>
+            <div class="card">
+              <div class="n">05 报告</div>
+              <h4>图文混排成文</h4>
+              <p>Umo 排版，引用看板图或报告内新建图，实时取数。</p>
+            </div>
+          </div>
+
+          <div class="callout tip">
+            <div class="icon">i</div>
+            <div class="body"><strong>设计原则：配置与取数分离。</strong>画布上只保存图表配置（数据集、维度/指标编码等）；真正出数时走统一查询接口，预览、分享页看到的数据始终是实时查询结果。</div>
+          </div>
+
+          <div class="callout note">
+            <div class="icon">DB</div>
+            <div class="body"><strong>手册配图数据说明：</strong>截图使用独立演示库 <code>od_manual_demo</code>（MySQL，用户 <code>root</code>），与业务库隔离；含销售 / 运营 / 财务三套场景表。重建脚本见 <code>.teamai/docs/user-manual/seed/</code>。</div>
+          </div>
+        </section>
+
+        <!-- 2. 快速开始 -->
+        <section class="chapter" id="quickstart">
+          <h2>2. 快速开始（推荐路径）</h2>
+          <p class="kicker">第一次使用时，先接数建模，再问数或画看板。工作台首页也提供问数框和常用入口。</p>
+
+          <figure class="shot">
+            <img src="screenshots/01-workbench.png" alt="工作台概览" loading="lazy" />
+            <figcaption><em>图 2-1</em> · 工作台：左侧模块栏、问数框、常用入口、今日概览、最近看板与最近报告</figcaption>
+          </figure>
+
+          <ol class="steps">
+            <li>
+              <strong>接入数据源</strong>
+              <span>左侧「数据源」→「新建连接」→ 填写主机/端口/库名/账号 → 测试连通 → 保存。</span>
+            </li>
+            <li>
+              <strong>创建数据集</strong>
+              <span>在数据源详情里选一张表，点「创建数据集」；或在「数据集」页新建。配置维度与指标后保存。</span>
+            </li>
+            <li>
+              <strong>问一句数（可选）</strong>
+              <span>工作台输入问题点「问数」，或打开左侧「对话」。先勾选数据集，默认「问数」出表/图；要整页看板再切「生成看板」。</span>
+            </li>
+            <li>
+              <strong>配置仪表盘</strong>
+              <span>「仪表盘」→「新建仪表盘」选模板或空白 → 拖入图表 → 选数据集并拖字段到编码槽。也可把问数结果「保存到仪表盘」。</span>
+            </li>
+            <li>
+              <strong>发布与分享</strong>
+              <span>编辑器「发布」固化观看副本；「分享」生成公开链接，无需登录即可只读查看。</span>
+            </li>
+            <li>
+              <strong>（可选）撰写报告</strong>
+              <span>「报告」→ 新建 → 在工具栏「工具」中引用仪表盘图表或新建图表，保存并发布。</span>
+            </li>
+          </ol>
+        </section>
+
+        <!-- 3. 概念 -->
+        <section class="chapter" id="concepts">
+          <h2>3. 核心概念</h2>
+          <p class="kicker">理解这几个名词，后续操作会更顺。</p>
+
+          <table>
+            <thead>
+              <tr><th style="width:22%">概念</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>数据源</strong></td>
+                <td>到业务数据库的连接配置（类型、主机、端口、库、账号等）。仪表盘<strong>不直接</strong>连数据源。</td>
+              </tr>
+              <tr>
+                <td><strong>数据集</strong></td>
+                <td>基于某张表的语义模型：字段角色（维度 / 指标）、显示名、可选计算列。图表的唯一数据绑定对象。</td>
+              </tr>
+              <tr>
+                <td><strong>维度 / 指标</strong></td>
+                <td>维度用于分组、轴、切片（如地区、日期）；指标用于聚合度量（如销售额、订单数）。</td>
+              </tr>
+              <tr>
+                <td><strong>仪表盘</strong></td>
+                <td>网格画布 + 组件集合。组件含图表、查询控件、切片器、文本等。</td>
+              </tr>
+              <tr>
+                <td><strong>编码槽 encode</strong></td>
+                <td>图表的数据映射：把数据集字段拖入维度轴、指标轴等槽位，与样式 / 高级配置分离。</td>
+              </tr>
+              <tr>
+                <td><strong>草稿 / 已发布</strong></td>
+                <td>编辑改的是草稿；「发布」后才更新观看与分享所见。已发布后若再改草稿，会出现「有未发布改动」。</td>
+              </tr>
+              <tr>
+                <td><strong>分享 Token</strong></td>
+                <td>公开只读链接 <code>/share/:token</code>，无需登录，仅展示已发布内容。</td>
+              </tr>
+              <tr>
+                <td><strong>对话 / 问数</strong></td>
+                <td>用自然语言查询已选数据集，结果只在会话里预览。点「保存到仪表盘」才写入看板草稿。侧栏标「内测」。</td>
+              </tr>
+              <tr>
+                <td><strong>生成看板</strong></td>
+                <td>对话里切换此意图后，会按当前数据集生成整页仪表盘草稿（含查询条），而不是单题结果卡。</td>
+              </tr>
+              <tr>
+                <td><strong>SQLBot</strong></td>
+                <td>仅出现在<strong>仪表盘编辑器</strong>顶栏。右下角浮层问数，默认不改画布；「保存到仪表盘」才写入当前看板。</td>
+              </tr>
+              <tr>
+                <td><strong>在线报告</strong></td>
+                <td>图文混排文档。可引用看板中的图，或在报告内单独建图；文档不存查询结果行，打开时实时取数。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>发布状态说明</h3>
+          <p>
+            <span class="tag draft">草稿</span> 从未发布过　
+            <span class="tag pub">已发布</span> 草稿与线上一致　
+            <span class="tag dirty">有未发布改动</span> 线上有版本，但草稿又改过
+          </p>
+        </section>
+
+        <!-- 4. 导航 -->
+        <section class="chapter" id="nav">
+          <h2>4. 界面与导航</h2>
+          <p class="kicker">左侧是一级模块栏，顶栏放帮助、外观和账号。编辑仪表盘时左侧自动收成图标轨。</p>
+
+          <table>
+            <thead>
+              <tr><th>区域</th><th>入口</th><th>做什么</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>开始 · 工作台</td><td><code>/workbench</code></td><td>问数框、常用入口、今日概览、最近看板 / 报告</td></tr>
+              <tr><td>开始 · 对话</td><td><code>/conversations</code></td><td>问数或生成看板（侧栏带「内测」标记）</td></tr>
+              <tr><td>资源 · 数据源</td><td><code>/datasources</code></td><td>连接管理、库表浏览、跳转建数据集</td></tr>
+              <tr><td>资源 · 数据集</td><td><code>/datasets</code></td><td>字段语义、预览、血缘</td></tr>
+              <tr><td>资源 · 仪表盘</td><td><code>/dashboards</code></td><td>列表、编辑、预览、发布分享</td></tr>
+              <tr><td>资源 · 报告</td><td><code>/reports</code></td><td>报告列表、Umo 编辑与预览</td></tr>
+              <tr><td>顶栏</td><td>帮助 / 外观 / 账号</td><td>本手册、浅色 · 深色侧栏 · 深色、演示用户</td></tr>
+              <tr><td>编辑器顶栏</td><td>SQLBot</td><td>仅编辑看板时出现，打开右下角问数浮层</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout note">
+            <div class="icon">!</div>
+            <div class="body"><strong>关于登录：</strong>产品本身不提供登录页。身份由请求头注入（如 <code>X-User-Id</code>）。本地 / Docker 开箱环境默认演示用户，权限为全部，可直接使用。</div>
+          </div>
+          <div class="callout tip">
+            <div class="icon">i</div>
+            <div class="body">左侧栏可点「收起侧栏」变成图标轨，偏好会记住。进入仪表盘编辑器会<strong>自动细轨</strong>，离开后恢复你的偏好。分享页 <code>/share/:token</code> 没有产品壳。</div>
+          </div>
+        </section>
+
+        <!-- 5. 工作台 -->
+        <section class="chapter" id="workbench">
+          <h2>5. 工作台</h2>
+          <p class="kicker">打开产品后的首页。左侧问数与常用入口，右侧今日概览、待处理和最近活动。</p>
+
+          <h3>你能做什么</h3>
+          <ul>
+            <li>在问数框输入自然语言问题，回车或点「问数」进入对话并<strong>自动跑本题</strong></li>
+            <li>从「最近问数」芯片回到已有会话；无记录时显示「试试」示例</li>
+            <li>常用入口：对话问数、新建看板、数据源、数据集、仪表盘、报告</li>
+            <li>今日概览：数据源连通、待发布看板、最近同步时间</li>
+            <li>最近看板最多 3 张（窄屏 2 张），点封面进编辑，「全部」进列表；没有看板时会补「创建新看板」</li>
+            <li>最近报告按更新时间，点条目进报告编辑器</li>
+          </ul>
+
+          <figure class="shot">
+            <img src="screenshots/01-workbench.png" alt="工作台" loading="lazy" />
+            <figcaption><em>图 5-1</em> · 工作台全貌（左栏选中「工作台」，内容区为问数 + 三行工作区）</figcaption>
+          </figure>
+
+          <div class="callout tip">
+            <div class="icon">✓</div>
+            <div class="body">新用户空状态会引导「连接数据源 → 准备数据集 → 问数或建看板」，右侧同步显示无待办、无问数记录，不会留空白卡。</div>
+          </div>
+        </section>
+
+        <!-- 6. 对话 -->
+        <section class="chapter" id="conversation">
+          <h2>6. 对话分析（内测）</h2>
+          <p class="kicker">用自然语言先看数，再决定要不要做成看板。侧栏「对话」带内测标记；能力仍在迭代，操作以当前界面为准。</p>
+
+          <figure class="shot">
+            <img src="screenshots/19-conversation.png" alt="对话分析落地页" loading="lazy" />
+            <figcaption><em>图 6-1</em> · 对话落地页：先选数据集，再选「问数」或「生成看板」，下方是最近对话</figcaption>
+          </figure>
+
+          <h3 id="conversation-flow">6.1 端到端流程（推荐路径）</h3>
+          <p>顶部的进度条固定为四步：<strong>① 提问 → ② 问数 / 规划 → ③ 结果 → ④ 保存到仪表盘</strong>。下面按实际操作顺序走一遍。</p>
+          <ol class="steps">
+            <li>
+              <strong>选数据集</strong>
+              <span>点「＋ 数据集 ▾」勾选一张或多张表；未选表时发送按钮不可用。上下文 Chip 会显示当前表名（如「订单表」）。</span>
+            </li>
+            <li>
+              <strong>问数（会话预览）</strong>
+              <span>保持「问数」意图，输入业务问题或点示例 Chip，再点「↑」发送。AI 会出 SQL 步骤、明细表或临时图；<strong>结果只在会话里预览，不会自动改已有看板</strong>。</span>
+            </li>
+            <li>
+              <strong>生成看板（整页 draft）</strong>
+              <span>若要整页分析页，切到「生成看板」意图（或点「直接生成仪表盘」Chip）后发送。右侧画布会预览整页布局与查询条。</span>
+            </li>
+            <li>
+              <strong>保存到仪表盘</strong>
+              <span>问数结果卡底部点「保存到仪表盘」，把本题图表写入关联看板草稿；整页生成完成后也会提示「产物已写入 Dashboard draft」。</span>
+            </li>
+            <li>
+              <strong>编辑与发布</strong>
+              <span>点「在编辑器打开」进入 <code>/dashboards/:id/edit</code>，继续拖组件、绑字段；改完点顶栏「发布」。单题保存与整页生成最终都落到同一张可编辑看板。</span>
+            </li>
+          </ol>
+
+          <figure class="shot">
+            <img src="screenshots/21-conversation-datasets.png" alt="勾选数据集" loading="lazy" />
+            <figcaption><em>图 6-2</em> · 点「＋ 数据集 ▾」勾选表；未勾选时不能发送</figcaption>
+          </figure>
+
+          <figure class="shot">
+            <img src="screenshots/22-conversation-ask-result.png" alt="问数结果" loading="lazy" />
+            <figcaption><em>图 6-3</em> · 问数结果：SQL 步骤 + 明细表 / 临时图；满意后点「保存到仪表盘」</figcaption>
+          </figure>
+
+          <figure class="shot">
+            <img src="screenshots/23-conversation-gen-intent.png" alt="生成看板意图" loading="lazy" />
+            <figcaption><em>图 6-4</em> · 切到「生成看板」：意图变为写入 draft，输入框可填整页需求</figcaption>
+          </figure>
+
+          <figure class="shot">
+            <img src="screenshots/24-conversation-gen-board.png" alt="生成看板预览" loading="lazy" />
+            <figcaption><em>图 6-5</em> · 会话工作区：左侧步骤与提问，右侧 draft 路径 + 问数预览，可「在编辑器打开」</figcaption>
+          </figure>
+
+          <figure class="shot">
+            <img src="screenshots/25-conversation-save-edit.png" alt="编辑器继续修改" loading="lazy" />
+            <figcaption><em>图 6-6</em> · 从对话进入编辑器：调整布局与图表绑定，顶栏「发布」对外可见</figcaption>
+          </figure>
+
+          <h3 id="conversation-ask">6.2 问数（单题预览）</h3>
+          <ul>
+            <li>默认意图为「问数 · 结果仅会话预览」；底部输入区可随时继续追问。</li>
+            <li>若字段与问题不匹配，会出现 CLARIFY 卡与「点一个问题开始查」建议 Chip，点选即可重试。</li>
+            <li>「换一个问数问题」按当前表 Schema 刷新可点问法；也可从工作台问数框带题进入并自动开跑。</li>
+            <li>结果卡提供「复制结论」与「保存到仪表盘」——前者复制文本，后者写入看板草稿（对应进度条第 ④ 步）。</li>
+          </ul>
+
+          <h3 id="conversation-gen">6.3 生成看板（整页 draft）</h3>
+          <ul>
+            <li>意图切换为「生成看板 · 将写入 Dashboard draft」后，同一输入框发送整页需求（如「根据当前数据集生成分析看板」）。</li>
+            <li>生成过程中左侧展示工具步骤；完成后右侧画布预览整页布局。</li>
+            <li>右侧画布预览整页布局；查询条筛选会进入图表查询条件（与编辑器内查询控件一致）。</li>
+            <li>完成后顶栏或右侧面板出现 draft 链接与「在编辑器打开」；也可在结果区点「保存到仪表盘」完成 adopt。</li>
+          </ul>
+
+          <h3 id="conversation-session">6.4 会话管理</h3>
+          <ul>
+            <li>顶条：新对话、历史（落地页「最近对话」）、探索示例</li>
+            <li>最近对话 Chip 标注「可打开 / 已生成」，便于回到未完成的问数或已落 draft 的生成会话</li>
+            <li>在输入框下方选择已有可问数据集后再提问；对话页不提供上传文件</li>
+          </ul>
+
+          <div class="callout note">
+            <div class="icon">i</div>
+            <div class="body"><strong>内测说明：</strong>问数结果为会话预览，写入看板前<strong>不落查询结果行</strong>到持久存储；保存 / adopt 后才关联到具体 <code>dashboardId</code> 并在编辑器可见。</div>
+          </div>
+
+          <div class="callout warn">
+            <div class="icon">!</div>
+            <div class="body"><strong>和 SQLBot 的区别：</strong>对话是一级模块，适合从零问数或生成整页；SQLBot 只在编辑某一张看板时打开（右下角浮层），默认改当前看板上下文，且默认不写画布。详见 <a href="#editor">§9 仪表盘编辑器</a>。</div>
+          </div>
+        </section>
+
+        <!-- 6. 数据源 -->
+        <section class="chapter" id="datasource">
+          <h2>7. 数据源</h2>
+          <p class="kicker">管理到业务库的连接。完成测通后，即可从某张表创建下游数据集。开箱环境可能已有「演示数据（模版）」和本地 JDBC 连接。</p>
+
+          <figure class="shot">
+            <img src="screenshots/02-datasources.png" alt="数据源管理" loading="lazy" />
+            <figcaption><em>图 7-1</em> · 「本地mysql库」等连接：左侧列表、中间库表、右侧详情；顶栏为「数据源」</figcaption>
+          </figure>
+
+          <h3>7.1 新建连接</h3>
+          <ol class="steps">
+            <li>
+              <strong>打开新建面板</strong>
+              <span>进入「数据源」，点击左侧蓝色按钮「新建连接」。</span>
+            </li>
+            <li>
+              <strong>选择类型并填写参数</strong>
+              <span>选择 MySQL / PostgreSQL 等，填写显示名、主机、端口、数据库、用户名、密码。</span>
+            </li>
+            <li>
+              <strong>测试连通并拉目录</strong>
+              <span>先点测试 / 探测；成功后按提示选择 Database / Schema（PostgreSQL 可切换 Schema）。</span>
+            </li>
+            <li>
+              <strong>保存</strong>
+              <span>保存后左侧列表出现该连接，状态点为绿色「已连通」。</span>
+            </li>
+          </ol>
+
+          <figure class="shot">
+            <img src="screenshots/12-datasource-create.png" alt="新建数据源" loading="lazy" />
+            <figcaption><em>图 7-2</em> · 新建连接表单（填写连接信息后先测通再保存）</figcaption>
+          </figure>
+
+          <h3>7.2 浏览库表并创建数据集</h3>
+          <ol class="steps">
+            <li><strong>选中连接</strong><span>左侧点选一条数据源，中间展示库表清单（可用「筛选表名」缩小范围）。</span></li>
+            <li><strong>测试 / 编辑 / 删除</strong><span>右上角可「测试连接」「编辑」或「删除」。</span></li>
+            <li><strong>创建数据集</strong><span>在目标表行点击「创建数据集」，跳转到数据集工作室并预填该表。</span></li>
+          </ol>
+
+          <div class="callout tip">
+            <div class="icon">✓</div>
+            <div class="body">右侧「使用顺序」提示：<strong>测通连接 → 选 Schema / 表 → 创建数据集</strong>。这与产品主链路一致，建议始终遵循。</div>
+          </div>
+        </section>
+
+        <!-- 7. 数据集 -->
+        <section class="chapter" id="dataset">
+          <h2>8. 数据集</h2>
+          <p class="kicker">数据集是图表的「语义表」。没有配置好的维度 / 指标，编辑器里的图无法出数。</p>
+
+          <figure class="shot">
+            <img src="screenshots/03-datasets.png" alt="数据集管理" loading="lazy" />
+            <figcaption><em>图 8-1</em> · 数据集列表与字段页签（维度蓝 / 指标绿）</figcaption>
+          </figure>
+
+          <h3>8.1 查看数据集</h3>
+          <ul>
+            <li>左侧按文件夹标签筛选（如财务库存、运营增长、销售分析），或搜索名称</li>
+            <li>选中后右侧三个页签：
+              <strong>字段</strong>（角色与类型）、
+              <strong>预览</strong>（前 N 行真实取数）、
+              <strong>血缘</strong>（数据源 → 表 → 字段语义）
+            </li>
+            <li>点「编辑」进入数据集工作室</li>
+          </ul>
+
+          <figure class="shot">
+            <img src="screenshots/10-dataset-preview.png" alt="数据集预览" loading="lazy" />
+            <figcaption><em>图 8-2</em> · 预览页签：确认字段与样本数据无误后再去绑图</figcaption>
+          </figure>
+
+          <h3>8.2 新建 / 编辑数据集（工作室）</h3>
+          <ol class="steps">
+            <li>
+              <strong>选定物理表</strong>
+              <span>选择数据源与表（从数据源页「创建数据集」进入时会自动带上）。</span>
+            </li>
+            <li>
+              <strong>配置维度与指标</strong>
+              <span>从字段池拖拽或双击字段，放入维度区或指标区；可改显示名。</span>
+            </li>
+            <li>
+              <strong>（可选）计算列</strong>
+              <span>添加计算列：字段名、显示名、表达式、角色。配置可保存；表达式引擎执行能力以当前版本为准。</span>
+            </li>
+            <li>
+              <strong>保存</strong>
+              <span>保存后状态为 ready，即可在仪表盘 / 报告中绑定。</span>
+            </li>
+          </ol>
+
+          <div class="callout warn">
+            <div class="icon">!</div>
+            <div class="body"><strong>注意：</strong>图表只能绑定数据集，不能直接选数据源表。若编辑器提示「缺少配置」，请先确认数据集已保存且含至少一个维度或指标。</div>
+          </div>
+        </section>
+
+        <!-- 8. 仪表盘列表 -->
+        <section class="chapter" id="dashboard">
+          <h2>9. 仪表盘列表</h2>
+          <p class="kicker">管理所有看板：新建（模板）、预览、编辑、删除，并查看发布状态与图表摘要。</p>
+
+          <figure class="shot">
+            <img src="screenshots/04-dashboards.png" alt="仪表盘列表" loading="lazy" />
+            <figcaption><em>图 9-1</em> · 仪表盘列表与摘要（状态、图表数、布局组件数）</figcaption>
+          </figure>
+
+          <h3>9.1 新建仪表盘</h3>
+          <ol class="steps">
+            <li><strong>点「新建仪表盘」</strong><span>打开模板选择弹窗。</span></li>
+            <li>
+              <strong>选择模板</strong>
+              <span>可选：空白仪表盘、销售分析、运营看板、财务概览。名称可留空（默认用模板名）。</span>
+            </li>
+            <li><strong>「使用模板创建」</strong><span>创建成功后进入编辑器。</span></li>
+          </ol>
+
+          <figure class="shot">
+            <img src="screenshots/11-dashboard-create.png" alt="新建仪表盘模板" loading="lazy" />
+            <figcaption><em>图 9-2</em> · 新建仪表盘：选业务模板或从空白画布开始</figcaption>
+          </figure>
+
+          <h3>9.2 列表常用操作</h3>
+          <div class="grid-2">
+            <div class="mini">
+              <h4>预览</h4>
+              <p>以只读方式查看（优先已发布副本；失败则回落草稿）。</p>
+            </div>
+            <div class="mini">
+              <h4>编辑</h4>
+              <p>进入画布编辑器。也可双击列表项打开。</p>
+            </div>
+            <div class="mini">
+              <h4>删除</h4>
+              <p>删除仪表盘节点。请确认无下游分享依赖后再删。</p>
+            </div>
+            <div class="mini">
+              <h4>搜索</h4>
+              <p>左侧搜索框按名称过滤看板。</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- 9. 编辑器 -->
+        <section class="chapter" id="editor">
+          <h2>10. 仪表盘编辑器</h2>
+          <p class="kicker">核心工作区。左侧产品栏收成图标轨；画布仍是三栏：组件库 · 网格 · 配置。首次进入会有新手指引。</p>
+
+          <figure class="shot">
+            <img src="screenshots/06-dashboard-edit.png" alt="仪表盘编辑器" loading="lazy" />
+            <figcaption><em>图 10-1</em> · 编辑器：细轨 + 画布工具条（PC / 移动布局、撤销、预览、分享、发布）；右侧数据配置</figcaption>
+          </figure>
+
+          <h3>10.1 界面分区</h3>
+          <table>
+            <thead>
+              <tr><th style="width:18%">区域</th><th>作用</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>产品顶栏</strong></td>
+                <td>SQLBot、帮助、外观、账号。没有 Phase A/B/C 这类原型开关。</td>
+              </tr>
+              <tr>
+                <td><strong>画布顶栏</strong></td>
+                <td>返回、标题、草稿状态、PC / 移动布局、撤销、预览、分享、发布。</td>
+              </tr>
+              <tr>
+                <td><strong>左侧</strong></td>
+                <td>组件库（控件 / 通用 / 指标 / 比较 / 表格等）与图层列表。点击或拖入画布添加组件。</td>
+              </tr>
+              <tr>
+                <td><strong>中间</strong></td>
+                <td>网格画布。拖拽移动、八向缩放、方向键微调；可开关推挤、落位紧凑、网格线。</td>
+              </tr>
+              <tr>
+                <td><strong>右侧</strong></td>
+                <td>选中组件后的配置：数据（数据集 + 编码）、样式、高级（联动等）。底部「更新数据」刷新出图。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>10.2 添加并配置一张图</h3>
+          <ol class="steps">
+            <li>
+              <strong>从组件库加入图表</strong>
+              <span>例如柱状图、折线图、饼图、指标卡、明细表 / 汇总表 / 透视表等。新建组件不会预填数据。</span>
+            </li>
+            <li>
+              <strong>选中画布上的组件</strong>
+              <span>右侧出现配置面板。填写标题，确认图表类型。</span>
+            </li>
+            <li>
+              <strong>选择数据集</strong>
+              <span>在「数据」页签选择工作区中的数据集。若提示缺少配置，先完成数据集字段设置。</span>
+            </li>
+            <li>
+              <strong>拖字段到编码槽</strong>
+              <span>把维度字段拖到维度槽，指标字段拖到指标槽（具体槽位随图类型变化）。</span>
+            </li>
+            <li>
+              <strong>点击「更新数据」</strong>
+              <span>触发真实查询并刷新图表。草稿会自动防抖保存，无需手动「另存为」。</span>
+            </li>
+          </ol>
+
+          <h3>10.3 常用组件类型</h3>
+          <table>
+            <thead>
+              <tr><th>类别</th><th>组件</th><th>用途</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>控件</td><td>查询控件、切片器</td><td>页面级筛选；字段由你自行配置，不固定在顶栏</td></tr>
+              <tr><td>通用</td><td>文本、Tab</td><td>说明文案、分区切换</td></tr>
+              <tr><td>指标</td><td>指标卡、数值卡</td><td>关键 KPI 展示</td></tr>
+              <tr><td>比较</td><td>柱状图、条形图、折线/面积、饼/环等</td><td>趋势与对比</td></tr>
+              <tr><td>表格</td><td>明细表、汇总表、透视表、指标排行</td><td>明细下钻与排名</td></tr>
+            </tbody>
+          </table>
+
+          <h3>10.4 筛选与联动</h3>
+          <ul>
+            <li>需要筛选时，拖入<strong>查询控件</strong>或<strong>切片器</strong>，在右侧配置关联字段。</li>
+            <li>图间联动：在「高级」中配置联动关系（字段映射），保存后预览页点击源图可驱动目标图刷新。</li>
+          </ul>
+
+          <h3>10.5 SQLBot（编辑器问数）</h3>
+          <p>只在编辑仪表盘时，产品顶栏会出现 SQLBot。点开后是右下角浮层（约 400×520，不会铺满整屏）。</p>
+          <figure class="shot">
+            <img src="screenshots/20-sqlbot.png" alt="编辑器 SQLBot 浮层" loading="lazy" />
+            <figcaption><em>图 10-2</em> · SQLBot：选当前数据集后提问；默认不改画布，可「保存到仪表盘」写入当前看板</figcaption>
+          </figure>
+          <ul>
+            <li>下拉选择「当前数据集」，再输入问题或点「换一个问数问题」</li>
+            <li>默认 <strong>不自动改画布</strong>；要把本题图写进当前看板，用结果上的「保存到仪表盘」</li>
+            <li>「拾取」可带上画布里当前选中的图表字段；「上传」用于把文件表拉进可查询范围（以界面提示为准）</li>
+          </ul>
+
+          <div class="callout tip">
+            <div class="icon">?</div>
+            <div class="body">忘记布局？在编辑器 URL 加上 <code>?guide=1</code> 可再次弹出新手指引（顶栏导航 → 操作栏 → 组件库 → 画布 → 配置面板）。</div>
+          </div>
+        </section>
+
+        <!-- 10. 发布分享 -->
+        <section class="chapter" id="publish-share">
+          <h2>11. 预览、发布与分享</h2>
+
+          <h3>11.1 预览</h3>
+          <p>编辑器顶栏点「预览」，或从列表进入预览页。预览为只读：筛选、联动、取数走真实查询；可导出图表 CSV。</p>
+
+          <figure class="shot">
+            <img src="screenshots/07-dashboard-preview.png" alt="销售分析看板预览" loading="lazy" />
+            <figcaption><em>图 11-1</em> · 销售分析看板预览：KPI + 区域/产品/渠道多图（数据来自 <code>od_manual_demo.fact_sales</code>）</figcaption>
+          </figure>
+
+          <h3>场景效果示例</h3>
+          <p>同一套链路可快速搭出不同业务看板。以下为手册演示库中的运营与财务场景预览：</p>
+          <figure class="shot">
+            <img src="screenshots/17-dashboard-ops.png" alt="运营增长看板" loading="lazy" />
+            <figcaption><em>图 11-1b</em> · 运营增长看板：UV / PV / 停留 / 跳出率与来源结构（<code>ops_daily</code>）</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="screenshots/18-dashboard-finance.png" alt="财务概览看板" loading="lazy" />
+            <figcaption><em>图 11-1c</em> · 财务概览看板：收支利润与科目结构（<code>fact_finance</code>）</figcaption>
+          </figure>
+
+          <div class="callout tip">
+            <div class="icon">!</div>
+            <div class="body">若尚未发布就进入预览，页面会提示「草稿没有已发布版本可预览」，并提供「发布并预览」按钮——点一次即可完成发布并进入观看态。</div>
+          </div>
+
+          <h3>11.2 发布</h3>
+          <ol class="steps">
+            <li><strong>在编辑器点「发布」</strong><span>确认名称 / 文件夹 / 描述（若弹窗要求）。</span></li>
+            <li><strong>确认发布</strong><span>草稿内容写入已发布副本；预览与分享将优先看到该版本。</span></li>
+            <li><strong>继续修改</strong><span>发布后若再改画布，状态变为「有未发布改动」，需再次发布才会更新对外视图。</span></li>
+          </ol>
+
+          <h3>11.3 分享</h3>
+          <ol class="steps">
+            <li><strong>先发布</strong><span>分享面向已发布内容；未发布时请先完成发布。</span></li>
+            <li><strong>点「分享」</strong><span>生成公开链接（形如 <code>/share/&lt;token&gt;</code>）。</span></li>
+            <li><strong>把链接发给对方</strong><span>对方无需登录即可只读查看、实时取数、导出 CSV。分享页不显示产品顶栏。</span></li>
+          </ol>
+
+          <figure class="shot">
+            <img src="screenshots/16-share-view.png" alt="公开分享页" loading="lazy" />
+            <figcaption><em>图 11-2</em> · 公开分享页：无产品顶栏，凭 token 只读访问已发布看板</figcaption>
+          </figure>
+
+          <div class="callout note">
+            <div class="icon">i</div>
+            <div class="body"><strong>导出 CSV：</strong>编辑器与预览页均支持按图表导出。适合快速把当前查询结果带到表格工具中再加工。</div>
+          </div>
+        </section>
+
+        <!-- 11. 移动端 -->
+        <section class="chapter" id="mobile">
+          <h2>12. 移动端布局</h2>
+          <p class="kicker">PC 与移动端使用<strong>独立布局</strong>（移动端为 6 列网格）。样式可选择同步或分设。</p>
+
+          <ol class="steps">
+            <li>
+              <strong>切换到「移动端」</strong>
+              <span>编辑器顶栏在 PC / 移动端之间切换表面。</span>
+            </li>
+            <li>
+              <strong>挑选上板组件</strong>
+              <span>从 PC 侧已有组件池中勾选需要出现在手机布局的组件，再在 6 列网格中调整位置与尺寸。</span>
+            </li>
+            <li>
+              <strong>预览多设备宽度</strong>
+              <span>预览支持手机壳与常见宽度（如 iPhone / Android / Pad），确认可读性后再发布。</span>
+            </li>
+          </ol>
+
+          <div class="callout tip">
+            <div class="icon">✓</div>
+            <div class="body">移动端改动同样写入草稿，需<strong>发布</strong>后才会出现在分享与正式预览中。</div>
+          </div>
+        </section>
+
+        <!-- 12. 报告 -->
+        <section class="chapter" id="report">
+          <h2>13. 在线报告</h2>
+          <p class="kicker">基于 Umo 的图文混排编辑器。适合周报、汇报材料：文字叙述 + 实时图表。</p>
+
+          <figure class="shot">
+            <img src="screenshots/05-reports.png" alt="报告列表" loading="lazy" />
+            <figcaption><em>图 13-1</em> · 报告列表：新建、搜索、查看图表引用摘要</figcaption>
+          </figure>
+
+          <h3>13.1 列表操作</h3>
+          <ul>
+            <li>「新建报告」创建草稿并进入编辑</li>
+            <li>左侧搜索 / 按文件夹筛选；选中查看摘要（图表总数、引用看板数、报告内新建数）</li>
+            <li>双击或点「编辑」进入编辑器；可进入「预览」</li>
+          </ul>
+
+          <h3>13.2 编辑报告</h3>
+          <figure class="shot">
+            <img src="screenshots/08-report-edit.png" alt="报告编辑器" loading="lazy" />
+            <figcaption><em>图 13-2</em> · 报告编辑器：宿主栏（保存 / 预览 / 发布）+ Umo 排版工具栏 + 正文画布</figcaption>
+          </figure>
+
+          <ol class="steps">
+            <li>
+              <strong>撰写正文</strong>
+              <span>像在线文档一样输入标题与段落，使用字体、列表、表格、图片等常规排版能力。</span>
+            </li>
+            <li>
+              <strong>插入实时图表</strong>
+              <span>打开 Ribbon「工具」页签，使用：
+                <br/>① <strong>引用仪表盘</strong>：选看板 → 多选图表 → 预览 → 按序插入；
+                <br/>② <strong>新建图表</strong>：仅存于本报告，不写回仪表盘，配置数据集与编码后插入。
+              </span>
+            </li>
+            <li>
+              <strong>调整图表块</strong>
+              <span>选中已插入的图表块，右侧 Inspector 可改数据 / 样式 / 高级，或删除该块。</span>
+            </li>
+            <li>
+              <strong>保存与发布</strong>
+              <span>「保存」写入文档；「发布」更新对外预览。可用 <kbd>⌘</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd> 快捷保存。</span>
+            </li>
+          </ol>
+
+          <table>
+            <thead>
+              <tr><th>图表来源</th><th>含义</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>dashboard</code></td><td>引用某仪表盘中的图表（保存 dashboardId + chartId）</td></tr>
+              <tr><td><code>inline</code></td><td>仅在本报告内配置的独立图表</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout note">
+            <div class="icon">i</div>
+            <div class="body">报告<strong>不落库查询结果行</strong>，只存配置与正文。每次打开预览 / 编辑时图表都会重新查询，保证数据新鲜。</div>
+          </div>
+
+          <h3>13.3 预览报告</h3>
+          <figure class="shot">
+            <img src="screenshots/09-report-preview.png" alt="报告预览" loading="lazy" />
+            <figcaption><em>图 13-3</em> · 报告预览：只读文档 + 实时图表；可切换大纲与缩放</figcaption>
+          </figure>
+        </section>
+
+        <!-- 13. 清单 -->
+        <section class="chapter" id="checklist">
+          <h2>14. 日常操作清单</h2>
+          <p class="kicker">把常见任务收成一张速查表。</p>
+
+          <table>
+            <thead>
+              <tr><th style="width:28%">我想…</th><th>怎么做</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>接上公司数据库</td><td>数据源 → 新建连接 → 测通 → 保存</td></tr>
+              <tr><td>把某张表变成可分析模型</td><td>数据源表行「创建数据集」→ 配维度/指标 → 保存</td></tr>
+              <tr><td>用一句话问数</td><td>工作台问数框回车，或左侧「对话」→ 勾选数据集 → 问数</td></tr>
+              <tr><td>把问数结果做成图</td><td>结果卡「保存到仪表盘」；整页用「生成看板」意图</td></tr>
+              <tr><td>在编辑看板时问数</td><td>编辑器顶栏 SQLBot → 选当前数据集 → 提问；保存到仪表盘才会改画布</td></tr>
+              <tr><td>从零做一张看板</td><td>仪表盘 → 新建（空白或模板）→ 拖组件 → 绑数据集 → 更新数据</td></tr>
+              <tr><td>给领导只读链接</td><td>编辑器发布 → 分享 → 复制链接</td></tr>
+              <tr><td>导出当前图数据</td><td>编辑器或预览中使用「导出 CSV」</td></tr>
+              <tr><td>做手机版布局</td><td>编辑器切到移动端 → 勾选组件 → 调 6 列布局 → 发布</td></tr>
+              <tr><td>写周报并插实时图</td><td>报告 → 新建 → 工具：引用仪表盘 / 新建图表 → 保存发布</td></tr>
+              <tr><td>再次查看新手指引</td><td>打开 <code>/dashboards/:id/edit?guide=1</code></td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- 14. FAQ -->
+        <section class="chapter" id="faq">
+          <h2>15. 常见问题</h2>
+
+          <h4>Q：图表一直提示「缺少配置」？</h4>
+          <p>请检查：① 是否已选择数据集；② 数据集是否至少配置了可用字段；③ 编码槽是否已放入必要的维度 / 指标；④ 改完后是否点了「更新数据」。</p>
+
+          <h4>Q：分享链接打开是空的或仍是旧数据？</h4>
+          <p>分享展示的是<strong>已发布</strong>副本。请确认已点击「发布」，且发布后再打开分享页（可强制刷新浏览器缓存）。</p>
+
+          <h4>Q：为什么没有登录页？</h4>
+          <p>当前版本通过请求头 / 鉴权 SPI 注入身份，便于嵌入企业内部 SSO。开箱演示环境默认「演示用户」即可操作。</p>
+
+          <h4>Q：报告里的图会不会把数据写进文档？</h4>
+          <p>不会。文档只存图表配置与正文；打开时实时查询。适合对数据新鲜度有要求的周报场景。</p>
+
+          <h4>Q：删除数据源会怎样？</h4>
+          <p>若仍有下游数据集引用，请先处理数据集。删除前建议在数据源详情右侧确认「下游数据集」数量。</p>
+
+          <h4>Q：模板看板和空白看板有什么区别？</h4>
+          <p>销售 / 运营 / 财务模板会预置一批组件与联动示意，便于快速改数；空白看板从空画布开始，自由度最高。</p>
+
+          <h4>Q：对话和 SQLBot 有什么区别？</h4>
+          <p>对话是一级模块（侧栏「内测」），适合从零问数或生成整页看板。SQLBot 只在编辑某一张看板时出现，浮层在右下角，默认不改画布。</p>
+
+          <h4>Q：为什么找不到 Phase A / B / C？</h4>
+          <p>那是原型分阶段开关，产品编辑器已去掉。移动端请用画布顶栏的「PC布局 / 移动布局」。</p>
+
+          <h4>Q：问数按钮是灰的、发不出去？</h4>
+          <p>先勾选至少一个数据集。没有可用表时，请先在「数据源」建连接并「创建数据集」。</p>
+        </section>
+
+      </div>
+
+      <footer class="doc-foot">
+        Open Dashboard 用户操作手册 · 截图取自产品运行界面 · 文档路径
+        <code>.teamai/docs/user-manual/index.html</code>
+        · 用浏览器直接打开即可阅读
+      </footer>
+    </div>
+  </div>
+
+  <button class="back-top" type="button" title="回到顶部" aria-label="回到顶部" onclick="(document.querySelector('.main')||window).scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+  <script>
+    (function () {
+      const links = Array.from(document.querySelectorAll('.sidebar nav a'));
+      const map = links.map((a) => {
+        const id = a.getAttribute('href').slice(1);
+        return { a, el: document.getElementById(id) };
+      }).filter((x) => x.el);
+
+      const scroller = document.querySelector('.main') || window;
+      function sync() {
+        const top = scroller === window ? window.scrollY : scroller.scrollTop;
+        const y = top + 120;
+        let current = map[0];
+        const base = scroller === window ? 0 : scroller.getBoundingClientRect().top;
+        for (const item of map) {
+          const offset = item.el.offsetTop;
+          if (offset <= y) current = item;
+        }
+        links.forEach((a) => a.classList.remove('active'));
+        if (current) current.a.classList.add('active');
+      }
+      scroller.addEventListener('scroll', sync, { passive: true });
+      links.forEach((a) => {
+        a.addEventListener('click', (e) => {
+          const id = a.getAttribute('href').slice(1);
+          const el = document.getElementById(id);
+          if (!el || scroller === window) return;
+          e.preventDefault();
+          history.replaceState(null, '', '#' + id);
+          scroller.scrollTo({ top: Math.max(0, el.offsetTop - 12), behavior: 'smooth' });
+          links.forEach((x) => x.classList.remove('active'));
+          a.classList.add('active');
+        });
+      });
+      // 打开带 hash 时滚到对应章节（#run 等已删除锚点会忽略）
+      if (location.hash) {
+        const el = document.getElementById(location.hash.slice(1));
+        if (el && scroller !== window) {
+          requestAnimationFrame(() => scroller.scrollTo({ top: Math.max(0, el.offsetTop - 12) }));
+        }
+      }
+      sync();
+    })();
+  </script>
+</body>
+</html>

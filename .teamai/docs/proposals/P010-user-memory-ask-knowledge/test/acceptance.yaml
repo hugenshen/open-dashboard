@@ -1,0 +1,112 @@
+proposal: P010
+items:
+  - id: PR-MEM-01
+    title: 用户记忆按 workspaceId + userId 隔离
+    gate: code
+    criterion: 同一工作区内用户 A 写入的 facts 不能被用户 B 读到；同一用户在 workspace-a 写入的 facts 不能被 workspace-b 读到。
+    method: script
+    command_or_path: .venv/bin/python -m pytest tests/test_memory_knowledge.py tests/test_knowledge.py tests/test_harness_runtime_skeleton.py
+    expected: alice 与 bob 的 facts 列表不相等；同一 userId 在不同 workspace 下的 facts 互不包含。
+    evidence: "2026-08-19：新增 memory_store workspace/user scoped 路径与 ToolGateway workspace 传递；pytest 65 passed，覆盖同一 user 在 ws-a/ws-b 下事实互不包含、memory_add/search 按 gateway workspace 召回。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-MEM-01
+  - id: PR-MEM-02
+    title: 新对话可注入已有用户事实
+    gate: code
+    criterion: 同一 userId 新 conversation 的 transformContext 包含 User memory 段。
+    method: script
+    command_or_path: opendashboard-harness/agent/memory.py
+    expected: format_memory_block 在用户 facts 非空时包含 "## User memory"。
+    evidence: "2026-08-19：agent.memory.format_memory_block 读取 user_memory workspace scope；pytest tests/test_knowledge.py::test_user_memory_injected_in_new_session passed，完整 harness 65 passed。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-MEM-02
+  - id: PR-MEM-03
+    title: 记忆只存描述性 facts
+    gate: code
+    criterion: 置信度低于 0.7 的事实不落盘；不把查询结果行写入 memory.json。
+    method: script
+    command_or_path: opendashboard-harness/agent/user_memory.py
+    expected: add_fact(..., confidence=0.6) 后 facts 仍为空。
+    evidence: "2026-08-19：agent.user_memory.add_fact 低于 0.7 不落盘；pytest tests/test_knowledge.py::test_low_confidence_not_stored passed，完整 harness 65 passed。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-MEM-03
+  - id: PR-MEM-04
+    title: 术语召回映射到真实字段
+    gate: code
+    criterion: 问题含 GMV / 成交金额 时 prompt_block 含 schema 字段 pay_amount，不含编造字段。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_knowledge.py
+    expected: prompt_block 含 pay_amount 与 GMV。
+    evidence: "2026-08-19：agent.knowledge workspace scoped prompt_block 命中真实字段；pytest tests/test_knowledge.py::test_glossary_maps_gmv 和 test_knowledge_isolated_by_workspace passed，完整 harness 65 passed。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-MEM-04
+  - id: PR-MEM-05
+    title: SQL 示例不能突破表白名单
+    gate: code
+    criterion: 知识库示例若引用未授权表，sqlglot 表白名单仍拒绝执行。
+    method: script
+    command_or_path: opendashboard-harness/tests/test_sqlbot_guard.py
+    expected: assert_allowed_tables 对非白名单表抛 unauthorized。
+    evidence: "2026-08-19：SQL 示例仍走 sqlbot.guard.assert_allowed_tables；pytest tests/test_knowledge.py::test_knowledge_example_cannot_bypass_table_whitelist 和 tests/test_sqlbot_guard.py passed，完整 harness 65 passed。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-MEM-05
+  - id: PR-MEM-06
+    title: eval runner 覆盖知识/记忆
+    gate: code
+    criterion: pytest 含 test_knowledge 与 eval L1；记忆/知识改动必须能在 runner 中回归。
+    method: script
+    command_or_path: .venv/bin/python -m pytest
+    expected: 全绿。
+    evidence: "2026-08-19：在 opendashboard-harness 目录执行 .venv/bin/python -m pytest，65 passed。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-MEM-06
+  - id: PR-KB-UI-01
+    title: 管理端一级知识库入口
+    gate: hi-fi
+    criterion: 管理端资源栏有「知识库」；自学习待确认与已启用的指标、词表、金标准问法和我的记忆分开；可手工新建公共维度。
+    method: ui
+    command_or_path: .teamai/docs/prototypes/hi-fi/knowledge.html
+    expected: 不把确认入口只埋在数据集详情；用户使用端仅展示命中和跳转，不承载发布管理。
+    evidence: "2026-08-19：hi-fi shell 已拆用户使用端/管理端，知识库位于管理端；knowledge.html 首屏展示当前工作区、角色和注入边界。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-KB-UI-01
+  - id: PR-KB-UI-02
+    title: 确认闸门
+    gate: hi-fi
+    criterion: 未确认时「问数时会注入」为空；确认后出现与 <knowledge> 同构的预览。
+    method: ui
+    command_or_path: .teamai/docs/prototypes/hi-fi/knowledge.html
+    expected: 点「确认并用于问数」后预览出现对应行。
+    evidence: "2026-08-19：knowledge.html 保留候选确认交互；点击「确认并用于问数」后右侧注入预览从空态变为 <knowledge> 片段。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-KB-UI-02
+  - id: PR-KB-UI-03
+    title: 对话可见命中
+    gate: hi-fi
+    criterion: 对话文件列「知识库」展示本会话命中，并可跳转管理页。
+    method: ui
+    command_or_path: .teamai/docs/prototypes/hi-fi/conversation-workspace.html
+    expected: 不再标注二期；「管理知识库」打开 knowledge.html。
+    evidence: "2026-08-19：conversation-workspace.html 文件列展示本会话知识 refs，并保留「管理知识库」跳转；顶部标注当前工作区和可问数据集。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-KB-UI-03
+  - id: PR-KB-UI-04
+    title: 记忆可删
+    gate: hi-fi
+    criterion: 「我的记忆」可删除条目；无手写查询结果行入口。
+    method: ui
+    command_or_path: .teamai/docs/prototypes/hi-fi/knowledge.html
+    expected: 删除后出现空态说明。
+    evidence: "2026-08-19：knowledge.html 我的记忆 tab 仅展示系统沉淀的描述性 facts；删除后显示空态，无手写结果行入口。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-KB-UI-04

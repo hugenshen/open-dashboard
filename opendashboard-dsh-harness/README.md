@@ -2,7 +2,7 @@
 
 对话 UI + Agent 运行时：npm 锁 `@deepseek-ai/dsh@0.1.1-rc.2`，本仓薄插件挂在 profile `od-conversation`。
 
-> 开发入口：[P011 README](../docs/proposals/P011-dsh-conversation-surface/README.md) · [migration](../docs/proposals/P011-dsh-conversation-surface/migration.md) · [架构图](../docs/proposals/P011-dsh-conversation-surface/dataq-dsh-harness-architecture.png)
+> 开发入口：[P011 README](../.teamai/docs/proposals/P011-dsh-conversation-surface/README.md) · [migration](../.teamai/docs/proposals/P011-dsh-conversation-surface/migration.md) · [架构图](../.teamai/docs/proposals/P011-dsh-conversation-surface/dataq-dsh-harness-architecture.png)
 
 ## 产品边界（BI 模式）
 
@@ -43,7 +43,7 @@ pnpm approve-builds --all   # 首次：允许 node-pty / koffi 等原生构建
 | **澄清/空数据** | 工作区无数据集或问题含糊 | Agent 说明 `datasets(0)` 或追问；用户去配数据后再问 |
 | **一句话生成看板** | 「用销售数据生成一张经营看板」 | Agent：`od_plan_charts`（对话列出分析任务，图种待取数后定）→ 确认后 `od_board_worker` 按任务取数再选图并写入 draft → **右侧展开完整编辑器** |
 | **新开对话** | 会话顶栏右上 **「新对话」**（落地页也始终可见） | `workspaces.startSession(odWorkspaceId)` → 空白会话落地页 |
-| **看历史会话** | 顶栏 **「历史」** / 落地「最近对话」（[P014](../docs/proposals/P014-conversation-history/)） | `GET /od/sessions` → `sessions.open`；分区键 `od:{workspaceId}:{userId}`（`$DSH_HOME/tenants/…`），不跟 Agent cwd |
+| **看历史会话** | 顶栏 **「历史」** / 落地「最近对话」（[P014](../.teamai/docs/proposals/P014-conversation-history/)） | `GET /od/sessions` → `sessions.open`；分区键 `od:{workspaceId}:{userId}`（`$DSH_HOME/tenants/…`），不跟 Agent cwd |
 | **看上下文** | 顶栏 **「上下文」** Tab，或输入 `/context` | `dsh-context`：当前窗口组成（系统提示 / 工具 schema / 消息）与演变 |
 | **看轨迹** | 顶栏 **「轨迹」** Tab | `ui-trajectory`：本轮工具调用与步骤回放 |
 
@@ -60,7 +60,7 @@ pnpm approve-builds --all   # 首次：允许 node-pty / koffi 等原生构建
 |------|------|
 | `VITE_OD_DSH_URL` | 默认开发 `http://127.0.0.1:3090/`；生产可配同域路径 |
 
-高保原型（无 Agent）：`docs/prototypes/hi-fi/start.sh` → `conversation-ask-dsh.html`。
+高保原型（无 Agent）：`.teamai/docs/prototypes/hi-fi/start.sh` → `conversation-ask-dsh.html`。
 
 | 变量 | 默认 | 说明 |
 |------|------|------|

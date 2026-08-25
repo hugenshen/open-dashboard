@@ -5,14 +5,14 @@ import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
-const helpSrc = join(rootDir, '../docs/user-manual')
+const helpSrc = join(rootDir, '../.teamai/docs/user-manual')
 const helpDest = join(rootDir, 'public/help')
 
-/** Sync docs/user-manual → public/help so /help/ ships with the SPA. */
+/** Sync .teamai/docs/user-manual → public/help so /help/ ships with the SPA. */
 function syncUserManual(): Plugin {
   const sync = () => {
     if (!existsSync(join(helpSrc, 'index.html'))) {
-      console.warn('[sync-help] docs/user-manual/index.html missing; skip')
+      console.warn('[sync-help] .teamai/docs/user-manual/index.html missing; skip')
       return
     }
     rmSync(helpDest, { recursive: true, force: true })

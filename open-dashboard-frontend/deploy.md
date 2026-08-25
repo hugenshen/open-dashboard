@@ -1,8 +1,8 @@
 # 前端部署与本地运行
 
-本目录是 Vue 3 产品应用。交互参照：[`../docs/prototypes/hi-fi/start.sh`](../docs/prototypes/hi-fi/start.sh)。
+本目录是 Vue 3 产品应用。交互参照：[`../.teamai/docs/prototypes/hi-fi/start.sh`](../.teamai/docs/prototypes/hi-fi/start.sh)。
 
-- `Dockerfile`：容器内 npm build + Nginx（build context 为仓库根，以便打进 `docs/user-manual`）
+- `Dockerfile`：容器内 npm build + Nginx（build context 为仓库根，以便打进 `.teamai/docs/user-manual`）
 - `Dockerfile.runtime`：宿主机先 `npm run build`
 - `docker-compose.yml`：Nginx Web，依赖后端服务名 `backend`
 - `docker-compose.runtime.yml`：用已有 `dist/`，跳过镜像内 Node

@@ -1,0 +1,19 @@
+team: open-dashboard
+mode: self
+description: Co-TeamAI — Open Dashboard (DataQ) 单仓协同。产品契约在本目录 docs/，与 rules/skills 直接结合。
+repo: https://github.com/hugenshen/open-dashboard
+provider: github
+sharing:
+  rules:
+    enforced:
+      - od-docs-truth
+      - od-roles
+      - od-dev-entry
+      - od-hi-fi
+      - od-delivery
+  docs:
+    localDir: ./.teamai/docs
+  env:
+    injectShellProfile: false
+  recall:
+    enabled: true

@@ -1,0 +1,2938 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>P012 · 出板内容质量升级梳理</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --ink: #1f2329;
+      --muted: #646a73;
+      --line: #e5e6eb;
+      --card: #ffffff;
+      --brand: #3370ff;
+      --brand-soft: #e8f0ff;
+      --ok: #047857;
+      --ok-bg: #ecfdf5;
+      --warn: #c2410c;
+      --warn-bg: #fff7ed;
+      --bad: #b91c1c;
+      --bad-bg: #fef2f2;
+      --mono: "SF Mono", "JetBrains Mono", "Menlo", monospace;
+      --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(900px 420px at 0% -5%, #dbe7ff 0%, transparent 55%),
+        radial-gradient(700px 360px at 100% 0%, #e8eef5 0%, transparent 50%),
+        var(--bg);
+      line-height: 1.65;
+    }
+    .layout {
+      display: flex;
+      align-items: flex-start;
+      max-width: 1280px;
+      margin: 0 auto;
+      min-height: 100vh;
+    }
+    nav.side {
+      position: sticky;
+      top: 0;
+      flex: 0 0 220px;
+      width: 220px;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 1.25rem 0.85rem 2rem 1rem;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+      z-index: 5;
+    }
+    nav.side .side-brand {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--brand);
+      margin: 0 0 0.35rem;
+    }
+    nav.side .side-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      margin: 0 0 0.85rem;
+      line-height: 1.35;
+      color: var(--ink);
+    }
+    nav.side a {
+      display: block;
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.35;
+      padding: 0.4rem 0.55rem;
+      border-radius: 6px;
+      margin-bottom: 2px;
+      border-left: 2px solid transparent;
+    }
+    nav.side a:hover {
+      color: var(--ink);
+      background: var(--brand-soft);
+    }
+    nav.side a.active {
+      color: #1d4ed8;
+      background: var(--brand-soft);
+      border-left-color: var(--brand);
+      font-weight: 650;
+    }
+    nav.side a.ext {
+      color: var(--brand);
+      font-weight: 600;
+    }
+    nav.side .side-group {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #94a3b8;
+      letter-spacing: 0.04em;
+      margin: 0.85rem 0 0.35rem 0.55rem;
+      text-transform: uppercase;
+    }
+    .wrap {
+      flex: 1;
+      min-width: 0;
+      max-width: 960px;
+      margin: 0;
+      padding: 2.25rem 1.5rem 4rem;
+    }
+    nav.toc { display: none; }
+    @media (max-width: 960px) {
+      .layout { display: block; }
+      nav.side {
+        position: relative;
+        width: auto;
+        height: auto;
+        max-height: none;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 1rem 1.15rem;
+      }
+      nav.side .side-nav-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+      }
+      nav.side a {
+        border-left: 0;
+        padding: 0.35rem 0.55rem;
+      }
+      nav.side .side-group { display: none; }
+      .wrap { padding: 1.5rem 1.15rem 3rem; max-width: none; }
+    }
+
+    header {
+      margin-bottom: 1.75rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      color: var(--brand);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin: 0 0 0.45rem;
+    }
+    h1 {
+      font-size: clamp(1.55rem, 3.5vw, 2.05rem);
+      font-weight: 700;
+      line-height: 1.3;
+      margin: 0 0 0.65rem;
+    }
+    .lead { color: var(--muted); margin: 0; max-width: 46rem; }
+    .meta {
+      display: flex; flex-wrap: wrap; gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .pill {
+      display: inline-flex; align-items: center;
+      height: 26px; padding: 0 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+      background: var(--brand-soft); color: #1d4ed8;
+    }
+    .pill.muted { background: #eef0f3; color: var(--muted); }
+    .pill.ok { background: var(--ok-bg); color: var(--ok); }
+    .pill.warn { background: var(--warn-bg); color: var(--warn); }
+
+    nav.toc {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin: 1.5rem 0 2rem;
+    }
+    nav.toc strong { display: block; margin-bottom: 0.45rem; font-size: 0.92rem; }
+    nav.toc ol { margin: 0; padding-left: 1.2rem; }
+    nav.toc a { color: var(--brand); text-decoration: none; }
+    nav.toc a:hover { text-decoration: underline; }
+
+    h2 {
+      font-size: 1.22rem;
+      margin: 2.35rem 0 0.75rem;
+      padding-top: 0.85rem;
+      border-top: 1px solid var(--line);
+    }
+    h3 { font-size: 1.02rem; margin: 1.35rem 0 0.5rem; }
+    h4 { font-size: 0.95rem; margin: 1rem 0 0.4rem; color: var(--muted); }
+    p, li { color: var(--ink); }
+    .muted { color: var(--muted); }
+    a { color: var(--brand); }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.85rem;
+    }
+    @media (max-width: 780px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+    }
+    .card.before { border-color: #fecaca; background: linear-gradient(180deg, #fff 0%, var(--bad-bg) 160%); }
+    .card.after { border-color: #a7f3d0; background: linear-gradient(180deg, #fff 0%, var(--ok-bg) 160%); }
+    .card h3 { margin-top: 0; }
+    .tag {
+      display: inline-block;
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 2px 8px; border-radius: 4px;
+      margin-bottom: 0.5rem;
+    }
+    .tag.bad { background: #fee2e2; color: var(--bad); }
+    .tag.ok { background: #d1fae5; color: var(--ok); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 0.75rem 0 1rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th { background: #f7f8fa; font-weight: 650; font-size: 0.82rem; color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+    code, .path {
+      font-family: var(--mono);
+      font-size: 0.84em;
+      background: #f1f3f5;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+    pre {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.5;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 1rem 1.1rem;
+      border-radius: 10px;
+      overflow-x: auto;
+      margin: 0.75rem 0 1rem;
+    }
+    pre .c { color: #94a3b8; }
+    pre .k { color: #7dd3fc; }
+    pre .g { color: #86efac; }
+    pre .r { color: #fca5a5; }
+    td .g, .g { color: var(--ok); font-weight: 650; }
+    td.r, .r { color: var(--bad); }
+
+    .flow {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+      margin: 0.75rem 0 1rem;
+    }
+    .flow .step {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.45rem 0.7rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+    .flow .step.hot { border-color: #93c5fd; background: var(--brand-soft); color: #1d4ed8; }
+    .flow .step.fix { border-color: #86efac; background: var(--ok-bg); color: var(--ok); }
+    .flow .arrow { color: var(--muted); font-size: 0.85rem; }
+
+    .callout {
+      border-left: 3px solid var(--brand);
+      background: var(--brand-soft);
+      padding: 0.75rem 1rem;
+      border-radius: 0 8px 8px 0;
+      margin: 1rem 0;
+      font-size: 0.92rem;
+    }
+    .callout.warn {
+      border-left-color: var(--warn);
+      background: var(--warn-bg);
+    }
+    .callout strong { display: block; margin-bottom: 0.2rem; }
+
+    .layers {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.85rem;
+      margin: 1rem 0;
+    }
+    .layer {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.15rem;
+      border-left: 4px solid var(--brand);
+    }
+    .layer.L1 { border-left-color: #2563eb; }
+    .layer.L2 { border-left-color: #059669; }
+    .layer.L3 { border-left-color: #d97706; }
+    .layer .layer-id {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0 0 0.25rem;
+    }
+    .layer h3 { margin: 0 0 0.45rem; font-size: 1.05rem; }
+    .layer .who {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0 0 0.65rem;
+    }
+    .layer dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: 5.5rem 1fr;
+      gap: 0.35rem 0.75rem;
+      font-size: 0.88rem;
+    }
+    .layer dt { color: var(--muted); font-weight: 650; }
+    .layer dd { margin: 0; }
+    .pipeline-box {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.15rem;
+      margin: 1rem 0;
+    }
+    .pipeline-box h3 { margin-top: 0; }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.02em;
+      vertical-align: middle;
+    }
+    .badge.det { background: #ecfdf5; color: #047857; }
+    .badge.llm { background: #eef2ff; color: #4338ca; }
+    .badge.mix { background: #fff7ed; color: #c2410c; }
+    .badge.human { background: #f1f5f9; color: #475569; }
+    .badge.ok { background: #ecfdf5; color: #047857; }
+    .stage-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.15rem;
+      margin: 1rem 0;
+    }
+    .stage-card > .stage-head {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+      margin-bottom: 0.65rem;
+    }
+    .stage-card > .stage-head h4 {
+      margin: 0;
+      font-size: 1.02rem;
+      color: var(--ink);
+    }
+    .stage-card .io {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.65rem;
+      margin: 0.65rem 0;
+      font-size: 0.88rem;
+    }
+    @media (max-width: 780px) {
+      .stage-card .io { grid-template-columns: 1fr; }
+    }
+    .stage-card .io div {
+      background: #f7f8fa;
+      border-radius: 8px;
+      padding: 0.55rem 0.7rem;
+    }
+    .stage-card .io strong { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.2rem; }
+    .s1-trace {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 0.85rem 1rem;
+      border-radius: 8px;
+      margin: 0.5rem 0 0;
+      line-height: 1.55;
+      overflow-x: auto;
+    }
+    .s1-trace .ok { color: #86efac; }
+    .s1-trace .bad { color: #fca5a5; }
+    .s1-trace .dim { color: #94a3b8; }
+
+    ul.tight li { margin: 0.25rem 0; }
+    footer {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+  <nav class="side" aria-label="文档导航">
+    <p class="side-brand">P012 · ASK / GEN</p>
+    <p class="side-title">出板内容质量升级</p>
+    <div class="side-nav-list">
+      <p class="side-group">问题与方案</p>
+      <a href="#bg">1. 背景与问题</a>
+      <a href="#before">2. 改动前流程</a>
+      <a href="#before-ask">　· 问数现状</a>
+      <a href="#before-ask-industry">　· 业界问数</a>
+      <a href="#before-board">　· 出板改动前</a>
+      <a href="#before-shared">　· 复用分叉</a>
+      <a href="#pillars">3. 三大核心流程</a>
+      <p class="side-group">流水线与运行时</p>
+      <a href="#decomp">4. 问数+出板双流水线</a>
+      <a href="#ask-flow">　· 问数 /ask</a>
+      <a href="#board-flow">　· 出板 /board</a>
+      <a href="#shared-tools">　· 工具复用</a>
+      <a href="#ask-industry">　· 业界问数</a>
+      <a class="ext" href="./goal-planning-design.md">Goal 规划详设</a>
+      <a href="#harness">5. dsh Harness</a>
+      <a href="#arch">6. 目标架构选型</a>
+      <a href="#roadmap">7. 行业路线图</a>
+      <p class="side-group">对照与落地</p>
+      <a href="#after">8. 改动后路径</a>
+      <a href="#diff">9. 前后对比</a>
+      <a href="#industry">10. 业界对照表</a>
+      <a href="#boundary">11. 代码边界</a>
+      <a href="#phases">12. 交付分期</a>
+      <a href="#verify">13. 怎么验收·评测对齐</a>
+      <a href="#eval-industry">　· 业界怎么评</a>
+      <a href="#eval-od">　· OD 怎么对齐</a>
+      <a href="#eval-board">　· 出板评测</a>
+      <a class="ext" href="./eval-design.md">　· 分段评测方案</a>
+      <a href="#refs">14. 关联文档</a>
+    </div>
+  </nav>
+  <div class="wrap">
+    <header>
+      <p class="eyebrow">P012 · ASK / GEN QUALITY</p>
+      <h1>出板内容质量升级 · 深度梳理</h1>
+      <p class="lead">
+        改造方案把业界三条主流程收进 OD：
+        <strong>语义层</strong>（度量契约）→
+        <strong>治理后再问</strong>（字段/枚举原则）→
+        <strong>自动可视化</strong>（先 Goal 再出图）。
+        对照行业「智能问数 Agent」路线：OD 已在<strong>大模型驱动（阶段4）</strong>，短板是阶段3资产未喂进出板。
+        开源模块可照搬；禁止无适配整仓替换运行时。
+      </p>
+      <div class="meta">
+        <span class="pill">提案 P012</span>
+        <span class="pill ok">三层流程已定义 · M1.5 Goal 已编码</span>
+        <span class="pill muted">2026-08-22</span>
+        <span class="pill muted">DataQ / open-dashboard</span>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="目录（移动端备份）" hidden>
+      <strong>目录</strong>
+      <ol>
+        <li><a href="#bg">背景与问题</a></li>
+        <li><a href="#before">改动前流程（问数·出板·业界）</a></li>
+        <li><a href="#pillars">改造方案 · 三大核心流程</a></li>
+        <li><a href="#decomp">问数 + 出板双流水线（流程·复用·业界）</a></li>
+        <li><a href="./goal-planning-design.md">Goal 规划详设（提示词·跑法）</a></li>
+        <li><a href="#harness">dsh Harness · 工具与执行流</a></li>
+        <li><a href="#arch">目标架构 · 八项准确技术与开源选型</a></li>
+        <li><a href="#roadmap">行业路线图对照 · OD 怎么优化</a></li>
+        <li><a href="#after">改动后产品路径</a></li>
+        <li><a href="#diff">前后对比</a></li>
+        <li><a href="#industry">业界对照表</a></li>
+        <li><a href="#boundary">改动代码边界</a></li>
+        <li><a href="#phases">已交付 / 待交付 / 不做</a></li>
+        <li><a href="#verify">怎么验收 · 业界评测对齐</a></li>
+        <li><a href="#refs">关联文档</a></li>
+      </ol>
+    </nav>
+
+    <section id="bg">
+      <h2>1. 背景与问题</h2>
+      <p>
+        P011 把对话迁到 <code>opendashboard-dsh-harness</code>（dsh）后，出板收成
+        <code>od_generate_board</code> one-shot：稳定、不易超时，但<strong>内容质量闸没有跟着迁全</strong>。
+        实跑常见「能出板、不好读」。
+      </p>
+
+      <h3>典型症状（产品实跑）</h3>
+      <table>
+        <thead>
+          <tr><th>现象</th><th>用户感受</th><th>根因归类</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>「支付状态 · 商户费率」柱图</td>
+            <td>维和度量放一起不知道在讲什么</td>
+            <td>规划 = 第一个度量 × 第一个维度；无分析目标、无 <code>measureKind</code></td>
+          </tr>
+          <tr>
+            <td>图例显示 <code>MchIncome</code></td>
+            <td>字段名用户看不懂</td>
+            <td>直播查询系列名用原始字段名；未写 alias</td>
+          </tr>
+          <tr>
+            <td>金额显示上千亿级「分」</td>
+            <td>单位不友好</td>
+            <td>生成带了 formatter，渲染未统一吃；缺数量级</td>
+          </tr>
+          <tr>
+            <td>半行空白、下方又有图</td>
+            <td>板面碎、不清晰</td>
+            <td>两列布局奇数行未拉满；偶发重复写入</td>
+          </tr>
+          <tr>
+            <td>两条查询条件 / 整板复制</td>
+            <td>像生成了两次</td>
+            <td>Agent 多次写板 + replace 未先清空</td>
+          </tr>
+          <tr>
+            <td>轴上 -1 / 0 / 2 / 3</td>
+            <td>状态码不可读</td>
+            <td>枚举未走 glossary / distinct 文案（属 P010）</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout warn">
+        <strong>关键决策（用户确认）</strong>
+        禁止「禁费率」类个案补丁；废弃「板型槽位填充」主叙事。
+        改造方案集成三层：
+        <em>A 语义（measureKind）→ B 治理（P010）→ C 先 Goal 再出图（LIDA 形）</em>。
+        详见 <a href="#pillars">§3</a>。
+      </div>
+    </section>
+
+    <section id="before">
+      <h2>2. 改动前流程（问数 · 出板 · 业界）</h2>
+      <p>
+        「改动前」= <strong>P011 落地后、P012 质量改造未吃透资产之前</strong>的真实双轨：
+        问数已是默认能力，出板已是独立斜杠；两边共用选表/部分知识，但<strong>口径与规划内核不同</strong>。
+        目标态双流水线见 <a href="#decomp">§4</a>。
+      </p>
+
+      <h3 id="before-dual">2.0 双意图现状总览</h3>
+      <pre><span class="c">会话入口（P011 dsh embed）</span>
+        │
+        ├── <span class="k">/ask</span> 或自然语言问指标
+        │     → list → get_schema(+terms/questions) → run_query | run_sql
+        │     → enrich 会话卡 · <span class="r">不写 draft</span>
+        │
+        └── <span class="k">/board</span>
+              → list → plan_charts → generate_board → apply-patch → 右侧编辑器
+              （改动前 plan 内核 = 字段排序配对，非 Goal/LLM 规划）</pre>
+
+      <h3 id="before-ask">2.1 问数现状流程（/ask · 已编码）</h3>
+      <p class="muted" style="margin-top:0">
+        协议见 <code>commands.js</code> <code>/ask</code>；工具在 <code>dsh-od-bi</code>。
+        这是<strong>现在线上怎么跑</strong>，不是旁路口号。
+      </p>
+      <div class="flow">
+        <span class="step">用户 /ask</span>
+        <span class="arrow">→</span>
+        <span class="step">od_list_datasets</span>
+        <span class="arrow">→</span>
+        <span class="step hot">od_get_schema</span>
+        <span class="arrow">→</span>
+        <span class="step hot">od_run_query | od_run_sql</span>
+        <span class="arrow">→</span>
+        <span class="step">enrich + 会话卡</span>
+        <span class="arrow">→</span>
+        <span class="step">od_finish</span>
+      </div>
+      <pre><span class="c"># 问数端到端（改动前 / 现状）</span>
+① LLM 选表          od_list_datasets
+② 装载上下文        od_get_schema
+   · fields（role/group/label）
+   · sample ≤3 行（SQLBot 式 peek）
+   · knowledge.terms（术语/部分维值）
+   · few-shot questions（NL→SQL 样例，可选）
+   · <span class="r">未强制</span>：confirmed indicator.agg → 约束模型 agg
+③ 生成并执行
+   · od_run_query：LLM 填 category/value/agg → Java 结构化查
+   · 或 od_run_sql：LLM 写 SQL → <span class="g">sql-guard</span> → 执行
+④ 结果 enrich       0 行 insight · suggestChartType · formatter 提示
+⑤ 会话展示          表/临时图 ephemeral · <span class="r">禁止写 DashboardPatch</span></pre>
+
+      <div class="grid-2">
+        <div class="card before">
+          <span class="tag ok">问数已有</span>
+          <h3>能答、有闸、有知识注入</h3>
+          <ul class="tight">
+            <li>斜杠协议固定工具顺序</li>
+            <li>schema + terms + few-shot 进上下文</li>
+            <li>sql-guard + 权限数据集</li>
+            <li>空结果诚实 insight；自动选图类型</li>
+          </ul>
+        </div>
+        <div class="card before">
+          <span class="tag bad">问数短板（P012 要对齐）</span>
+          <h3>资产未完全约束执行</h3>
+          <ul class="tight">
+            <li>模型仍可 SUM 费率类字段（缺 measureKind 硬闸）</li>
+            <li>维值多在 terms，轴文案一致性弱于出板目标态</li>
+            <li>与出板装载路径分叉：同一 /dimensions 未统一喂 generate</li>
+            <li>无「分析目标列表」——一问一答，不做整板</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 id="before-ask-industry">2.2 业界问数怎么做（对照「改动前」）</h3>
+      <p class="muted" style="margin-top:0">问数不是 OD 发明的；业界主路径高度同构。下表对照<strong>现状 OD 已对齐什么、还缺什么</strong>。</p>
+      <table>
+        <thead>
+          <tr><th>环节</th><th>SQLBot</th><th>Joy DataAgent</th><th>Vanna 类</th><th>OD 问数现状</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>选数/选表</td>
+            <td>DS / Dataset</td>
+            <td>TableRAG / 选表</td>
+            <td>训练库映射</td>
+            <td><span class="ok">od_list_datasets</span></td>
+          </tr>
+          <tr>
+            <td>知识进上下文</td>
+            <td>术语 + 维值 XML + 训练对</td>
+            <td>DGP 后再问 + 字段裁剪</td>
+            <td>DDL/SQL 向量</td>
+            <td><span class="ok">terms + questions + sample</span>；指标 agg 未硬闸</td>
+          </tr>
+          <tr>
+            <td>生成查询</td>
+            <td>LLM → SQL</td>
+            <td>NL2SQL（主）</td>
+            <td>LLM → SQL</td>
+            <td><span class="ok">run_query 或 run_sql</span></td>
+          </tr>
+          <tr>
+            <td>执行前闸</td>
+            <td>权限 / 规则</td>
+            <td>SQL 规则 + Measure.agg</td>
+            <td>弱～中</td>
+            <td><span class="ok">sql-guard</span>；缺 Joy 级 agg 硬约束</td>
+          </tr>
+          <tr>
+            <td>结果展示</td>
+            <td>表/图，嵌入 DE</td>
+            <td>会话内联图</td>
+            <td>表为主</td>
+            <td><span class="ok">会话卡 + enrich</span></td>
+          </tr>
+          <tr>
+            <td>写经营看板</td>
+            <td><strong>不写</strong> DV</td>
+            <td>报告后置，≠ draft</td>
+            <td>通常无</td>
+            <td><span class="ok">不写 draft</span>（与业界一致）</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre><span class="c"># 业界问数共识流水线（几乎所有 ChatBI）</span>
+选数据源 → 注入元数据/术语/样例 → LLM 生成查询 → 闸 → 执行 → 会话可视化
+                    ↑
+            OD 现状已覆盖这条链；差距在「语义口径硬约束」与「和出板共用装载」</pre>
+
+      <h3 id="before-board">2.3 出板改动前流程（/board · M1.5 Goal 之前）</h3>
+      <div class="flow">
+        <span class="step">用户 /board</span>
+        <span class="arrow">→</span>
+        <span class="step">od_list_datasets</span>
+        <span class="arrow">→</span>
+        <span class="step hot">od_plan_charts</span>
+        <span class="arrow">→</span>
+        <span class="step hot">od_generate_board</span>
+        <span class="arrow">→</span>
+        <span class="step">apply-patch</span>
+        <span class="arrow">→</span>
+        <span class="step">右侧编辑器</span>
+      </div>
+
+      <h4>规划内核（问题所在）</h4>
+      <pre><span class="c">// planChartsFromFields（改动前逻辑本质）</span>
+measures = pickByRole(measure)   <span class="c">// 按原文加权排序</span>
+dims     = pickByRole(dim)
+m0 = measures[0]
+dim = dims[0]
+
+KPI(count) + KPI(m0, m1) …
+bar  = dim  × m0   <span class="r">// SUM 默认 —— 费率也会被 SUM</span>
+pie  = dim2 × m0
+line = time × m0
+table= dim  × m0</pre>
+
+      <div class="grid-2">
+        <div class="card before">
+          <span class="tag bad">改动前 · 规划</span>
+          <h3>有字段就能出图</h3>
+          <ul class="tight">
+            <li>无 additive / ratio 区分</li>
+            <li>配对由排序第一名决定</li>
+            <li>message 既加权又间接决定「谁配谁」</li>
+            <li>质检偏布局/碎饼/毛线，弱于「内容意图」</li>
+            <li><span class="r">未读</span> /dimensions 已确认指标进 plan</li>
+          </ul>
+        </div>
+        <div class="card before">
+          <span class="tag bad">改动前 · 写入</span>
+          <h3>能落 draft，偶发叠层</h3>
+          <ul class="tight">
+            <li>Agent 可能 generate + compose / 多次 apply</li>
+            <li>replace 收集 stale 后插入新 id，竞态时清不干净</li>
+            <li>FE normalize 把重叠组件往下推 → 看起来像「复制一整板」</li>
+          </ul>
+        </div>
+      </div>
+
+      <h4>端到端示意（出板 · 改动前）</h4>
+      <pre>schema(group=q/d/t) + profile(optional)
+        │
+        ▼
+pick top measures / dims by overlap(message)
+        │
+        ▼
+<span class="r">pair first×first  →  encode SUM</span>
+        │
+        ▼
+review: 同维去饼 / 高基数 / 裸时间戳 / 单位分 formatter …
+        │
+        ▼
+layout 两列循环（奇数行易留白）
+        │
+        ▼
+apply-patch (replace，弱清空)
+        │
+        ▼
+DashboardEditorHost 渲染（系列名/单位偶发未吃 formatter）</pre>
+
+      <h3 id="before-shared">2.4 改动前：问数 × 出板已复用 / 未复用</h3>
+      <table>
+        <thead>
+          <tr><th>能力</th><th>问数</th><th>出板（改动前）</th><th>问题</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>od_list_datasets</code></td>
+            <td>✓</td><td>✓</td>
+            <td>已复用</td>
+          </tr>
+          <tr>
+            <td>knowledge terms / questions</td>
+            <td>✓（get_schema）</td>
+            <td>△ 弱 / 未进 generate 主路径</td>
+            <td><strong>分叉</strong>：问数吃知识，出板主要吃裸 schema</td>
+          </tr>
+          <tr>
+            <td>confirmed indicator.agg</td>
+            <td>△ 未硬闸</td>
+            <td>× 未合并</td>
+            <td>两边都缺 P0 接通</td>
+          </tr>
+          <tr>
+            <td>run_query / run_sql</td>
+            <td>✓</td>
+            <td>× 协议禁止</td>
+            <td>正确隔离</td>
+          </tr>
+          <tr>
+            <td>plan / generate / patch</td>
+            <td>×</td>
+            <td>✓</td>
+            <td>正确隔离；出板规划内核差</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>一句话</strong>
+        改动前问数已经是「业界 ChatBI 形状」；出板是「字段配对填槽」。
+        P012 要做的不是重造问数壳，而是<strong>语义资产统一喂两边</strong>，并把出板规划升到 Goal（§3–§4）。
+      </div>
+    </section>
+
+    <section id="pillars">
+      <h2>3. 改造方案 · 三大核心流程（明确定义）</h2>
+      <p>
+        业界能稳定出经营看板的产品，几乎都不是「LLM + 裸 schema 直接拼图」。
+        OD 的改造方案<strong>显式集成</strong>下面三层；每一层有独立契约、落点与边界，合起来才是完整出板质量路径。
+      </p>
+
+      <div class="callout">
+        <strong>集成原则（2026-08-22 修订）</strong>
+        A/B/C 是<strong>能力分层</strong>，不是必须保留的自研 API 名。
+        业界开源<strong>好用的模块可以直接照搬/改编进仓</strong>（prompt、数据结构、枚举→图、agg 契约、自修复规则）；
+        仍禁止：无适配整仓替换（第二套 Cube 查询面、LIDA 出 matplotlib 再转板、Python harness 复活当主路径）。
+        落地必须接到现有：Java BI / <code>od_*</code> / DashboardPatch / 编辑器 encode。
+      </div>
+
+      <div class="layers">
+        <article class="layer L1">
+          <p class="layer-id">LAYER A · SEMANTIC</p>
+          <h3>语义层 · 度量契约</h3>
+          <p class="who">对标：Cube · WrenAI MDL · Cortex · 本仓 <code>/dimensions</code> 指标</p>
+          <dl>
+            <dt>业界做什么</dt>
+            <dd>度量预定义 <code>type = sum | avg | count</code>；Agent <strong>选指标名</strong>，不现场发明口径。</dd>
+            <dt>可照搬</dt>
+            <dd>度量元数据形状（name / field / agg / unit）；Wren/Cube YAML 里 measure 条目的字段集；SQLBot/Joy 对「指标名→字段+agg」的注入格式。</dd>
+            <dt>OD 落点</dt>
+            <dd>优先<strong>接通</strong>已有 <code>de_indicator</code>（知识维护已确认的 agg），再启发式补洞；出板读 confirmed metrics，不只读 schema。</dd>
+            <dt>不整仓</dt>
+            <dd>不部署独立 Cube/Wren 查询服务当出板引擎；公式/join 语义平台本期不做。</dd>
+          </dl>
+        </article>
+
+        <article class="layer L2">
+          <p class="layer-id">LAYER B · GOVERNANCE</p>
+          <h3>治理后再问 · 字段与枚举原则</h3>
+          <p class="who">对标：JoyDataAgent DGP · TableRAG · SQLBot dimension-values · 本仓 <code>/dimensions</code></p>
+          <dl>
+            <dt>业界做什么</dt>
+            <dd>先治理表/字段/枚举，再问数；脏码值不直接上轴。</dd>
+            <dt>可照搬</dt>
+            <dd>SQLBot <code>&lt;dimension-values&gt;</code> / 术语注入块；Joy TableRAG「选表选字段」的裁剪与打分思路（改编进 schema 加厚，不搬整套 RAG 服务）。</dd>
+            <dt>OD 落点</dt>
+            <dd>P010 glossary + 枚举值；出板/问数<strong>只读</strong> confirmed；轴文案与 kind 回写走管理面。</dd>
+            <dt>不整仓</dt>
+            <dd>不把 Joy 整仓 data_agent 当对话运行时；治理 UI 继续收敛在知识维护，不另起平台。</dd>
+          </dl>
+        </article>
+
+        <article class="layer L3">
+          <p class="layer-id">LAYER C · AUTO-VIZ</p>
+          <h3>自动可视化 · Goal → Chart</h3>
+          <p class="who">对标：Microsoft LIDA（Summarizer / GoalExplorer / VizGenerator / critique）</p>
+          <dl>
+            <dt>业界做什么</dt>
+            <dd>summary → 枚举 goal(question, visualization, rationale) → 为每个 goal 生成图 → 自评估/修复。</dd>
+            <dt>可照搬</dt>
+            <dd>LIDA 的<strong>管线与 JSON 目标结构</strong>（question / title / rationale）；Goal 提示词骨架；critique 维度清单。Viz 输出改写成 OD <code>encode</code>，不要 matplotlib 代码。</dd>
+            <dt>OD 落点</dt>
+            <dd><code>od_plan_charts</code> 展示 goals；生成可走「确定性模板」或「LLM GoalExplorer + 确定性 review 闸」双模，闸门不可跳过。</dd>
+            <dt>不整仓</dt>
+            <dd>不把 LIDA Python 包当主进程；不恢复已删的 Python harness 出板主路径；Infographer/IGM 不做。</dd>
+          </dl>
+        </article>
+      </div>
+
+      <div class="pipeline-box">
+        <h3>推荐集成形态（可替换自研细节）</h3>
+        <p class="muted" style="margin-top:0">下面是能力顺序；方括号内是<strong>优先照搬来源</strong>，不是必须自研。</p>
+        <pre><span class="c"># 改造方案总流程（可照搬模块）</span>
+
+<span class="k">[A 语义]</span>  confirmed indicators / schema
+        │   ← 照搬：Cube/Wren measure 元数据形；接 /dimensions 指标 agg
+        │   Agent 选指标名，不发明 SUM(费率)
+        ▼
+<span class="k">[B 治理]</span>  glossary · dimension-values · 字段角色
+        │   ← 照搬：SQLBot 注入块；Joy 选字段裁剪思路
+        │   （出板只读；治理异步）
+        ▼
+<span class="k">[C 自动可视化]</span>
+        summary? → enumerateGoals(question, viz, rationale)
+          ← 照搬：LIDA GoalExplorer 结构 / 提示词
+          → chart encode（OD DashboardPatch，非 matplotlib）
+          → review / repair                         ← 照搬 LIDA critique 维度 + 确定性规则
+          → layoutBoardPatch
+        │
+        ▼
+od_plan_charts 展示分析目标
+        │
+        ▼
+od_generate_board 一次写入 · 强 replace · 编辑器</pre>
+
+        <table>
+          <thead>
+            <tr><th>层</th><th>优先照搬（模块）</th><th>本地 refs / 上游</th><th>接到 OD 哪里</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>A</td>
+              <td>measure：name + field + agg + unit</td>
+              <td>Cube schema / Wren MDL measure；本仓 <code>de_indicator</code></td>
+              <td><code>loadSchemaAndProfile</code> 合并 → <code>measureKind</code> / encode.agg</td>
+            </tr>
+            <tr>
+              <td>B</td>
+              <td>术语 + 维值注入；选字段</td>
+              <td><code>refs/sqlbot</code> · <code>refs/joyagent-jdgenie-data_agent</code></td>
+              <td>knowledge API → ask schema；出板轴 alias / 枚举</td>
+            </tr>
+            <tr>
+              <td>C</td>
+              <td>Goal JSON + critique 清单</td>
+              <td>microsoft/lida GoalExplorer</td>
+              <td><code>enumerateGoals</code> / plan 展示；<code>reviewCharts</code></td>
+            </tr>
+            <tr>
+              <td>旁路</td>
+              <td>一问一 SQL</td>
+              <td>SQLBot / Vanna</td>
+              <td>P006；不替代整板 Goal</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>与旁路能力的关系</h3>
+      <table>
+        <thead>
+          <tr><th>能力</th><th>代表</th><th>在改造方案中的位置</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ChatBI / 问数</td>
+            <td>SQLBot、Vanna、P006</td>
+            <td>一问一图旁路；可共用 A/B；<strong>不替代</strong>整板 Goal 规划</td>
+          </tr>
+          <tr>
+            <td>人编 BI</td>
+            <td>DataEase、Metabase</td>
+            <td>提供 encode/formatter 渲染；不负责自动出经营板质量</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="decomp">
+      <h2>4. 问数 + 出板双流水线（流程图 · 复用 · 业界）</h2>
+      <p>
+        OD 对话是<strong>双意图</strong>：默认<strong>问数</strong>（一问一答，不写画布），显式<strong>出板</strong>（多 Goal → draft）。
+        本节画清两条流、标出<strong>复用工具</strong>，并对照业界问数怎么设计。
+        工具级时序见 <a href="#harness">§5</a>；Goal 提示词见
+        <a href="./goal-planning-design.md">goal-planning-design.md</a>。
+      </p>
+
+      <p style="margin:0.5rem 0">
+        <span class="badge det">确定性</span> 规则/代码 ·
+        <span class="badge llm">LLM</span> 推理 ·
+        <span class="badge mix">混合</span> Agent+闸 ·
+        <span class="badge human">人工</span> 确认
+      </p>
+
+      <h3 id="dual-overview">4.0 双意图总览</h3>
+      <pre><span class="c">用户自然语言 / 斜杠命令</span>
+        │
+        ├── <span class="k">/ask</span> 或闲聊问指标  →  <span class="g">问数轨</span>（会话表/临时图，<span class="r">不写 draft</span>）
+        │
+        └── <span class="k">/board</span> 或「生成看板」→  <span class="g">出板轨</span>（Goal 列表 → 确认 → draft → 右侧编辑器）
+
+<span class="c">共用底座（两条轨都吃）</span>
+  /dimensions 确认资产 · workspace 权限 · schema · knowledge(terms/维值)
+  od_list_datasets · （装载侧）Java BI internal API</pre>
+
+      <h3 id="ask-flow">4.0.1 问数流水线（/ask · 目标态）</h3>
+      <pre><span class="c">用户：「/ask 各支付状态下商户入账合计」</span>
+        │
+        ▼
+┌───────────────────────────────────────────────────────────┐
+│ <span class="k">A1 编排</span>  <span class="g">[混合]</span>                                              │
+│  LLM 选工具：od_list_datasets → od_get_schema               │
+│  解决：选对表；把术语/维值/few-shot 塞进上下文               │
+└───────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────────┐
+│ <span class="k">A2 语义装载</span>  <span class="g">[确定性 · 与出板共用知识]</span>                        │
+│  schema + sample(≤3) + terms + questions +（目标）指标 agg │
+│  解决：模型看见「入账→MchIncome」「0→订单生成」             │
+└───────────────────────────────────────────────────────────┘
+        │
+        ├──── 结构化查询 ────┬──── 自由 SQL ────
+        ▼                    ▼
+┌──────────────────┐  ┌──────────────────────────────┐
+│ <span class="k">A3a od_run_query</span> │  │ <span class="k">A3b od_run_sql</span>               │
+│ LLM 填维/度量/agg│  │ LLM 写 SQL 文本               │
+│ Harness 执行查询 │  │ <span class="g">sql-guard</span> 闸后再执行         │
+└──────────────────┘  └──────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────────┐
+│ <span class="k">A4 结果 enrich + 展示</span>  <span class="g">[确定性 + Node]</span>                     │
+│  0 行 insight；suggestChartType；表/图卡（会话内 ephemeral）│
+│  od_finish；<span class="r">禁止</span>把结果行写入 DashboardPatch                 │
+└───────────────────────────────────────────────────────────┘</pre>
+
+      <table>
+        <thead>
+          <tr><th>阶段</th><th>解决问题</th><th>LLM？</th><th>关键技术（行业八项）</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>A1 编排</td><td>选数据集、工具顺序</td><td>是</td><td>⑦ 多轮</td></tr>
+          <tr><td>A2 装载</td><td>术语/维值/指标口径进上下文</td><td>否</td><td>①⑤ 元数据 · RAG</td></tr>
+          <tr><td>A3 生成查询</td><td>可执行、不越权</td><td>是（写 SQL/填 encode）</td><td>③ Text2SQL+规则</td></tr>
+          <tr><td>A3 闸</td><td>禁写、表白名单、多语句</td><td>否</td><td>④⑥ 校验·权限</td></tr>
+          <tr><td>A4 展示</td><td>可读答案；空结果诚实</td><td>否</td><td>④ 结果合理性</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="board-flow">4.0.2 出板流水线（/board · 目标态）</h3>
+      <pre><span class="c">用户：「/board 按支付状态看入账」</span>
+        │
+        ▼
+┌───────────────────────────────────────────────────────────┐
+│ <span class="k">B1 编排</span>  <span class="g">[混合]</span>  list → plan_charts →（确认）→ generate×1   │
+└───────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────────┐
+│ <span class="k">B2 探查装载</span>  <span class="g">[确定性 · 与问数共用 knowledge/指标]</span>            │
+│  schema + profile + 能力卡（additive/ratio/dim/time）       │
+└───────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────────┐
+│ <span class="k">B3 Goal 规划</span>  <span class="g">[LLM 为中心 + 可选确认]</span>                         │
+│  能力卡 → LLM goals → clarify/确认 → bind+kind 闸           │
+│  （详见 goal-planning-design.md）                           │
+└───────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────────┐
+│ <span class="k">B4 生成质检布局</span>  <span class="g">[确定性]</span>  encode → review → layout → patch │
+└───────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────────┐
+│ <span class="k">B5 写入展示</span>  <span class="g">[确定性]</span>  强 replace → 右侧编辑器直播查数     │
+└───────────────────────────────────────────────────────────┘</pre>
+
+      <h3 id="shared-tools">4.0.3 工具复用矩阵（问数 × 出板）</h3>
+      <table>
+        <thead>
+          <tr><th>工具 / 能力</th><th>问数 /ask</th><th>出板 /board</th><th>复用方式</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>od_list_datasets</code></td>
+            <td>✓</td><td>✓</td>
+            <td><strong>完全复用</strong>：选表入口</td>
+          </tr>
+          <tr>
+            <td>Java schema / knowledge / glossary / indicator</td>
+            <td>✓（经 get_schema）</td><td>✓（经 plan/generate 装载，P0/P1 对齐）</td>
+            <td><strong>共用语义资产</strong>；出板待接通 metrics/维值</td>
+          </tr>
+          <tr>
+            <td><code>od_get_schema</code></td>
+            <td>✓ 主用</td><td>△ plan 内自拉，可不经此工具</td>
+            <td>装载逻辑同源；问数多 sample/terms/questions</td>
+          </tr>
+          <tr>
+            <td><code>od_profile_dataset</code></td>
+            <td>△ 可选</td><td>× 出板禁止（generate 内带 stats）</td>
+            <td>统计能力复用，调用策略不同</td>
+          </tr>
+          <tr>
+            <td><code>od_run_query</code> / <code>od_run_sql</code> + sql-guard</td>
+            <td>✓</td><td>× <strong>禁止</strong></td>
+            <td>问数专用；出板用 encode 在编辑器侧查</td>
+          </tr>
+          <tr>
+            <td>ask-enrich（选图 / 0 行 insight / formatter）</td>
+            <td>✓</td><td>△ 出板 FE formatter 同类思想</td>
+            <td>展示层可复用规则，管道不同</td>
+          </tr>
+          <tr>
+            <td><code>od_plan_charts</code> / Goal / bind</td>
+            <td>×</td><td>✓</td>
+            <td>出板专用</td>
+          </tr>
+          <tr>
+            <td><code>od_generate_board</code> / layout / apply-patch</td>
+            <td>×</td><td>✓</td>
+            <td>出板专用；问数<strong>不写</strong> draft</td>
+          </tr>
+          <tr>
+            <td><code>od_finish</code></td>
+            <td>✓</td><td>△ 可选</td>
+            <td>会话收尾复用</td>
+          </tr>
+          <tr>
+            <td><code>measureKind</code> / confirmed agg</td>
+            <td>✓（目标：约束 SQL/结构化 agg）</td><td>✓（绑 Goal）</td>
+            <td><strong>应用层复用同一套口径</strong></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>复用原则</strong>
+        复用的是<strong>语义资产 + 选表 + 口径</strong>；不复用「写画布」与「会话查数」两条执行出口。
+        问数结果卡本期不「一键落板」；整页写入只走出板轨（与 P006 边界一致）。
+      </div>
+
+      <h3 id="ask-industry">4.0.4 业界问数流程怎么设计（对照）</h3>
+      <table>
+        <thead>
+          <tr><th>方案</th><th>典型流水线</th><th>知识怎么进</th><th>校验</th><th>和看板关系</th><th>OD 对齐</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>SQLBot</strong></td>
+            <td>选 DS/Dataset → RAG 术语/训练 → LLM SQL → 跑数 → 表/图</td>
+            <td>glossary + few-shot + dimension-values</td>
+            <td>规则/权限；嵌入 DE 不写 DV</td>
+            <td><strong>旁路</strong>，不写画布</td>
+            <td>问数轨形状；注入形改编</td>
+          </tr>
+          <tr>
+            <td><strong>Joy DataAgent</strong></td>
+            <td>NL2SQL → 结果 + 内联图 →（可选）报告</td>
+            <td>DGP 治理后再问；TableRAG 选字段</td>
+            <td>SQL/洞察规则</td>
+            <td>问数主路径；报告后置</td>
+            <td>「先答再落配置」；agg 约束</td>
+          </tr>
+          <tr>
+            <td><strong>Vanna 等</strong></td>
+            <td>训练 DDL/SQL → 生成 → 执行</td>
+            <td>向量训练对</td>
+            <td>弱～中</td>
+            <td>通常无经营看板</td>
+            <td><strong>不引入</strong>第二套栈</td>
+          </tr>
+          <tr>
+            <td><strong>Cube/Wren</strong></td>
+            <td>人选指标名 → 语义层编译查询</td>
+            <td>MDL/Cube 模型</td>
+            <td>查询层强</td>
+            <td>指标消费，非 Chat 主 UI</td>
+            <td>借 measure 契约给问数/出板</td>
+          </tr>
+          <tr>
+            <td><strong>DeerFlow</strong></td>
+            <td>通用 Agent plan/澄清/工具</td>
+            <td>非 BI 专用</td>
+            <td>沙箱/工具</td>
+            <td>无问数语义</td>
+            <td>只借鉴澄清节奏</td>
+          </tr>
+          <tr>
+            <td><strong>OD（本仓）</strong></td>
+            <td>list → schema(+knowledge) → run_query|run_sql → enrich → finish</td>
+            <td>/dimensions + knowledge API</td>
+            <td>sql-guard + 权限数据集</td>
+            <td>问数 ephemeral；出板独立 Goal 轨</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre><span class="c"># 业界问数共识（OD 已对齐的部分）</span>
+1. 先 Schema/知识，再让模型写查询（禁止裸库瞎写）
+2. RAG/术语/维值提高专有数据准确率（行业技术⑤）
+3. 执行前闸：只读、表白名单、权限（③④⑥）
+4. 结果在会话展示；<span class="g">写经营看板是另一条意图</span>（SQLBot/Joy 均如此）
+
+<span class="c"># OD 相对业界多出来的</span>
+出板轨：多 Goal +（目标）LLM 规划确认 + DashboardPatch（非 HTML 报告当真相）</pre>
+
+      <h3>4.1 场景夹具 S1（出板）</h3>
+      <div class="pipeline-box">
+        <h3>商户订单出板</h3>
+        <p style="margin:0 0 0.5rem"><strong>数据集</strong> <code>t_pay_order</code> · <strong>用户</strong> <code>/board 按支付状态看入账</code></p>
+        <table>
+          <thead>
+            <tr><th>字段</th><th>label</th><th>角色</th><th>/dimensions 已确认时</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>Status</code></td><td>支付状态</td><td>dim</td><td>0→订单生成 · 2→支付成功 · 3→失败</td></tr>
+            <tr><td><code>Amount</code></td><td>支付金额,单位分</td><td>measure</td><td>指标 SUM · unit 分</td></tr>
+            <tr><td><code>MchIncome</code></td><td>商户入账,单位分</td><td>measure</td><td>指标 SUM（message「入账」加权优先）</td></tr>
+            <tr><td><code>FeeRate</code></td><td>商户费率</td><td>measure</td><td>指标 AVG → ratio</td></tr>
+            <tr><td><code>CreateTime</code></td><td>创建时间</td><td>time</td><td>无日桶则不做趋势图</td></tr>
+            <tr><td><code>PayOrderId</code></td><td>支付订单号</td><td>junk</td><td>排除出轴/度量</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>4.2 分阶段设计（作用 · 技术 · 问题 · S1 轨迹）</h3>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>阶段 ① 编排 · Agent 选工具</h4>
+          <span class="badge mix">混合</span>
+        </div>
+        <p><strong>解决什么问题：</strong>用户一句话进来后，谁决定「先规划还是直接写板」？避免模型自己拼 patch、跑大表 GROUP BY 探活。</p>
+        <div class="io">
+          <div>
+            <strong>输入</strong>
+            用户原话 message；会话里的 /board 命令人格
+          </div>
+          <div>
+            <strong>输出</strong>
+            工具调用序列：<code>od_list_datasets</code> → <code>od_plan_charts</code> → <code>od_generate_board</code>（一次）
+          </div>
+        </div>
+        <p><strong>用什么技术：</strong></p>
+        <ul class="tight">
+          <li><span class="badge llm">LLM</span> 理解主题、选数据集（多个候选时）</li>
+          <li><span class="badge det">确定性</span> 命令模板强制：必须先 plan 再 generate；禁止 <code>od_run_sql</code> 出板</li>
+        </ul>
+        <p><strong>业界对照：</strong>阶段 5 Agent「多工具协同」的薄实现；不是全自主规划引擎。</p>
+        <div class="s1-trace">
+<span class="dim"># S1 轨迹</span>
+message = "按支付状态看入账"
+→ 匹配数据集 t_pay_order
+→ 调用 od_plan_charts(datasetId, message)   <span class="ok">先展示目标</span>
+→ 调用 od_generate_board(同一 message)      <span class="ok">只一次</span>
+<span class="bad">× 禁止：自己拼 DashboardPatch / live probe GROUP BY</span>
+        </div>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>阶段 ② 数据探查 / 语义+治理装载</h4>
+          <span class="badge det">确定性</span>
+        </div>
+        <p><strong>解决什么问题：</strong>还不知道表里有什么、金额能不能 SUM、状态码怎么读，就规划一定会出「状态×费率」。</p>
+        <p><strong>内部小流程（顺序固定）：</strong></p>
+        <pre style="margin:0.5rem 0">②a 拉 schema（字段名/类型/group）
+②b 拉 profile（distinctCount / min-max / 角色线索）     ← 统计探查，非 LLM
+②c 合并 knowledge.metrics → aggDefault / measureKind   ← A 语义，接 /dimensions
+②d 合并 glossary + dimension values                     ← B 治理
+②e 启发式补洞（仅当无 confirmed）</pre>
+        <div class="io">
+          <div>
+            <strong>输入</strong>
+            datasetId；Java <code>/schema</code> · <code>/profile-dataset</code> · <code>/knowledge</code>
+          </div>
+          <div>
+            <strong>输出</strong>
+            增强字段表：role · measureKind · aggDefault · alias · valueMap
+          </div>
+        </div>
+        <p><strong>用什么技术：</strong></p>
+        <ul class="tight">
+          <li><span class="badge det">确定性</span> JDBC/schema API、直方图式 profile、字典合并</li>
+          <li><span class="badge human">人工</span> 事先在 /dimensions 确认指标/维值（异步，出板只读）</li>
+          <li><span class="badge llm">LLM</span> <strong>本阶段不用</strong>（探查不靠模型猜口径）</li>
+        </ul>
+        <p><strong>业界对照：</strong>Cube/Wren 的 measure 元数据；SQLBot 知识注入；Joy <code>Measure.agg</code>。OD 用确认制资产，不部署第二套语义服务。</p>
+        <div class="s1-trace">
+<span class="dim"># S1 装载结果（目标）</span>
+Status     role=dim     valueMap={0:订单生成, 2:支付成功, 3:失败}
+Amount     kind=additive agg=sum   unitHint=分
+MchIncome  kind=additive agg=sum   <span class="ok">←「入账」加权优先作 compare value</span>
+FeeRate    kind=ratio    agg=avg   <span class="ok">← 绝不可进 bar SUM</span>
+PayOrderId role=junk               <span class="ok">← 排除</span>
+CreateTime role=time    dayBucket=false → 不做 trend
+        </div>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>阶段 ③ 分析规划（Goal Explorer）· 修订：LLM 为中心</h4>
+          <span class="badge llm">LLM 规划</span>
+          <span class="badge mix">用户可确认</span>
+          <span class="badge det">Harness 口径闸</span>
+        </div>
+        <p><strong>解决什么问题：</strong>规则模板只能覆盖「有维就 compare」类骨架，对模糊主题、多候选维/度量、要不要趋势/构成，效果上限低。
+        规划应以 <strong>LLM 枚举/排序分析问题</strong>为主，必要时<strong>反问用户确认</strong>；Harness 只卡「能不能这么绑字段」。</p>
+
+        <h4 style="margin:0.75rem 0 0.4rem;font-size:0.95rem">开源怎么做规划（对比）</h4>
+        <table>
+          <thead>
+            <tr><th>方案</th><th>谁出「计划」</th><th>人怎么参与</th><th>口径/正确性谁管</th><th>对 OD 的启示</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>LIDA</strong></td>
+              <td>LLM GoalExplorer：question + viz + rationale</td>
+              <td>人点选 goal 再可视化</td>
+              <td>弱（靠 prompt + 后评估）</td>
+              <td>规划必须 LLM；人可选 goal</td>
+            </tr>
+            <tr>
+              <td><strong>DeerFlow</strong></td>
+              <td>LLM Plan Mode（write_todos）自主拆步</td>
+              <td><code>ask_clarification</code> 中断等人答（HITL）</td>
+              <td>工具/沙箱侧，不是度量语义层</td>
+              <td>模糊就反问；计划可见</td>
+            </tr>
+            <tr>
+              <td><strong>Joy plan&amp;executor</strong></td>
+              <td>LLM 先 plan 再 executor</td>
+              <td>产品侧可审计划</td>
+              <td>Measure.agg 等数据模型约束执行</td>
+              <td>LLM 计划 + 结构化度量约束执行</td>
+            </tr>
+            <tr>
+              <td><strong>SQLBot / ChatBI</strong></td>
+              <td>LLM 一问一 SQL（非整板 Goal 列表）</td>
+              <td>多轮澄清常见</td>
+              <td>RAG 术语 + SQL 校验</td>
+              <td>问数路径已类似；出板需多 Goal</td>
+            </tr>
+            <tr>
+              <td><strong>Cube/Wren</strong></td>
+              <td>不做 NL 规划；人选指标名</td>
+              <td>建模阶段人工</td>
+              <td>语义层硬约束</td>
+              <td>约束在执行前，不替代 NL 规划</td>
+            </tr>
+            <tr>
+              <td><strong>OD 旧案（纯规则）</strong></td>
+              <td>模板 enumerateGoals</td>
+              <td>几乎无确认</td>
+              <td>强（kind/R10）</td>
+              <td>口径好、覆盖差 → <strong>要改</strong></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h4 style="margin:0.75rem 0 0.4rem;font-size:0.95rem">OD 目标态（三拍）</h4>
+        <pre style="margin:0.5rem 0"><span class="k">③a 候选能力卡</span>  <span class="g">[Harness 确定性]</span>
+    增强字段表 → 告诉模型「合法积木」：
+    dims[] / additive[] / ratio[] / timeBuckets[] / 禁 junk
+    （不是最终 goal 列表）
+
+<span class="k">③b LLM 规划</span>  <span class="g">[LLM 为中心]</span>
+    输入：用户 message + 能力卡 + 少量 few-shot
+    输出：goals[] = { question, intent, fields?, rationale }
+    可调用澄清（仿 DeerFlow）：
+      · 多数据集 / 维度量歧义 / 主题过宽
+      → 反问 1 个问题，等用户答完再规划
+    也可先给出草案，请用户「确认/删改目标」再 generate
+
+<span class="k">③c 绑定与闸</span>  <span class="g">[Harness 确定性 · 不可跳过]</span>
+    goal → encode：只允许能力卡内字段
+    measureKind：ratio 不得 SUM 上 compare/table
+    reviewCharts + 展示 plan；用户确认后才 od_generate_board</pre>
+
+        <div class="io">
+          <div>
+            <strong>输入</strong>
+            message + 能力卡（schema/profile/knowledge）+ 可选用户确认
+          </div>
+          <div>
+            <strong>输出</strong>
+            已确认 goals[] → 经闸后的 encode；对话可见 question 列表
+          </div>
+        </div>
+        <p><strong>用什么技术：</strong></p>
+        <ul class="tight">
+          <li><span class="badge llm">LLM</span> 枚举/排序/删减分析问题（对标 LIDA GoalExplorer + Joy plan）</li>
+          <li><span class="badge mix">混合</span> 澄清/确认（对标 DeerFlow <code>ask_clarification</code>；dsh 多轮即可，不必换宿主）</li>
+          <li><span class="badge det">确定性</span> 能力卡 + kind 绑定 + review（对标 Cube 口径，执行侧）</li>
+          <li>纯规则 <code>enumerateGoals</code> 降为<strong>无模型/失败降级</strong>与单测基线，不再当主路径唯一规划器</li>
+        </ul>
+        <p><strong>为何规则不够：</strong>「看看经营情况」「别画构成要趋势」「入账用 Amount 还是 MchIncome」等，模板加权覆盖不稳；LLM + 一问确认更贴业务。</p>
+        <div class="s1-trace">
+<span class="dim"># S1 目标交互（LLM 规划 + 可选确认）</span>
+能力卡: Status(dim) Amount/MchIncome(additive) FeeRate(ratio) …
+LLM 草案:
+  1. 各支付状态下的商户入账对比
+  2. 支付状态构成占比
+  3. 商户入账合计
+Agent 可选反问: 「入账用商户入账还是支付金额？」→ 用户选商户入账
+Harness 绑定: Status×MchIncome SUM；FeeRate 不得进对比柱
+<span class="ok">plan 展示 → 用户默认确认或点「按此生成」→ generate</span>
+        </div>
+
+        <p style="margin-top:0.85rem"><strong>完整提示词、能力卡 JSON、/board 协议、逐步跑通表：</strong>
+          <a href="./goal-planning-design.md">goal-planning-design.md</a>（方案定稿 · M1.6 待编码）</p>
+        <h4 style="margin:0.75rem 0 0.4rem;font-size:0.95rem">提示词要点（摘录）</h4>
+        <pre style="margin:0.4rem 0">System：你是出板分析规划器。根据用户主题 + 能力卡输出 3～6 个 Goal。
+硬规则：compare/table 只用 additive；ratio 仅 kpi_ratio+avg；禁用 junk；
+trend 需 dayBucket；只输出 JSON（mode=goals|clarify）。
+
+User：用户主题：{{message}}
+能力卡：{{capabilityCardJson}}
+
+Plan 展示后固定句：回复「确认」按此生成；或说明要增删的目标。
+Clarify：只问 1 个短问题，本轮不 generate。</pre>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>阶段 ④ 内容生成（编码 · 质检 · 布局）</h4>
+          <span class="badge det">确定性</span>
+        </div>
+        <p><strong>解决什么问题：</strong>Goal 如何变成可查询的图？坏图（碎饼、毛线、比率 SUM、半行留白）如何在写入前杀掉？</p>
+        <pre style="margin:0.5rem 0">④a chartsFromGoals：intent → type + encode(category,value,agg)
+④b reviewCharts：R1–R10 自修复（同维去重、高基数、裸时间戳、ratio 禁 SUM…）
+④c layoutBoardPatch：查询条 + KPI 行 + 对比并排≤2 + 折线全宽 + ≤1 表
+④d 产出 DashboardPatch（ops），仍不跑大表聚合探活</pre>
+        <div class="io">
+          <div>
+            <strong>输入</strong>
+            goals[] + 增强字段
+          </div>
+          <div>
+            <strong>输出</strong>
+            patch（set_layout / upsert_chart / query…）
+          </div>
+        </div>
+        <p><strong>用什么技术：</strong></p>
+        <ul class="tight">
+          <li><span class="badge det">确定性</span> gen-board.js（照搬 LIDA critique<strong>维度</strong>、Joy 行数规则，但实现成规则引擎）</li>
+          <li><span class="badge llm">LLM</span> <strong>本阶段不用</strong>（生成路径禁止模型手写 patch）</li>
+        </ul>
+        <p><strong>为何不做 LIDA 式「LLM 写 matplotlib」：</strong>OD 画布契约是 DashboardPatch encode，不是可执行绘图代码；可靠性和单测要求高。</p>
+        <div class="s1-trace">
+<span class="dim"># S1 生成后</span>
+charts: kpi×2 + bar(Status,MchIncome,sum) + pie(Status,count) + table
+line: <span class="ok">已丢</span>（CreateTime 无日桶 · R3）
+FeeRate: 仅当被点名才留 AVG kpi；S1 message 未点名则可不出现
+layout: 两对比并排 36+36；无半行空洞
+        </div>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>阶段 ⑤ 写入与可视化展示</h4>
+          <span class="badge det">确定性</span>
+        </div>
+        <p><strong>解决什么问题：</strong>补丁如何落成用户看得见的图？如何避免叠板、字段名、分单位失控？</p>
+        <pre style="margin:0.5rem 0">⑤a od_generate_board → apply-patch（强 replace：先清空 draft 再写）
+⑤b 编辑器按 encode 发起查询（直播）
+⑤c 渲染：fieldCfg.alias · valueMap 轴映射 · formatter 分→元/万/亿
+⑤d 用户可改图；可选回写 indicator/profile（反馈闭环）</pre>
+        <div class="io">
+          <div>
+            <strong>输入</strong>
+            DashboardPatch
+          </div>
+          <div>
+            <strong>输出</strong>
+            右侧可编辑看板；对话区保留 Goal 列表可追溯
+          </div>
+        </div>
+        <p><strong>用什么技术：</strong></p>
+        <ul class="tight">
+          <li><span class="badge det">确定性</span> Java PatchApplier · FE editorCore / ECharts</li>
+          <li><span class="badge llm">LLM</span> 不参与渲染</li>
+        </ul>
+        <div class="s1-trace">
+<span class="dim"># S1 用户看见</span>
+轴：支付成功 / 订单生成 …     <span class="ok">不是 2 / 0</span>
+图例：商户入账                 <span class="ok">不是 MchIncome</span>
+数值：12.3 万（元）            <span class="ok">不是上千亿「分」</span>
+查询条：一条；重新生成不叠板
+        </div>
+      </div>
+
+      <h3>4.3 一张表：每阶段技术选型</h3>
+      <table>
+        <thead>
+          <tr><th>阶段</th><th>核心问题</th><th>主技术</th><th>LLM？</th><th>现状缺口</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>① 编排</td>
+            <td>工具顺序、禁止野路子</td>
+            <td>dsh 命令/工具描述</td>
+            <td>混合（选库）</td>
+            <td>基本可用</td>
+          </tr>
+          <tr>
+            <td>② 探查装载</td>
+            <td>口径与码值从哪来</td>
+            <td>schema+profile+knowledge</td>
+            <td><strong>否</strong></td>
+            <td class="r">出板未合并 metrics/维值（P0/P1）</td>
+          </tr>
+          <tr>
+            <td>③ 规划</td>
+            <td>要回答什么问题</td>
+            <td>LLM Goal + 确认 + 能力卡闸</td>
+            <td><strong>是（主路径）</strong></td>
+            <td>现行为规则；目标改 LLM（见上）</td>
+          </tr>
+          <tr>
+            <td>④ 生成质检</td>
+            <td>坏图谁拦</td>
+            <td>review + layout</td>
+            <td><strong>否</strong></td>
+            <td>闸门已有</td>
+          </tr>
+          <tr>
+            <td>⑤ 展示</td>
+            <td>人能不能读</td>
+            <td>编辑器查询渲染</td>
+            <td><strong>否</strong></td>
+            <td>维值映射待接；alias/formatter 大部有</td>
+          </tr>
+          <tr>
+            <td>旁路问数</td>
+            <td>一问一 SQL</td>
+            <td>Text2SQL + sql-guard</td>
+            <td><strong>是</strong>（写 SQL）</td>
+            <td>与出板共用 ② 的 knowledge</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>4.4 规划特写：用户问题如何变成 Goal</h3>
+      <pre><span class="c"># 不是：LLM 自由发挥「我觉得应该画张热力图」</span>
+<span class="c"># 而是：</span>
+
+用户问题 ──┬──→ ② 装载后的字段能力（有哪些 dim/additive/ratio/time）
+           │
+           └──→ 原文加权（「支付状态」「入账」命中哪些字段）
+                    │
+                    ▼
+              模板实例化 Goal 列表
+                    │
+                    ├── 能力不足？不生成该 goal（如无日桶 → 无 trend）
+                    ├── kind=ratio？只准 kpi_ratio，不准 compare SUM
+                    └── 展示给用户（plan）→ 同一套 goals 进 generate
+
+<span class="g">质量点：</span>规划阶段就把非法绑定消灭，而不是出图后再「禁费率」。</pre>
+
+      <h3>4.5 「数据探查」边界（避免误解）</h3>
+      <div class="grid-2">
+        <div class="card after">
+          <span class="tag ok">OD 出板探查 = 元数据探查</span>
+          <ul class="tight">
+            <li>schema / profile 统计 / 已确认知识</li>
+            <li>不跑全表 GROUP BY 试错</li>
+            <li>真正取数发生在 ⑤ 编辑器按 encode 查询</li>
+          </ul>
+        </div>
+        <div class="card before">
+          <span class="tag bad">不做的探查</span>
+          <ul class="tight">
+            <li>生成前 live probe（易超时、打断会话）</li>
+            <li>用 LLM 猜「这个字段是不是费率」当唯一依据</li>
+            <li>LIDA 式先拉 CSV 再 summary（可选实验，非主路径）</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>4.6 场景矩阵（仍挂在流水线上）</h3>
+      <table>
+        <thead>
+          <tr><th>场景</th><th>原话</th><th>卡在哪一阶段</th><th>优化</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>S1 状态+入账</td><td>/board 按支付状态看入账</td><td>② 未接指标/维值 → ③/⑤ 变差</td><td>P0+P1</td></tr>
+          <tr><td>S2 问数</td><td>/ask 各状态入账</td><td>旁路 Text2SQL；② 知识已部分通</td><td>与出板共用装载</td></tr>
+          <tr><td>S3 只谈费率</td><td>/board 看商户费率</td><td>② kind + ③ 只出 AVG KPI</td><td>P0</td></tr>
+          <tr><td>S4 重生成</td><td>再生成</td><td>⑤ 强 replace</td><td>已做，守住</td></tr>
+          <tr><td>S5 无确认资产</td><td>/board（空知识）</td><td>② 降级启发式 + ④ R10</td><td>不阻断；催 F1 确认</td></tr>
+        </tbody>
+      </table>
+
+      <h3>4.7 优化优先级（挂到阶段）</h3>
+      <table>
+        <thead>
+          <tr><th>#</th><th>做啥</th><th>阶段</th><th>技术</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>P0</strong></td><td>出板合并 confirmed metrics → kind/agg</td><td>②c</td><td>确定性字典合并</td></tr>
+          <tr><td><strong>P1</strong></td><td>维值 → 轴/图例映射</td><td>②d + ⑤c</td><td>照搬 SQLBot values 形</td></tr>
+          <tr><td><strong>P2</strong></td><td>确认流可改 AVG；知识维护 UX</td><td>F1 / ② 上游</td><td>人工+产品</td></tr>
+          <tr><td><strong>P3</strong></td><td>可选 LLM 润色 Goal 文案</td><td>③</td><td>LLM，不改 encode</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>一句话</strong>
+        规划 = <strong>LLM 枚举分析问题</strong>（可反问确认）+ Harness 能力卡/kind 闸；
+        探查装载与生成质检仍确定性；展示 = 编辑器查数。
+        不用 LLM 自由写 patch；口径仍靠② /dimensions + ③c 闸。
+      </div>
+    </section>
+
+    <section id="harness">
+      <h2>5. dsh Harness · 工具定义与真实执行流</h2>
+      <p>
+        产品对话表面不是「LLM 直接画图」，而是
+        <strong>DeepSeek dsh Agent 运行时</strong> + 本仓插件 <code>opendashboard-dsh-harness</code>
+        （profile <code>od-conversation</code>）注册的一组 <code>od_*</code> 工具。
+        LLM 只负责<strong>选工具、填参数、说人话</strong>；探查、规划内核、质检、写板、SQL 闸在 <strong>Harness / Java</strong>。
+      </p>
+
+      <h3>5.1 运行时分层（谁干什么）</h3>
+      <pre><span class="c">浏览器 OD AppShell</span>
+  │  iframe / embed → dsh Web (:3090)
+  ▼
+┌─────────────────────────────────────────────────────────────┐
+│ <span class="k">dsh Host（@deepseek-ai/dsh）</span>                                  │
+│  · 会话 / 模型调用 / 工具循环（ReAct 式：想→调工具→看结果→再想） │
+│  · 斜杠命令、消息渲染 Node                                      │
+└─────────────────────────────────────────────────────────────┘
+  │ 加载 profile od-conversation
+  ▼
+┌─────────────────────────────────────────────────────────────┐
+│ <span class="k">OD 插件（Harness 能力 · 确定性代码）</span>                           │
+│  dsh-od-bi     注册 od_* 工具 · /datasets /ask /board 命令     │
+│  dsh-od-auth   注入 workspaceId / userId / token              │
+│  dsh-od-nodes  表/图/看板预览 Node（产品卡）                    │
+│  gen-board.js  enumerateGoals / review / layout（出板内核）    │
+│  sql-guard.js  只读 SQL 校验（问数）                            │
+└─────────────────────────────────────────────────────────────┘
+  │ HTTP internal
+  ▼
+┌─────────────────────────────────────────────────────────────┐
+│ <span class="k">Java BI（:8082）</span>  schema · profile · knowledge · query · patch │
+└─────────────────────────────────────────────────────────────┘
+  │
+  ▼
+右侧 DashboardEditorHost（按 encode 直播查询渲染）</pre>
+
+      <div class="grid-2">
+        <div class="card after">
+          <span class="tag ok">LLM 的能力</span>
+          <ul class="tight">
+            <li>读用户原话 / 斜杠命令改写后的指令</li>
+            <li>选择下一步调哪个 <code>od_*</code>、填 datasetId / message</li>
+            <li>多数据集时追问或按名称匹配</li>
+            <li>把工具结果组织成对用户说的话</li>
+            <li>问数路径：在 schema 约束下<strong>起草 SQL</strong>（仍经 sql-guard）</li>
+          </ul>
+        </div>
+        <div class="card before">
+          <span class="tag bad">Harness / Java 的能力（非 LLM）</span>
+          <ul class="tight">
+            <li>工具 <code>execute</code>：拉 schema、knowledge、跑查询、写 patch</li>
+            <li><code>enumerateGoals</code> / measureKind / review / layout</li>
+            <li>SQL 白名单表、禁写、禁多语句</li>
+            <li>强 replace 写 draft；编辑器查数与 formatter</li>
+            <li>禁用 bash/fs：不能读仓改文件</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>5.2 斜杠命令（进入执行流的入口）</h3>
+      <p class="muted">实现：<code>packages/dsh-od-bi/src/commands.js</code>。命令本身不调模型，只把一段<strong>强制协议文案</strong>当作用户消息注入，再由 LLM 按文案选工具。</p>
+      <table>
+        <thead>
+          <tr><th>命令</th><th>注入给 Agent 的协议（摘要）</th><th>允许的工具链</th><th>禁止</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/datasets</code></td>
+            <td>先 <code>od_list_datasets</code>，列 id/名称，请用户选</td>
+            <td>list</td>
+            <td>读本地文件</td>
+          </tr>
+          <tr>
+            <td><code>/ask …</code></td>
+            <td>问数路径：list → schema → run_query 或受控 run_sql → finish</td>
+            <td>问数工具</td>
+            <td>写看板</td>
+          </tr>
+          <tr>
+            <td><code>/board …</code></td>
+            <td>list → <strong>plan_charts（展示分析目标）</strong> → <strong>generate_board 一次</strong>；message 带原话</td>
+            <td>list / plan / generate</td>
+            <td>run_query、run_sql、layout、emit、自拼 patch</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>5.3 工具目录（全部 od_*）</h3>
+      <table>
+        <thead>
+          <tr><th>工具</th><th>路径</th><th>execute 里做什么</th><th>LLM 只做什么</th><th>Harness 硬能力</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>od_list_datasets</code></td>
+            <td>共用</td>
+            <td>GET Java datasets</td>
+            <td>可选 keyword；解读列表选 id</td>
+            <td>权限内数据集，不发明表名</td>
+          </tr>
+          <tr>
+            <td><code>od_get_schema</code></td>
+            <td>问数主用</td>
+            <td>schema + knowledge terms/questions 裁剪</td>
+            <td>决定何时拉、读字段</td>
+            <td>confirmed 术语/维值注入（ask）</td>
+          </tr>
+          <tr>
+            <td><code>od_profile_dataset</code></td>
+            <td>问数可选</td>
+            <td>字段统计</td>
+            <td>决定要不要探</td>
+            <td><strong>出板禁止</strong>（generate 内已带 stats，免 live GROUP BY）</td>
+          </tr>
+          <tr>
+            <td><code>od_run_query</code></td>
+            <td>问数</td>
+            <td>结构化查询 → 表/图 meta</td>
+            <td>选维度量、chartType</td>
+            <td>服务端聚合；<strong>出板禁止</strong></td>
+          </tr>
+          <tr>
+            <td><code>od_run_sql</code></td>
+            <td>问数</td>
+            <td>sql-guard → Java 执行 → enrich</td>
+            <td><strong>生成 SQL 文本</strong></td>
+            <td>只读/表白名单/禁多语句；出板禁止</td>
+          </tr>
+          <tr>
+            <td><code>od_plan_charts</code></td>
+            <td>出板</td>
+            <td>schema+profile → <code>planChartsFromFields</code> → 展示 goals</td>
+            <td>传 datasetId + message；向用户复述目标</td>
+            <td><strong>Goal 枚举与 kind 闸在工具内</strong>，非模型编造图清单</td>
+          </tr>
+          <tr>
+            <td><code>od_generate_board</code></td>
+            <td>出板</td>
+            <td>同一套 plan+review+layout → apply-patch</td>
+            <td>传 datasetId/title/message；只调一次</td>
+            <td>确定性出板内核 + 强 replace；打开右侧编辑器</td>
+          </tr>
+          <tr>
+            <td><code>od_layout_board</code></td>
+            <td>废弃主路径</td>
+            <td>charts→patch（不写库）</td>
+            <td>—</td>
+            <td>/board 协议禁止</td>
+          </tr>
+          <tr>
+            <td><code>od_emit_patch</code></td>
+            <td>底层写板</td>
+            <td>apply-patch</td>
+            <td>—</td>
+            <td>/board 应走 generate，勿直调</td>
+          </tr>
+          <tr>
+            <td><code>od_compose_board</code></td>
+            <td>last-resort</td>
+            <td>Java 兜底组板</td>
+            <td>极少用</td>
+            <td>非 M1 主路径</td>
+          </tr>
+          <tr>
+            <td><code>od_finish</code></td>
+            <td>共用</td>
+            <td>标记本轮结束</td>
+            <td>写一句 summary</td>
+            <td>会话收尾</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>5.4 /board 真实执行时序（用户问题 → 工具 → 谁算）</h3>
+      <p class="muted">例：用户输入 <code>/board 按支付状态看入账</code>（或点生成仪表盘并带主题）。</p>
+      <pre><span class="c">① 命令层（Harness）</span>
+/board handler 注入协议文案（含主题）→ agent.followup(userMessage)
+        │
+        ▼
+<span class="c">② LLM 回合 1</span>  <span class="g">[LLM]</span>
+读协议 → 调用 od_list_datasets()
+        │
+        ▼
+<span class="c">③ 工具执行</span>  <span class="g">[Harness→Java]</span>
+返回 datasets[]（id/name/table）
+        │
+        ▼
+<span class="c">④ LLM 回合 2</span>  <span class="g">[LLM]</span>
+匹配「商户订单」→ datasetId=…
+调用 od_plan_charts({ datasetId, message: "按支付状态看入账" })
+        │
+        ▼
+<span class="c">⑤ 工具执行 · 规划</span>  <span class="g">[Harness 确定性]</span>
+loadSchemaAndProfile
+  →（目标）合并 knowledge metrics/维值
+  → enumerateGoals(message) → reviewCharts
+  → render：「分析目标 N 个」+ question 列表   ← 用户在对话里看见
+        │
+        ▼
+<span class="c">⑥ LLM 回合 3</span>  <span class="g">[LLM]</span>
+按协议调用 od_generate_board({ datasetId, title, message })  <span class="ok">仅一次</span>
+        │
+        ▼
+<span class="c">⑦ 工具执行 · 生成写入</span>  <span class="g">[Harness 确定性]</span>
+同一套 plan+review+layout → DashboardPatch
+→ POST apply-patch（强 replace）→ 返回 dashboardId
+→ presentationMeta：OD shell 打开右侧编辑器
+        │
+        ▼
+<span class="c">⑧ 展示</span>  <span class="g">[FE 确定性]</span>
+编辑器按 encode 查数；alias / formatter /（目标）维值映射
+        │
+        ▼
+<span class="c">⑨ LLM 可选</span>  <span class="g">[LLM]</span>
+od_finish(summary) 或对用户说「已生成，可在右侧改」
+
+<span class="bad">全程不应出现：</span> od_run_sql / od_run_query / od_layout_board / 模型手写 patch JSON</pre>
+
+      <h3>5.5 /ask 真实执行时序（对照）</h3>
+      <pre><span class="c">①</span> /ask 注入问数协议
+<span class="c">②</span> LLM → od_list_datasets → od_get_schema   <span class="g">[LLM 选工具 · Harness 装知识]</span>
+<span class="c">③a</span> 结构化：LLM → od_run_query(维/度量)     <span class="g">[Harness 查]</span>
+<span class="c">③b</span> 或自由 SQL：LLM 写 SQL → od_run_sql
+         → sql-guard 校验 → Java 执行 → enrich 选图   <span class="g">[LLM 写SQL · Harness 闸+跑]</span>
+<span class="c">④</span> Node 渲染表/图卡 → od_finish
+<span class="bad">不写 draft 看板</span></pre>
+
+      <h3>5.6 单次工具调用内部（以 od_plan_charts / generate 为例）</h3>
+      <pre>od_plan_charts / od_generate_board.execute()
+│
+├─ <span class="g">[Harness]</span> biFetch schema
+├─ <span class="g">[Harness]</span> biFetch profile-dataset          ← 统计探查，非 LLM
+├─ <span class="g">[Harness]</span> （目标 P0）biFetch knowledge     ← /dimensions 已确认
+├─ <span class="g">[Harness]</span> planChartsFromFields
+│     enumerateGoals → chartsFromGoals
+│     reviewCharts (R1–R10)
+│     buildQuery
+├─ plan：只 return charts 给 LLM/UI 展示
+└─ generate：layoutBoardPatch → apply-patch → 返回 dashboardId
+     ▲
+     └── <span class="g">[LLM 从未进入这些函数]</span> 只提供 datasetId + message</pre>
+
+      <h3>5.7 能力边界速查</h3>
+      <table>
+        <thead>
+          <tr><th>能力</th><th>归属</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>理解「按支付状态看入账」并选对表</td><td><span class="badge llm">LLM</span></td><td>可被 message 加权辅助，但不能发明口径</td></tr>
+          <tr><td>FeeRate 用 AVG 还是 SUM</td><td><span class="badge det">Harness</span></td><td>measureKind / confirmed 指标；R10</td></tr>
+          <tr><td>枚举「各状态下的入账对比」等 Goal</td><td><span class="badge det">Harness</span></td><td>enumerateGoals</td></tr>
+          <tr><td>是否调用 plan / generate、调用几次</td><td><span class="badge mix">混合</span></td><td>LLM 选工具；命令协议 + 工具描述约束</td></tr>
+          <tr><td>SQL 是否可执行</td><td><span class="badge det">Harness</span></td><td>sql-guard</td></tr>
+          <tr><td>草稿是否叠板</td><td><span class="badge det">Java</span></td><td>强 replace</td></tr>
+          <tr><td>轴上 0/2 变「支付成功」</td><td><span class="badge det">Harness+FE</span></td><td>维值映射（P1）；非 LLM 事后改口</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>和 §4 流水线的关系</strong>
+        §4 现为<strong>双轨</strong>：问数 A1–A4 ≈ 本节约「LLM 选工具 + run_query/sql」；出板 B1–B5 ≈ plan/generate 内 Harness + FE。
+        两条轨共用 list_datasets 与语义资产；<strong>不共用</strong>写 draft 与会话查数出口（见 <a href="#shared-tools">§4.0.3</a>）。
+        优化 P0/P1 改的是<strong>装载对齐</strong>，不是再加一套 Agent 框架。
+        代码入口：<code>opendashboard-dsh-harness/packages/dsh-od-bi/src/{index,commands,gen-board,ask-enrich,sql-guard}.js</code>。
+      </div>
+    </section>
+
+    <section id="arch">
+      <h2>6. 目标架构 · 八项准确技术与开源选型（定稿）</h2>
+      <p>
+        行业图「确保数据准确使用的关键技术」必须<strong>嵌进 OD 执行链的每一步</strong>，而不是单独一章口号。
+        本节给出：<strong>总架构</strong> → <strong>开源选型（用 / 改编 / 不用）</strong> → <strong>逐步：问题→技术→选型→落点</strong>。
+        本地对照仓：<code>refs/sqlbot</code> · <code>refs/joyagent-jdgenie-data_agent</code> · <code>refs/dataease</code> · <code>refs/deer-flow</code> · <code>refs/deepseek-harness</code>；
+        外加业界常用 Cube / WrenAI / LIDA / Vanna（未全量 vendoring，按文档契约选型）。
+      </p>
+      <figure style="margin:1rem 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0.75rem">
+        <img src="./industry-ask-agent-roadmap.png" alt="智能问数Agent关键技术" style="display:block;width:100%;max-width:920px;margin:0 auto;height:auto" />
+        <figcaption class="muted" style="font-size:0.82rem;text-align:center;margin-top:0.45rem">行业：八项准确技术（元数据·语义·Text2SQL·校验·RAG·权限·多轮·反馈）</figcaption>
+      </figure>
+
+      <h3>6.1 总架构（定稿）</h3>
+      <pre><span class="c">┌─────────────────────────────────────────────────────────────────────┐</span>
+<span class="c">│ 产品表面：OD AppShell + dsh embed（问数卡 / Goal 列表 / 右侧编辑器）   │</span>
+<span class="c">└─────────────────────────────────────────────────────────────────────┘</span>
+        │ 用户 /ask · /board · 自然语言
+        ▼
+<span class="c">┌─ Agent 运行时（选型：保留 dsh，不换 DeerFlow）─────────────────────┐</span>
+<span class="c">│  LLM：选 od_*、填参、问数写 SQL、说人话                              │</span>
+<span class="c">│  协议：commands.js 强制 /board=/ask 工具链                           │</span>
+<span class="c">└────────────────────────────────────────────────────────────────────┘</span>
+        │
+        ├──── <span class="k">问数路径</span> ──────────────────┬──── <span class="k">出板路径</span> ─────────────────
+        ▼                               ▼
+  od_get_schema                   od_plan_charts
+  + knowledge-values 形注入         od_generate_board
+  od_run_query | od_run_sql         └─ gen-board.js
+  + sql-guard + enrich                 enumerateGoals
+        │                              review + layout
+        ▼                               ▼
+  表/图 Node                      apply-patch → 编辑器查数渲染
+        │                               │
+        └─────────── 共用资产层 ─────────┘
+                    │
+    <span class="k">/dimensions（P010）</span>  confirmed 指标 · 维值 · 词表 · 高频问法
+    schema / profile / workspace 权限（P009）
+                    │
+                    ▼
+              Java BI internal API</pre>
+
+      <h3>6.2 开源选型总表（用 / 改编 / 不用）</h3>
+      <table>
+        <thead>
+          <tr><th>来源</th><th>决策</th><th>用什么</th><th>不用什么</th><th>接到 OD</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>dsh / deepseek-harness</strong></td>
+            <td><span class="badge det">采用（已落地）</span></td>
+            <td>Agent 宿主、工具循环、会话、embed</td>
+            <td>coding 工具（bash/fs）</td>
+            <td><code>opendashboard-dsh-harness</code></td>
+          </tr>
+          <tr>
+            <td><strong>DeerFlow</strong></td>
+            <td><span class="badge human">不用换宿主</span></td>
+            <td>可参考「多步计划」产品叙事</td>
+            <td>整仓 SSE/运行时替换 dsh</td>
+            <td>—（P011 已定 dsh）</td>
+          </tr>
+          <tr>
+            <td><strong>SQLBot</strong>（refs）</td>
+            <td><span class="badge ok">改编采用</span></td>
+            <td><code>&lt;dimension-values&gt;</code> / 术语 / few-shot 注入形；训练样本思路</td>
+            <td>另起一套 ChatBI 前端；替换 dsh</td>
+            <td>knowledge → ask schema；出板轴映射（P1）</td>
+          </tr>
+          <tr>
+            <td><strong>Joy DataAgent</strong>（refs）</td>
+            <td><span class="badge ok">改编采用</span></td>
+            <td><code>Measure.agg=sum|mean|count</code>；洞察行数/占比校验维；TableRAG「选字段」裁剪思路</td>
+            <td>整仓 data_agent 当对话运行时；DGP 治理平台整体迁入</td>
+            <td>measureKind；review 规则增强</td>
+          </tr>
+          <tr>
+            <td><strong>DataEase</strong>（refs）</td>
+            <td><span class="badge human">保持渲染</span></td>
+            <td>encode / chart / formatter / 编辑器</td>
+            <td>用 DE 当自动出板 Agent</td>
+            <td>已有 FE/Java 图表栈</td>
+          </tr>
+          <tr>
+            <td><strong>Cube / Wren MDL</strong></td>
+            <td><span class="badge ok">借契约 · 不部署</span></td>
+            <td>measure：name+field+agg+unit 元数据形</td>
+            <td>Cube 查询服务、Wren 整仓、join/公式引擎本期</td>
+            <td><code>de_indicator</code> + loadSchema 合并（P0）</td>
+          </tr>
+          <tr>
+            <td><strong>Microsoft LIDA</strong></td>
+            <td><span class="badge ok">借管线 · 不跑包</span></td>
+            <td>Goal={question,viz,rationale}；critique 检查维</td>
+            <td>Python LIDA 主进程；matplotlib/代码当图；Infographer</td>
+            <td><code>enumerateGoals</code> + review；P3 可选 LLM 润色 question</td>
+          </tr>
+          <tr>
+            <td><strong>Vanna 等 Text2SQL</strong></td>
+            <td><span class="badge human">不引入</span></td>
+            <td>—（思路同 RAG+SQL）</td>
+            <td>第二套 Text2SQL 栈</td>
+            <td>已有 od_run_sql + sql-guard + schema RAG</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="muted">图例：<span class="badge det">采用</span> 已在或定为运行时 · <span class="badge ok">改编采用</span> 搬模块/契约 · <span class="badge human">不用/保持</span> 明确边界。</p>
+
+      <h3>6.3 八项准确技术 → 步骤嵌入（逐步选型）</h3>
+      <p>下列「步骤」与 §5 工具时序一致；每步绑定行业八项之一或多，并写死开源取舍。</p>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>步骤 S0 · 资产与权限（出板/问数之前）</h4>
+          <span class="badge human">人工+平台</span>
+        </div>
+        <p><strong>对应行业技术：</strong>① 元数据/指标口径 · ⑥ 可信源与权限 · ⑧ 反馈学习（确认闭环）</p>
+        <table>
+          <thead><tr><th>项</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>解决问题</td><td>没有权威指标/维值/权限，后面全是幻觉放大器</td></tr>
+            <tr><td>OD 做法</td><td><code>/dimensions</code> 确认指标(agg) / 维值 / 词表；P009 工作区数据集权限；自学习→确认</td></tr>
+            <tr><td>开源选型</td><td><strong>用</strong> Joy「先治理再问」叙事 + SQLBot 确认后注入；<strong>不用</strong> 另建指标中台产品</td></tr>
+            <tr><td>LLM？</td><td>否（确认是人；学习候选可模型辅助，闸在人）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>步骤 S1 · Agent 编排选工具</h4>
+          <span class="badge mix">混合</span>
+        </div>
+        <p><strong>对应行业技术：</strong>⑦ 多轮与上下文（会话在 dsh）· 趋势「Agent 自主化」的薄实现</p>
+        <table>
+          <thead><tr><th>项</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>解决问题</td><td>乱调 run_sql 出板、自拼 patch、跳过 plan</td></tr>
+            <tr><td>OD 做法</td><td>dsh 工具循环 + <code>/board</code>/<code>/ask</code> 协议文案 + 工具 description 约束</td></tr>
+            <tr><td>开源选型</td><td><strong>用</strong> dsh（已定）；DeerFlow <strong>不用</strong>换宿主；可借鉴其「先计划再执行」文案</td></tr>
+            <tr><td>LLM？</td><td>是（选工具）；协议与禁用列表是 Harness</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>步骤 S2 · 数据理解与语义装载</h4>
+          <span class="badge det">确定性</span>
+        </div>
+        <p><strong>对应行业技术：</strong>① 元数据管理 · ⑤ RAG（指标库/词表/维值）</p>
+        <table>
+          <thead><tr><th>项</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>解决问题</td><td>裸 schema 不知 SUM/AVG；码值不可读</td></tr>
+            <tr><td>OD 做法</td><td>schema + profile + <strong>合并 confirmed metrics/维值/词表</strong>（P0/P1）</td></tr>
+            <tr><td>开源选型</td><td><strong>用</strong> Cube/Wren 的 measure 字段集作契约；<strong>用</strong> SQLBot dimension-values 注入形；<strong>用</strong> Joy Measure.agg；<strong>不部署</strong> Cube/Wren 服务</td></tr>
+            <tr><td>LLM？</td><td>否</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>步骤 S3 · 语义解析 / 意图（规划）</h4>
+          <span class="badge llm">LLM 为中心</span>
+          <span class="badge mix">可确认</span>
+        </div>
+        <p><strong>对应行业技术：</strong>② 语义解析与意图识别 · ⑦ 多轮澄清</p>
+        <table>
+          <thead><tr><th>项</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>解决问题</td><td>枚举「要回答什么」；模糊时反问；禁止非法口径上板</td></tr>
+            <tr><td>OD 做法</td><td>能力卡 → <strong>LLM 出 goals</strong> → 可选用户确认 → Harness 绑定 kind/encode</td></tr>
+            <tr><td>开源选型</td><td><strong>用</strong> LIDA Goal 结构 + DeerFlow 澄清节奏 + Joy「plan 后受度量约束执行」；规则 enumerateGoals 仅降级</td></tr>
+            <tr><td>LLM？</td><td><strong>是（规划主路径）</strong>；绑定与 review 仍确定性</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>步骤 S4a · 问数生成（Text2SQL / 结构化查询）</h4>
+          <span class="badge mix">混合</span>
+        </div>
+        <p><strong>对应行业技术：</strong>③ Text2SQL · ⑤ RAG · ④ 执行校验（语法/权限）</p>
+        <table>
+          <thead><tr><th>项</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>解决问题</td><td>生成可执行、不越权、不乱写的查询</td></tr>
+            <tr><td>OD 做法</td><td>od_run_query 或 od_run_sql；schema+terms+questions 进上下文；sql-guard</td></tr>
+            <tr><td>开源选型</td><td><strong>用</strong> SQLBot「RAG+规则+校验」形状（已对齐）；<strong>不用</strong> Vanna 整仓；Joy TableRAG 只借鉴选字段裁剪</td></tr>
+            <tr><td>LLM？</td><td>写 SQL / 选结构化维度量：是；校验与执行：Harness/Java</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>步骤 S4b · 出板生成（Goal→encode→质检→布局）</h4>
+          <span class="badge det">确定性</span>
+        </div>
+        <p><strong>对应行业技术：</strong>④ 结果合理性（图层面）· 部分①口径</p>
+        <table>
+          <thead><tr><th>项</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>解决问题</td><td>坏图、比率 SUM、毛线、半行留白、叠板</td></tr>
+            <tr><td>OD 做法</td><td>chartsFromGoals → reviewCharts(R1–R10) → layout → 强 replace</td></tr>
+            <tr><td>开源选型</td><td><strong>用</strong> LIDA critique 检查维（改编成规则）；<strong>用</strong> Joy 行数/占比类规则；<strong>不用</strong> LIDA 出 matplotlib 代码；DataEase 只负责最终渲染</td></tr>
+            <tr><td>LLM？</td><td>否（生成路径禁止模型写 patch）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>步骤 S5 · 执行取数与展示校验</h4>
+          <span class="badge det">确定性</span>
+        </div>
+        <p><strong>对应行业技术：</strong>④ 执行与结果校验 · ⑥ 权限（查询仍走授权数据集）</p>
+        <table>
+          <thead><tr><th>项</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>解决问题</td><td>语法/权限/空结果/单位不可读</td></tr>
+            <tr><td>OD 做法</td><td>问数：sql-guard + LiveQueryGuard + 0 行 insight；出板：编辑器按 encode 查数 + alias/formatter/维值映射</td></tr>
+            <tr><td>开源选型</td><td><strong>用</strong> 自研闸（已有）+ Joy 合理性维作补强；DataEase 渲染能力</td></tr>
+            <tr><td>LLM？</td><td>否</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stage-card">
+        <div class="stage-head">
+          <h4>步骤 S6 · 反馈回写</h4>
+          <span class="badge human">人工+轻自动</span>
+        </div>
+        <p><strong>对应行业技术：</strong>⑧ 反馈学习与持续优化</p>
+        <table>
+          <thead><tr><th>项</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>解决问题</td><td>错误口径不沉淀，下次继续错</td></tr>
+            <tr><td>OD 做法</td><td>编辑器改 agg/别名 → 回写 indicator/profile；确认流可改 AVG（P2）</td></tr>
+            <tr><td>开源选型</td><td><strong>用</strong> 现有 P010 闭环；不引入独立「错误样本平台」本期</td></tr>
+            <tr><td>LLM？</td><td>可选辅助学习候选；确认仍是人</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>6.4 端到端对照：行业八项在链上的位置</h3>
+      <table>
+        <thead>
+          <tr><th>#</th><th>行业关键技术</th><th>落在步骤</th><th>OD 组件</th><th>开源决定</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>数据理解与元数据 / 统一指标</td><td>S0 S2</td><td>de_indicator · measureKind</td><td>借 Cube 形；不部署</td><td>P0 接通出板</td></tr>
+          <tr><td>2</td><td>语义解析与意图</td><td>S3</td><td>LLM Goal + 可选确认 + kind 闸</td><td>LIDA + DeerFlow 澄清 + Joy plan</td><td><strong>待编码（主路径改 LLM）</strong></td></tr>
+          <tr><td>3</td><td>Text2SQL + RAG + 规则</td><td>S4a</td><td>od_run_sql · sql-guard · schema 加厚</td><td>对齐 SQLBot；不用 Vanna</td><td>已有</td></tr>
+          <tr><td>4</td><td>执行与结果校验</td><td>S4b S5</td><td>review · sql-guard · 0 行 insight</td><td>借 Joy 校验维</td><td>大部有</td></tr>
+          <tr><td>5</td><td>RAG 知识库/指标库/案例</td><td>S0 S2 S4a</td><td>knowledge · 高频问法 · 维值</td><td>改编 SQLBot 注入</td><td>问数有；出板 P1</td></tr>
+          <tr><td>6</td><td>可信源与权限</td><td>S0 S5</td><td>P009 · askable 数据集</td><td>自研</td><td>已有</td></tr>
+          <tr><td>7</td><td>多轮与记忆</td><td>S1</td><td>dsh 会话 · P010 记忆</td><td>保留 dsh</td><td>雏形</td></tr>
+          <tr><td>8</td><td>反馈学习</td><td>S0 S6</td><td>/dimensions 确认 · 编码回写</td><td>自研 P010</td><td>P2 加强</td></tr>
+        </tbody>
+      </table>
+
+      <h3>6.5 已决定的「整仓不用」清单（避免摇摆）</h3>
+      <ul class="tight">
+        <li>不用 DeerFlow / 第二套 Agent 宿主替换 dsh</li>
+        <li>不部署 Cube.js / WrenAI 查询面当出板引擎</li>
+        <li>不跑 Microsoft LIDA Python 包出 matplotlib 再转板</li>
+        <li>不引入 Vanna 等第二套 Text2SQL</li>
+        <li>不用 Joy 整仓 data_agent 当对话 UI/运行时</li>
+        <li>不用 DataEase「自动经营看板 Agent」（DE 只渲染）</li>
+        <li>不堆行业业务词黑名单替代 measureKind</li>
+      </ul>
+
+      <h3>6.6 落地顺序（架构已定后的工程序）</h3>
+      <pre><span class="g">P0</span> S2：loadSchemaAndProfile 合并 confirmed metrics → kind/agg     ← 技术①⑤
+<span class="g">P1</span> S2+S5：维值映射进轴/图例（SQLBot values 形）                 ← 技术⑤
+<span class="g">P2</span> S0+S6：确认流改 AVG；知识维护 UX；编码回写                   ← 技术⑧
+<span class="g">P3</span> S3：LLM Goal 规划主路径 + 澄清/确认；规则仅降级           ← 技术②⑦
+守住 S1 协议 / S4a sql-guard / S4b review+强 replace</pre>
+
+      <div class="callout warn">
+        <strong>定稿一句话</strong>
+        准确技术八项全部挂在 S0–S6；开源策略是<strong>改编 SQLBot + Joy + LIDA Goal/critique + Cube 度量契约</strong>，
+        运行时<strong>锁定 dsh + gen-board + Java BI + /dimensions</strong>。
+        缺的不是「再选一个框架」，而是把①⑤接到出板工具内部（P0/P1）。
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2>7. 行业路线图对照 · OD 怎么优化</h2>
+      <p class="muted">开源选型与八项技术嵌入步骤的<strong>定稿</strong>见 <a href="#arch">§6</a>；本节保留阶段定位与趋势取舍备忘。</p>
+      <p>
+        以下综合业界「智能问数 Agent」公开技术路线（五阶段演进 · 八项准确技术 · 六大趋势），
+        对照 OD（DataQ）问数 + 出板双路径，回答：<strong>我们站在哪、缺什么、优先搬什么、明确不做什么</strong>。
+      </p>
+      <figure style="margin:1rem 0 1.25rem;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0.75rem;overflow:auto">
+        <img src="./industry-ask-agent-roadmap.png" alt="智能问数Agent：技术发展路线与未来展望" style="display:block;width:100%;max-width:920px;margin:0 auto;height:auto" />
+        <figcaption class="muted" style="font-size:0.82rem;margin-top:0.5rem;text-align:center">
+          行业参考图 · 智能问数 Agent 路线与准确保障技术（归档于提案目录）
+        </figcaption>
+      </figure>
+
+      <h3>7.1 我们处在哪一阶段</h3>
+      <table>
+        <thead>
+          <tr><th>阶段</th><th>行业特征</th><th>OD 现状</th><th>判断</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1 规则检索</td>
+            <td>关键词 / 模板</td>
+            <td>已越过</td>
+            <td class="muted">—</td>
+          </tr>
+          <tr>
+            <td>2 NL→SQL</td>
+            <td>看懂问句、简单问答</td>
+            <td>P006 <code>od_run_sql</code> + SQL 闸</td>
+            <td>有</td>
+          </tr>
+          <tr>
+            <td>3 语义增强</td>
+            <td>意图、多轮、业务语义</td>
+            <td>P010 知识维护 + glossary；意图偏轻</td>
+            <td><strong>半成品</strong>：资产在，出板未吃满</td>
+          </tr>
+          <tr>
+            <td>4 大模型驱动</td>
+            <td>SQL/代码、复杂分析、<strong>自动可视化</strong></td>
+            <td>dsh Agent + Goal 出板 + 问数</td>
+            <td><strong>主战场</strong>（P012）</td>
+          </tr>
+          <tr>
+            <td>5 智能体</td>
+            <td>自主规划、多工具、持续学习</td>
+            <td>有工具协同雏形；自优化闭环弱</td>
+            <td>趋势，不本期做全</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>定位一句话</strong>
+        OD 已在<strong>阶段 4</strong>（LLM + 工具出板/问数），但阶段 3 的「指标口径 / 维值治理」没有完全喂进阶段 4 的生成管线——
+        这才是「能出板、不好读」的根因，而不是模型不够强。
+        行业结论也印证：准确率再涨，专有数据仍靠<strong>多技术叠闸</strong>，不能只靠 LLM。
+      </div>
+
+      <h3>7.2 八项「准确使用数据」技术 × OD × 业界 × 优化动作</h3>
+      <p class="muted">行业图中的八项，映射到 §3 的 A/B/C 与 §4 的 F/QC；「怎么优化」只写可执行项。</p>
+      <table>
+        <thead>
+          <tr><th>#</th><th>行业关键技术</th><th>OD 落点</th><th>业界可照搬</th><th>现状</th><th>优化动作（按优先级）</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><strong>数据理解与元数据 / 统一指标口径</strong></td>
+            <td>A · <code>de_indicator</code> · measureKind</td>
+            <td>Cube/Wren measure；Joy <code>Measure.agg</code></td>
+            <td>管理面有；<strong>出板未合并</strong></td>
+            <td><strong>P0</strong>：<code>loadSchemaAndProfile</code> 合并 confirmed metrics → aggDefault/kind</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><strong>语义解析与意图识别</strong></td>
+            <td>C · message 加权 · Goal intent</td>
+            <td>LIDA Goal；SQLBot 意图</td>
+            <td>确定性 Goal 已有；LLM 意图弱</td>
+            <td>P3 可选：LIDA Goal 文案增强；不做重型意图引擎</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><strong>Text2SQL / 代码生成</strong></td>
+            <td>问数旁路 P006；出板走 encode 不写 SQL</td>
+            <td>SQLBot RAG+规则；Vanna</td>
+            <td>SQL 闸 + schema 加厚已有</td>
+            <td>守住 sql-guard；出板继续禁止 live GROUP BY 探活</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><strong>执行与结果校验</strong></td>
+            <td>QC · sql-guard · reviewCharts · LiveQueryGuard</td>
+            <td>Joy 洞察校验；LIDA critique</td>
+            <td>语法/权限较强；结果合理性中等</td>
+            <td>吸收 Joy「行数/占比」类规则进 review；0 行 insight 已有</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><strong>RAG（知识库 / 指标库 / 案例库）</strong></td>
+            <td>B · P010 glossary · 高频问法</td>
+            <td>SQLBot training；Joy TableRAG</td>
+            <td>问数注入有；出板维值未上轴</td>
+            <td><strong>P1</strong>：confirmed dimension-values → 轴/图例（照搬 SQLBot 注入形）</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><strong>可信源与权限</strong></td>
+            <td>P009 工作区 · askable 表白名单</td>
+            <td>企业 IAM 常规</td>
+            <td>有基础</td>
+            <td>本期不扩；与出板质量解耦</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><strong>多轮对话与记忆</strong></td>
+            <td>P010 用户记忆 · dsh 会话</td>
+            <td>Agent memory 常规</td>
+            <td>有雏形</td>
+            <td>出板主题带 message 即可；完整记忆不阻塞 P0/P1</td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td><strong>反馈学习与持续优化</strong></td>
+            <td>自学习候选 → /dimensions 确认</td>
+            <td>错误样本闭环；指标 confidence 回写</td>
+            <td>学习→确认有；确认前改 AVG 弱</td>
+            <td><strong>P2</strong>：确认流可改 agg；标题/默认表小修；编辑器改编码回写 kind</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>7.3 和「只堆模型准确率」为什么不是一条路</h3>
+      <div class="grid-2">
+        <div class="card before">
+          <span class="tag bad">行业警示</span>
+          <h3>头部模型 62%→92% 仍不够</h3>
+          <ul class="tight">
+            <li>专有库表、码值、口径幻觉仍在</li>
+            <li>复杂分析 / 自动可视化误差会放大到整板</li>
+            <li>结论：必须「模型 + 元数据 + RAG + 校验」叠闸</li>
+          </ul>
+        </div>
+        <div class="card after">
+          <span class="tag ok">OD 含义</span>
+          <h3>先接通资产，再谈更强 Agent</h3>
+          <ul class="tight">
+            <li>换更强 LLM ≠ 修好「状态×费率」</li>
+            <li>P0/P1 是阶段 3 资产喂进阶段 4 管线</li>
+            <li>阶段 5（自主决策）建立在闸门可靠之后</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>7.4 应用场景：OD 先打哪一块</h3>
+      <table>
+        <thead>
+          <tr><th>行业场景</th><th>OD 相关能力</th><th>本期策略</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>自助分析与 BI / 经营分析</td>
+            <td><code>/board</code> Goal 出板 + 编辑器</td>
+            <td><strong>主打</strong>：板可读、口径对、可改</td>
+          </tr>
+          <tr>
+            <td>财务 / 销售 / 供应链 / HR …</td>
+            <td>同一套 A/B/C，靠知识维护配置</td>
+            <td>不按行业写死词典；靠指标/维值确认</td>
+          </tr>
+          <tr>
+            <td>实时流式 / 预测</td>
+            <td>—</td>
+            <td>趋势项，本期不做</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>7.5 技术趋势 → OD 取舍</h3>
+      <table>
+        <thead>
+          <tr><th>趋势</th><th>OD 现在</th><th>跟 / 缓 / 不做</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>更强模型能力</td><td>宿主 LLM 可换</td><td>跟（配置层）；不替代闸门</td></tr>
+          <tr><td>Agent 自主化</td><td>dsh 工具协同</td><td>缓：先 QC 可靠再加自主步数</td></tr>
+          <tr><td>数据与知识深度融合</td><td>/dimensions + knowledge API</td><td><strong>跟 · 最高优先级</strong>（P0/P1）</td></tr>
+          <tr><td>实时化智能化</td><td>批式 schema/profile</td><td>缓</td></tr>
+          <tr><td>安全可信可控</td><td>SQL 闸 · 工作区 · 可追溯 patch</td><td>跟：plan 展示 Goal = 可解释</td></tr>
+          <tr><td>个性化与协同</td><td>记忆雏形</td><td>缓</td></tr>
+        </tbody>
+      </table>
+
+      <h3>7.6 综合后的优化路线（执行序）</h3>
+      <pre><span class="k">现在（阶段4 补阶段3）</span>
+  P0  A 接通：confirmed 指标 → 出板 measureKind/agg     <span class="g">← 行业技术①</span>
+  P1  B 接通：confirmed 维值 → 轴/图例映射               <span class="g">← 行业技术⑤</span>
+  P2  反馈：确认前可改 AVG；知识维护 UX；编码回写         <span class="g">← 行业技术⑧</span>
+
+<span class="k">随后（阶段4 加固）</span>
+  P3  C 增强：可选 LIDA Goal 文案；Joy 类结果合理性规则   <span class="g">← ②④</span>
+  守住 Text2SQL 闸 / 强 replace / 布局模板                   <span class="g">← ③④</span>
+
+<span class="k">明确不做（本期）</span>
+  完整 Cube/Wren MDL·join·公式引擎
+  阶段5 全自主决策 Agent
+  实时流式预测；按行业堆业务词黑名单</pre>
+
+      <div class="callout warn">
+        <strong>对「别人好方案直接拿过来」的落地答案</strong>
+        优先搬的是行业八项里的<strong>①指标口径元数据</strong>与<strong>⑤维值/RAG 注入形</strong>（接现有 <code>/dimensions</code>），
+        以及 LIDA 的 Goal 结构、Joy 的 measure.agg / 校验维——不是搬整张「未来展望」或第二套平台。
+        执行清单与场景仍以 <a href="#decomp">§4</a> 的 F2.2 / F3.2 / QC 为准。
+      </div>
+    </section>
+
+    <section id="after">
+      <h2>8. 改动后产品路径</h2>
+      <p class="muted">产品路径 = 三大流程落地后的用户可见链路；细拆见 <a href="#decomp">§4</a>；架构选型见 <a href="#arch">§6</a>；工具执行见 <a href="#harness">§5</a>；行业备忘见 <a href="#roadmap">§7</a>。</p>
+
+      <div class="flow">
+        <span class="step">/board</span>
+        <span class="arrow">→</span>
+        <span class="step">list datasets</span>
+        <span class="arrow">→</span>
+        <span class="step fix">plan（enumerateGoals）</span>
+        <span class="arrow">→</span>
+        <span class="step fix">review + layout</span>
+        <span class="arrow">→</span>
+        <span class="step fix">generate 一次</span>
+        <span class="arrow">→</span>
+        <span class="step">强 replace</span>
+        <span class="arrow">→</span>
+        <span class="step">编辑器</span>
+      </div>
+
+      <h3>分析目标 → 图（M1.5 核心，对标 LIDA）</h3>
+      <table>
+        <thead>
+          <tr><th>分析目标（question）</th><th>intent</th><th>图</th><th>绑定约束</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>记录数有多少？</td><td><code>kpi_count</code></td><td>KPI</td><td>COUNT</td></tr>
+          <tr><td>各支付状态下的入账对比</td><td><code>compare</code></td><td>bar</td><td>维 × <strong>additive</strong> SUM</td></tr>
+          <tr><td>状态构成占比</td><td><code>compose</code></td><td>pie</td><td>低基数维 COUNT</td></tr>
+          <tr><td>订单量 / 金额趋势</td><td><code>trend</code></td><td>line</td><td>日/月桶 × additive；裸时间戳不留</td></tr>
+          <tr><td>按状态汇总入账</td><td><code>table</code></td><td>grouptable</td><td>同维 × additive</td></tr>
+          <tr><td>费率平均水平如何？</td><td><code>kpi_ratio</code></td><td>KPI</td><td><code>ratio</code> 仅 AVG，不进柱/饼/表</td></tr>
+        </tbody>
+      </table>
+
+      <h3><code>measureKind</code> 来源（禁止业务词表打分）</h3>
+      <ol>
+        <li>profile / <code>roleLearned</code> / 显式 <code>aggDefault</code>（P010、编辑器回写）</li>
+        <li>schema 注解：单位分 → additive</li>
+        <li>统计形态：落在 [0,1] / 稳定 [0,100] → 倾向 ratio；否则数值默认 additive</li>
+        <li>名称弱提示（率/占比/rate…）只偏 kind，<strong>不得</strong>当黑名单</li>
+      </ol>
+
+      <h3>端到端示意（改动后）</h3>
+      <pre>schema + profile(<span class="g">measureKind / aggDefault</span>)
+        │
+        ▼
+<span class="g">enumerateGoals()</span>  ← 分析问题；message 只加权选维/度量
+        │
+        ▼
+每个 goal → 一张图 encode（受可加性约束）
+        │
+        ▼
+review: 布局闸 + <span class="g">非 additive 不得作对比图 SUM value</span> + 去重 …
+        │
+        ▼
+layout 固化模板（并排≤2 / 折线全宽 / 禁半行留白）
+        │
+        ▼
+apply-patch <span class="g">replace 先删光再写</span>
+        │
+        ▼
+编辑器：alias / formatter / 收起轨
+        │
+        ▼
+<span class="g">用户改编码 → 回写 profile（P010）</span></pre>
+
+      <div class="callout">
+        <strong>一句话</strong>
+        A 定口径 → B 定可读字段 → C 先 Goal 再出图；术语与枚举靠 P010，不靠一次次加约束。
+      </div>
+    </section>
+
+    <section id="diff">
+      <h2>9. 前后对比</h2>
+      <div class="grid-2">
+        <div class="card before">
+          <span class="tag bad">BEFORE</span>
+          <h3>规划</h3>
+          <p><code>measures[0] × dims[0]</code> + 默认 SUM</p>
+          <h3>质量策略</h3>
+          <p>布局/碎饼/毛线为主；内容靠个案补丁诱惑大</p>
+          <h3>写入</h3>
+          <p>弱 replace；多次工具调用易叠图</p>
+          <h3>展示</h3>
+          <p>字段名、分单位、半行空白、右侧空白偶发</p>
+        </div>
+        <div class="card after">
+          <span class="tag ok">AFTER（目标）</span>
+          <h3>规划</h3>
+          <p>枚举 Goal + <code>measureKind</code>；message 只加权</p>
+          <h3>质量策略</h3>
+          <p>结构性闸一次覆盖一类错误（可加性）；plan 展示问题不是槽名</p>
+          <h3>写入</h3>
+          <p>强 replace；generate 一次；加载去重</p>
+          <h3>展示</h3>
+          <p>alias + formatter + 固化布局 + 左右收起轨</p>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>维度</th><th>改动前</th><th>改动后</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>「按支付状态看」</td>
+            <td>抬 Status，再配当时排第一的度量（可能是费率）</td>
+            <td>抬 Status，柱/表 value 只从 additive / COUNT 选</td>
+          </tr>
+          <tr>
+            <td>费率类字段</td>
+            <td>当普通 measure SUM 上板</td>
+            <td>kind=ratio → AVG KPI 或不上对比槽</td>
+          </tr>
+          <tr>
+            <td>板面密度</td>
+            <td>图多、半行空洞、可能重复</td>
+            <td>≤2 对比并排 + 折线全宽 + ≤1 表</td>
+          </tr>
+          <tr>
+            <td>迭代方式</td>
+            <td>发现一个离谱就加一条 if</td>
+            <td>改抽象（Goal / kind），单测锁住</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="industry">
+      <h2>10. 业界对照表</h2>
+      <p>
+        下表是三大核心流程的速查；完整定义与集成管线见
+        <a href="#pillars">§3 改造方案 · 三大核心流程</a>。
+        本地对照仓：<code>/Users/shen/backdashboard/refs/</code>（sqlbot / joyagent / dataease / deer-flow）。
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>层</th><th>做什么</th><th>代表开源</th><th>对 OD 的含义</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>语义层</strong></td>
+            <td>度量预定义 <code>sum|avg|count</code>；Agent 选指标名，不发明口径</td>
+            <td><a href="https://github.com/cube-js/cube">Cube</a>、<a href="https://github.com/Canner/WrenAI">WrenAI MDL</a>、Cortex</td>
+            <td>M1.5 <code>measureKind</code> = 轻量语义；不整仓搬 Cube</td>
+          </tr>
+          <tr>
+            <td><strong>治理后再问</strong></td>
+            <td>表/字段/枚举原则；TableRAG 选表字段</td>
+            <td>JoyDataAgent DGP（JoyAgent <code>data_agent</code>）</td>
+            <td>枚举文案、字段语义 → P010；洞察侧已有 agg 类型</td>
+          </tr>
+          <tr>
+            <td><strong>自动可视化</strong></td>
+            <td>先 Goal 再出图；自评估/修复</td>
+            <td><a href="https://github.com/microsoft/lida">Microsoft LIDA</a></td>
+            <td><code>od_plan_charts</code> 对齐 Goal Explorer；<code>reviewCharts</code> 自修复</td>
+          </tr>
+          <tr>
+            <td><strong>ChatBI</strong>（旁路）</td>
+            <td>术语 + SQL 示例 RAG；一问一图再拼板</td>
+            <td><a href="https://github.com/dataease/SQLBot">SQLBot</a>、<a href="https://github.com/vanna-ai/vanna">Vanna</a></td>
+            <td>P006/P010；不替代整板 Goal 规划</td>
+          </tr>
+          <tr>
+            <td><strong>人编 BI</strong>（旁路）</td>
+            <td>不自动出经营板</td>
+            <td>DataEase、Metabase X-ray、Evidence</td>
+            <td>只提供 encode/formatter；出板质量不在其范围</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>探查结论</strong>
+        没有成熟开源是「只靠 LLM + 裸 JDBC schema 就稳定出经营看板」的。
+        稳的路径都是 <strong>A 语义 → B 治理 → C Goal 可视化</strong>。
+        OD 以 A→B→C 为能力顺序；<strong>模块实现优先照搬开源</strong>，接到 Java BI / dsh / DashboardPatch。
+        禁止的是无适配整仓替换运行时。详述见 <a href="#pillars">§3</a>。
+      </div>
+
+      <h3>与 OD 能力映射</h3>
+      <table>
+        <thead>
+          <tr><th>业界能力</th><th>OD 落点</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>度量 type=sum/avg/count</td><td>A · <code>measureKind</code> + encode.agg</td><td>M1.5 已编码</td></tr>
+          <tr><td>字段/枚举治理</td><td>B · P010 glossary · kind 回写</td><td>部分已有 · 持续</td></tr>
+          <tr><td>Goal → Viz + critique</td><td>C · <code>enumerateGoals</code> + <code>od_plan_charts</code> + <code>reviewCharts</code></td><td>M1.5 已编码</td></tr>
+          <tr><td>布局与碎图闸</td><td>C · <code>layoutBoardPatch</code></td><td>M1 已编码</td></tr>
+          <tr><td>管道内质检不可跳过</td><td>质检在 generate 内，不暴露 <code>od_review_charts</code></td><td>已对齐</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="boundary">
+      <h2>11. 改动代码边界</h2>
+
+      <h3>6.1 主改（出板质量）</h3>
+      <table>
+        <thead>
+          <tr><th>路径</th><th>职责</th><th>本升级</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="path">opendashboard-dsh-harness/packages/dsh-od-bi/src/gen-board.js</span></td>
+            <td>plan / review / layout</td>
+            <td><strong>M1.5 主战场</strong>：<code>enumerateGoals</code>、<code>measureKind</code>、结构闸；布局固化已在</td>
+          </tr>
+          <tr>
+            <td><span class="path">…/gen-board.test.js</span> · <span class="path">quality-cases.js</span></td>
+            <td>离线确定性回归</td>
+            <td>补「ratio 不上对比槽」「状态主题配 additive」用例</td>
+          </tr>
+          <tr>
+            <td><span class="path">…/index.js</span>（od_plan_charts / od_generate_board）</td>
+            <td>工具入口</td>
+            <td>保持 one-shot；强化「只调 generate 一次」描述（已有）</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>6.2 已改（展示 / 写入 / 壳）</h3>
+      <table>
+        <thead>
+          <tr><th>路径</th><th>改了什么</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="path">open-dashboard-frontend/…/editorCore.js</span></td>
+            <td>系列名 displayLabel；formatter/数量级；左右收起轨；embedded 默认收起</td>
+          </tr>
+          <tr>
+            <td><span class="path">…/editor.css</span> · <span class="path">DashboardEditorHost.vue</span></td>
+            <td>no-left 48px dock；embedded 兼容</td>
+          </tr>
+          <tr>
+            <td><span class="path">…/adapter.ts</span></td>
+            <td>加载去重叠组件</td>
+          </tr>
+          <tr>
+            <td><span class="path">…/utils/fieldLabel.ts</span></td>
+            <td>CamelCase 弱人读化</td>
+          </tr>
+          <tr>
+            <td><span class="path">…/DashboardPatchApplier.java</span></td>
+            <td>replace 先清空 draft 组件再 upsert</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>6.3 协同（语义资产 · 不在本切片一次做完）</h3>
+      <table>
+        <thead>
+          <tr><th>路径 / 提案</th><th>边界</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>P010 · profile / glossary / 高频问法</td>
+            <td>回写 <code>measureKind</code>、枚举文案；出板只读，不在 gen-board 写死商户词典</td>
+          </tr>
+          <tr>
+            <td>Java <code>DatasetProfiler</code> / <code>FieldSemantics</code></td>
+            <td>可扩展输出 kind 线索；保持 PR-QG-09 无业务词打分</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>6.4 明确不改</h3>
+      <ul class="tight">
+        <li>不新开公开 OpenAPI（工具参数仅 Host 内）</li>
+        <li>不恢复 Python harness / live probe 出板</li>
+        <li>不无适配整仓替换为 Cube / Wren / LIDA 运行时（模块可照搬，见 §3）</li>
+        <li>不改冻结 <code>.teamai/docs/prototypes/snapshots/</code></li>
+        <li>不做 M3（sqlglot / 完整问数 ECharts）进本期 done</li>
+      </ul>
+
+      <h3>6.5 依赖关系</h3>
+      <pre>P011 对话表面（done）
+   └── od_generate_board 管道
+P012 M1 布局/review/写入闸     <span class="g">已编码</span>
+P012 M1.5 Goal 枚举 + measureKind   <span class="k">已编码 ← 内容质量关键</span>
+P010 语义回写 / 枚举文案         <span class="k">协同，持续</span>
+P006 问数（旁路，不写画布）       独立；可共用 kind 推断</pre>
+    </section>
+
+    <section id="phases">
+      <h2>12. 已交付 / 待交付 / 不做</h2>
+      <table>
+        <thead>
+          <tr><th>切片</th><th>内容</th><th>对应层</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Java last-resort</td>
+            <td>去业务词典；角色=schema/profile/原文重叠</td>
+            <td>A 弱</td>
+            <td class="muted">已编码</td>
+          </tr>
+          <tr>
+            <td>M1</td>
+            <td>review（碎饼/毛线/分 formatter…）+ 布局固化 + 强 replace + FE 展示</td>
+            <td>C 闸</td>
+            <td class="muted">已编码</td>
+          </tr>
+          <tr>
+            <td>M2</td>
+            <td>问数 schema 加厚 / 0 行 insight / 选图 enrich</td>
+            <td>旁路 ChatBI</td>
+            <td class="muted">已编码</td>
+          </tr>
+          <tr>
+            <td><strong>M1.5</strong></td>
+            <td><strong>Goal 枚举 + measureKind + 结构闸 + 单测</strong></td>
+            <td><strong>A + C</strong></td>
+            <td class="muted"><strong>已编码</strong></td>
+          </tr>
+          <tr>
+            <td>P010 加深</td>
+            <td>kind 回写、枚举映射、术语</td>
+            <td><strong>B</strong></td>
+            <td>持续</td>
+          </tr>
+          <tr>
+            <td>M3</td>
+            <td>sqlglot / 完整问数 ECharts</td>
+            <td>旁路</td>
+            <td>不做进本期 done</td>
+          </tr>
+          <tr>
+            <td>字段黑名单堆补丁</td>
+            <td>禁费率、禁折扣率…</td>
+            <td>—</td>
+            <td><strong>明确不做</strong></td>
+          </tr>
+          <tr>
+            <td>无适配整仓替换</td>
+            <td>第二套语义查询面 / LIDA 出 matplotlib 主路径</td>
+            <td>—</td>
+            <td><strong>明确不做</strong>（模块照搬见 §3）</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="verify">
+      <h2>13. 怎么验收 · 业界评测对齐</h2>
+
+      <h3>L1 离线（每次改规划必跑 · 现有）</h3>
+      <pre>cd opendashboard-dsh-harness && pnpm test</pre>
+      <p class="muted">M1.5 至少断言：ratio 不出现在 bar/pie/table 的 SUM value；「按支付状态」主题下 compare value 为 additive 或 COUNT；plan 输出带 question。问数侧现仅测 sql-guard / enrich 形状，<strong>不测</strong>「答对题」。</p>
+
+      <h3>L3 产品手验（现有）</h3>
+      <ol>
+        <li>新对话 <code>/board</code>，主题含「按支付状态看」</li>
+        <li>右侧板：柱/表应为金额或订单数类，而非费率 SUM</li>
+        <li>无半行空洞；查询条至多一条；重新生成不叠板</li>
+        <li>金额有分→元/万/亿可读；图例为中文名</li>
+        <li><code>/ask</code> 一句具体指标：schema 含 sample/terms；空结果有 insight</li>
+      </ol>
+
+      <h3 id="eval-industry">13.1 开源 / 业界问数怎么跑评测</h3>
+      <p>
+        产品型 ChatBI（SQLBot、Joy）很少把公开榜当主验收；论文/Agent 框架才追 Spider / BIRD 榜。
+        但<strong>评测方法论</strong>高度一致，OD 应对齐「怎么判对」，而不是盲目刷榜。
+      </p>
+      <table>
+        <thead>
+          <tr><th>层级</th><th>代表</th><th>输入</th><th>怎么判「对」</th><th>谁在用</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>学术公开榜</strong></td>
+            <td><a href="https://yale-lily.github.io/spider">Spider 1.0</a> · <a href="https://bird-bench.github.io/">BIRD</a> · <a href="https://spider2-sql.github.io/">Spider 2.0</a></td>
+            <td>题面 + DB schema（BIRD 还有 external knowledge 提示）</td>
+            <td>主指标 <strong>Execution Accuracy (EX)</strong>：生成 SQL 与 gold SQL <em>在同一库执行</em>，结果集等价（优于字符串 Exact Match）。BIRD 另有效率分 VES；Spider 2.0 看多步工作流成功率</td>
+            <td>论文、Text2SQL Agent、部分 ChatBI 宣发</td>
+          </tr>
+          <tr>
+            <td><strong>跑法（公开集）</strong></td>
+            <td>官方 eval 脚本 / Spider-Agent 类 harness</td>
+            <td>dev/test jsonl</td>
+            <td>① 系统出 SQL → ② 在 SQLite/Snowflake/BQ 执行 → ③ 与 gold 结果比对 → ④ 汇总 EX%</td>
+            <td>开源 Agent 复现榜</td>
+          </tr>
+          <tr>
+            <td><strong>产品 ChatBI</strong></td>
+            <td>SQLBot · Joy DataAgent · Vanna</td>
+            <td>自有业务表 + 训练对 / 术语</td>
+            <td>人工抽检 + 业务金标（NL→正确结果）；训练对回归；很少公开 Spider 分数当质量门</td>
+            <td>交付产品</td>
+          </tr>
+          <tr>
+            <td><strong>语义层产品</strong></td>
+            <td>Cube · Wren</td>
+            <td>MDL / Cube measure</td>
+            <td>指标编译正确、agg 不漂；不是 NL→任意 SQL 榜</td>
+            <td>指标治理</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre><span class="c"># 业界主流判分（问数）</span>
+gold:  (question, db, sql*)     * 或等价结果指纹
+pred:  system(question, schema[, knowledge]) → sql
+score: EX = exec(pred) ≡ exec(gold)   <span class="g">← 对齐这个，不要对齐「SQL 字符串长得像」</span>
+
+<span class="c"># 公开集在测什么（映射到 OD 缺口）</span>
+Spider     跨域 schema 复杂度、嵌套 SQL
+BIRD       脏值/库内容、外部知识（≈ 我们的 terms/维值）
+Spider 2.0 企业超宽表、多方言、多步 Agent
+产品金标   专有指标口径、权限、业务黑话（公开集覆盖最弱）</pre>
+
+      <h3 id="eval-od">13.2 OD 问数优化后：怎么对齐主流评测</h3>
+      <div class="callout">
+        <strong>原则</strong>
+        <strong>方法对齐公开集，主门禁用私有金标。</strong>
+        不把 Spider/BIRD 分数当 P012 acceptance 硬门槛（方言、无 /dimensions、无经营口径）；
+        公开集作「选模型 / 回归冒烟」可选轨。
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>轨</th><th>对齐什么</th><th>OD 落点</th><th>优先级</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>L0 闸（已有）</strong></td>
+            <td>安全/形状（非 EX）</td>
+            <td><code>ASK_SQL_CASES</code> · sql-guard · ask-enrich</td>
+            <td>每次 CI</td>
+          </tr>
+          <tr>
+            <td><strong>L1′ 私有 EX 金标（推荐主对齐）</strong></td>
+            <td>与 BIRD 同构的 <strong>执行准确率</strong></td>
+            <td>新建 <code>ask-gold/</code>：每题 = NL + datasetId + 期望结果指纹（或 gold SQL）+ 标签（知识依赖/agg/维值/空结果）。跑法：喂与线上一致的 schema+terms → <code>od_run_*</code> 或隔离 Text2SQL → 执行比对</td>
+            <td><strong>P012 问数质量主门</strong></td>
+          </tr>
+          <tr>
+            <td><strong>L1″ 公开集适配（可选）</strong></td>
+            <td>Spider-dev / BIRD Mini-Dev 冒烟</td>
+            <td>薄适配器：把公开 schema 映成 <code>od_get_schema</code> 形；SQLite 执行算 EX%。用于换模型横向对比，<strong>不进</strong> PR-QG 硬闸</td>
+            <td>选模型时</td>
+          </tr>
+          <tr>
+            <td><strong>L2 口径闸</strong></td>
+            <td>Joy Measure.agg / Cube 契约</td>
+            <td>金标含 <code>expectedAgg</code> / 禁 SUM(ratio)；与出板 <code>measureKind</code> 共用夹具</td>
+            <td>与 P0 同步</td>
+          </tr>
+          <tr>
+            <td><strong>L3 手验 + 出板 rubric</strong></td>
+            <td>产品体验（非公开集）</td>
+            <td>现有 /ask /board 手验；Goal 用 PR-QG-12，不拿 Spider 评出板</td>
+            <td>发版前</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>私有金标建议题型（把公开集「能力维」翻成 OD 题）</h4>
+      <table>
+        <thead>
+          <tr><th>能力维（公开集常见）</th><th>OD 金标题型示例</th><th>判分</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>简单聚合</td><td>「各支付状态入账合计」</td><td>结果集 ≡ gold（忽略列序）</td></tr>
+          <tr><td>外部知识 / 术语（BIRD）</td><td>口语「入账」→ MchIncome；须吃 terms</td><td>错字段 = 失败</td></tr>
+          <tr><td>脏枚举</td><td>Status 0/2 与「支付成功」同题</td><td>过滤/分组正确</td></tr>
+          <tr><td>agg 语义</td><td>「平均费率」不得 SUM</td><td>SQL/encode.agg 断言</td></tr>
+          <tr><td>空结果诚实</td><td>不可能过滤条件</td><td>0 行 + insight，无假行</td></tr>
+          <tr><td>越权/写语句</td><td>INSERT / 跨表</td><td>sql-guard 拒绝（L0）</td></tr>
+        </tbody>
+      </table>
+      <pre><span class="c"># 推荐落地顺序（问数优化后）</span>
+1. 冻结 30～50 条业务金标（商户订单等真表）· 人工标 gold 结果
+2. 脚本：schema+knowledge 注入 → 生成 → EX% + agg 违规率（与 CI 可选门）
+3. 需要横向比模型时，再挂 BIRD Mini-Dev / Spider-dev 适配器（报告 EX，不绑 acceptance）
+4. 出板继续用 Goal/review 单测 + L3，不混进 Text2SQL 榜</pre>
+
+      <h3 id="eval-board">13.3 仪表盘生成：有没有成熟开源评测？</h3>
+      <div class="callout">
+        <strong>结论</strong>
+        <strong>没有</strong>与 Spider/BIRD 同级的「经营看板 → BI 画布配置」公开金标榜。
+        成熟的是<strong>单图 NL2VIS</strong>；整页交互看板评测仍是 2025–2026 论文新课题，产物多为 Plotly/代码，不是 DataEase 式 DashboardPatch。
+      </div>
+      <table>
+        <thead>
+          <tr><th>层级</th><th>代表</th><th>评什么</th><th>成熟度</th><th>对 OD 出板</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>单图 NL2VIS</td>
+            <td><a href="https://github.com/TsinghuaDatabaseGroup/nvBench">nvBench</a> · Text2Vis · VisEval</td>
+            <td>一问一图：图类型/编码/能否执行；部分用 VLM 判可读性</td>
+            <td>相对成熟</td>
+            <td>可借「图类型+编码是否合理」思想；不能当整板门</td>
+          </tr>
+          <tr>
+            <td>管线自评估</td>
+            <td><a href="https://github.com/microsoft/lida">Microsoft LIDA</a></td>
+            <td><strong>VER</strong>（代码能否跑）+ <strong>SEVQ</strong>（LLM 打 6 维：code/transform/goal/type/encoding/aesthetics）+ repair</td>
+            <td>方法开源；自用 Vega 等数据集演示，非统一出板榜</td>
+            <td><strong>借维度</strong> → 确定性 <code>reviewCharts</code>；不跑 LIDA 出 matplotlib</td>
+          </tr>
+          <tr>
+            <td>整页看板（新）</td>
+            <td>DashArena · Dashboard2Code / DashboardMimic</td>
+            <td>交互看板生成/复现；运行时+交互轨迹；Plotly+Dash</td>
+            <td>研究早期，尚非产业标准</td>
+            <td><strong>不直接套</strong>（契约不是 OD draft）</td>
+          </tr>
+          <tr>
+            <td>产品 BI 出板</td>
+            <td>DataEase / Metabase / SQLBot 旁路</td>
+            <td>几乎无公开「自动出板 EX」</td>
+            <td>—</td>
+            <td>行业惯例 = 私有场景 + 人工/规则闸</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre><span class="c"># LIDA 可借的 6 维（OD 已部分确定性化）</span>
+goal compliance · viz type · encoding · data transform · code/config 可执行 · aesthetics/layout
+        ↓
+OD：Goal 列表可见 → measureKind/R* → encode 可查 → layout 不叠板（非 LLM 打分榜）
+
+<span class="c"># OD 出板评测建议（与问数 EX 分开）</span>
+1. 确定性金标：主题+schema → goals 约束 / 禁 SUM(ratio) / 布局断言（现有 gen-board.test）
+2. 可选 LLM-as-judge：仅评「goal 文案是否贴题」（对标 SEVQ 的 goal 维），不替代闸
+3. L3 人工：经营可读性、是否答用户主题
+4. 不把 nvBench/DashArena 分数写入 PR-QG</pre>
+      <div class="callout">
+        <strong>落地形态（已定方向）</strong>
+        按流程拆段评测（规划 / 取数 / 图 / 组装 / E2E）+ 金标期望对照；运行时与对话隔离。
+        先做独立包/CLI <code>dsh-od-eval</code> 打 harness，需要跑批看板再升薄评测服务。
+        详设：<a href="./eval-design.md">eval-design.md</a>。
+        <strong>E0.1 已落地</strong>：<code>cd opendashboard-dsh-harness && pnpm eval</code>（12 金标门禁）。
+      </div>
+    </section>
+
+    <section id="refs">
+      <h2>14. 关联文档</h2>
+      <ul class="tight">
+        <li><a href="../README.md">P012 README</a> · 开发入口</li>
+        <li><a href="./goal-planning-design.md">goal-planning-design.md</a> · LLM Goal 规划提示词与跑法（M1.6）</li>
+        <li><a href="./eval-design.md">eval-design.md</a> · Harness 分段评测（E0/E1）</li>
+        <li><a href="./design.md">P012 design.md</a> · §4.1 Goal / 三层对照 · §5 review · §6 layout</li>
+        <li><a href="../test/acceptance.yaml">acceptance.yaml</a> · PR-QG-*</li>
+        <li><a href="./industry-ask-agent-roadmap.png">行业路线图原图</a> · §5 对照来源</li>
+        <li><a href="../../../design/architecture.html">architecture.html</a> · #gen / #ask</li>
+        <li><a href="../../P010-user-memory-ask-knowledge">P010</a> · 治理层（术语 / 枚举 / kind 回写）</li>
+        <li><a href="../../P011-dsh-conversation-surface">P011</a> · dsh 对话表面（done）</li>
+        <li><a href="../../../product/roadmap/in-progress/README.md">路线图 · 进行中</a></li>
+      </ul>
+    </section>
+
+    <footer>
+      文档归属提案 P012 · 文件
+      <code>.teamai/docs/proposals/P012-ask-gen-quality/design/quality-upgrade-brief.html</code>
+      · 改造方案以 §3–§6（三层 · 流水线 · Harness · <strong>架构选型定稿</strong>）为准 · 实现以代码与 acceptance 为准。
+    </footer>
+  </div>
+  </div>
+  <script>
+    (function () {
+      const links = [...document.querySelectorAll('nav.side a[href^="#"]')]
+      const map = links.map((a) => {
+        const id = a.getAttribute('href').slice(1)
+        return { a, el: document.getElementById(id) }
+      }).filter((x) => x.el)
+      function sync() {
+        let cur = map[0]
+        const y = window.scrollY + 96
+        for (const item of map) {
+          if (item.el.offsetTop <= y) cur = item
+        }
+        links.forEach((a) => a.classList.remove('active'))
+        if (cur) cur.a.classList.add('active')
+      }
+      window.addEventListener('scroll', sync, { passive: true })
+      sync()
+    })()
+  </script>
+</body>
+</html>

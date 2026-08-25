@@ -1,0 +1,123 @@
+proposal: P008
+items:
+  - id: PR-ACL-01
+    title: 仪表盘双重权限
+    gate: acceptance
+    criterion: 有 dashboard ACL 且全部必需数据集均有 dataset:use 时才能打开和出数。
+    method: api
+    command_or_path: dashboard view and chartQuery APIs
+    expected: 缺任一权限时拒绝查询，不返回缩略指标或结果行。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-01
+  - id: PR-ACL-02
+    title: 静态报告独立查看
+    gate: acceptance
+    criterion: 只有 report:view、没有 dataset:use 的用户可打开已发布静态报告。
+    method: ui
+    command_or_path: /reports/{id}/view
+    expected: 页面读取静态稿且网络请求不包含 chartQuery 或 datasetQuery。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-02
+  - id: PR-ACL-03
+    title: 报告不继承问数权
+    gate: acceptance
+    criterion: 静态报告读者执行刷新、洞察或继续问数时重新校验 dataset:use。
+    method: api
+    command_or_path: report refresh and conversation APIs
+    expected: 无数据集权限时拒绝操作，静态正文仍可查看。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-03
+  - id: PR-ACL-04
+    title: 可问集合统一
+    gate: acceptance
+    criterion: 工作台、对话和编辑器 SQLBot 的可问集合均为 conversation:use 与 dataset:use 的交集。
+    method: api
+    command_or_path: scripts/e2e-auth-ask.sh · GET /api/dataset/askable
+    expected: 三个入口集合相同且不能通过手工 ID 绕过。
+    evidence: "2026-08-20 scripts/e2e-auth-ask.sh pass=14：demo/wsadmin/analyst 登录后 GET /api/dataset/askable，分析师真子集（stub analyst=[ds_ops]，admin=[ds_ops,ds_sales,ds_fin]）。工作台、对话、SQLBot 均调 datasetApi.listAskable()。opendashboard-harness/tests/test_auth_gates.py：无 conversation:use∩dataset:use 时 QUERY_TOOLS 剥离且 od_run_sql→TOOL_FORBIDDEN。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-ACL-04
+  - id: PR-ACL-05
+    title: 我的与共享资源
+    gate: hi-fi
+    criterion: 工作台分别展示我的和共享给我的仪表盘、报告，并标注所有者、更新时间、发布态和权限。
+    method: ui
+    command_or_path: .teamai/docs/prototypes/hi-fi/workbench.html
+    expected: 仪表盘、报告和可问数据三类消费面清晰分组。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-05
+  - id: PR-ACL-06
+    title: 待办与失效资源
+    gate: acceptance
+    criterion: 待办只包含可编辑事项；失去数据权限的仪表盘最多显示无业务数据的不可用元数据卡。
+    method: ui
+    command_or_path: /workbench
+    expected: 无权用户看不到预览值、筛选值和结果数据。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-06
+  - id: PR-ACL-07
+    title: 无权限空状态
+    gate: acceptance
+    criterion: 无任何资源或可问数据的用户看到申请权限或连接数据引导。
+    method: ui
+    command_or_path: /workbench
+    expected: 不展示伪造业务动态、演示指标或不属于用户的资源。
+    evidence: ""
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-07
+  - id: PR-ACL-08
+    title: 客户端不能声明 user_id
+    gate: code
+    criterion: Harness 与 Java 只从 Auth SPI 头读取身份；JSON body 含 userId 或 ownerId 时拒绝。
+    method: api
+    command_or_path: scripts/e2e-auth-ask.sh · POST /api/conversations · POST /v1/conversations
+    expected: 带 userId 的 POST 返回 4xx；会话列表按 owner 隔离。
+    evidence: "2026-08-20 e2e：Java POST /api/conversations {userId}→400；Harness POST /v1/conversations {userId}→422；demo 创建会话后 analyst GET 同 id→404，owner GET→200。ConversationDtos.rejectClientUserId；test_auth_gates.py 覆盖 CreateConversationBody/RunBody。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+  - id: PR-ACL-09
+    title: 用户端数据广场可发现和申请数据
+    gate: hi-fi
+    criterion: 用户端提供数据广场入口，支持按企业资产 / 我的资产、资产类型和关键词发现资产；企业资产区分已获权、可申请，我的资产区分已添加、申请中；已获权资产可添加到我的数据，已获权数据集可直接问数；可申请资产只展示业务说明和申请入口，申请中展示审批状态；未获权数据不泄露 schema 明细、样例数据或查询结果。
+    method: ui
+    command_or_path: .teamai/docs/prototypes/hi-fi/data-market.html
+    expected: 用户能知道企业有哪些可见资产、哪些已添加到我的数据、哪些可申请消费；提交申请后卡片进入申请中；管理端数据集仍只作为发布和治理入口。
+    evidence: "2026-08-19：新增 data-market.html；统一壳用户使用端增加数据广场；工作台常用入口从管理端数据集/数据源收口到数据广场；index.html 用户端区域增加数据广场；参考 Quick BI 数据广场补资产类型、数据空间、卡片/列表、批量添加、我的数据和申请抽屉；宽屏下取消居中窄画布，资产区 2K/4K 优先三列展示。2026-08-20：Vue 实现 /data-plaza，Java 暴露 /api/workspaces/{id}/data-plaza、add、dataset-requests；curl 验证数据广场 assets=7、myData=2，已授权资产可加入，可申请资产提交后 pending；浏览器 smoke 验证页面渲染订单表。2026-08-20：按用户反馈将 /data-plaza 收敛为任务导向布局，顶部突出直接问数、申请消费、我的数据三件事，资产区改为单列轻量清单，右侧只保留下一步、我的数据和申请进度。2026-08-20：继续参考 Quick BI 数据广场将 /data-plaza 收敛为优选资产搜索页：首屏仅保留标题、大搜索和资产摘要，内容区改为资产类型 tab + 数据空间目录 + 单列表格化资产行，移除右侧说明栏，补选择可添加和批量加入入口。2026-08-20：按用户反馈继续降噪，Vue /data-plaza 默认落数据集，移除右侧权限说明和管理边界，首屏只保留搜索、资产类型、数据空间和资产行列表；行尾用添加/申请/已添加承载消费状态。2026-08-20：对照阿里云 Quick BI 数据广场文档与截图继续补交互逻辑：列表视图增加表头列、数据空间文件夹行，资产名称打开预览面板，添加动作先选择我的数据目标文件夹再确认，批量添加改为底部选择条触发；浏览器 smoke 验证添加弹窗和资产预览。2026-08-20：按用户截图反馈继续调整整体布局协调性：白色画布随 shell 占满可用宽度，主内容轨道提升到 1440/1560 宽屏档，压缩 hero 高度并减少左右内边距；浏览器在 1280 与 1920 视口 smoke 验证列表上移、左右空白收敛。2026-08-20：按用户细节反馈移除 hero eyebrow“企业资产”，进一步压缩顶部间距，搜索框调为 42px 高和 600px 档，类型 tab、表头、资产行、状态胶囊和操作按钮统一小一号字体与高度；已添加资产操作列改为文字动作，避免重复彩色按钮。2026-08-20：按用户反馈补齐搜索交互 affordance：顶部搜索框改为 search form 并增加蓝色实心搜索按钮，数据空间搜索增加小号搜索按钮；表格操作统一为轻量描边按钮，状态列保持状态胶囊，调整列宽避免 1280 视口右侧操作被裁切。2026-08-20：按确认去掉左侧数据空间栏；/data-plaza 改为企业资产 / 我的资产分区 + 筛选条 + 全宽列表，压缩搜索 hero；申请中只出现在我的资产。2026-08-20：按用户截图确认，企业资产 / 我的资产分区及状态筛选上移到「优选数据资产」搜索对话框之上，类型 tab 仍留在搜索下方。2026-08-21：对齐 Quick BI 截图，顶栏居中「我的 / 企业」由 AppShell 渲染并与 /data-plaza 共享状态；浏览器验证顶栏可切换，企业侧与我的侧列表与状态筛选随之变化。2026-08-21：去掉企业侧全部/已获权/可申请筛选条；进入「我的」后工具栏右上角切换已添加/申请中。2026-08-24：修复编辑器全局 `.empty` 盖住类型 tab；`GET /data-plaza` 纳入已发布仪表盘并回 `publishStatus`；未获权可申请查看，approve 写 dashboard view ACL；浏览器验证仪表板 tab 后可切文件/API，列表展示「已发布」徽章。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-ACL-09
+  - id: PR-ACL-10
+    title: 资源实例 ACL 落库
+    gate: code
+    criterion: 数据集/仪表盘/报告授权写入 od_resource_acl；广场 approve 写 dataset use；AskableDatasetService 不再用内存 AssetSeed 或 live.get(0) 回落。
+    method: api
+    command_or_path: Flyway od_resource_acl · GET /api/dataset/askable · 广场 dataset-requests approve
+    expected: 无 ACL.use 的 live 数据集不出现在 askable；匹配失败返回空列表而非第一张表；撤销 use 后短 TTL 内查询 403；广场仪表盘申请 approve 写 dashboard view。
+    evidence: "2026-08-23：V19 撤销 role=analyst 全量 ACL 并复制到 u_analyst。新注册用户 POST /dashboardTree/tree=[]、GET /dashboard/1→404 RESOURCE_FORBIDDEN、GET /dataset=[]、catalog dash/ds=0；演示 analyst/demo 仍 71 盘 / 10 集。报告实例 ACL 未做。2026-08-24：广场纳入已发布仪表盘；analyst 无 ACL 时 authStatus=requestable；POST dataset-requests requestedActions=[view]→pending；approve 写入 od_resource_acl dashboard/view，随后 authStatus=granted。"
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-10
+  - id: PR-ACL-11
+    title: 公开 chartQuery 与问数同一出数闸
+    gate: code
+    criterion: POST /api/chartQuery/query 与 /export 对登录用户校验作品 ACL∩数据集 use（主路径带 dashboardId），并与 internal /query/* 共用 QueryGuard；仅登录不得凭任意 datasetId 出数。
+    method: api
+    command_or_path: POST /api/chartQuery/query · POST /api/internal/bi/query/dataset
+    expected: viewer 无数据集 use 时 chartQuery 不返回业务行；analyst 无某盘 ACL 时该盘 404；internal 与公开闸同一 EffectiveAccess。
+    evidence: "2026-08-23：新注册用户 POST /api/chartQuery/query {dashboardId:1,chartId:101}→404 RESOURCE_FORBIDDEN；演示 analyst 同请求 200。"
+    status: todo
+    blocker_of_done: true
+    requirements_target: PR-ACL-11

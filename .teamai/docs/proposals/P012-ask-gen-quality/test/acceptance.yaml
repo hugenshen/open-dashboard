@@ -1,0 +1,157 @@
+# P012 acceptance — M1 出板质检
+# README 只留 ID + 标题；状态与证据只在本文件更新。
+
+proposal: P012
+status: done
+
+items:
+  - id: PR-QG-01
+    title: 评审接受 M1 范围
+    gate: proposal
+    criterion: 产品接受「确定性 review + layout 进 od_generate_board；不新加工具；不 live probe」。M2/M3 不阻塞本提案 done。
+    method: manual
+    command_or_path: .teamai/docs/proposals/P012-ask-gen-quality/README.md
+    expected: 文首 status 从 draft 改为 accepted 或 in-progress，并挪入对应 roadmap 夹。
+    evidence: "2026-08-22 用户要求做完 M1；提案 status=in-progress，已挪入 roadmap/in-progress"
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+
+  - id: PR-QG-02
+    title: message 进入规划加权
+    gate: code
+    criterion: 同一 schema 下，message 含「状态」或「Status」时，规划结果至少一张图的 encode.category（或 x[0]）为状态字段；仅改 title、不改 message 时不得视为满足。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/gen-board.test.js
+    expected: 单测断言 message 加权生效。
+    evidence: "2026-08-22 pnpm test：PR-QG-02 message 按支付状态看 → bar.category=Status；空 message → MchType"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-QG-02
+
+  - id: PR-QG-03
+    title: review 去掉碎饼与毛线
+    gate: code
+    criterion: （1）柱与饼同 category 时 review 后不同时保留；（2）维 distinctCount>20 的饼被去掉或降级为表/TopN 柱；（3）无日/月桶的原始时间戳折线不出现在最终 charts。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/gen-board.test.js
+    expected: 三条夹具均 fail→pass；不对该维源库发 live 聚合。
+    evidence: "2026-08-22 pnpm test：同维去饼；distinctCount=80 饼降级；CreateTime 无线"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-QG-03
+
+  - id: PR-QG-04
+    title: layout 固化模板无半行留白且查询条不填假区间
+    gate: code
+    criterion: 对比图最多 4 张（两行 36+36）；趋势图在 KPI 之后全宽 w=72；单张对比为 w=72 全宽行；禁止半行空洞。profile 提供 time min/max 时 query 日期项含 fromDefault 与 toDefault；无 profile 统计时不出现近 30 天等编造区间。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/gen-board.test.js
+    expected: 单测覆盖并排/全宽与有统计/无统计两支。
+    evidence: "2026-08-24 驾驶舱稿面：趋势全宽后最多两行对比图；solo bar w=72；无假近30天。修订：对比图 2→4，因专业出板不能只留两张半宽图。"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-QG-04
+
+  - id: PR-QG-05
+    title: KPI 标题与分转元
+    gate: code
+    criterion: 数据集名/字段均不含「订单」时，不得出现标题「订单数」（可用「记录数」）。label 含「单位分」的度量图带 style.formatter（unit=0.01 或等价「元」后缀），且不把查询结果行写入 patch。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/gen-board.test.js
+    expected: 单测断言标题与 formatter；patch.ops 无 data 行数组。
+    evidence: "2026-08-22 pnpm test：运营集无「订单数」；单位分 formatter unit=0.01；patch 无 data 行"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-QG-05
+
+  - id: PR-QG-06
+    title: 不新加工具、不 live probe
+    gate: code
+    criterion: dsh-od-bi 未注册新的 od_* 名。od_generate_board 不调用 query/chart 或 profile-dataset 的 probes 路径；profile 仅 stats（与现行 includeProbes=false 一致）。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/index.js
+    expected: 工具名集合相对 P011 无新增；generate_board 代码路径无 POST /query/chart、无 includeProbes true。
+    evidence: "2026-08-22 工具名仍为 list/schema/run_query/run_sql/profile/plan/layout/compose/generate/emit/finish。generate 只调 schema + profile-dataset；Java profileDataset 已 includeProbes=false"
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+
+  - id: PR-QG-07
+    title: gen-board 单测覆盖 M1
+    gate: code
+    criterion: 在 opendashboard-dsh-harness 目录执行 pnpm test，gen-board 相关用例含 PR-QG-02…05 夹具且通过。
+    method: script
+    command_or_path: cd opendashboard-dsh-harness && pnpm test
+    expected: exit 0；新增夹具见 design.md §8。
+    evidence: "2026-08-22 pnpm test 25 pass（gen-board + sql-guard + ASK-SQL 夹具）"
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+
+  - id: PR-QG-08
+    title: architecture #gen 与代码一致
+    gate: code
+    criterion: architecture.html#gen 主路径写 od_generate_board 内置 review + stats profile；不再把 od_review_charts 画成可省略工具，不再写 live probe 为空则停（除非代码恢复该行为）。
+    method: manual
+    command_or_path: .teamai/docs/design/architecture.html
+    expected: 与 gen-board.js / od_generate_board 可逐条对上；与代码同一次提交。
+    evidence: "2026-08-22 #gen 主路径改为 plan_charts → generate_board（内置 review + stats profile）；删除 od_review_charts / live probe 为空则停"
+    status: pass
+    blocker_of_done: true
+    requirements_target: null
+
+  - id: PR-QG-09
+    title: Java last-resort 无业务词典
+    gate: code
+    criterion: conversation 包内规划/角色判定不含订单/金额/商户/收入等业务词表。roleOf 只认 schema group 与 JDBC type（及已学习 role）。IntentResolver / DeterministicPlanner 只按用户原文与数据集名、表名、字段名、label 重叠选字段。ConversationHarness 不再执行本地规划。相对时间 regex 允许保留。
+    method: inspect
+    command_or_path: open-dashboard-backend/open-dashboard-app/src/main/java/io/opendashboard/application/conversation/
+    expected: 无业务词 List/contains 打分；FieldSemantics 仅 queryFailed；mvn compile 通过。
+    evidence: "2026-08-22 Java compile pass；FieldSemantics 仅 queryFailed；planners 改为 overlap + schema role"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-QG-09
+
+  - id: PR-QG-10
+    title: od_get_schema 加厚 sample/terms/questions
+    gate: code
+    criterion: od_get_schema 成功时返回 sample（≤3 行）、terms（来自 knowledge）、questions（来自 datasets/{id}/questions）。不新注册 od_* 工具名。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/ask-enrich.test.js
+    expected: slimTerms / slimQuestions / clipSample 单测 pass；index.js od_get_schema 调 knowledge + questions。
+    evidence: "2026-08-22 ask-enrich.test.js pass；od_get_schema 接线 sample/terms/questions"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-QG-10
+
+  - id: PR-QG-11
+    title: 问数 0 行 insight 且无 stub 假行
+    gate: code
+    criterion: od_run_sql / od_run_query 在 rowCount=0 时带 insight；Java 失败时不再返回华东/华北 stub 行（source=stub）。od_list_datasets Java 不可达时 datasets=[] 且 ok=false。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/ask-enrich.test.js
+    expected: enrichAskResult / emptyRowInsight 单测；index.js 无华东 stub 分支。
+    evidence: "2026-08-22 删 od_run_sql 华东 stub；enrichAskResult 0 行 insight；pnpm test pass；L3 /ask 商户订单按支付状态汇总无 stub 假行"
+    status: pass
+    blocker_of_done: true
+    requirements_target: PR-QG-11
+
+  - id: PR-QG-12
+    title: LLM Goal 规划主路径 + 确认/澄清 + bind 闸
+    gate: code
+    criterion: |
+      （1）od_plan_charts 基于能力卡由 LLM（或 fixture）产出 goals，经 bind 后不得出现 ratio 字段的 SUM compare/table；
+      （2）mode=clarify 时本轮不调用 od_generate_board 写 draft；
+      （3）plan 展示 question 列表，用户确认后 generate 与 plan 目标一致（允许 review 删减）；
+      （4）LLM 失败时降级规则 enumerateGoals 且对用户可见提示。
+      详设：.teamai/docs/proposals/P012-ask-gen-quality/design/goal-planning-design.md
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/goal-planner.test.js
+    expected: bind 闸与降级路径单测；LLM 路径用 fixture JSON；/board 协议含确认再 generate。
+    evidence: "2026-08-22 pnpm test 56 pass：goal-planner S1 fixture bind、clarify 无图、FeeRate compare→kpi_ratio；OD_PLAN_LLM_DISABLE 降级 rules-fallback；commands/od_plan_charts/od_generate_board 已接 M1.6"
+    status: pass
+    blocker_of_done: false
+    requirements_target: PR-QG-12
+
+  # 2026-08-23 done：阻塞项 pass；requirements §2.10 已回写；路线图 done/。L3 证据见 design.md §11。
