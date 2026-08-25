@@ -244,16 +244,23 @@ function openReportProcess(payload: {
   steps?: ReportProcessStep[]
 }) {
   closeDash()
-  hasReport.value = false
+  const fileReady = hasReport.value && Boolean(reportHtml.value || reportMarkdown.value)
   hasReportProcess.value = true
-  reportView.value = 'process'
+  if (!fileReady) {
+    hasReport.value = false
+    reportView.value = 'process'
+  }
   reportTitle.value = String(payload.title || reportTitle.value || '分析报告')
-  reportProcessStatus.value = payload.status === 'error'
-    ? 'error'
-    : payload.status === 'done'
-      ? 'done'
-      : 'running'
-  reportActiveNode.value = String(payload.activeNode || '')
+  if (fileReady) {
+    reportProcessStatus.value = payload.status === 'error' ? 'error' : 'done'
+  } else {
+    reportProcessStatus.value = payload.status === 'error'
+      ? 'error'
+      : payload.status === 'done'
+        ? 'done'
+        : 'running'
+    reportActiveNode.value = String(payload.activeNode || '')
+  }
   reportProcessSteps.value = Array.isArray(payload.steps)
     ? payload.steps.map((step, index) => ({
       id: String(step.id || `step-${index + 1}`),
@@ -282,7 +289,6 @@ function openReport(payload: {
   markdown?: string
 }) {
   closeDash()
-  hasReportProcess.value = false
   reportTitle.value = String(payload.title || '分析报告')
   reportFilename.value = String(payload.filename || (payload.format === 'markdown' ? 'analysis-report.md' : 'analysis-report.html'))
   reportFormat.value = String(payload.format || '').toLowerCase() === 'markdown' ? 'markdown' : 'html'
@@ -294,7 +300,8 @@ function openReport(payload: {
   ))
   reportHtml.value = String(payload.html || '')
   reportMarkdown.value = String(payload.markdown || '')
-  hasReport.value = true
+  hasReport.value = Boolean(reportHtml.value || reportMarkdown.value)
+  hasReportProcess.value = reportProcessSteps.value.length > 0 || hasReportProcess.value
 }
 
 function openDashboard(payload: { dashboardId: string; title?: string }) {
@@ -346,6 +353,7 @@ function onMessage(event: MessageEvent) {
     openReportProcess({
       title: data.title ? String(data.title) : undefined,
       status: data.status ? String(data.status) : undefined,
+      activeNode: data.activeNode ? String(data.activeNode) : undefined,
       steps: Array.isArray(data.steps) ? data.steps : undefined,
     })
     return

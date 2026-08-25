@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { transformRows } from './data-trans.js'
-import { resetBoardSession } from './board-store.js'
+import { consumePresentation, rememberPresentation, resetBoardSession, resetPresentation } from './board-store.js'
 import {
   callerDepth,
   installSpawnWorkerPresentation,
@@ -14,7 +14,6 @@ import {
   runSaveChart,
   workerGuardReason,
 } from './board-worker.js'
-import { consumePresentation, resetPresentation } from './board-store.js'
 
 describe('transformRows', () => {
   const rows = [
@@ -253,5 +252,43 @@ describe('installSpawnWorkerPresentation', () => {
     assert.equal(meta.dashboardId, '12')
     assert.equal(meta.chartCount, 8)
     assert.equal(meta.title, '订单支付分析仪表盘')
+  })
+
+  it('lifts stored report_ready when spawn prompt is ContentBlock[]', () => {
+    resetPresentation()
+    rememberPresentation({
+      odKind: 'report_ready',
+      title: '支付状态与金额结构分析报告',
+      filename: 'payment-status-amount-structure-report.html',
+      html: '<h1>ok</h1>',
+      markdown: '# ok',
+      dashboardId: null,
+      source: 'analysis-worker',
+    })
+    const stored = {
+      name: 'od_board_worker',
+      output: { schema: {}, render: () => [] },
+    }
+    const ctx = {
+      tools: {
+        register(def) { return def },
+        get(name) { return name === 'od_board_worker' ? stored : undefined },
+      },
+      on() {},
+    }
+    installSpawnWorkerPresentation(ctx)
+    const tool = ctx.tools.get('od_board_worker')
+    const meta = tool.output.presentationMeta({
+      description: '写分析报告',
+      prompt: [{ type: 'text', text: 'ANALYSIS_REPORT=1\ndatasetId=ds_1' }],
+    }, {
+      kind: 'foreground',
+      runId: 'r',
+      output: [{ type: 'text', text: '分析报告已完成' }],
+    })
+    assert.equal(meta.odKind, 'report_ready')
+    assert.equal(meta.filename, 'payment-status-amount-structure-report.html')
+    assert.equal(meta.html, '<h1>ok</h1>')
+    assert.equal(consumePresentation(), null)
   })
 })

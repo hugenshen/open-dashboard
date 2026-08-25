@@ -7,6 +7,9 @@ import assert from 'node:assert/strict'
 import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
 import {
   answerPresentationMeta,
+  isAnalysisReportSpawn,
+  parseReportReadyFromText,
+  spawnArgsText,
   spawnWorkerPresentationMeta,
 } from './answer-meta.js'
 import { consumePresentation, rememberPresentation, resetPresentation } from './board-store.js'
@@ -216,6 +219,56 @@ describe('spawnWorkerPresentationMeta', () => {
       consume: () => ({ odKind: 'board_ready', dashboardId: 'old-board' }),
     })
     assert.deepEqual(meta, {})
+    assertLossless(meta)
+  })
+
+  it('still lifts report_ready when expectedKind defaults to board_ready', () => {
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r-report',
+      output: [{ type: 'text', text: '分析报告已完成' }],
+    }, {
+      expectedKind: 'board_ready',
+      consume: () => ({
+        odKind: 'report_ready',
+        title: '支付状态与金额结构分析报告',
+        filename: 'payment-status-amount-structure-report.html',
+        html: '<h1>支付状态与金额结构分析报告</h1>',
+        markdown: '# 支付状态与金额结构分析报告',
+        dashboardId: null,
+        source: 'analysis-worker',
+      }),
+    })
+    assert.equal(meta.odKind, 'report_ready')
+    assert.match(String(meta.html), /支付状态与金额结构分析报告/)
+    assert.equal(meta.filename, 'payment-status-amount-structure-report.html')
+    assertLossless(meta)
+  })
+
+  it('reads ANALYSIS_REPORT=1 from ContentBlock[] prompt', () => {
+    assert.equal(
+      isAnalysisReportSpawn({
+        description: '写分析报告',
+        prompt: [{ type: 'text', text: 'ANALYSIS_REPORT=1\ndatasetId=ds_1' }],
+      }, { output: [] }),
+      true,
+    )
+    assert.equal(spawnArgsText({ prompt: [{ type: 'text', text: 'ANALYSIS_REPORT=1' }] }).includes('ANALYSIS_REPORT=1'), true)
+    assert.equal(isAnalysisReportSpawn({ prompt: '生成看板' }, { output: [] }), false)
+  })
+
+  it('parses report ready text when store is empty', () => {
+    const parsed = parseReportReadyFromText('report ready: payment-status-amount-structure-report.html (4 insights)')
+    assert.equal(parsed.filename, 'payment-status-amount-structure-report.html')
+    assert.equal(parsed.insightCount, 4)
+    const meta = spawnWorkerPresentationMeta({
+      kind: 'foreground',
+      runId: 'r1',
+      output: [{ type: 'text', text: 'report ready: payment-status-amount-structure-report.html (4 insights)' }],
+    }, { consume: () => null })
+    assert.equal(meta.odKind, 'report_ready')
+    assert.equal(meta.filename, 'payment-status-amount-structure-report.html')
+    assert.equal(meta.insightCount, 4)
     assertLossless(meta)
   })
 })

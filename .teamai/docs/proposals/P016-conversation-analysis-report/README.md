@@ -112,3 +112,4 @@ implementation:
 | 2026-08-25 | 与出板同一缺口：worker `od_commit_report` 在子会话，已把 `report_ready` 提升到 Lead `od_board_worker`，右侧 HTML/MD 预览才能打开。PR-ANR-02 仍待手验 |
 | 2026-08-25 | 用户补充确认 JoyAgent 交互：分析 worker 运行期间右侧必须持续展示过程明细，完成后在同一右栏展示 HTML/MD 产物；禁止只在左侧显示 Think/完成文案。新增 `od-report-progress` 桥接。 |
 | 2026-08-26 | 用户指出阶段状态条不足以理解 Agent 在做什么；对照 JoyAgent `PlanView` / `ActionPanel` 改为可展开节点轨迹，展示工具名、输入、输出、耗时和父子层级，成稿后仍可切回「过程」。 |
+| 2026-08-26 | 修复：节点轨迹 `od-report-progress` 在成稿后仍把 `hasReport` 清掉，右侧只剩过程、看不到 HTML；同时 `report_ready` 在 prompt 非字符串时被 expectedKind 丢掉。进度不再覆盖已打开的文件，子会话 HTML 始终提升到 Lead。 |

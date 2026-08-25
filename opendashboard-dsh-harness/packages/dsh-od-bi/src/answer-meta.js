@@ -161,6 +161,63 @@ export function parseBoardReadyFromText(text) {
 }
 
 /**
+ * Flatten spawn tool args so ANALYSIS_REPORT=1 is visible even when prompt is
+ * a ContentBlock[] or only present on the raw JSON.
+ * @param {unknown} args
+ * @returns {string}
+ */
+export function spawnArgsText(args) {
+  if (args == null) return ''
+  if (typeof args === 'string') return args
+  if (typeof args !== 'object') return String(args)
+  const prompt = args.prompt
+  if (typeof prompt === 'string') return prompt
+  if (Array.isArray(prompt)) {
+    return prompt.map((block) => {
+      if (typeof block === 'string') return block
+      if (block && typeof block.text === 'string') return block.text
+      return ''
+    }).join('\n')
+  }
+  try {
+    return JSON.stringify(args)
+  } catch {
+    return ''
+  }
+}
+
+export function spawnOutputText(value) {
+  const blocks = Array.isArray(value?.output) ? value.output : []
+  return blocks
+    .filter((block) => block && block.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text)
+    .join('\n')
+}
+
+/** True when this od_board_worker call is the P016 analysis-report track. */
+export function isAnalysisReportSpawn(args, value) {
+  const blob = `${spawnArgsText(args)}\n${spawnOutputText(value)}`
+  return blob.includes('ANALYSIS_REPORT=1') || /\breport ready:/i.test(blob)
+}
+
+/**
+ * Parse analysis commit text. Child render is
+ * `report ready: payment-status.html (4 insights)`.
+ * @param {string} text
+ * @returns {{ filename: string, insightCount: number } | null}
+ */
+export function parseReportReadyFromText(text) {
+  const raw = String(text || '')
+  const match = raw.match(/\breport ready:\s*(\S+)\s*\((\d+)\s*insights?\)/i)
+  if (!match) return null
+  const insightCount = Number(match[2])
+  return {
+    filename: match[1],
+    insightCount: Number.isFinite(insightCount) ? insightCount : 0,
+  }
+}
+
+/**
  * Lead spawn `od_board_worker` result → same board_ready / report_ready card
  * the child commit already produced. Child tool/result never reaches the
  * parent conversation event log.
@@ -172,6 +229,7 @@ export function spawnWorkerPresentationMeta(value, opts = {}) {
   const text = spawnOutputText(value)
   const parsed = parseBoardReadyFromText(text)
   if (parsed) {
+    if (typeof consume === 'function') consume()
     return boardPresentationMeta({
       ok: true,
       dashboardId: parsed.dashboardId,
@@ -183,19 +241,26 @@ export function spawnWorkerPresentationMeta(value, opts = {}) {
   // Foreground output is scoped to this spawn call. Prefer it over the
   // process cache, which can still hold a previous turn when calls overlap.
   const stored = typeof consume === 'function' ? consume() : null
-  if (stored && (stored.odKind === 'board_ready' || stored.odKind === 'report_ready')) {
-    if (opts.expectedKind && stored.odKind !== opts.expectedKind) return {}
+  if (stored?.odKind === 'report_ready') {
+    // Child commit is authoritative. expectedKind can be board_ready when
+    // args.prompt is ContentBlock[] / missing, which used to drop the HTML card.
     return omitUndefined({ ...stored })
   }
+  if (stored?.odKind === 'board_ready') {
+    if (opts.expectedKind === 'report_ready') return {}
+    return omitUndefined({ ...stored })
+  }
+  const reportParsed = parseReportReadyFromText(text)
+  if (reportParsed) {
+    return omitUndefined({
+      odKind: 'report_ready',
+      filename: reportParsed.filename,
+      insightCount: reportParsed.insightCount,
+      dashboardId: null,
+      source: 'spawn-text',
+    })
+  }
   return {}
-}
-
-function spawnOutputText(value) {
-  const blocks = Array.isArray(value?.output) ? value.output : []
-  return blocks
-    .filter((block) => block && block.type === 'text' && typeof block.text === 'string')
-    .map((block) => block.text)
-    .join('\n')
 }
 
 /** Browser-safe analysis-report card — snapshot HTML/MD, never a dashboardId. */

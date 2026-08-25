@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { boardPresentationMeta, spawnWorkerPresentationMeta } from './answer-meta.js'
+import { boardPresentationMeta, isAnalysisReportSpawn, spawnWorkerPresentationMeta } from './answer-meta.js'
 import { layoutBoardPatch, reviewCharts, retargetWeakTableDim } from './gen-board.js'
 import {
   boardSessionKey,
@@ -471,9 +471,7 @@ function workerToolMeta(name) {
 }
 
 function spawnPresentationMeta(args, value) {
-  const expectedKind = String(args?.prompt || '').includes('ANALYSIS_REPORT=1')
-    ? 'report_ready'
-    : 'board_ready'
+  const expectedKind = isAnalysisReportSpawn(args, value) ? 'report_ready' : 'board_ready'
   return spawnWorkerPresentationMeta(value, { consume: consumePresentation, expectedKind })
 }
 spawnPresentationMeta.__odSpawnMeta = true

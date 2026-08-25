@@ -179,12 +179,20 @@ window.__ModuleLoader__.load({
       return ''
     }
 
+    function isAnalysisWorkerCall(call) {
+      if (call?.name !== 'od_board_worker') return false
+      const raw = String(call.argsRaw || '')
+      const args = parseToolArgs(call.argsRaw)
+      const prompt = typeof args.prompt === 'string'
+        ? args.prompt
+        : Array.isArray(args.prompt)
+          ? args.prompt.map((block) => (typeof block === 'string' ? block : (block?.text || ''))).join('\n')
+          : ''
+      return `${prompt}\n${raw}`.includes('ANALYSIS_REPORT=1')
+    }
+
     function reportProcessFromCalls(runningCalls) {
-      const root = (runningCalls || []).find((call) => {
-        if (call?.name !== 'od_board_worker') return false
-        const args = parseToolArgs(call.argsRaw)
-        return String(args.prompt || call.argsRaw || '').includes('ANALYSIS_REPORT=1')
-      })
+      const root = (runningCalls || []).find((call) => isAnalysisWorkerCall(call))
       if (!root) return null
       const workerArgs = parseToolArgs(root.argsRaw)
       const child = flattenToolBlocks(root.subCalls).filter(({ block }) => REPORT_NODE_META[toolBlockName(block)])
@@ -233,10 +241,17 @@ window.__ModuleLoader__.load({
     }
 
     /** Mirror the foreground analysis worker's nested calls into OD's right pane. */
-    function ReportProcessBridge({ useSession }) {
+    function ReportProcessBridgeInner({ useSession }) {
       const runningCalls = useSession((snapshot) => snapshot.runningCalls || [])
       const process = reportProcessFromCalls(runningCalls)
-      const payloadKey = process ? JSON.stringify(process) : ''
+      const payloadKey = process
+        ? JSON.stringify({
+          title: process.title,
+          status: process.status,
+          activeNode: process.activeNode,
+          steps: (process.steps || []).map(({ durationMs, ...rest }) => rest),
+        })
+        : ''
       React.useEffect(() => {
         if (!process || !isEmbedded()) return
         notifyParent({
@@ -246,6 +261,11 @@ window.__ModuleLoader__.load({
         })
       }, [payloadKey])
       return null
+    }
+
+    function ReportProcessBridge(props) {
+      if (typeof props?.useSession !== 'function') return null
+      return h(ReportProcessBridgeInner, { useSession: props.useSession })
     }
 
     function notifyOpenDashboard(payload, { force = true } = {}) {
