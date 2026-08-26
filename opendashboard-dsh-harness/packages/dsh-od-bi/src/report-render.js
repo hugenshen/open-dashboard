@@ -1,5 +1,6 @@
 /**
  * Self-contained snapshot report (HTML + Markdown). Not a live dashboard.
+ * Structure follows JoyAgent AutoAnalysis result: 分析过程 / 数据 / 分析结果 / 总结.
  * @module @opendashboard/dsh-od-bi/report-render
  */
 
@@ -15,7 +16,7 @@ function asRecords(rows) {
     if (row && typeof row === 'object' && !Array.isArray(row)) return row
     if (Array.isArray(row)) {
       const o = {}
-      row.forEach((v, i) => { o[`c${i}`] = v })
+      row.forEach((v, i) => { o[i === 0 ? 'label' : i === 1 ? 'value' : `c${i}`] = v })
       return o
     }
     return { value: row }
@@ -55,29 +56,77 @@ function barHtml(rows, chartType) {
   }).join('')}</div>`
 }
 
+function insightLis(block) {
+  const items = Array.isArray(block?.items) ? block.items : []
+  if (!items.length) return '<li>尚无洞察条目</li>'
+  return items.map((it) => `<li>${esc(it.text)}</li>`).join('')
+}
+
+function insightMd(block) {
+  const items = Array.isArray(block?.items) ? block.items : []
+  if (!items.length) return '- 尚无洞察条目'
+  return items.map((it) => `- ${it.text}`).join('\n')
+}
+
+function mdEscPara(text) {
+  return String(text || '').trim()
+}
+
 /**
- * @param {{ title?: string, insights?: object[], frames?: object[] }} input
+ * @param {{ title?: string, summary?: string, insights?: object[], frames?: object[] }} input
  */
 export function renderReport(input = {}) {
   const title = String(input.title || '分析报告')
+  const summary = mdEscPara(input.summary)
   const insights = Array.isArray(input.insights) ? input.insights : []
-  const frames = Array.isArray(input.frames) ? input.frames : []
-  const insightLis = insights.flatMap((block) => (block.items || []).map((it) => `<li>${esc(it.text)}</li>`)).join('')
-    || '<li>尚无洞察条目</li>'
-  const insightMd = insights.flatMap((block) => (block.items || []).map((it) => `- ${it.text}`)).join('\n')
-    || '- 尚无洞察条目'
-  const sectionsHtml = frames.map((f) => `
+  const frames = Array.isArray(input.frames) && input.frames.length
+    ? input.frames
+    : insights.map((b) => ({
+      handle: b.handle,
+      title: b.title,
+      process: b.process,
+      suggestedChartType: b.suggestedChartType,
+      rowCount: b.rowCount,
+      rows: b.rows,
+      items: b.items,
+    }))
+  const byHandle = new Map(insights.map((b) => [b.handle, b]))
+
+  const sectionsHtml = frames.map((f) => {
+    const block = byHandle.get(f.handle) || f
+    const process = f.process || block.process || f.title || '分析切片'
+    return `
     <section>
-      <h2>${esc(f.title || f.handle || '分析切片')}</h2>
-      <p class="muted">建议图种（有数后由规则确定）：${esc(f.suggestedChartType || 'table')} · ${esc(f.rowCount || 0)} 行快照</p>
+      <h3>${esc(process)}</h3>
+      <h4>数据</h4>
+      <p class="muted">${esc(f.title || f.handle || '')} · 建议图种 ${esc(f.suggestedChartType || 'table')} · ${esc(f.rowCount || 0)} 行快照</p>
       ${barHtml(f.rows, f.suggestedChartType)}
       ${tableHtml(f.rows)}
-    </section>`).join('')
-  const sectionsMd = frames.map((f) => `## ${f.title || f.handle || '分析切片'}
+      <h4>分析结果</h4>
+      <ul>${insightLis(block)}</ul>
+    </section>`
+  }).join('') || '<p class="muted">尚无分析切片</p>'
 
-建议图种：${f.suggestedChartType || 'table'} · ${f.rowCount || 0} 行快照
+  const sectionsMd = frames.map((f) => {
+    const block = byHandle.get(f.handle) || f
+    const process = f.process || block.process || f.title || '分析切片'
+    return `### ${process}
 
-${tableMd(f.rows)}`).join('\n\n')
+#### 数据
+
+${f.title || f.handle || ''} · 建议图种：${f.suggestedChartType || 'table'} · ${f.rowCount || 0} 行快照
+
+${tableMd(f.rows)}
+
+#### 分析结果
+
+${insightMd(block)}`
+  }).join('\n\n')
+
+  const summaryHtml = summary
+    ? `<h2>总结</h2><p>${esc(summary).replace(/\n/g, '<br/>')}</p>`
+    : ''
+  const summaryMd = summary ? `## 总结\n\n${summary}\n` : ''
 
   const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"/>
 <title>${esc(title)}</title>
@@ -85,6 +134,8 @@ ${tableMd(f.rows)}`).join('\n\n')
   body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;color:#1f2329;margin:24px;max-width:860px}
   h1{font-size:22px;margin:0 0 8px}
   h2{font-size:16px;margin:24px 0 8px}
+  h3{font-size:15px;margin:20px 0 8px}
+  h4{font-size:13px;margin:12px 0 6px;color:#4b5563}
   .muted{color:#8f959e;font-size:12px}
   table{border-collapse:collapse;width:100%;margin:8px 0 16px;font-size:13px}
   th,td{border:1px solid #e5e7eb;padding:6px 8px;text-align:left}
@@ -99,9 +150,9 @@ ${tableMd(f.rows)}`).join('\n\n')
 </style></head><body>
 <h1>${esc(title)}</h1>
 <p class="muted">对话分析报告 · 静态快照 · 非可刷新看板</p>
-<h2>洞察</h2>
-<ul>${insightLis}</ul>
+<h2>分析过程</h2>
 ${sectionsHtml}
+${summaryHtml}
 <footer>静态快照 · 非可刷新看板 · 聚合上限 200 行 · 15s 超时。刷新本页不会重新查询。</footer>
 </body></html>`
 
@@ -109,12 +160,11 @@ ${sectionsHtml}
 
 对话分析报告 · 静态快照 · 非可刷新看板
 
-## 洞察
-
-${insightMd}
+## 分析过程
 
 ${sectionsMd}
 
+${summaryMd}
 ---
 
 静态快照 · 非可刷新看板 · 聚合上限 200 行 · 15s 超时。刷新本页不会重新查询。

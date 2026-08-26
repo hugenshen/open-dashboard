@@ -17,37 +17,41 @@ P005（未接受）是「已有看板 → Umo 解读 + live 图引用，禁止�
 
 ## Agent / 工具
 
-dsh 只有一个 spawn 槽，工具名仍是 `od_board_worker`。Prompt 首行含 `ANALYSIS_REPORT=1` 时走分析 persona：
+dsh 只有一个 spawn 槽，工具名仍是 `od_board_worker`。Prompt 首行含 `ANALYSIS_REPORT=1` 时走分析 persona（JoyAgent AutoAnalysis 在 dsh 工具调用形态下的对应，不是 smolagents 整仓替换）：
 
 | 步骤 | 工具 | 约束 |
 |------|------|------|
-| 取数 | `od_get_data` `purpose=analysis` | 聚合 chartQuery；≤200 行；≤15s；禁止明细 dump |
+| 取数 | `od_get_data` `purpose=analysis` | 聚合 chartQuery；≤200 行；≤15s；禁止明细 / 主键 dump |
+| 代码分析 | `od_python` | 仅对已取 frame 跑 Python；pandas/numpy/scipy/sklearn 若已安装可用；禁止 os/subprocess；禁止用 `df.head()` 当全量结论 |
 | 变换 | `od_data_trans` | rate / rank / increase / sub_avg |
-| 洞察 | `od_insight` | JS 确定性规则，无 scipy |
-| 暂存 | `od_save_insight` | 累积到 session.insights |
-| 提交 | `od_commit_report` | 渲染自包含 HTML + Markdown；postMessage 打开右侧 |
+| 洞察 | `od_insight` | 一次一个 `analysis_method`（OutstandingFirst / Last / Attribution / Evenness / Trend / Correlation / ChangePoint）；未过形态/显著性门控则空，禁止当套模板全量输出 |
+| 暂存 | `od_save_insight` | 只存有用结论；「无分析结论」拒绝 |
+| 提交 | `od_commit_report` | 渲染「分析过程 / 数据 / 分析结果 / 总结」；postMessage 打开右侧 |
 
 Lead（depth 0）禁止以上细工具，只许一次 `od_board_worker`。出板 persona 禁止报告工具；分析 persona 禁止 `od_save_chart` / `od_commit_board`。
 
 取完若空结果：换维再取一次。用户说「改成按渠道看」：worker 可用新 `question`/`dim` 再 `od_get_data`。图种不是模型参数，harness 在有行后写 `suggestedChartType`。
 
-## Insight 规则（确定性）
+Worker 须覆盖至少三类方法（描述性 / 相关性或交叉 / 异常或归因），多切片（状态、渠道、时间）在 schema 允许时分次取数。
 
-对当前 handle 的聚合行计算：
+## Insight 规则（JoyAgent InsightFactory 门控）
 
-- OutstandingFirst / Last：最大/最小份额
-- Attribution：头部占比
-- Evenness：变异系数
-- Trend：时序首尾（≥3 行）
-- ChangePoint：最大相邻差
+不再对每个 handle 无条件输出 6 条模板句。按方法检查形态后再给显著性：
 
-不把图种交给模型猜。
+- OutstandingFirst：最高项显著偏离其余（份额 < 50% 且大于后两项之和）
+- OutstandingLast：最低项显著偏低（多为负向指标）
+- Attribution：头部份额 ≥ 50%
+- Evenness：Shannon 均匀度高才输出「较均匀」
+- Trend / ChangePoint：仅时序维
+- Correlation：拆解维为数值且 Pearson |r|≥0.6
+
+主键 / 高基数 ID（如 PayOrderId）直接拒绝。无 scipy 运行时用 JS 复现同一门控；有 Python 时 worker 另用 `od_python` 做描述统计、z-score/IQR、相关矩阵。
 
 ## 前端
 
 postMessage 分两阶段，均使用 `source: 'opendashboard-dsh'`：
 
-- 过程：`type: 'od-report-progress'`。dsh Web 订阅父会话 `od_board_worker` 的递归 `runningCalls/subCalls`，把 `od_get_data`、`od_data_trans`、`od_insight`、`od_save_insight`、`od_commit_report` 映射为有层级的节点事件；事件含节点/工具名、分类、业务摘要、状态、耗时、结构化输入和截断后的输出摘要
+- 过程：`type: 'od-report-progress'`。dsh Web 订阅父会话 `od_board_worker` 的递归 `runningCalls/subCalls`，把 `od_get_data`、`od_python`、`od_data_trans`、`od_insight`、`od_save_insight`、`od_commit_report` 映射为有层级的节点事件；事件含节点/工具名、分类、业务摘要、状态、耗时、结构化输入和截断后的输出摘要
 - 产物：`type: 'od-open-report'`（title / format / html / markdown / filename）。子会话 `od_commit_report` 的 `report_ready` 必须先提升到父会话 `od_board_worker`，不能只留在 worker session
 
 - HTML：`iframe` `srcdoc`，`sandbox` **不要** `allow-scripts`

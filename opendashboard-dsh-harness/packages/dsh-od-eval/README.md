@@ -37,7 +37,7 @@ node packages/dsh-od-eval/src/cli.js --report ./tmp/od-eval-report.json
 | `realize` | 有数后选图（JoyAgent checkChartType + 槽位） |
 | `review` | 饼上限、同维去重 |
 | `worker` | depth 闸；get_data 不收模型 chartType；data_trans |
-| `analysis` | P016：purpose=analysis → insight → save → commit_report（无 dashboardId） |
+| `analysis` | P016：purpose=analysis → python/insight(method) → save → commit_report（无 dashboardId） |
 | `cockpit` | 整页质量：realize→review→layout（KPI / 最多 1 饼 / compare≠pie / 单位分 / 空任务丢） |
 | `guard` | sql-guard L0 |
 | `ex` | 结果集 EX（夹具行比对） |

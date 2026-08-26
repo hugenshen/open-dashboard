@@ -16,6 +16,7 @@ architecture: .teamai/docs/design/architecture.html
 depends: [P004, P006, P011, P015]
 implementation:
   - opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.js
+  - opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-python.js
   - opendashboard-dsh-harness/packages/dsh-od-bi/src/insight.js
   - opendashboard-dsh-harness/packages/dsh-od-bi/src/report-render.js
   - opendashboard-dsh-harness/packages/dsh-od-bi/src/board-worker.js
@@ -39,9 +40,9 @@ implementation:
 | 范围、边界、当前完成度 | 本文 |
 | 工具链、右侧预览、取数上限 | [design.md](./design/design.md) |
 | 唯一验收清单 | [acceptance.yaml](./test/acceptance.yaml) |
-| 对照 JoyAgent AutoAnalysis | `refs/joyagent-jdgenie-data_agent`：`get_data` → `data_trans` → `insight` → `save_insight`；UI 为 ActionPanel HTML/MD 文件预览 |
-| 当前代码落点 | `analysis-worker.js` · `insight.js` · `report-render.js` · `ConversationDshSurface.vue` · `cordis.patch.yml` |
-| 不要做 | 可刷新 Dashboard；P005 Umo 看板解读；JoyAgent 单次 10k 行 / 90s；细工具交给 Lead |
+| 对照 JoyAgent AutoAnalysis | `refs/joyagent-jdgenie-data_agent`：CodeAgent + `PythonInterpreter`（pandas/numpy/scipy/sklearn）+ `get_data` → `data_trans` → `insight_analysis(method)` → `save_insight` → `final_answer`；UI 为 ActionPanel HTML/MD 文件预览 |
+| 当前代码落点 | `analysis-worker.js` · `analysis-python.js` · `insight.js` · `report-render.js` · `ConversationDshSurface.vue` · `cordis.patch.yml` |
+| 不要做 | 可刷新 Dashboard；P005 Umo 看板解读；JoyAgent 单次 10k 行 / 90s；细工具交给 Lead；用 smolagents 替换 dsh |
 
 ## 给谁 / 要解决什么
 
@@ -53,9 +54,10 @@ implementation:
 
 - 对话第三轨：问数 / 出板 / **分析报告**
 - 入口：slash `/report`；「写分析报告 / 归因解读」走此轨
-- 专用分析工具链（仅 spawn worker，depth≥1）：`od_get_data(purpose=analysis)` → `od_data_trans` → `od_insight` → `od_save_insight` → `od_commit_report`
+- 专用分析工具链（仅 spawn worker，depth≥1）：`od_get_data(purpose=analysis)` → `od_python` / `od_data_trans` → `od_insight(analysis_method)` → `od_save_insight` → `od_commit_report`
 - 取完数可以换问题/换维再取；图种在有行之后由 harness 填写 `suggestedChartType`
-- JoyAgent 式右侧节点轨迹：Lead 调用分析 worker 后立即打开；按真实父子调用顺序展示 Agent/取数/变换/洞察/保存/成稿节点，节点含工具名、业务摘要、状态、耗时，可展开查看结构化输入和输出摘要
+- JoyAgent AutoAnalysis 能力：worker 可写 Python（pandas/numpy/scipy/sklearn 若已安装）做描述/相关/异常/趋势；`od_insight` 按方法门控（OutstandingFirst / Last / Attribution / Evenness / Trend / Correlation / ChangePoint），无显著性不输出、禁止保存「无分析结论」
+- JoyAgent 式右侧节点轨迹：Lead 调用分析 worker 后立即打开；按真实父子调用顺序展示 Agent/取数/Python/变换/洞察/保存/成稿节点，节点含工具名、业务摘要、状态、耗时，可展开查看结构化输入和输出摘要
 - 完成后默认切换最终文件，但保留「过程 / HTML / MD」切换，节点轨迹不因成稿消失
 - 右侧最终文件预览：HTML（`iframe` `srcdoc`，sandbox 不含 `allow-scripts`）或 MD（轻量渲染，不加 marked）
 - 与看板互斥：开报告收起看板，开看板收起报告；切会话两边都关
@@ -65,9 +67,9 @@ implementation:
 
 - 写入 Dashboard draft / `dashboardId`
 - P005：从已有看板生成 Umo 解读稿 + live 图引用（禁止内嵌结果行）
-- 把明细大表 dump 进报告；禁止绕过聚合 `chartQuery`
+- 把明细大表 dump 进报告；禁止绕过聚合 `chartQuery`；禁止按 PayOrderId 等主键出洞察
 - dsh 第二 spawn 槽（仍共用 `od_board_worker`，靠 prompt 首行 `ANALYSIS_REPORT=1` 分流）
-- 引入 scipy/pandas；insight 为 JS 确定性规则
+- 用 smolagents CodeAgent 整仓替换 dsh；JoyAgent 单次 10k 行 / 90s
 
 ## 与相邻提案
 
@@ -92,6 +94,7 @@ implementation:
 | PR-ANR-06 | 图种在有数后由 harness 确定 |
 | PR-ANR-07 | 取完可换维再取 |
 | PR-ANR-08 | 与 P005 边界：快照文件 vs live Umo |
+| PR-ANR-09 | AutoAnalysis：方法门控 + Python，禁止套模板全量洞察 |
 
 ## 波及
 
@@ -113,3 +116,5 @@ implementation:
 | 2026-08-25 | 用户补充确认 JoyAgent 交互：分析 worker 运行期间右侧必须持续展示过程明细，完成后在同一右栏展示 HTML/MD 产物；禁止只在左侧显示 Think/完成文案。新增 `od-report-progress` 桥接。 |
 | 2026-08-26 | 用户指出阶段状态条不足以理解 Agent 在做什么；对照 JoyAgent `PlanView` / `ActionPanel` 改为可展开节点轨迹，展示工具名、输入、输出、耗时和父子层级，成稿后仍可切回「过程」。 |
 | 2026-08-26 | 修复：节点轨迹 `od-report-progress` 在成稿后仍把 `hasReport` 清掉，右侧只剩过程、看不到 HTML；同时 `report_ready` 在 prompt 非字符串时被 expectedKind 丢掉。进度不再覆盖已打开的文件，子会话 HTML 始终提升到 Lead。 |
+| 2026-08-26 | 用户确认：`/report` `/board` 注入的 od_* 协议跟帖看不懂。斜杠命令只提交人话（写一份分析报告：… / 生成仪表盘：…）；路由与 ANALYSIS_REPORT=1 收到 persona 与 `od_board_worker` 工具说明，执行时按 description 补全 prompt。 |
+| 2026-08-26 | 用户指出报告质量差：旧实现把 JoyAgent AutoAnalysis 收成「一次 get_data + JS 套模板洞察」。改为 worker 四阶段（描述/相关/异常/归因）、`od_python`、InsightFactory 方法门控，禁止明细 ID 洞察与「无分析结论」入库。 |

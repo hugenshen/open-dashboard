@@ -133,6 +133,7 @@ window.__ModuleLoader__.load({
     const REPORT_NODE_META = {
       od_get_data: { title: '取数并核对结果', category: '数据读取' },
       od_data_trans: { title: '计算占比、排名或变化', category: '数据处理' },
+      od_python: { title: 'Python 代码分析', category: '代码分析' },
       od_insight: { title: '识别趋势与归因洞察', category: '分析推理' },
       od_save_insight: { title: '保存分析结论与证据', category: '证据固化' },
       od_commit_report: { title: '生成 HTML/Markdown 报告', category: '产物生成' },
@@ -158,11 +159,13 @@ window.__ModuleLoader__.load({
         ? [['数据集', args.datasetId], ['业务问题', args.question || args.message], ['维度', args.dim], ['指标', args.measure], ['聚合', args.agg], ['意图', args.intent]]
         : name === 'od_data_trans'
           ? [['数据句柄', args.handle], ['转换方式', args.transType || args.trans_type], ['分组列', args.column], ['指标', args.measure]]
-          : name === 'od_insight'
-            ? [['数据句柄', args.handle], ['拆解维度', args.breakdown], ['分析指标', args.measure]]
-            : name === 'od_save_insight'
-              ? [['数据句柄', args.handle], ['洞察标题', args.title], ['分析说明', args.process]]
-              : [['报告标题', args.title], ['文件名', args.filename], ['格式', args.format]]
+          : name === 'od_python'
+            ? [['数据句柄', args.handle], ['代码', args.code]]
+            : name === 'od_insight'
+              ? [['数据句柄', args.handle], ['方法', args.analysisMethod || args.analysis_method], ['拆解维度', args.breakdown], ['分析指标', args.measure]]
+              : name === 'od_save_insight'
+                ? [['数据句柄', args.handle], ['洞察标题', args.title], ['分析说明', args.process]]
+                : [['报告标题', args.title], ['文件名', args.filename], ['格式', args.format]]
       return fields
         .filter(([, value]) => value != null && value !== '')
         .map(([label, value]) => ({ label, value: compactValue(value, 240) }))
@@ -173,7 +176,10 @@ window.__ModuleLoader__.load({
         return args.question || args.message || [args.dim, args.measure].filter(Boolean).join(' · ')
       }
       if (name === 'od_data_trans') return [args.trans_type || args.transType, args.measure].filter(Boolean).join(' · ')
-      if (name === 'od_insight') return [args.breakdown, args.measure].filter(Boolean).join(' · ')
+      if (name === 'od_python') return String(args.code || '').split('\n')[0] || args.handle || ''
+      if (name === 'od_insight') {
+        return [args.analysisMethod || args.analysis_method, args.breakdown, args.measure].filter(Boolean).join(' · ')
+      }
       if (name === 'od_save_insight') return args.title || args.process || ''
       if (name === 'od_commit_report') return args.title || args.filename || ''
       return ''
@@ -188,7 +194,9 @@ window.__ModuleLoader__.load({
         : Array.isArray(args.prompt)
           ? args.prompt.map((block) => (typeof block === 'string' ? block : (block?.text || ''))).join('\n')
           : ''
-      return `${prompt}\n${raw}`.includes('ANALYSIS_REPORT=1')
+      const desc = String(args.description || '')
+      return `${prompt}\n${raw}\n${desc}`.includes('ANALYSIS_REPORT=1')
+        || /写分析报告|分析报告/.test(desc)
     }
 
     function reportProcessFromCalls(runningCalls) {

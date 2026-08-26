@@ -477,10 +477,11 @@
           <div class="process-overview"><span class="pulse"></span><div><h3>正在分析数据</h3><p>当前节点：识别趋势与归因洞察</p></div><span class="count">2 / 4 节点</span></div>
           <div class="process-label"><strong>节点执行轨迹</strong><span>点击节点查看输入与产出</span></div>
           <ol>
-            <li><details class="process-node"><summary><span class="idx">01</span><span class="main"><span class="name">报告分析 Agent</span><code>od_board_worker</code><span class="desc">编排取数、洞察与成稿节点</span></span><span class="time">1.8 s</span><span class="state">已完成</span></summary></details></li>
+            <li><details class="process-node"><summary><span class="idx">01</span><span class="main"><span class="name">报告分析 Agent</span><code>od_board_worker</code><span class="desc">编排取数、Python、洞察与成稿节点</span></span><span class="time">1.8 s</span><span class="state">已完成</span></summary></details></li>
             <li><details class="process-node"><summary><span class="idx">02</span><span class="main"><span class="name">取数并核对结果</span><code>od_get_data</code><span class="desc">按支付状态统计订单数和支付金额</span></span><span class="time">842 ms</span><span class="state">已完成</span></summary></details></li>
-            <li class="run"><details class="process-node" open><summary><span class="idx">03</span><span class="main"><span class="name">识别趋势与归因洞察</span><code>od_insight</code><span class="desc">Status · PayAmount</span></span><span class="time">1.2 s</span><span class="state">执行中</span></summary><div class="process-detail"><b>输入</b><dl><dt>数据句柄</dt><dd>analysis-01</dd><dt>拆解维度</dt><dd>Status</dd><dt>分析指标</dt><dd>PayAmount</dd></dl><b>输出</b><pre>节点正在执行，产出将实时更新</pre></div></details></li>
-            <li><details class="process-node"><summary><span class="idx">04</span><span class="main"><span class="name">生成 HTML/Markdown 报告</span><code>od_commit_report</code><span class="desc">analysis-report.html</span></span><span class="time"></span><span class="state" style="color:var(--faint)">等待</span></summary></details></li>
+            <li><details class="process-node"><summary><span class="idx">03</span><span class="main"><span class="name">Python 代码分析</span><code>od_python</code><span class="desc">描述统计 · z-score</span></span><span class="time">410 ms</span><span class="state">已完成</span></summary></details></li>
+            <li class="run"><details class="process-node" open><summary><span class="idx">04</span><span class="main"><span class="name">识别趋势与归因洞察</span><code>od_insight</code><span class="desc">Attribution · Status · PayAmount</span></span><span class="time">1.2 s</span><span class="state">执行中</span></summary><div class="process-detail"><b>输入</b><dl><dt>数据句柄</dt><dd>analysis-01</dd><dt>方法</dt><dd>Attribution</dd><dt>拆解维度</dt><dd>Status</dd><dt>分析指标</dt><dd>PayAmount</dd></dl><b>输出</b><pre>节点正在执行，产出将实时更新</pre></div></details></li>
+            <li><details class="process-node"><summary><span class="idx">05</span><span class="main"><span class="name">生成 HTML/Markdown 报告</span><code>od_commit_report</code><span class="desc">analysis-report.html</span></span><span class="time"></span><span class="state" style="color:var(--faint)">等待</span></summary></details></li>
           </ol>
         </div>
         <iframe id="fileFrame" sandbox="" title="分析报告预览"></iframe>
@@ -828,26 +829,38 @@ LIMIT 10`;
       const REPORT_HTML = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"/><title>华东支付失败归因</title>
 <style>body{font:14px/1.55 -apple-system,sans-serif;margin:24px;color:#1f2329}h1{font-size:20px;margin:0 0 8px}.muted{color:#8f959e;font-size:12px}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #e5e7eb;padding:6px 8px;text-align:left}th{background:#f5f6f8}footer{margin-top:24px;padding-top:12px;border-top:1px solid #eceef2;color:#8f959e;font-size:12px}</style></head>
 <body><h1>华东支付失败归因</h1><p class="muted">对话分析报告 · 静态快照 · 非可刷新看板</p>
-<h2>洞察</h2><ul><li>头部「超时」超过一半，结构高度集中。</li><li>「余额不足」最低。</li></ul>
+<h2>分析过程</h2>
+<h3>Attribution · 失败原因构成</h3>
+<h4>数据</h4>
 <table><thead><tr><th>原因</th><th>笔数</th></tr></thead><tbody><tr><td>超时</td><td>80</td></tr><tr><td>银行拒绝</td><td>15</td></tr><tr><td>余额不足</td><td>5</td></tr></tbody></table>
+<h4>分析结果</h4>
+<ul><li>头部「超时」约占 80.0%，对总体影响占据主导。</li></ul>
+<h2>总结</h2><p>超时是失败主因，其余原因未形成第二主导。</p>
 <footer>静态快照 · 非可刷新看板 · 聚合上限 200 行 · 15s 超时。刷新本页不会重新查询。</footer></body></html>`;
 
       const REPORT_MD = `# 华东支付失败归因
 
 对话分析报告 · 静态快照 · 非可刷新看板
 
-## 洞察
+## 分析过程
 
-- 头部「超时」超过一半，结构高度集中。
-- 「余额不足」最低。
+### Attribution · 失败原因构成
 
-## 失败原因构成
+#### 数据
 
 | 原因 | 笔数 |
 | --- | --- |
 | 超时 | 80 |
 | 银行拒绝 | 15 |
 | 余额不足 | 5 |
+
+#### 分析结果
+
+- 头部「超时」约占 80.0%，对总体影响占据主导。
+
+## 总结
+
+超时是失败主因，其余原因未形成第二主导。
 
 ---
 
@@ -952,9 +965,10 @@ LIMIT 10`;
         setStats('1 轮 · 分析报告 · 静态快照');
         feed.innerHTML = `
           <div class="bubble-user">帮我写一份华东支付失败归因报告</div>
-          ${think('get_data → insight → save_insight → commit_report', 'purpose=analysis · ≤200 行 / 15s；图种有数后定。', true)}
+          ${think('get_data → python → insight(method) → save_insight → commit_report', 'purpose=analysis · ≤200 行 / 15s；方法门控，禁止明细 ID。', true)}
           ${tool('od_get_data', 'purpose=analysis', 'done', 'handle=h1 · 3 行 · suggestedChartType=bar')}
-          ${tool('od_insight', 'h1', 'done', 'attribution · outstanding_first')}
+          ${tool('od_python', 'describe / zscore', 'done', 'print Top 5')}
+          ${tool('od_insight', 'Attribution', 'done', '头部超时 80%')}
           ${tool('od_save_insight', '失败原因', 'done', 'staged 1')}
           ${tool('od_commit_report', 'analysis-report.html', 'done', 'dashboardId=null · 静态快照')}
           ${reportNode()}

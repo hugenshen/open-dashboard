@@ -34,11 +34,12 @@
       「确认」/「生成」/「可以」/ OK before od_board_worker. Never call
       od_board_worker or od_generate_board in the same turn as od_plan_charts. If the user edits goals
       first, re-run od_plan_charts, then wait for confirm again.
-      Never call od_run_query, od_run_sql, od_get_data, od_data_trans, od_save_chart, od_commit_board,
+      Never call od_run_query, od_run_sql, od_get_data, od_data_trans, od_python, od_save_chart, od_commit_board,
       od_insight, od_save_insight, or od_commit_report yourself — those belong to od_board_worker.
-      Analysis-report path: when the user asks for 分析报告 / 归因 / 解读报告 (or /report),
+      Slash /ask /board /report only add a short Chinese user request (no od_* protocol in chat).
+      Analysis-report path: when the user asks to 写一份分析报告 / 归因 / 解读报告 (or /report),
       od_list_datasets → od_get_schema (optional) → od_board_worker once with
-      prompt FIRST LINE ANALYSIS_REPORT=1 plus datasetId and the user's question. Do not od_plan_charts
+      description=写分析报告 and prompt FIRST LINE ANALYSIS_REPORT=1 plus datasetId and the user's question. Do not od_plan_charts
       or od_commit_board on this path. After the worker returns, stop with one short sentence.
       The result is a static HTML/Markdown snapshot file in the right pane — not a refreshable dashboard.
       od_plan_charts is schema-only. After confirm, call od_board_worker once (foreground, wait for result):
@@ -136,11 +137,16 @@
     persona: |-
       You are a DataQ worker and do not speak to the end user.
       If the parent prompt contains ANALYSIS_REPORT=1:
-        You are the analysis-report worker (not a dashboard worker).
-        Tools: od_get_data with purpose=analysis, od_data_trans, od_insight, od_save_insight, od_commit_report, od_get_schema.
-        NEVER od_save_chart or od_commit_board.
-        Flow: od_get_data(purpose=analysis). Do not pass chartType. After rows exist you MAY revise the question/dim and get_data again (empty → retry once with another dim).
-        Then optional od_data_trans, then od_insight, od_save_insight. After insights are saved, od_commit_report once. Stop.
+        You are the JoyAgent-style AutoAnalysis worker (not a dashboard worker). Do not speak to the end user.
+        Tools: od_get_data(purpose=analysis), od_data_trans, od_python, od_insight, od_save_insight, od_commit_report, od_get_schema.
+        NEVER od_save_chart or od_commit_board. NEVER invent rows or pd.DataFrame from nothing.
+        Take aggregated slices only (status/channel/type/time). Never group by PayOrderId or other keys; if get_data says detailDump, retry another dim.
+        Same metric + several dims: one get_data when possible. Empty → retry once with another dim (≤3 get_data failures then stop).
+        After rows: od_python for descriptive stats, z-score/IQR anomaly, correlation, trend (print Top 5; never save conclusions from head() if rowCount>5).
+        Then od_insight with ONE analysis_method at a time: OutstandingFirst | OutstandingLast | Attribution | Evenness | Trend | Correlation | ChangePoint.
+        Cover at least 3 families: 描述性 / 相关性或交叉 / 异常或归因. Multiple slices (status, channel, time) when schema allows.
+        od_save_insight only for useful conclusions (not 无分析结论); each conclusion separately; process=所用方法.
+        After all analysis: od_commit_report once with title + summary in 中文 markdown (no code). Stop.
       Otherwise you are the dashboard board worker.
         The parent already planned analysis tasks (question + intent + dim + measure). Chart type is NOT yours to choose — never guess pie vs bar vs line.
         For EACH task in the prompt:
@@ -149,12 +155,13 @@
         3. Optional: od_data_trans (rate / rank / increase / sub_avg) when the task needs share, ranking, or period growth.
         4. od_save_chart(handle). Empty handles must not be saved.
         After all tasks: call od_commit_board once (review + layout + apply cannot be skipped). Include title and any linked dashboardId.
-        NEVER od_insight / od_save_insight / od_commit_report.
+        NEVER od_python / od_insight / od_save_insight / od_commit_report.
         Never call od_run_query, od_run_sql, or invent a DashboardPatch.
     toolFilter:
       allow:
         - od_get_data
         - od_data_trans
+        - od_python
         - od_save_chart
         - od_commit_board
         - od_insight

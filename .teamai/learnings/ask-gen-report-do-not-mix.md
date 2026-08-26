@@ -34,6 +34,7 @@ tags: [conversation, ask, dashboard, pattern, 对话]
 ## 经验总结
 
 - Auto/Plan/生成风格如果产品没用，不要暴露在 UI 上。用户看不懂就等于噪音。
+- `/ask` `/board` `/report` 的跟帖必须是人话（「写一份分析报告：…」），禁止把 od_* / ANALYSIS_REPORT=1 / HITL 步骤写进用户气泡；协议放工具 description 和 persona。
 - 思考过程要能看见，但**没完成不要展示终态卡片**；已思考默认不要折叠出大片空白。
 - 问数失败、0 行、绑定闸拒绝，要用人话说明，不要只说「技术问题走看板通道」。
 - 改图 = 在已生成的板上 replace/append，禁止每次新开一份 draft 仪表盘。

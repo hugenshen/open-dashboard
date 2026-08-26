@@ -566,7 +566,7 @@
             <li>改已有图：<code>od_get_board_summary</code> → <code>od_rechart_chart</code> → <code>apply-patch</code> <code>mode=merge</code>，只 <code>upsert_chart</code> 原 chartId；布局与未点名的图不动；同一 <code>dashboardId</code></li>
             <li>整页重做仍 worker / generate + replace，但必须带已链接 <code>dashboardId</code>，禁止另开草稿</li>
             <li>禁止把查询结果行写入<strong>看板布局</strong> / 可刷新 Dashboard HTML</li>
-            <li>对话分析报告（P016）：slash <code>/report</code> 或自然语言「分析报告/归因/解读」→ Lead 一次 <code>od_board_worker</code>（prompt 首行 <code>ANALYSIS_REPORT=1</code>）→ worker <code>od_get_data(purpose=analysis)</code>≤200 行/15s → <code>od_data_trans</code> → <code>od_insight</code> → <code>od_save_insight</code> → <code>od_commit_report</code>；dsh Web 将父会话递归 <code>runningCalls/subCalls</code> 映射为 <code>od-report-progress</code> 节点事件，右侧按层级实时展示节点工具名、业务摘要、状态、耗时与可展开的输入/输出摘要；子会话 <code>report_ready</code> 提升到 Lead 后发送 <code>od-open-report</code>，同一右栏切换为会话快照 HTML/MD，并保留「过程」tab 可回看。页脚标明「静态快照 · 非可刷新看板」；不是 <code>dashboardId</code></li>
+            <li>对话分析报告（P016）：slash <code>/report</code> 或自然语言「分析报告/归因/解读」→ Lead 一次 <code>od_board_worker</code>（prompt 首行 <code>ANALYSIS_REPORT=1</code>）→ worker <code>od_get_data(purpose=analysis)</code>≤200 行/15s → <code>od_python</code> / <code>od_data_trans</code> → <code>od_insight(analysis_method)</code>（JoyAgent InsightFactory 门控）→ <code>od_save_insight</code> → <code>od_commit_report</code>（分析过程/数据/结论/总结）；dsh Web 将父会话递归 <code>runningCalls/subCalls</code> 映射为 <code>od-report-progress</code> 节点事件，右侧按层级实时展示节点工具名、业务摘要、状态、耗时与可展开的输入/输出摘要；子会话 <code>report_ready</code> 提升到 Lead 后发送 <code>od-open-report</code>，同一右栏切换为会话快照 HTML/MD，并保留「过程」tab 可回看。页脚标明「静态快照 · 非可刷新看板」；不是 <code>dashboardId</code></li>
             <li>空 encode / junk 度量不 emit；规划阶段不 live probe；取样只在 worker <code>od_get_data</code>（P015）；选图参数不进模型</li>
           </ul>
         </article>
@@ -677,7 +677,7 @@
               </tbody>
             </table>
           </div>
-          <p class="source">证据：<code>opendashboard-dsh-harness/packages/dsh-od-bi/src/gen-board.js</code>（plan / review / layout）、<code>board-worker.js</code>（P015 worker 工具）、<code>analysis-worker.js</code> / <code>insight.js</code> / <code>report-render.js</code>（P016 分析报告）、<code>realize-task.js</code>（选图启发式）、<code>cordis.patch.yml</code>（<code>od_board_worker</code>）、<code>StubQueryService</code> / <code>JdbcDataSourcePort.compileWhere</code>、<code>ConversationDshSurface.vue</code>（看板编辑器与报告文件栏互斥）。</p>
+          <p class="source">证据：<code>opendashboard-dsh-harness/packages/dsh-od-bi/src/gen-board.js</code>（plan / review / layout）、<code>board-worker.js</code>（P015 worker 工具）、<code>analysis-worker.js</code> / <code>analysis-python.js</code> / <code>insight.js</code> / <code>report-render.js</code>（P016 分析报告）、<code>realize-task.js</code>（选图启发式）、<code>cordis.patch.yml</code>（<code>od_board_worker</code>）、<code>StubQueryService</code> / <code>JdbcDataSourcePort.compileWhere</code>、<code>ConversationDshSurface.vue</code>（看板编辑器与报告文件栏互斥）。</p>
         </article>
 
         <article class="panel full">
@@ -862,8 +862,8 @@
           <p><b>优势（对方）</b>：NL2SQL + 诊断归因强；TableRAG / DGP 治理；报告叙事完整；BirdSQL 成绩。</p>
           <p style="margin-top:8px"><b>劣势（对方）</b>：HTML/PPT ≠ 可运营看板；结果行容易进文档；没有 draft/publish 生命周期。</p>
           <ul>
-            <li>OD 抄：先问数再落配置；「分析后再可视化」收成确定性质检闸；对话分析报告（P016）抄 JoyAgent 右侧 HTML/MD 文件预览，但是聚合快照（≤200 行 / 15s），不是可刷新看板</li>
-            <li>OD 不抄：把结果行写进 Dashboard 布局、SOP 诊断、TableRAG、DGP 预编织；看板解读进 Umo（禁止内嵌结果行）仍归未接受的 P005</li>
+            <li>OD 抄：先问数再落配置；「分析后再可视化」收成确定性质检闸；对话分析报告（P016）抄 JoyAgent AutoAnalysis（Python 解释器 + InsightFactory 方法门控 + 右侧 HTML/MD 文件预览），但是聚合快照（≤200 行 / 15s），不是可刷新看板</li>
+            <li>OD 不抄：把结果行写进 Dashboard 布局、SOP 诊断、TableRAG、DGP 预编织、smolagents 整仓替换 dsh、单次 10k/90s；看板解读进 Umo（禁止内嵌结果行）仍归未接受的 P005</li>
           </ul>
         </article>
         <article class="panel">

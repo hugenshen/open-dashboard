@@ -7,7 +7,13 @@
 
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { boardPresentationMeta, isAnalysisReportSpawn, spawnWorkerPresentationMeta } from './answer-meta.js'
+import {
+  BOARD_WORKER_LEAD_DESCRIPTION,
+  boardPresentationMeta,
+  ensureAnalysisReportPrompt,
+  isAnalysisReportSpawn,
+  spawnWorkerPresentationMeta,
+} from './answer-meta.js'
 import { layoutBoardPatch, reviewCharts, retargetWeakTableDim } from './gen-board.js'
 import {
   boardSessionKey,
@@ -21,6 +27,7 @@ import {
 import { transformRows } from './data-trans.js'
 import { biFetch, toLosslessJson } from './http.js'
 import { assessSemanticReadiness, semanticNotReadyMessage } from './semantic-readiness.js'
+import { looksLikeDetailDump } from './insight.js'
 import {
   applyDisplayFromData,
   categoryIsTimeField,
@@ -36,6 +43,7 @@ import {
 export const WORKER_TOOL_NAMES = Object.freeze([
   'od_get_data',
   'od_data_trans',
+  'od_python',
   'od_save_chart',
   'od_commit_board',
   'od_insight',
@@ -245,6 +253,7 @@ export async function runGetData(args, opts = {}) {
         : 'empty result — retry once with a different dim, or skip (do not od_save_chart)',
     })
   }
+  const detailDump = analysis && looksLikeDetailDump(rows, chart.encode?.category)
   return toLosslessJson({
     ok: true,
     handle,
@@ -254,8 +263,11 @@ export async function runGetData(args, opts = {}) {
     suggestedChartType,
     // Never echo model chartType; harness owns the suggestion.
     chartType: undefined,
+    detailDump: detailDump || undefined,
     note: analysis
-      ? 'Chart type was chosen by harness from DATE/row count. Next: od_data_trans optional, then od_insight / od_save_insight. You may od_get_data again with a revised question/dim.'
+      ? (detailDump
+        ? 'This looks like a detail/ID dump. Do NOT od_insight or save. Retry od_get_data with a categorical dim (status/channel/type), never PayOrderId or other keys.'
+        : 'Chart type was chosen by harness from DATE/row count. Next: od_python for descriptive/correlation/anomaly, and/or od_insight with one analysis_method. You may od_get_data again with another dim.')
       : 'Chart type was chosen by harness from DATE/row count. Do not pick pie vs bar. od_save_chart next (or od_data_trans first).',
   })
 }
@@ -476,20 +488,36 @@ function spawnPresentationMeta(args, value) {
 }
 spawnPresentationMeta.__odSpawnMeta = true
 
+function withLeadSpawnDescription(description) {
+  const prev = String(description || '')
+  if (prev.includes('Analysis report: description=写分析报告')) return prev
+  return `${BOARD_WORKER_LEAD_DESCRIPTION}${prev ? ` ${prev}` : ''}`
+}
+
+function wrapSpawnExecute(execute) {
+  if (typeof execute !== 'function' || execute.__odEnsureReportPrompt) return execute
+  const wrapped = (args, exec) => execute(ensureAnalysisReportPrompt(args), exec)
+  wrapped.__odEnsureReportPrompt = true
+  return wrapped
+}
+
 function withSpawnPresentation(definition) {
   if (!definition || definition.name !== 'od_board_worker') return definition
   const prev = definition.output?.presentationMeta
-  if (typeof prev === 'function' && prev.__odSpawnMeta) return definition
-  const presentationMeta = typeof prev === 'function'
-    ? (args, value) => {
-      const m = prev(args, value)
-      if (m && (m.odKind === 'board_ready' || m.odKind === 'report_ready')) return m
-      return spawnPresentationMeta(args, value)
-    }
-    : spawnPresentationMeta
+  const presentationMeta = (typeof prev === 'function' && prev.__odSpawnMeta)
+    ? prev
+    : typeof prev === 'function'
+      ? (args, value) => {
+        const m = prev(args, value)
+        if (m && (m.odKind === 'board_ready' || m.odKind === 'report_ready')) return m
+        return spawnPresentationMeta(args, value)
+      }
+      : spawnPresentationMeta
   presentationMeta.__odSpawnMeta = true
   return {
     ...definition,
+    description: withLeadSpawnDescription(definition.description),
+    execute: wrapSpawnExecute(definition.execute) || definition.execute,
     output: {
       ...definition.output,
       presentationMeta,
@@ -498,7 +526,20 @@ function withSpawnPresentation(definition) {
 }
 
 function attachSpawnMetaToTool(tool) {
-  if (!tool || tool.name !== 'od_board_worker' || !tool.output) return tool
+  if (!tool || tool.name !== 'od_board_worker') return tool
+  try {
+    tool.description = withLeadSpawnDescription(tool.description)
+  } catch {
+    /* frozen description */
+  }
+  if (typeof tool.execute === 'function' && !tool.execute.__odEnsureReportPrompt) {
+    try {
+      tool.execute = wrapSpawnExecute(tool.execute)
+    } catch {
+      /* frozen execute */
+    }
+  }
+  if (!tool.output) return tool
   const prev = tool.output.presentationMeta
   if (typeof prev === 'function' && prev.__odSpawnMeta) return tool
   try {
@@ -507,6 +548,8 @@ function attachSpawnMetaToTool(tool) {
   } catch {
     return {
       ...tool,
+      description: withLeadSpawnDescription(tool.description),
+      execute: wrapSpawnExecute(tool.execute) || tool.execute,
       output: { ...tool.output, presentationMeta: spawnPresentationMeta },
     }
   }
@@ -582,7 +625,7 @@ export function registerBoardWorkerTools(ctx, deps) {
   ctx.tools.register(defineTool({
     name: 'od_data_trans',
     description:
-      'BOARD WORKER ONLY. Transform a cached get_data table: rate (share), rank, increase (diff), sub_avg. '
+      'WORKER ONLY. Transform a cached get_data table: rate (share), rank, increase (diff), sub_avg. '
       + 'Does not let the model pick a chart type. Conversation lead must not call this.',
     parameters: {
       handle: { type: 'string', required: true },

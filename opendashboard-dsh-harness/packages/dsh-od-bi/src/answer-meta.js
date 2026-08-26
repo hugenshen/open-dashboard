@@ -194,10 +194,37 @@ export function spawnOutputText(value) {
     .join('\n')
 }
 
+/**
+ * Shown on od_board_worker so Lead does not need a protocol dump in chat.
+ * Slash /report /board only submit a short Chinese user line.
+ */
+export const BOARD_WORKER_LEAD_DESCRIPTION = [
+  'Lead-only spawn. Never set run_in_background. Never call od_get_data, od_data_trans, od_python, od_insight, od_save_insight, od_save_chart, od_commit_report, od_commit_board, od_run_query, or od_run_sql yourself.',
+  'Dashboard: description=生成看板. After od_plan_charts, wait for the user to 确认/生成, then call once. Prompt must include datasetId, title, the user question, goalsForConfirm JSON, and any linked dashboardId.',
+  'Analysis report: description=写分析报告. Call once in the same turn (no od_plan_charts). Prompt first line MUST be ANALYSIS_REPORT=1 plus datasetId and the user question. After the worker returns, one short sentence and stop. Result is a static HTML/MD file in the right pane, not a dashboard.',
+].join(' ')
+
 /** True when this od_board_worker call is the P016 analysis-report track. */
 export function isAnalysisReportSpawn(args, value) {
+  const desc = String(args?.description || '')
+  if (/写分析报告|分析报告/.test(desc)) return true
   const blob = `${spawnArgsText(args)}\n${spawnOutputText(value)}`
   return blob.includes('ANALYSIS_REPORT=1') || /\breport ready:/i.test(blob)
+}
+
+/** Worker persona keys off ANALYSIS_REPORT=1; prepend it when Lead only set description. */
+export function ensureAnalysisReportPrompt(args) {
+  if (!args || typeof args !== 'object') return args
+  if (!isAnalysisReportSpawn(args, {})) return args
+  const text = spawnArgsText(args)
+  if (text.includes('ANALYSIS_REPORT=1')) return args
+  if (typeof args.prompt === 'string') {
+    return { ...args, prompt: `ANALYSIS_REPORT=1\n${args.prompt}` }
+  }
+  if (Array.isArray(args.prompt)) {
+    return { ...args, prompt: [{ type: 'text', text: 'ANALYSIS_REPORT=1' }, ...args.prompt] }
+  }
+  return { ...args, prompt: 'ANALYSIS_REPORT=1' }
 }
 
 /**

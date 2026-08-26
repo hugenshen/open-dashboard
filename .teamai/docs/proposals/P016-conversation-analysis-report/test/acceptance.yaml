@@ -9,9 +9,9 @@ items:
     criterion: slash /report 进入分析报告轨；Lead 只调用一次 od_board_worker（prompt 含 ANALYSIS_REPORT=1），不得调 get_data/insight 细工具。
     method: script
     command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/commands.js
-    expected: /report 文案含 ANALYSIS_REPORT=1 与一次 od_board_worker。
+    expected: /report 用户可见跟帖为人话「写一份分析报告：…」，不含 od_* 协议；Lead 一次 spawn 与 ANALYSIS_REPORT=1 写在 persona / od_board_worker 工具说明，执行时可按 description 补全 prompt。
     status: pass
-    evidence: "2026-08-25 analysis-worker.test.js · buildReportFollowup 含 ANALYSIS_REPORT=1 / 一次 od_board_worker；不含 od_insight"
+    evidence: "2026-08-26 commands.test.js 人话跟帖；answer-meta/board-worker 在 description=写分析报告 时补全 ANALYSIS_REPORT=1"
     blocker_of_done: true
 
   - id: PR-ANR-02
@@ -38,12 +38,12 @@ items:
   - id: PR-ANR-04
     title: 细工具 Lead 不可调
     gate: code
-    criterion: od_insight / od_save_insight / od_commit_report 与 get_data 一样 depth≥1；Lead 被 guard 拒绝。
+    criterion: od_python / od_insight / od_save_insight / od_commit_report 与 get_data 一样 depth≥1；Lead 被 guard 拒绝。
     method: script
     command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
-    expected: depth 0 拒绝分析细工具。
+    expected: depth 0 拒绝分析细工具（含 od_python）。
     status: pass
-    evidence: "2026-08-25 denies Lead on od_insight/od_save_insight/od_commit_report"
+    evidence: "2026-08-26 denies Lead on od_python/od_insight/od_save_insight/od_commit_report"
     blocker_of_done: true
 
   - id: PR-ANR-05
@@ -87,4 +87,15 @@ items:
     command_or_path: .teamai/docs/proposals/P016-conversation-analysis-report/README.md
     expected: README 写明与 P005 对照表。
     status: pass
+    blocker_of_done: true
+
+  - id: PR-ANR-09
+    title: AutoAnalysis 方法门控与 Python
+    gate: code
+    criterion: od_insight 按 JoyAgent 方法门控，不套模板输出 OutstandingLast/Evenness 等不合格条目；明细/主键切片拒绝洞察；分析 worker 可调 od_python（depth≥1），Lead 不可调；commit 报告结构为分析过程/数据/结论/总结。
+    method: script
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
+    expected: Attribution 通过；Evenness 在头部集中时为空；PayOrderId 拒绝；Lead 拒绝 od_python。
+    status: pass
+    evidence: "2026-08-26 analysis-worker.test.js gated insights + python guard"
     blocker_of_done: true

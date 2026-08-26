@@ -291,4 +291,29 @@ describe('installSpawnWorkerPresentation', () => {
     assert.equal(meta.html, '<h1>ok</h1>')
     assert.equal(consumePresentation(), null)
   })
+
+  it('decorates spawn description and prepends ANALYSIS_REPORT=1 on execute', async () => {
+    const seen = []
+    const stored = {
+      name: 'od_board_worker',
+      description: 'Spawn a worker.',
+      async execute(args) {
+        seen.push(args)
+        return { ok: true }
+      },
+      output: { schema: {}, render: () => [] },
+    }
+    const ctx = {
+      tools: {
+        register(def) { return def },
+        get(name) { return name === 'od_board_worker' ? stored : undefined },
+      },
+      on() {},
+    }
+    installSpawnWorkerPresentation(ctx)
+    const tool = ctx.tools.get('od_board_worker')
+    assert.match(String(tool.description), /写分析报告/)
+    await tool.execute({ description: '写分析报告', prompt: 'datasetId=ds_1\n订单表' })
+    assert.match(String(seen[0].prompt), /^ANALYSIS_REPORT=1\n/)
+  })
 })

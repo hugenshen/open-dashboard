@@ -6,7 +6,9 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
 import {
+  BOARD_WORKER_LEAD_DESCRIPTION,
   answerPresentationMeta,
+  ensureAnalysisReportPrompt,
   isAnalysisReportSpawn,
   parseReportReadyFromText,
   spawnArgsText,
@@ -255,6 +257,12 @@ describe('spawnWorkerPresentationMeta', () => {
     )
     assert.equal(spawnArgsText({ prompt: [{ type: 'text', text: 'ANALYSIS_REPORT=1' }] }).includes('ANALYSIS_REPORT=1'), true)
     assert.equal(isAnalysisReportSpawn({ prompt: '生成看板' }, { output: [] }), false)
+    assert.equal(isAnalysisReportSpawn({ description: '写分析报告', prompt: 'datasetId=ds_1' }, { output: [] }), true)
+    assert.equal(isAnalysisReportSpawn({ description: '生成看板', prompt: '用订单做仪表盘' }, { output: [] }), false)
+    const ensured = ensureAnalysisReportPrompt({ description: '写分析报告', prompt: 'datasetId=ds_1\n订单表' })
+    assert.match(String(ensured.prompt), /^ANALYSIS_REPORT=1\n/)
+    assert.match(BOARD_WORKER_LEAD_DESCRIPTION, /写分析报告/)
+    assert.match(BOARD_WORKER_LEAD_DESCRIPTION, /ANALYSIS_REPORT=1/)
   })
 
   it('parses report ready text when store is empty', () => {
