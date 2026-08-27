@@ -1,10 +1,17 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { computeInsights } from './insight.js'
-import { renderReport } from './report-render.js'
+import { renderAuthoredReport, renderReport } from './report-render.js'
 import { consumePresentation, putFrame, resetBoardSession } from './board-store.js'
 import { runGetData, runSaveChart, runCommitBoard, workerGuardReason } from './board-worker.js'
-import { runInsight, runSaveInsight, runCommitReport } from './analysis-worker.js'
+import {
+  runAnalysisPlan,
+  runCommitReport,
+  runCompleteAnalysisTask,
+  runInsight,
+  runReadAnalysisFiles,
+  runSaveInsight,
+} from './analysis-worker.js'
 import { runAnalysisPython } from './analysis-python.js'
 import { buildReportFollowup } from './commands.js'
 import { reportPresentationMeta } from './answer-meta.js'
@@ -44,6 +51,47 @@ describe('renderReport', () => {
     assert.match(r.html, /上海/)
     assert.match(r.html, /分析过程/)
   })
+
+  it('renders business labels, enum names and money units instead of label/value/raw codes', () => {
+    const r = renderReport({
+      title: '订单经营分析',
+      frames: [{
+        title: '支付状态结构',
+        suggestedChartType: 'bar',
+        rowCount: 3,
+        chart: { encode: { category: 'Status', value: 'Amount' } },
+        fields: [
+          { name: 'Status', label: '支付状态,2-支付成功,3-业务处理完成' },
+          { name: 'Amount', label: '支付金额,单位分' },
+        ],
+        rows: [[-1, 41501365020], [2, 642788387], [3, 160258431033]],
+      }],
+    })
+    assert.match(r.html, /支付状态/)
+    assert.match(r.html, /未定义状态（-1）/)
+    assert.match(r.html, /支付成功/)
+    assert.match(r.html, /支付金额/)
+    assert.match(r.html, /亿元/)
+    assert.doesNotMatch(r.html, />label</)
+    assert.doesNotMatch(r.html, />value</)
+    assert.doesNotMatch(r.html, />-1</)
+  })
+
+  it('orders default business sections as status amount, status count, then merchant rank', () => {
+    const fields = [
+      { name: 'MchId', label: '商户ID', role: 'id' },
+      { name: 'Status', label: '支付状态,2-支付成功,3-业务处理完成', role: 'dim' },
+      { name: 'Amount', label: '支付金额,单位分', role: 'measure' },
+      { name: 'PayOrderId', label: '支付订单号', role: 'id' },
+    ]
+    const r = renderReport({ frames: [
+      { title: 'Top 商户', chart: { encode: { category: 'MchId', value: 'Amount' } }, fields, rows: [[1001, 8]], rowCount: 1 },
+      { title: '状态订单量', chart: { encode: { category: 'Status', value: 'PayOrderId' } }, fields, rows: [[3, 8]], rowCount: 1 },
+      { title: '状态支付金额', chart: { encode: { category: 'Status', value: 'Amount' } }, fields, rows: [[3, 800]], rowCount: 1 },
+    ] })
+    assert.ok(r.html.indexOf('状态支付金额') < r.html.indexOf('状态订单量'))
+    assert.ok(r.html.indexOf('状态订单量') < r.html.indexOf('Top 商户'))
+  })
 })
 
 describe('/report followup (PR-ANR-01)', () => {
@@ -59,7 +107,7 @@ describe('/report followup (PR-ANR-01)', () => {
 
 describe('analysis worker', () => {
   it('denies Lead on insight tools', () => {
-    for (const name of ['od_python', 'od_insight', 'od_save_insight', 'od_commit_report']) {
+    for (const name of ['od_analysis_plan', 'od_python', 'od_insight', 'od_save_insight', 'od_complete_analysis_task', 'od_read_analysis_files', 'od_commit_report']) {
       const lead = { name, agent: { session: { header: { delegationDepth: 0 } } } }
       assert.match(String(workerGuardReason(lead) || ''), /od_board_worker|delegationDepth/)
     }
@@ -186,11 +234,11 @@ describe('analysis worker', () => {
     assert.equal((even.insights || []).length, 0)
     const saved = runSaveInsight({ handle: got.handle, title: '状态', process: 'Attribution 头部占比' }, { session })
     assert.equal(saved.ok, true)
-    const report = runCommitReport({ title: '支付解读', summary: '成功状态占主导。' }, { session })
+    const report = runCommitReport({ title: '支付解读', markdown: '# 支付解读\n\n## 结论\n\n成功状态占主导。' }, { session })
     assert.equal(report.ok, true)
     assert.equal(report.dashboardId, null)
     assert.match(report.html, /支付解读/)
-    assert.match(report.html, /分析过程/)
+    assert.match(report.html, /结论/)
     assert.match(report.html, /成功状态占主导/)
     assert.match(report.markdown, /静态快照/)
     const meta = reportPresentationMeta(report)
@@ -201,6 +249,98 @@ describe('analysis worker', () => {
     const lifted = consumePresentation(session.key)
     assert.equal(lifted.odKind, 'report_ready')
     assert.ok(lifted.html)
+  })
+
+  it('uses a dynamic plan and requires every data_analysis file before report_tool', async () => {
+    const session = resetBoardSession('test-report-dynamic-plan')
+    const planned = runAnalysisPlan({
+      reportTitle: '订单履约分析',
+      tasks: [
+        { title: '履约状态', task: '分析履约状态差异', businessKnowledge: '已完成口径来自 schema 枚举' },
+        { title: '商户差异', task: '分析商户分布', businessKnowledge: '商户只作分组维度' },
+      ],
+    }, { session })
+    assert.equal(planned.taskCount, 2)
+    const fields = [
+      { name: 'MchId', label: '商户ID', role: 'id' },
+      { name: 'Status', label: '支付状态,0-订单生成,2-支付成功', role: 'dim' },
+      { name: 'Amount', label: '支付金额,单位分', role: 'measure' },
+    ]
+    const status = await runGetData({
+      datasetId: 'orders', intent: 'compare', dim: 'Status', measure: 'Amount', agg: 'sum', purpose: 'analysis',
+    }, {
+      session,
+      fields,
+      queryFn: async () => ({ ok: true, rowCount: 2, rows: [[0, 2000], [2, 8000]] }),
+    })
+    assert.equal(runSaveInsight({ taskIndex: 0, handle: status.handle, insight: '支付成功金额占主导。' }, { session }).ok, true)
+    const first = runCompleteAnalysisTask({ taskIndex: 0, summary: '履约状态存在明显差异。' }, { session })
+    assert.equal(first.ok, true)
+    assert.match(first.filename, /analysis-task-1/)
+    assert.match(String(runCommitReport({ title: '订单报告', markdown: '# 订单报告' }, { session }).error || ''), /incomplete/)
+
+    const merchant = await runGetData({
+      datasetId: 'orders', intent: 'rank', dim: 'MchId', measure: 'Amount', agg: 'sum', purpose: 'analysis',
+    }, {
+      session,
+      fields,
+      queryFn: async () => ({ ok: true, rowCount: 3, rows: [[1001, 5000], [1002, 3000], [1003, 2000]] }),
+    })
+    assert.equal(runSaveInsight({
+      taskIndex: 1, handle: merchant.handle,
+      title: 'Top 商户支付金额',
+      process: '按商户聚合并排序',
+      insight: '商户 1001 的支付金额最高。',
+    }, { session }).ok, true)
+    const second = runCompleteAnalysisTask({ taskIndex: 1, summary: '商户 1001 金额最高。' }, { session })
+    assert.equal(second.ok, true)
+    const sourceFiles = runReadAnalysisFiles({}, { session })
+    assert.equal(sourceFiles.ok, true)
+    assert.equal(sourceFiles.fileCount, 2)
+    assert.match(sourceFiles.files[1].content, /\| MchId \| Amount \|/)
+    assert.match(sourceFiles.files[1].content, /\| 1001 \| 5000 \|/)
+    assert.match(String(runCommitReport({ title: '订单报告' }, { session }).error || ''), /authored markdown/)
+    const report = runCommitReport({
+      title: '订单报告',
+      markdown: '# 订单报告\n\n## 履约状态\n\n支付成功金额占主导。\n\n## 商户差异\n\n商户 1001 金额最高。',
+    }, { session })
+    assert.equal(report.ok, true)
+    assert.match(report.html, /商户 1001/)
+    assert.equal(report.analysisFiles.length, 2)
+  })
+
+  it('does not auto-commit after three insights; report_tool authors the final content', () => {
+    const session = resetBoardSession('test-report-no-auto-commit')
+    runAnalysisPlan({ reportTitle: '订单报告', tasks: [
+      { title: '动态任务', task: '依用户问题分析', businessKnowledge: '仅使用 schema 口径' },
+    ] }, { session })
+    const fields = [
+      { name: 'MchId', label: '商户ID', role: 'id' },
+      { name: 'Status', label: '支付状态,2-支付成功,3-业务处理完成', role: 'dim' },
+      { name: 'Amount', label: '支付金额,单位分', role: 'measure' },
+    ]
+    putFrame(session, 'status-amount', {
+      handle: 'status-amount', rowCount: 2, rows: [{ label: 2, value: 2000 }, { label: 3, value: 8000 }],
+      fields, chart: { encode: { category: 'Status', value: 'Amount' } }, suggestedChartType: 'bar',
+    })
+    putFrame(session, 'status-count', {
+      handle: 'status-count', rowCount: 2, rows: [{ label: 2, value: 20 }, { label: 3, value: 80 }],
+      fields, chart: { encode: { category: 'Status', value: 'Status' } }, suggestedChartType: 'pie',
+    })
+    putFrame(session, 'merchant-amount', {
+      handle: 'merchant-amount', rowCount: 2, rows: [{ label: 1001, value: 6000 }, { label: 1002, value: 4000 }],
+      fields, chart: { encode: { category: 'MchId', value: 'Amount' } }, suggestedChartType: 'hbar',
+    })
+    assert.equal(runSaveInsight({ taskIndex: 0, handle: 'status-amount', insight: '业务处理完成金额占主导。' }, { session }).savedCount, 1)
+    assert.equal(runSaveInsight({ taskIndex: 0, handle: 'status-count', insight: '业务处理完成订单数占主导。' }, { session }).savedCount, 2)
+    const third = runSaveInsight({ taskIndex: 0, handle: 'merchant-amount', insight: '商户 1001 金额最高。' }, { session })
+    assert.equal(third.autoCommitted, undefined)
+    assert.equal(consumePresentation(session.key), null)
+    assert.equal(runCompleteAnalysisTask({ taskIndex: 0, summary: '三项证据已汇总。' }, { session }).ok, true)
+    const authored = '# 订单报告\n\n## 实际业务结论\n\n商户 1001 金额最高。'
+    const report = runCommitReport({ title: '订单报告', markdown: authored }, { session })
+    assert.match(report.markdown, /实际业务结论/)
+    assert.match(report.html, /商户 1001/)
   })
 
   it('runs python on a cached frame when python3 exists', async () => {

@@ -48,11 +48,13 @@ function recordsOf(rows) {
 
 function pickMeasure(records, measure) {
   if (measure && records[0] && measure in records[0] && num(records[0][measure]) != null) return measure
+  if (records[0] && 'value' in records[0] && num(records[0].value) != null) return 'value'
   const keys = records[0] ? Object.keys(records[0]) : []
   return keys.find((k) => num(records[0][k]) != null) || keys[1] || keys[0]
 }
 
 function pickLabel(records, measureKey) {
+  if (records[0] && 'label' in records[0] && measureKey !== 'label') return 'label'
   const keys = records[0] ? Object.keys(records[0]) : []
   return keys.find((k) => k !== measureKey) || keys[0] || 'item'
 }

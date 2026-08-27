@@ -12,9 +12,10 @@ import {
   boardPresentationMeta,
   ensureAnalysisReportPrompt,
   isAnalysisReportSpawn,
+  spawnArgsText,
   spawnWorkerPresentationMeta,
 } from './answer-meta.js'
-import { layoutBoardPatch, reviewCharts, retargetWeakTableDim } from './gen-board.js'
+import { flabel, fname, isEntitySubjectDim, layoutBoardPatch, parseValueMapFromLabel, reviewCharts, retargetWeakTableDim } from './gen-board.js'
 import {
   boardSessionKey,
   consumePresentation,
@@ -28,6 +29,7 @@ import { transformRows } from './data-trans.js'
 import { biFetch, toLosslessJson } from './http.js'
 import { assessSemanticReadiness, semanticNotReadyMessage } from './semantic-readiness.js'
 import { looksLikeDetailDump } from './insight.js'
+import { trackAnalysisTool } from './report-progress.js'
 import {
   applyDisplayFromData,
   categoryIsTimeField,
@@ -41,6 +43,7 @@ import {
 } from './realize-task.js'
 
 export const WORKER_TOOL_NAMES = Object.freeze([
+  'od_analysis_plan',
   'od_get_data',
   'od_data_trans',
   'od_python',
@@ -48,6 +51,8 @@ export const WORKER_TOOL_NAMES = Object.freeze([
   'od_commit_board',
   'od_insight',
   'od_save_insight',
+  'od_complete_analysis_task',
+  'od_read_analysis_files',
   'od_commit_report',
 ])
 
@@ -76,6 +81,32 @@ export function workerGuardReason(exec) {
 
 function clipRows(rows, n = 5) {
   return (Array.isArray(rows) ? rows : []).slice(0, n)
+}
+
+function businessSample(rows, chart, fields, n = 5) {
+  const category = String(chart?.encode?.category || '')
+  const value = String(chart?.encode?.value || '')
+  const cf = fields.find((f) => fname(f) === category)
+  const vf = fields.find((f) => fname(f) === value)
+  const valueMap = cf?.valueMap || parseValueMapFromLabel(cf?.label)
+  const records = clipRows(rows, n).map((row) => {
+    const rawCategory = Array.isArray(row) ? row[0]
+      : row && typeof row === 'object' ? (row[category] ?? row.label) : row
+    const rawValue = Array.isArray(row) ? row[1]
+      : row && typeof row === 'object' ? (row[value] ?? row.value) : undefined
+    return {
+      [flabel(cf) || category || '分类']: valueMap?.[String(rawCategory)]
+        ?? (valueMap && Object.keys(valueMap).length ? `未定义状态（${String(rawCategory)}）` : rawCategory),
+      [flabel(vf) || value || '指标值']: rawValue,
+    }
+  })
+  return {
+    rows: records,
+    columns: [
+      { field: category, label: flabel(cf) || category, valueMap },
+      { field: value, label: flabel(vf) || value, unit: /单位分/.test(String(vf?.label || '')) ? '分' : undefined },
+    ].filter((column) => column.field),
+  }
 }
 
 function isKpiTask(chart) {
@@ -164,6 +195,7 @@ export async function runGetData(args, opts = {}) {
     try {
       const loaded = await loadFields(ds, opts.signal)
       fields = loaded.fields
+      session.meta.datasetName = loaded.name || session.meta.datasetName || ''
     } catch (err) {
       return { ok: false, error: `schema failed: ${String(err?.message || err)}` }
     }
@@ -253,13 +285,18 @@ export async function runGetData(args, opts = {}) {
         : 'empty result — retry once with a different dim, or skip (do not od_save_chart)',
     })
   }
-  const detailDump = analysis && looksLikeDetailDump(rows, chart.encode?.category)
+  const categoryField = fields.find((f) => fname(f) === chart.encode?.category)
+  const entityAggregate = isEntitySubjectDim(categoryField)
+    && chart.encode?.category !== chart.encode?.value
+  const detailDump = analysis && !entityAggregate && looksLikeDetailDump(rows, chart.encode?.category)
+  const sampleView = analysis ? businessSample(rows, chart, fields) : { rows: clipRows(rows), columns: undefined }
   return toLosslessJson({
     ok: true,
     handle,
     taskId: handle,
     rowCount,
-    sample: clipRows(rows),
+    sample: sampleView.rows,
+    columns: sampleView.columns,
     suggestedChartType,
     // Never echo model chartType; harness owns the suggestion.
     chartType: undefined,
@@ -483,6 +520,10 @@ function workerToolMeta(name) {
 }
 
 function spawnPresentationMeta(args, value) {
+  const nestedPrompt = spawnArgsText(args)
+  // Nested JoyAgent data_analysis/report workers must leave the committed
+  // report_ready payload in the store for the outer ANALYSIS_REPORT spawn.
+  if (nestedPrompt.includes('DATA_ANALYSIS_TASK=1') || nestedPrompt.includes('REPORT_GENERATION_TASK=1')) return {}
   const expectedKind = isAnalysisReportSpawn(args, value) ? 'report_ready' : 'board_ready'
   return spawnWorkerPresentationMeta(value, { consume: consumePresentation, expectedKind })
 }
@@ -618,7 +659,16 @@ export function registerBoardWorkerTools(ctx, deps) {
     },
     ...workerToolMeta('od_get_data'),
     async execute(args, exec) {
-      return toLosslessJson(await runGetData(args, { signal: exec.signal }))
+      return trackAnalysisTool(
+        'od_get_data',
+        args,
+        async () => {
+          if (String(args.purpose || '').toLowerCase() === 'analysis' && !getBoardSession().analysisPlan) {
+            return { ok: false, error: 'JoyAgent workflow requires od_get_schema then od_analysis_plan before od_get_data.' }
+          }
+          return toLosslessJson(await runGetData(args, { signal: exec.signal }))
+        },
+      )
     },
   }))
 
@@ -644,7 +694,11 @@ export function registerBoardWorkerTools(ctx, deps) {
     },
     ...workerToolMeta('od_data_trans'),
     async execute(args) {
-      return toLosslessJson(runDataTrans(args))
+      return trackAnalysisTool(
+        'od_data_trans',
+        args,
+        () => toLosslessJson(runDataTrans(args)),
+      )
     },
   }))
 

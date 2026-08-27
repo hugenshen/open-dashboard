@@ -22,7 +22,12 @@ JoyAgent 实际是 CodeAgent：`PythonInterpreter`（pandas/numpy/scipy/sklearn�
 
 取数上限仍严于 JoyAgent（200 行 / 15s），不引入 smolagents 整仓。
 
+## 过程为什么会停在 0/1
+
+dsh spawn 明确不把子会话中间步骤回传父会话。右栏若只 flatten 父会话 `runningCalls.subCalls`，运行期间几乎总是空，看起来像「固定模板」。要对齐 JoyAgent 左思考/右 ActionPanel：细工具在**同一进程**写入进度店，iframe 轮询 `GET /od/report-progress` 再 postMessage。对话栏用 dsh React 插件把灰思考卡片和工具 pill **portal 进 transcript**，不要挂在 `conversation.input.dock`（那会变成输入框上方的小状态条）。右栏是工作空间 + 任务跟随 + PlanView `当前/N`，开始必须种子完整阶段（禁止 0/1）。
+
 ## 经验总结
 
 - 对标开源要对齐「Agent 怎么分析」，不是只对齐工具名和右侧文件栏。
 - 洞察套模板全量输出 = 用户觉得「效果不行」，和出板规则凑图是同一类质量事故。
+- JoyAgent 的思考在对话 transcript 里，任务进度在右栏底部 `1/N`。把过程塞进 composer dock，用户会觉得交互奇怪。

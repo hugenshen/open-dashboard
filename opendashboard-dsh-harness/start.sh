@@ -16,6 +16,8 @@ if [[ -z "${OD_DSH_BRIDGE:-}" ]]; then
 else
   export OD_DSH_BRIDGE
 fi
+# Listen on all interfaces (cordis.patch.yml host: 0.0.0.0). Share
+# http://<lan-ip>:5173 — iframe uses the page hostname, not 127.0.0.1.
 PORT="${OD_DSH_PORT:-3090}"
 
 DSH_BIN="$ROOT/node_modules/.bin/dsh"
@@ -36,4 +38,28 @@ OPEN_FLAG=(--no-open)
 if [[ "${OD_DSH_OPEN:-}" == "1" ]]; then
   OPEN_FLAG=()
 fi
-exec "$DSH_BIN" --profile od-conversation --port "$PORT" "${OPEN_FLAG[@]}" "$@"
+
+# Trust LAN IPv4 so http://<lan-ip>:3090 /api websockets pass the browser fence.
+# dsh's /api fence is not authentication; coding shells/fs are already disabled.
+TRUST_HOSTS=()
+if MDNS="$(scutil --get LocalHostName 2>/dev/null)"; then
+  [[ -n "$MDNS" ]] && TRUST_HOSTS+=(--trusted-host "${MDNS}.local")
+fi
+while IFS= read -r ip; do
+  [[ -n "$ip" ]] && TRUST_HOSTS+=(--trusted-host "$ip")
+done < <(node -e '
+const { networkInterfaces } = require("os");
+const seen = new Set();
+for (const list of Object.values(networkInterfaces())) {
+  for (const iface of list || []) {
+    const fam = iface.family;
+    if (iface.internal) continue;
+    if (fam !== "IPv4" && fam !== 4) continue;
+    if (seen.has(iface.address)) continue;
+    seen.add(iface.address);
+    process.stdout.write(iface.address + "\n");
+  }
+}
+')
+
+exec "$DSH_BIN" --profile od-conversation --port "$PORT" "${OPEN_FLAG[@]}" "${TRUST_HOSTS[@]}" "$@"

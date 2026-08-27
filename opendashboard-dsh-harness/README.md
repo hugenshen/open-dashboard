@@ -53,12 +53,11 @@ pnpm approve-builds --all   # 首次：允许 node-pty / koffi 等原生构建
 
 ## 嵌入 OD 前端
 
-本地开发默认 iframe **直连** `http://127.0.0.1:3090/`（见 `VITE_OD_DSH_URL`）。  
-不要指望只反代 `/dsh/`：dsh Web 还会请求同源绝对路径 `/plugins/*`、`/assets/*`、以及 **`/api/*`（dsh 自身 RPC/WS）**，会与 Vite 的 `/api` → Java 冲突。
+本地开发 iframe 用**同域** `/dsh/`（Vite 把 dsh `/api` RPC/WS 与 Java `/api` 拆开），别人打开 `http://<局域网IP>:5173` 即可对话，无需选手动工作区。不要把 iframe 写死成 `127.0.0.1:3090`：那是**打开者自己的机器**。本机自测请用 `http://127.0.0.1:5173`。若本机用局域网 IP 打开时 Composer 停在「选择工作区」，把该 IP 加入系统代理绕过（Chrome 不认 Clash 里 `192.168.0.0/16` 这类 CIDR，WebSocket 会被 7897 掐掉）。
 
 | 变量 | 说明 |
 |------|------|
-| `VITE_OD_DSH_URL` | 默认开发 `http://127.0.0.1:3090/`；生产可配同域路径 |
+| `VITE_OD_DSH_URL` | 可选覆盖；未设时为同域 `/dsh/`（开发与生产一致） |
 
 高保原型（无 Agent）：`.teamai/docs/prototypes/hi-fi/start.sh` → `conversation-ask-dsh.html`。
 
@@ -66,13 +65,13 @@ pnpm approve-builds --all   # 首次：允许 node-pty / koffi 等原生构建
 |------|------|------|
 | `DSH_HOME` | `./dsh-home` | 会话持久化与 profile 根 |
 | `OD_DSH_RUNTIME_CWD` | `$DSH_HOME/runtime` | 会话沙箱 cwd（勿指到业务 git 仓） |
-| `OD_DSH_PORT` | `3090` | Web 端口 |
+| `OD_DSH_PORT` | `3090` | Web 端口；进程监听 `0.0.0.0`（局域网可开） |
 | `OD_BI_BASE` | `http://127.0.0.1:8082` | Java BI |
 | `OD_APP_ORIGIN` | `http://127.0.0.1:5173` | Vue 壳；看板「全屏编辑器」与直连 `:3090` 时「在右侧打开」跳到这里 |
 | `OD_INTERNAL_TOKEN` | `od-dev-internal` | internal 鉴权 |
-| `OD_DSH_BRIDGE` | 本地默认 demo/workspace-retail | JSON：`userId` / `workspaceId` / `perms`（生产应换短时签发） |
+| `OD_DSH_BRIDGE` | 本地默认 demo/workspace-retail | JSON：`userId` / `workspaceId` / `perms`（生产应换短时签发）。空 POST 不会清掉该默认 |
 
-FE 嵌入：开发直连 `:3090`；生产同域反代。编辑器侧栏同为 dsh embed。  
+对话页不让用户选择 dsh 文件夹工作区；启动即绑定租户分区。嵌入走同域 `/dsh/`（Vite 拆分 dsh `/api` 与 Java `/api`）。  
 `cordis.patch.yml` 关掉 dsh 自带侧栏 / brand / workspace / agent-preset chrome，避免和 OD AppShell 双左栏。  
 `dsh-od-nodes` 落地页：slogan「问数成图，一语成板」+ 徽章「对话分析」；隐藏本地目录选择与 Workspace Write。
 

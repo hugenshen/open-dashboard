@@ -21,8 +21,7 @@ const ready = ref(false)
 
 const dshSrc = computed(() => {
   const base =
-    (import.meta.env.VITE_OD_DSH_URL as string)
-    || (import.meta.env.DEV ? 'http://127.0.0.1:3090/' : '/dsh/')
+    (import.meta.env.VITE_OD_DSH_URL as string) || '/dsh/'
   const url = new URL(base, window.location.origin)
   const bundle = getAuthBundle()
   const bridge = {

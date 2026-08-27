@@ -33,6 +33,7 @@ import { sampleWarningForLlm, withSampleMeta } from './sample-meta.js'
 import { assessSemanticReadiness, semanticNotReadyMessage } from './semantic-readiness.js'
 import { assertAllowedTables } from './sql-guard.js'
 import { registerOdCommands } from './commands.js'
+import { registerReportProgressRoute } from './report-progress.js'
 
 function countChartsInPatch(patch) {
   const ops = patch?.ops
@@ -207,7 +208,7 @@ function attachAskFieldCfg(encode, fields) {
 }
 
 export const name = 'od-bi'
-export const inject = ['tools', 'commands']
+export const inject = ['tools', 'commands', 'webServer']
 
 function rememberedDashboardId(explicit) {
   const b = getBridge()
@@ -280,6 +281,7 @@ export function apply(ctx) {
   registerOdCommands(ctx)
   registerBoardWorkerTools(ctx, { applyDashboardPatch, rememberedDashboardId })
   registerAnalysisWorkerTools(ctx)
+  registerReportProgressRoute(ctx.webServer)
   ctx.tools.register(defineTool({
     name: 'od_list_datasets',
     description:

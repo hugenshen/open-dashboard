@@ -107,6 +107,11 @@ export async function runAnalysisPython(args, opts = {}) {
       return { ok: false, error: 'no frames — call od_get_data first' }
     }
   }
+  const used = Number(session.meta?.analysisPythonCalls || 0)
+  if (used >= 2) {
+    return { ok: false, error: 'Python 分析预算已用完（最多 2 次）。不要继续探测；请基于现有 rows 执行洞察、保存结论并提交报告。' }
+  }
+  session.meta.analysisPythonCalls = used + 1
   const usedHandle = handle || Object.keys(frames)[0]
   const out = await spawnPython({
     code: String(args.code),
@@ -126,6 +131,6 @@ export async function runAnalysisPython(args, opts = {}) {
     handle: usedHandle,
     stdout: String(out.stdout || '').slice(0, 16000),
     result: out.result ?? null,
-    note: 'Python ran on cached aggregation only. Do not conclude from df.head() if rowCount>5. Next: od_insight / od_save_insight.',
+    note: 'Python ran on cached aggregation only. rows 始终可用，df 仅在 pandas 已安装时可用。不要探测运行环境；下一步 od_insight / od_save_insight。',
   }
 }

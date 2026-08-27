@@ -30,10 +30,12 @@ def main():
     g = {
         "__builtins__": {
             "abs": abs, "all": all, "any": any, "bool": bool, "dict": dict,
+            "Exception": Exception,
             "enumerate": enumerate, "filter": filter, "float": float, "int": int,
-            "len": len, "list": list, "map": map, "max": max, "min": min,
+            "isinstance": isinstance, "len": len, "list": list, "map": map, "max": max, "min": min,
             "pow": pow, "print": _print, "range": range, "round": round,
-            "sorted": sorted, "str": str, "sum": sum, "tuple": tuple, "zip": zip,
+            "repr": repr, "set": set, "sorted": sorted, "str": str, "sum": sum,
+            "tuple": tuple, "type": type, "zip": zip,
         },
         "frames": frames,
         "rows": rows if isinstance(rows, list) else [],

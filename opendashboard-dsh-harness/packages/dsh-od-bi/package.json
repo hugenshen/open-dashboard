@@ -15,6 +15,7 @@
     "./realize-task": "./src/realize-task.js",
     "./board-worker": "./src/board-worker.js",
     "./analysis-worker": "./src/analysis-worker.js",
+    "./report-progress": "./src/report-progress.js",
     "./quality-cases": "./src/quality-cases.js",
     "./package.json": "./package.json"
   },

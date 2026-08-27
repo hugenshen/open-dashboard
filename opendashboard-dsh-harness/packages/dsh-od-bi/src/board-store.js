@@ -7,6 +7,7 @@
 import { getBridge } from '@opendashboard/dsh-od-auth/bridge-state'
 
 const sessions = new Map()
+let activeAnalysisKey = ''
 /** Survives resetBoardSession so Lead's od_board_worker can lift child commit meta. */
 const lastPresentation = new Map()
 /** Fallback when child remember and parent consume used different keys. */
@@ -21,18 +22,30 @@ export function boardSessionKey() {
 }
 
 export function getBoardSession(key = boardSessionKey()) {
+  if (arguments.length === 0 && activeAnalysisKey && sessions.has(activeAnalysisKey)) key = activeAnalysisKey
   let s = sessions.get(key)
   if (!s) {
-    s = { key, frames: new Map(), staging: [], dropped: [], insights: [], meta: {} }
+    s = { key, frames: new Map(), staging: [], dropped: [], insights: [], analysisFiles: [], analysisPlan: null, meta: {} }
     sessions.set(key, s)
   }
   return s
 }
 
 export function resetBoardSession(key = boardSessionKey()) {
-  const s = { key, frames: new Map(), staging: [], dropped: [], insights: [], meta: {} }
+  const s = { key, frames: new Map(), staging: [], dropped: [], insights: [], analysisFiles: [], analysisPlan: null, meta: {} }
   sessions.set(key, s)
+  if (activeAnalysisKey === key) activeAnalysisKey = ''
   return s
+}
+
+/** Share one report context across PlanningAgent, fresh data_analysis agents and report Agent. */
+export function activateAnalysisSession(key) {
+  activeAnalysisKey = String(key || boardSessionKey())
+  return getBoardSession(activeAnalysisKey)
+}
+
+export function activeAnalysisSessionKey() {
+  return activeAnalysisKey
 }
 
 export function putFrame(session, handle, frame) {

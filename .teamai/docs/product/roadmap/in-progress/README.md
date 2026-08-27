@@ -10,7 +10,7 @@
 | 要解决什么 | 「写分析报告」被误当成出板；JoyAgent 式右侧 HTML/MD 预览在 OD 里没有第三轨 |
 | 范围 | **做** `/report`、分析 worker（get_data → python/data_trans → insight(method) → save_insight → commit_report）、右侧 HTML/MD 快照预览、聚合上限 200 行/15s。**不做** Dashboard draft、P005 Umo 看板解读、JoyAgent 10k/90s、细工具给 Lead、第二 spawn 槽、smolagents 替换 dsh |
 | 里程碑 | v0.6 |
-| 当前做到哪 | harness 已按 JoyAgent AutoAnalysis 补 `od_python` + InsightFactory 方法门控（禁止套模板全量洞察、禁止主键明细）；单测/eval PR-ANR-01/03/04/05/06/07/09；**手验** PR-ANR-02（右侧预览 + 报告质量）仍待 |
+| 当前做到哪 | 报告编排已改为 JoyAgent 真实链路。对话分析不再出现「绑定/选择工作区」：启动即绑定内部租户分区，dsh 听 0.0.0.0，iframe 用页面主机名。单测已通过；**真实浏览器手验** PR-ANR-02/10/11 待重跑 |
 | 提案 | [P016](../../../proposals/P016-conversation-analysis-report/) |
 
 ## P015 对话式仪表盘规划、生成与质量闭环

@@ -17,10 +17,10 @@ items:
   - id: PR-ANR-02
     title: 右侧 HTML / MD 文件预览
     gate: code
-    criterion: 分析 worker 开始后右侧按真实父子调用顺序持续展示 Agent/取数/变换/洞察/保存/成稿节点；节点须显示工具名、摘要、状态、耗时，展开后可看结构化输入与输出摘要；提交后同一文件栏切换为 HTML（iframe srcdoc，无 allow-scripts）或 Markdown，并保留过程 tab 可回看；对齐 JoyAgent PlanView / ActionPanel。
+    criterion: 分析 worker 开始后右侧分析栏顶层固定为「实时跟随 / 浏览器 / 文件」；实时跟随展示真实工具节点，PlanView 独立展示 PlanningAgent 动态业务任务，禁止用固定工具阶段充当计划；每个 data_analysis 完成后文件页实时新增中间 MD，最终 report_tool 完成后新增 HTML/MD，均可预览、复制、下载。
     method: manual
     command_or_path: open-dashboard-frontend/src/conversation/views/ConversationDshSurface.vue
-    expected: od-report-progress 打开并更新节点轨迹；report_ready 提升到 Lead 后由 od-open-report 原位切换最终文件；过程/HTML/MD 可切换，报告可下载当前格式。
+    expected: report-progress 独立返回 steps/plan/files；plan 来自 od_analysis_plan，files 随 od_complete_analysis_task 增长；iframe React 插件把思考卡片和工具 pill 画进对话 transcript；点 pill 切实时跟随且人工回看不被轮询抢回；report_ready 提升到 Lead 后自动切「文件」，HTML iframe 无 allow-scripts，MD 安全渲染。点收起或新对话后右栏保持关闭，不被同一 run 的 od-report-progress 重开。
     status: wip
     blocker_of_done: true
 
@@ -92,10 +92,30 @@ items:
   - id: PR-ANR-09
     title: AutoAnalysis 方法门控与 Python
     gate: code
-    criterion: od_insight 按 JoyAgent 方法门控，不套模板输出 OutstandingLast/Evenness 等不合格条目；明细/主键切片拒绝洞察；分析 worker 可调 od_python（depth≥1），Lead 不可调；commit 报告结构为分析过程/数据/结论/总结。
+    criterion: od_insight 按 JoyAgent 方法门控，不套模板输出 OutstandingLast/Evenness 等不合格条目；明细/主键切片拒绝洞察；分析 worker 可调 od_python（depth≥1），Lead 不可调；最终报告结构由 report Agent 根据子任务文件撰写，harness 不套固定章节。
     method: script
     command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
     expected: Attribution 通过；Evenness 在头部集中时为空；PayOrderId 拒绝；Lead 拒绝 od_python。
     status: pass
     evidence: "2026-08-26 analysis-worker.test.js gated insights + python guard"
+    blocker_of_done: true
+
+  - id: PR-ANR-10
+    title: JoyAgent 动态规划、子任务文件与 report_tool
+    gate: code
+    criterion: 报告 worker 必须先 od_get_schema 再只调一次 od_analysis_plan，计划从用户原问与实际 schema 动态生成且每任务含 businessKnowledge；每个任务由全新 data_analysis CodeAgent 执行并调一次 od_complete_analysis_task，独立 MD 必须保留真实聚合证据表与业务实体；未齐全任务文件不得成稿；第三条洞察不自动成稿，不设订单固定三切片或商户必选闸；最终内容由全新 report Agent 先调 od_read_analysis_files 读取全部子任务文件全文，再只调一次 od_commit_report，harness 只渲染 HTML/MD。
+    method: script+manual
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
+    expected: 单测覆盖动态 Plan 与工具节点分离、逐任务产文件、文件未齐禁止提交、三条洞察不自动成稿、Agent 撰写内容不被渲染器替换；真实浏览器可见动态计划、中间 MD 与最终 HTML/MD。
+    status: wip
+    blocker_of_done: true
+
+  - id: PR-ANR-11
+    title: 对话分析不出现绑定工作区
+    gate: code
+    criterion: 对话分析（含局域网用 IP 打开 Vue）Composer 可直接输入，不得出现「选择一个工作区开始 / 选择工作区 / 绑定工作区」。dsh 文件夹工作区仅内部租户分区，启动即绑定；空 POST /od/bridge 不得清掉默认 demo/workspace-retail。iframe 同域 /dsh/；Vite 拆分 dsh /api 与 Java /api。
+    method: script+manual
+    command_or_path: opendashboard-dsh-harness/packages/dsh-od-auth/src/bridge-state.test.js
+    expected: mergeClientBridge 空身份保留默认租户；本机与局域网打开 /conversations 均可直接提问，无工作区选择器。
+    status: wip
     blocker_of_done: true

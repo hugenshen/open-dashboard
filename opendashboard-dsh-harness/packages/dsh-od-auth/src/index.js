@@ -6,7 +6,7 @@
  * @module @opendashboard/dsh-od-auth
  */
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { getBridge, loadBridgeFromEnv, patchBridge, setBridge } from './bridge-state.js'
+import { ensureDefaultIdentity, getBridge, loadBridgeFromEnv, mergeClientBridge, patchBridge, setBridge } from './bridge-state.js'
 import { ensureOdDshWorkspace } from './od-workspace.js'
 import {
   displaySessionTitle,
@@ -116,21 +116,7 @@ export function apply(ctx) {
           try {
             const raw = await readBody(req)
             const parsed = raw ? JSON.parse(raw) : {}
-            const partial = {
-              userId: parsed.userId != null ? String(parsed.userId) : undefined,
-              workspaceId: parsed.workspaceId != null ? String(parsed.workspaceId) : undefined,
-              perms: parsed.perms != null ? String(parsed.perms) : undefined,
-              conversationId: parsed.conversationId != null ? String(parsed.conversationId) : undefined,
-              prompt: parsed.prompt != null ? String(parsed.prompt) : undefined,
-              datasetId: parsed.datasetId ? String(parsed.datasetId) : undefined,
-              dashboardId: parsed.dashboardId
-                ? String(parsed.dashboardId)
-                : (parsed.linkedDashboardId ? String(parsed.linkedDashboardId) : undefined),
-              linkedDashboardId: parsed.linkedDashboardId
-                ? String(parsed.linkedDashboardId)
-                : (parsed.dashboardId ? String(parsed.dashboardId) : undefined),
-            }
-            const next = await bindOdWorkspace(partial)
+            const next = await bindOdWorkspace(mergeClientBridge(parsed))
             sendJson(res, 200, { ok: true, bridge: next })
           } catch (err) {
             sendJson(res, 400, { ok: false, error: String(err?.message || err) })
@@ -153,11 +139,7 @@ export function apply(ctx) {
           sendJson(res, 405, { ok: false, error: 'method not allowed' })
           return
         }
-        const b = getBridge()
-        if (!b.userId || !b.workspaceId) {
-          sendJson(res, 401, { ok: false, error: 'unauthenticated: POST /od/bridge with userId and workspaceId first' })
-          return
-        }
+        const b = ensureDefaultIdentity()
         try {
           let path = b.dshWorkspacePath
           let workspaceId = b.dshWorkspaceId
@@ -167,7 +149,7 @@ export function apply(ctx) {
             workspaceId = next.dshWorkspaceId
           }
           if (!path) {
-            sendJson(res, 401, { ok: false, error: 'unauthenticated: missing OD workspace binding' })
+            sendJson(res, 500, { ok: false, error: 'conversation partition is not ready' })
             return
           }
 
@@ -269,17 +251,18 @@ export function apply(ctx) {
       if (step !== 1) return decision
 
       const b = getBridge()
-      const workspaceId = b.workspaceId || '(unset — open DataQ 对话分析 so the shell can bind workspace)'
-      const userId = b.userId || '(unset)'
-      const perms = b.perms || '(unset)'
+      const workspaceId = b.workspaceId || 'workspace-retail'
+      const userId = b.userId || 'demo'
+      const perms = b.perms || '*'
       const lines = [
-        'DataQ workspace context (internal; do not quote or recap to the user):',
+        'DataQ tenant context (internal; do not quote, recap, or ask the user to bind a workspace):',
         `- workspaceId: ${workspaceId}`,
         `- userId: ${userId}`,
         `- perms: ${perms}`,
         '- Product name is DataQ. Do not use any other product name in replies.',
         '- You are NOT a coding agent. Do not read or modify source files, shells, or local disks.',
-        '- Data access is only via od_* tools against Java BI for this workspace.',
+        '- Data access is only via od_* tools against Java BI for this tenant.',
+        '- Never tell the user to choose, bind, or open a workspace. The product has no user-facing workspace picker.',
         '- Prefer od_list_datasets before answering what data exists. Use the returned id fields (e.g. ds_…), never invent table names.',
         '- Do not list tools or a capability menu unless the user asks what you can do.',
       ]
