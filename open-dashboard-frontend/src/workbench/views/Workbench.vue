@@ -440,7 +440,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKey))
                 </div>
                 <div class="label">对话分析</div>
               </router-link>
-              <router-link class="wb-app" to="/dashboards">
+              <router-link class="wb-app" to="/dashboards/templates">
                 <div class="icon c2">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 5v14M5 12h14" />

@@ -93,6 +93,12 @@ export const router = createRouter({
       meta: { title: '仪表盘', fullBleed: true }
     },
     {
+      path: '/dashboards/templates',
+      name: 'dashboard-templates',
+      component: () => import('../dashboard/views/TemplateMarket.vue'),
+      meta: { title: '模板市场', fullBleed: true }
+    },
+    {
       path: '/dashboards/:id',
       name: 'dashboard-detail',
       component: () => import('../dashboard/views/DashboardList.vue'),

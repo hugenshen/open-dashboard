@@ -296,7 +296,7 @@
                 <tr><td>Workspace / Data Plaza</td><td><code>/api/workspaces</code></td><td>工作区列表、用户组、成员、角色、有效权限；数据广场 <code>GET /data-plaza</code> 读 <code>de_dataset</code> 目录，授权状态来自 <code>od_resource_acl</code>（不再用内存 AssetSeed）</td><td><span class="status coded">已编码未验收</span></td></tr>
                 <tr><td>Datasource / Dataset</td><td><code>/api/datasource</code> · <code>/api/dataset</code></td><td>连接、语义字段、预览</td><td><span class="status done">已交付</span></td></tr>
                 <tr><td>Query</td><td><code>/api/datasetQuery</code> · <code>/api/chartQuery</code></td><td>统一 QuerySpec、取数、导出</td><td><span class="status done">已交付</span></td></tr>
-                <tr><td>Dashboard / Share</td><td><code>/api/dashboard*</code> · <code>/api/share</code></td><td>生命周期、发布副本、匿名消费；P013 内置 ≥20 页模板 <code>GET /api/dashboard/templates</code>（分类/封面/响应式字段），应用时写入 mobile 布局</td><td><span class="status coded">已编码未验收</span></td></tr>
+                <tr><td>Dashboard / Share</td><td><code>/api/dashboard*</code> · <code>/api/share</code></td><td>生命周期、发布副本、匿名消费；P013 内置 ≥20 页模板 <code>GET /api/dashboard/templates</code>（分类/封面/响应式字段），应用时写入 mobile 布局。列表「新建」与工作台「新建看板」进入 <code>/dashboards/templates</code>（<code>TemplateMarket.vue</code>），须排在 <code>/dashboards/:id</code> 之前</td><td><span class="status coded">已编码未验收</span></td></tr>
                 <tr><td>Report / Catalog</td><td><code>/api/report</code> · <code>/api/catalog</code></td><td>文档、插图目录、发布</td><td><span class="status done">已交付</span></td></tr>
                 <tr><td>Conversation / BI Tools</td><td><code>/api/conversations</code> · <code>/api/internal/bi</code></td><td>会话 CRUD；BI 工具面供 dsh <code>od_*</code></td><td><span class="status done">已交付</span></td></tr>
               </tbody>

@@ -174,7 +174,11 @@ async function load() {
 }
 
 async function openCreateModal() {
-  await router.push({ name: 'dashboard-templates' })
+  try {
+    await router.push('/dashboards/templates')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
 }
 
 function pickTemplate(id: string) {
