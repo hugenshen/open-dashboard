@@ -31,6 +31,62 @@ function compact(value, max = 480) {
   return clean.length > max ? `${clean.slice(0, max)}…` : clean
 }
 
+function actionableIssue(name, result) {
+  const error = String(result?.error || '')
+  const note = String(result?.note || '')
+  const text = `${error}\n${note}`
+  if (!result || result.ok === false) {
+    if (/fetch failed|ECONNREFUSED|BI .*→ 5\d\d|schema failed/i.test(text)) {
+      return {
+        title: '数据服务暂时不可用',
+        message: '当前无法连接数据集/BI 服务，因此还不能读取订单数据生成报告。',
+        recovery: '请检查 Java BI 服务地址、端口和数据源连接；恢复后重新发送报告请求。',
+      }
+    }
+    if (/budget|预算已用完/i.test(text)) {
+      return {
+        title: '代码分析预算已用完',
+        message: 'Python 分析次数已达到本轮上限，系统应改用已经取得的聚合证据继续成稿，而不是继续探测。',
+        recovery: '继续保存已有洞察并生成子任务文件；如需更深分析，可新开一轮或减少分析任务数。',
+      }
+    }
+    if (/unknown handle|no frames|call od_get_data/i.test(text)) {
+      return {
+        title: '缺少可分析的数据',
+        message: '当前步骤没有拿到可用的数据结果，后续洞察和报告无法建立证据。',
+        recovery: '先重新取数，或切换到更稳定的维度/指标后再继续分析。',
+      }
+    }
+    return {
+      title: '步骤执行失败',
+      message: compact(error || '当前步骤失败，未返回可用结果。', 240),
+      recovery: compact(note || '请调整数据集、字段或分析任务后重试。', 240),
+    }
+  }
+  if (name === 'od_get_data' && (!Number(result.rowCount || 0) || !result.suggestedChartType)) {
+    return {
+      title: '没有取到可用于分析的数据',
+      message: '本次查询返回 0 行或结果形态不足，不能把空结果写成业务结论。',
+      recovery: '建议放宽时间范围、移除过窄筛选，或改用状态/渠道/商户/产品等更稳定维度重新取数。',
+    }
+  }
+  if (/detail\/ID dump|明细 dump|PayOrderId|主键/i.test(text)) {
+    return {
+      title: '当前维度不适合做洞察',
+      message: '结果更像明细或高基数 ID 列表，不适合作为报告结论。',
+      recovery: '请改用状态、渠道、产品、商户分组等业务维度，再生成洞察。',
+    }
+  }
+  if (/无分析结论|未过门控|no insight/i.test(text)) {
+    return {
+      title: '没有形成显著结论',
+      message: '该方法没有找到足够显著的趋势、异常或归因结果。',
+      recovery: '可换一个分析方法、换维度，或只把它作为附录证据，不写入核心结论。',
+    }
+  }
+  return null
+}
+
 function liveKeys(explicit) {
   const k = explicit || boardSessionKey()
   return k === LAST ? [LAST] : [k, LAST]
@@ -108,6 +164,35 @@ export function completeAnalysisPlanTask(index, file, opts = {}) {
     })
   }
   writeRun(run, opts.key)
+}
+
+function pushReportFiles(run, result) {
+  if (!run || !result || result.ok === false) return
+  const base = String(result.filename || 'analysis-report').replace(/\.(html?|md|markdown)$/i, '')
+  const files = []
+  if (result.html) {
+    files.push({
+      name: `${base}.html`,
+      type: 'html',
+      content: String(result.html),
+      size: Buffer.byteLength(String(result.html), 'utf8'),
+      final: true,
+    })
+  }
+  if (result.markdown) {
+    files.push({
+      name: `${base}.md`,
+      type: 'markdown',
+      content: String(result.markdown),
+      size: Buffer.byteLength(String(result.markdown), 'utf8'),
+      final: true,
+    })
+  }
+  for (const file of files) {
+    const existing = run.files.findIndex((item) => item.name === file.name)
+    if (existing >= 0) run.files[existing] = file
+    else run.files.push(file)
+  }
 }
 
 function writeRun(run, key) {
@@ -189,6 +274,23 @@ function stepDetail(name, args) {
   return ''
 }
 
+function inferTaskIndex(name, args, run) {
+  const explicit = Number(args?.taskIndex)
+  if (Number.isFinite(explicit) && explicit >= 0) return Math.floor(explicit)
+  if (name === 'od_analysis_plan') return 0
+  if (name === 'od_read_analysis_files' || name === 'od_commit_report') {
+    return Math.max(0, (run?.plan?.stages?.length || 1) - 1)
+  }
+  try {
+    const current = Number(getBoardSession().meta?.analysisTaskIndex)
+    if (Number.isFinite(current) && current >= 0) return Math.floor(current)
+  } catch {
+    /* ignore */
+  }
+  const active = run?.plan?.stepStatus?.findIndex((status) => status === 'in_progress')
+  return active >= 0 ? active : 0
+}
+
 function beginThought(name, args) {
   if (name === 'od_analysis_plan') {
     return {
@@ -259,9 +361,11 @@ function beginThought(name, args) {
 }
 
 function finishOutput(name, result) {
+  const issue = actionableIssue(name, result)
+  if (issue) return `${issue.title}：${issue.message}\n建议：${issue.recovery}`
   if (!result || result.ok === false) return compact(result?.error || 'failed', 480)
   if (name === 'od_get_data') {
-    return `${result.rowCount || 0} 行 → ${result.suggestedChartType || 'none'}${result.detailDump ? '（明细 dump，需换维）' : ''}`
+    return `已取得 ${result.rowCount || 0} 行聚合结果，适合用 ${result.suggestedChartType || '表格'} 展示。`
   }
   if (name === 'od_python') {
     const bits = [result.stdout, result.result != null ? JSON.stringify(result.result) : '']
@@ -282,6 +386,15 @@ function finishOutput(name, result) {
 }
 
 function finishThought(name, result) {
+  const issue = actionableIssue(name, result)
+  if (issue) {
+    return {
+      kind: 'issue',
+      title: issue.title,
+      body: `${issue.message}\n建议：${issue.recovery}`,
+      md: `**${issue.title}**\n\n${issue.message}\n\n建议：${issue.recovery}`,
+    }
+  }
   if (!result || result.ok === false) {
     return {
       kind: 'thought',
@@ -294,8 +407,8 @@ function finishThought(name, result) {
     return {
       kind: 'data',
       title: '取数完成',
-      body: `取到 ${result.rowCount || 0} 行聚合结果。`,
-      md: `**取数完成** ${result.rowCount || 0} 行，建议图种 \`${result.suggestedChartType || 'none'}\`。`,
+      body: `已取得 ${result.rowCount || 0} 行聚合结果，可继续做洞察和报告写作。`,
+      md: `**取数完成** 已取得 ${result.rowCount || 0} 行聚合结果，可继续做洞察和报告写作。`,
     }
   }
   if (name === 'od_python') {
@@ -383,6 +496,7 @@ export function beginReportStep(name, args = {}, opts = {}) {
     output: '',
     code: name === 'od_python' ? String(args.code || '') : '',
     attemptCount: 1,
+    taskIndex: inferTaskIndex(name, args, run),
   }
   run.steps.push(next)
   pushThought(run, beginThought(name, args))
@@ -400,6 +514,12 @@ export function finishReportStep(id, result, opts = {}) {
     step.status = ok ? 'done' : 'error'
     step.durationMs = Math.max(0, Date.now() - Number(step.startedAt || Date.now()))
     step.output = finishOutput(name, result)
+    const issue = actionableIssue(name, result)
+    if (issue) {
+      step.issue = issue.title
+      step.recovery = issue.recovery
+      step.status = ok ? 'needs_action' : 'error'
+    }
   }
   pushThought(run, finishThought(name, result))
   writeRun(run, opts.key)
@@ -449,6 +569,18 @@ export function snapshotReportProgress(key) {
   const current = [...steps].reverse().find((step) => (
     step.status === 'running'
   ))
+  const last = steps[steps.length - 1]
+  const staleMs = run.status === 'running' && last?.startedAt
+    ? Math.max(0, now - Number(last.startedAt || now))
+    : 0
+  const health = staleMs > 45_000
+    ? {
+      status: 'needs_attention',
+      title: '分析执行时间较长',
+      message: '本轮报告生成已经超过 45 秒没有进入最终交付状态。',
+      recovery: '建议检查是否卡在空数据、工具失败或模型未按报告流程调用成稿工具；必要时停止本轮并重试。',
+    }
+    : null
   return {
     title: run.title,
     status: run.status,
@@ -459,6 +591,7 @@ export function snapshotReportProgress(key) {
     narrative: run.thoughts.map((t) => t.md).filter(Boolean).join('\n\n'),
     plan: run.plan || { stages: [], stepStatus: [], steps: [], taskIds: [] },
     files: Array.isArray(run.files) ? run.files : [],
+    health,
     tick: run.status === 'running' ? now : Number(run.startedAt || 0),
   }
 }
@@ -489,6 +622,9 @@ export async function trackAnalysisTool(name, args, fn, opts = {}) {
     const result = await fn()
     finishReportStep(id, result, { key })
     if (name === 'od_commit_report') {
+      const run = getRun(key)
+      pushReportFiles(run, result)
+      if (run) writeRun(run, key)
       finishReportRun({ key, status: result?.ok === false ? 'error' : 'done' })
     }
     return result

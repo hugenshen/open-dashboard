@@ -41,7 +41,17 @@ Worker 对每个 data_analysis 子任务按 JoyAgent AutoAnalysis 做迭代分�
 
 订单数据不再预设固定三切片或商户必选闸。PlanningAgent 必须从用户原问与实际 schema 中确定分析对象、指标、维度和 `businessKnowledge`；如用户说「使用订单表生成报告」，动态计划应覆盖 schema 中真实存在且对经营有意义的主体/状态/时间/渠道等视角，但不得凭空补不存在的字段或强制每次同样的结构。
 
-查询 frame 继续保存 `fields` 和 `chart.encode`，用于分析证据的字段中文名、枚举和单位翻译；未定义枚举不猜测。最终内容由 report Agent 根据所有子任务文件撰写，渲染器不排序、不补章节、不自动发明结论。
+查询 frame 继续保存 `fields` 和 `chart.encode`，用于分析证据的字段中文名、枚举和单位翻译；未定义枚举不猜测。最终内容由 report Agent 根据所有子任务文件撰写，渲染器不排序、不自动发明结论。
+
+### 最终报告阅读结构
+
+最终报告对齐 JoyAgent 的“先结论、后过程、证据附录”阅读顺序。`od_commit_report` 不是内容模板，但会做提交门禁：
+
+- 第一屏必须先出现「报告摘要 / 核心结论 / 核心发现」之一，面向业务用户说明发生了什么、影响是什么
+- 中部按主题展开，如经营规模、时间趋势、状态结构、商户/渠道/产品贡献、关联洞察、异常风险
+- 必须包含「结论与建议」或同义章节，给出可执行下一步
+- 任务文件映射、数据边界、技术口径、证据表必须后置到「附录：数据口径与证据」，不得出现在开篇
+- Markdown/HTML 会自动补「目录」；HTML 安全渲染 Markdown 表格、有序列表、引用块和代码块
 
 ## Insight 规则（JoyAgent InsightFactory 门控）
 
@@ -60,7 +70,12 @@ Worker 对每个 data_analysis 子任务按 JoyAgent AutoAnalysis 做迭代分�
 
 postMessage 分两阶段，均使用 `source: 'opendashboard-dsh'`：
 
-- 过程：`type: 'od-report-progress'`。子会话工具把步骤写入进程内 `report-progress`（`GET /od/report-progress`）；dsh Web 每 400ms 轮询并 postMessage。事件中 `steps` 是真实工具节点；`plan` 是 PlanningAgent 的动态业务任务，两者禁止互相推导；`files` 随每个 data_analysis 完成追加中间 Markdown 文件
+- 过程：`type: 'od-report-progress'`。子会话工具把步骤写入进程内 `report-progress`（`GET /od/report-progress`）；dsh Web 每 400ms 轮询并 postMessage。事件中 `steps` 是真实工具节点；`plan` 是 PlanningAgent 的动态业务任务，两者禁止互相推导；`files` 随每个 data_analysis 完成追加中间 Markdown 文件。`od_commit_report` 成功后还会把最终 HTML/Markdown 正文写入 `files(final=true)`，作为 `report_ready` 事件丢失正文时的外层兜底交付通道。
+- 错误与空数据产品化：`report-progress` 不把 `fetch failed`、`0 行 → none`、Python 预算耗尽等工程语言直接暴露给用户，而是标准化为 `issue/recovery`：数据服务不可用、没有取到可分析数据、代码分析预算已用完、当前维度不适合做洞察、没有形成显著结论等。长时间运行但未交付时返回 `health.status=needs_attention`，右侧工作区展示可操作诊断。
+- 数据集匹配产品化：报告场景中 `od_list_datasets` 会把用户原问、keyword 与上下文一起做业务排序。用户提到“订单/支付订单/订单表/t_pay_order”时，优先把 `t_pay_order` / `ds_012eb19e` 排到最前，并降低 `数据源清单/de_datasource`、demo sales 等非目标表权重；关键词过滤结果不足时补拉全量数据集做兜底排序，避免报告走错表。
+- 恢复动作产品化：右侧诊断卡不仅显示 `issue/recovery`，还提供“放宽范围重试 / 换业务维度 / 跳过继续成稿”动作，点击后预填左侧对话，让用户能即时干预，而不是阅读工程日志后自行组织提示词。
+- 最终报告质量门禁：`od_commit_report` 不仅检查章节顺序、附录位置和业务实体保留，还会从所有 data_analysis 文件中抽取关键指标数值（排除商户 ID 等实体编号），要求最终 Markdown 至少保留足够的金额/数量/比例证据；只写“已核算/已量化/占主导”等泛化结论但没有具体数值时拒绝提交。
+- 回放兜底：外层 `ConversationDshSurface` 在挂载和 iframe load 后主动拉取 `/od/report-progress`；收到非 idle 进度或最终报告时，把最近一次报告快照写入 `localStorage`，24 小时内刷新/重登可恢复右侧报告过程与文件。该兜底不替代服务端 trace 持久化，后续商用应落会话事件表。
 - 对话栏：dsh React 插件 `JoyAnalysisDialogue` 用 `createPortal` 把灰底「思考过程」卡片和可点工具 pill 画进 **transcript**（JoyAgent Dialogue），**禁止**挂在 composer `input.dock` 当状态条
 - 产物：`type: 'od-open-report'`（title / format / html / markdown / filename）。子会话 `od_commit_report` 的 `report_ready` 必须先提升到父会话 `od_board_worker`，不能只留在 worker session
 - 点 pill 发 `od-report-select-step`，右栏切到对应任务跟随
@@ -68,9 +83,9 @@ postMessage 分两阶段，均使用 `source: 'opendashboard-dsh'`：
 - HTML：`iframe` `srcdoc`，`sandbox` **不要** `allow-scripts`
 - MD：前端轻量渲染（标题/列表/粗体/表格），转义 HTML
 - 右侧对齐 JoyAgent ActionView：标题「分析」+ 顶层 **实时跟随 / 浏览器 / 文件**。这三项是分析栏状态，不与产物格式混用；产品对话页不出现「工作区 / 绑定工作区」：
-  - 实时跟随：默认选当前最新工具节点，展示节点名、工具名、状态、耗时、输入、代码和输出；可前后切节点，人工回看后锁定，点「回到实时」才恢复自动跟随；底部 PlanView `当前/N` 展示动态业务任务，不展示固定工具清单
+  - 实时跟随：默认选当前最新工具节点，展示节点名、工具名、状态、耗时、输入、代码和输出；可前后切节点，人工回看后锁定，点「回到实时」才恢复自动跟随；主视图常驻展示动态业务规划卡片，每张卡显示任务序号、状态、任务说明和最近执行节点；点击卡片回看对应节点，点击「调整这步」把修改指令预填到左侧 composer
   - 浏览器：只收集 search/browser/web 类节点，按时间展示网页搜索或访问记录；本次未使用时给出明确空态
-  - 文件：每个 data_analysis 完成即列出中间 `.md` 文件；最终 report_tool 完成后再列出 `.html` 与 `.md`，所有文件均可原位预览、复制、下载
+  - 文件：每个 data_analysis 完成即列出中间 `.md` 文件；最终 report_tool 完成后再列出 `.html` 与 `.md`，所有文件均可原位预览、复制、下载。如果最终文件只从 `report-progress.files(final=true)` 到达，外层 Vue 也会自动切到「文件」页并打开 HTML/MD。
 - worker 开始后立刻打开右侧分析栏；对话 Node `od-report-preview`，`odKind: 'report_ready'`，turn 结束后展示
 - Composer 不得进入 dsh「选择一个工作区开始」inert 态。`od-auth` 启动即 `ensureOdDshWorkspace`；`POST /od/bridge` 空身份保留 env/默认 `demo` + `workspace-retail`；iframe 同域 `/dsh/`，Vite 把 dsh `/api` 改写成 loopback 以免局域网 WebSocket 被信任栅栏拦住
 

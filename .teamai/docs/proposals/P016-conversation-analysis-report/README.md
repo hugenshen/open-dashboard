@@ -60,6 +60,7 @@ implementation:
 - 照搬 JoyAgent 报告编排（仅 spawn worker，depth≥1）：`od_get_schema` → `od_analysis_plan` 动态 Plan → 每个 `data_analysis` 由全新 CodeAgent 执行（取数 / Python 或变换 / 洞察 / 分条保存）→ `od_complete_analysis_task` 生成含真实聚合证据表的独立 MD 文件 → 全新 report Agent 通过 `od_read_analysis_files` 读取所有文件全文 → 只调一次 `od_commit_report` 生成 HTML/MD
 - 取完数可以换问题/换维再取；图种在有行之后由 harness 填写 `suggestedChartType`
 - JoyAgent AutoAnalysis 能力：worker 可写 Python（pandas/numpy/scipy/sklearn 若已安装）做描述/相关/异常/趋势；`od_insight` 按方法门控（OutstandingFirst / Last / Attribution / Evenness / Trend / Correlation / ChangePoint），无显著性不输出、禁止保存「无分析结论」
+- 最终报告目录必须面向业务用户：第一屏先给「报告摘要 / 核心结论」与「核心发现」，再进入分主题分析、结论建议；任务文件映射、数据边界、证据表和技术口径必须后置到「附录：数据口径与证据」，禁止一开篇就是工程审计表
 - JoyAgent 式右侧分析栏：Lead 调用分析 worker 后立即打开；PlanView 仅展示 PlanningAgent 产生的动态业务任务，与工具节点分离；任务跟随展示当前节点，文件页随子任务完成实时出现中间 MD 产物
 - 完成后默认切换最终文件；右侧分析栏顶层固定为「实时跟随 / 浏览器 / 文件」，PlanView 不因成稿消失
 - 「实时跟随」追当前节点并支持前后回看/回到实时；「浏览器」按时间列网页搜索与访问记录；「文件」列 HTML/MD 两个静态产物，点文件后原位预览、复制或下载
@@ -67,6 +68,8 @@ implementation:
 - 对话分析**没有**用户可点的「绑定/选择工作区」。dsh 文件夹工作区只作内部会话分区，启动即绑定默认或登录租户；Composer 禁止出现「选择一个工作区开始」
 - 局域网用 `http://<lan-ip>:5173` 打开时，对话 iframe 走同域 `/dsh/`，不写死 `127.0.0.1:3090`
 - dsh React 插件在对话 transcript 展示思考卡片和可点工具 pill（JoyAgent Dialogue），不在 composer 上挂状态条
+- 实时跟随里的规划必须作为主视图常驻展示：每个 PlanningAgent 动态任务显示序号、状态、任务说明和最近执行节点；点规划卡可回看对应节点，点「调整这步」把可编辑指令预填到左侧输入框，便于用户中途改规划
+- 对话 transcript 必须保留/回放最近一次报告过程摘要：刷新或后续打开时仍能看到规划、思考卡片和可点工具 pill，不能只剩 “Deep diving” 或最终一句话
 - 与看板互斥：开报告收起看板，开看板收起报告；切会话两边都关；点「收起」或新对话后，同一轮 progress 不得把右栏再打开
 - 聚合取数上限 **≤200 行 / 15s**（JoyAgent 10k/90s 对 OD 大表风险过高；出板仍 ≤20 行 / 8s）
 
@@ -135,3 +138,8 @@ implementation:
 | 2026-08-26 | 用户指出新对话后右栏关不掉：收起/切会话后同一 run 的 `od-report-progress` 轮询又把工作空间打开。右栏忽略同一 `startedAt`；切会话 `POST /od/report-progress` reset。 |
 | 2026-08-26 | 用户要求报告流程完全搬 JoyAgent，禁止自主发挥：改为 PlanningAgent 动态计划、每任务全新 data_analysis CodeAgent 生成独立文件、最后全新 report Agent 读全部文件成稿。 |
 | 2026-08-26 | 用户指出最终报告质量与 JoyAgent 差距大。根因是汇总 Agent 只看子任务摘要，中间文件也没保留真实聚合表。对齐 JoyAgent `ReportTool`：中间 MD 保留实际商户 ID/业务实体与指标证据表；report Agent 先读全文，再按“整理而非摘要、不遗漏、禁止造数”成稿。 |
+| 2026-08-27 | 端到端复测发现 Lead 仍可能先 schema/profile 或先回一句话再 spawn，导致右侧不进入 JoyAgent worker。补齐 DSH 客户端发送前 prompt→bridge 同步，Lead 报告语境下 schema/profile 工具层拒绝并指向 `od_board_worker`；系统提示要求报告路径先工具后文字。 |
+| 2026-08-27 | 为缩小最终报告质量差距，`od_commit_report` 增加计划型报告质量门禁：最终 Markdown 过薄、丢失中间分析文件里的商户/经营主体 ID 或商户证据时拒绝提交，迫使 report Agent 依据全部文件重写。 |
+| 2026-08-28 | 用户反馈“生成报告”被误判为“看板规划”，触发 `semanticReady=false` fail-closed。修正：`semanticReady` 仅属于看板 `od_plan_charts` / `od_generate_board`；报告意图进入这两个工具时直接拒绝并指向 `od_board_worker(写分析报告)`，`/report` 人话也标注“不是看板”。 |
+| 2026-08-28 | 用户指出右侧规划不直观、无法中途调整，且对话回看缺少思考过程。对齐 JoyAgent：实时跟随改为规划卡片 + 节点详情双栏；规划卡显示状态、说明、最近节点并可点选回看；「调整这步」预填左侧输入框；对话 transcript 缓存最近一次过程用于回放。 |
+| 2026-08-28 | 用户指出最终报告目录章节不可读，第一屏全是任务文件/数据边界/证据表。对齐 JoyAgent 报告阅读顺序：提交门禁要求「报告摘要/核心结论」开篇，其后核心发现、分主题分析、结论建议，数据口径与证据追溯统一后置到附录。 |

@@ -17,11 +17,12 @@ items:
   - id: PR-ANR-02
     title: 右侧 HTML / MD 文件预览
     gate: code
-    criterion: 分析 worker 开始后右侧分析栏顶层固定为「实时跟随 / 浏览器 / 文件」；实时跟随展示真实工具节点，PlanView 独立展示 PlanningAgent 动态业务任务，禁止用固定工具阶段充当计划；每个 data_analysis 完成后文件页实时新增中间 MD，最终 report_tool 完成后新增 HTML/MD，均可预览、复制、下载。
+    criterion: 分析 worker 开始后右侧分析栏顶层固定为「实时跟随 / 浏览器 / 文件」；实时跟随展示真实工具节点，PlanView 独立展示 PlanningAgent 动态业务任务，禁止用固定工具阶段充当计划；规划必须作为主视图清晰常驻展示，能看到每个任务的序号、状态、说明和最近执行节点，支持点规划回看对应节点，并提供「调整这步」预填输入框；每个 data_analysis 完成后文件页实时新增中间 MD，最终 report_tool 完成后新增 HTML/MD，均可预览、复制、下载；对话 transcript 必须能回放最近一次规划/思考/工具 pill，避免后续回看只剩 Deep diving 或最终文案。
     method: manual
     command_or_path: open-dashboard-frontend/src/conversation/views/ConversationDshSurface.vue
-    expected: report-progress 独立返回 steps/plan/files；plan 来自 od_analysis_plan，files 随 od_complete_analysis_task 增长；iframe React 插件把思考卡片和工具 pill 画进对话 transcript；点 pill 切实时跟随且人工回看不被轮询抢回；report_ready 提升到 Lead 后自动切「文件」，HTML iframe 无 allow-scripts，MD 安全渲染。点收起或新对话后右栏保持关闭，不被同一 run 的 od-report-progress 重开。
+    expected: report-progress 独立返回 steps/plan/files 且 step 带 taskIndex 映射；plan 来自 od_analysis_plan，files 随 od_complete_analysis_task 增长；右侧实时跟随为规划卡片 + 节点详情双栏，点击规划卡定位对应节点，点击「调整这步」预填左侧 composer；iframe React 插件把思考卡片和工具 pill 画进对话 transcript，并在完成/刷新后回放最近一次过程；点 pill 切实时跟随且人工回看不被轮询抢回；report_ready 提升到 Lead 后自动切「文件」，HTML iframe 无 allow-scripts，MD 安全渲染。点收起或新对话后右栏保持关闭，不被同一 run 的 od-report-progress 重开。
     status: wip
+    evidence: "2026-09-02 report-progress.test.js 覆盖空数据/数据服务失败/Python预算耗尽 issue+recovery；od_commit_report 成功后 progress.files(final=true) 保留最终 HTML/MD 正文，作为 report_ready 丢正文时的外层兜底。前端 build 通过，右栏支持 needs_action 诊断卡、恢复动作按钮（放宽范围/换业务维度/跳过继续成稿）、mount-time progress 拉取与 localStorage 最近报告快照恢复。真实 ds_sales E2E progress 已跑到 done，产出 5 个中间 MD + final HTML/MD；真实 ds_012eb19e 长链路仍待数据目录接入后手验。"
     blocker_of_done: true
 
   - id: PR-ANR-03
@@ -103,11 +104,12 @@ items:
   - id: PR-ANR-10
     title: JoyAgent 动态规划、子任务文件与 report_tool
     gate: code
-    criterion: 报告 worker 必须先 od_get_schema 再只调一次 od_analysis_plan，计划从用户原问与实际 schema 动态生成且每任务含 businessKnowledge；每个任务由全新 data_analysis CodeAgent 执行并调一次 od_complete_analysis_task，独立 MD 必须保留真实聚合证据表与业务实体；未齐全任务文件不得成稿；第三条洞察不自动成稿，不设订单固定三切片或商户必选闸；最终内容由全新 report Agent 先调 od_read_analysis_files 读取全部子任务文件全文，再只调一次 od_commit_report，harness 只渲染 HTML/MD。
+    criterion: 报告路径的 Lead 必须只 list dataset 并立即委派 od_board_worker，不能自行 schema/profile、调用 od_plan_charts/od_generate_board 或先回复文字；semanticReady=false 只阻止看板，不得阻止报告；报告 worker 必须先 od_get_schema 再只调一次 od_analysis_plan，计划从用户原问与实际 schema 动态生成且每任务含 businessKnowledge；每个任务由全新 data_analysis CodeAgent 执行并调一次 od_complete_analysis_task，独立 MD 必须保留真实聚合证据表与业务实体；未齐全任务文件不得成稿；第三条洞察不自动成稿，不设订单固定三切片或商户必选闸；最终内容由全新 report Agent 先调 od_read_analysis_files 读取全部子任务文件全文，再只调一次 od_commit_report，harness 只渲染 HTML/MD；最终 Markdown 过薄、丢失商户/经营主体证据、或章节顺序不面向业务用户时必须拒绝提交。最终目录必须以「报告摘要/核心结论」开篇，包含核心发现、分主题分析、结论与建议，任务文件映射/数据边界/证据表只能放在附录。
     method: script+manual
     command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
-    expected: 单测覆盖动态 Plan 与工具节点分离、逐任务产文件、文件未齐禁止提交、三条洞察不自动成稿、Agent 撰写内容不被渲染器替换；真实浏览器可见动态计划、中间 MD 与最终 HTML/MD。
+    expected: 单测覆盖动态 Plan 与工具节点分离、逐任务产文件、文件未齐禁止提交、三条洞察不自动成稿、Agent 撰写内容不被渲染器替换、薄报告/丢商户证据/工程口径前置被拒、报告意图不进入看板 semanticReady 门禁；真实浏览器可见动态计划、中间 MD 与最终 HTML/MD，最终报告第一屏先读懂业务结论。
     status: wip
+    evidence: "2026-09-02 P016 目标回归 58/58；analysis eval 2/2；函数级集成验证 commit 后 snapshotReportProgress.status=done 且包含 order-report.html/order-report.md 正文。od_list_datasets 已对报告请求中的订单/支付订单语义做业务排序，优先 t_pay_order / ds_012eb19e，避免数据源清单或 ds_sales 抢占；od_commit_report 新增指标数值证据覆盖门禁，只有实体 ID/泛化定性结论、未保留金额/数量等关键数值时拒绝提交。浏览器/HTTP E2E 证明 ds_sales progress 可最终 done 并产出 5 个中间 MD + final HTML/MD；真实 t_pay_order 报告仍待数据目录接入后手验。"
     blocker_of_done: true
 
   - id: PR-ANR-11

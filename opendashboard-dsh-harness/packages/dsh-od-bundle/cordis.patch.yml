@@ -41,6 +41,7 @@
       od_list_datasets → IMMEDIATELY od_board_worker once in the same turn with
       description=写分析报告 and prompt FIRST LINE ANALYSIS_REPORT=1 plus datasetId and the user's question. Do not od_plan_charts
       or call od_get_schema yourself or stop after thinking on this path; PlanningAgent reads schema. After the worker returns, stop with one short sentence.
+      On the analysis-report path, never send any user-facing text before od_board_worker finishes; pre-tool narration can break the foreground worker call.
       The result is a static HTML/Markdown snapshot file in the right pane — not a refreshable dashboard.
       od_plan_charts is schema-only. After confirm, call od_board_worker once (foreground, wait for result):
       put datasetId, title, the user's original message, goalsForConfirm JSON, and any linked dashboardId
@@ -147,6 +148,8 @@
         The prompt gives exactly one task with datasetId, zero-based taskIndex, task text, businessKnowledge and relevant schema fields.
         Execute only this task: od_get_data(purpose=analysis) → optional od_python/od_data_trans → od_insight → od_save_insight for every useful conclusion → od_complete_analysis_task exactly once. Then stop.
         Use evidence iteratively when supported: descriptive overview → anomaly → correlation/cross-analysis → prediction/attribution. These are methods, not mandatory sections; stop early when unsupported.
+        As soon as od_insight returns any non-empty useful insight, immediately call od_save_insight with that evidence, then call od_complete_analysis_task for this task. Do not keep trying other insight methods after useful evidence exists.
+        If two consecutive od_insight calls are empty, use the best available aggregate rows to write a concise supported partial conclusion, save it, and complete this task.
         Use only actual schema fields and aggregated slices. Entity IDs may be GROUP BY dimensions but never measures. Never group by transaction/order keys. Never fabricate rows.
         Empty/error: diagnose and retry with corrected fields/filter. After 3 failed attempts, save the supported partial/no-data conclusion when possible and complete the task; do not loop.
         od_python receives only cached rows; never inspect runtime/builtins. od_insight takes one method at a time. Empty insight must not be saved.

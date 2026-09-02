@@ -219,6 +219,121 @@ function taskFileMarkdown(task, blocks, summary) {
   return `# ${task.title}\n\n## 任务\n\n${task.task}\n\n## 业务知识\n\n${task.businessKnowledge || '未提供额外业务知识，仅依据 schema 与聚合结果。'}\n\n${sections}\n\n## 子任务总结\n\n${String(summary || '').trim() || blocks.flatMap((block) => block.items || []).map((item) => item.text).filter(Boolean).join('\n')}`
 }
 
+function extractReportEvidenceTokens(files) {
+  const tokens = []
+  const add = (value) => {
+    const token = String(value ?? '').trim()
+    if (!token || token.length < 2 || tokens.includes(token)) return
+    tokens.push(token)
+  }
+  for (const file of Array.isArray(files) ? files : []) {
+    const text = String(file?.content || '')
+    if (!text) continue
+    for (const match of text.matchAll(/商户\s*([A-Za-z0-9_-]{2,})/g)) add(match[1])
+    const lines = text.split(/\r?\n/)
+    for (let i = 0; i < lines.length; i += 1) {
+      const header = lines[i]
+      if (!/^\|.*\|$/.test(header) || !/(MchId|商户|Merchant|merchant|AppId|应用|Agent|代理|Store|门店)/.test(header)) continue
+      const columns = header.split('|').slice(1, -1).map((s) => s.trim())
+      const entityIndexes = columns
+        .map((column, index) => (/(MchId|商户|Merchant|merchant|AppId|应用|Agent|代理|Store|门店)/.test(column) ? index : -1))
+        .filter((index) => index >= 0)
+      for (const rowLine of lines.slice(i + 2, i + 10)) {
+        if (!/^\|.*\|$/.test(rowLine)) break
+        const cells = rowLine.split('|').slice(1, -1).map((s) => s.trim())
+        entityIndexes.forEach((index) => add(cells[index]))
+      }
+    }
+  }
+  return tokens.slice(0, 12)
+}
+
+function extractReportNumericEvidenceTokens(files) {
+  const tokens = []
+  const add = (value) => {
+    const token = String(value ?? '').trim().replace(/,/g, '')
+    if (!token || tokens.includes(token)) return
+    if (!/^-?\d+(?:\.\d+)?%?$/.test(token)) return
+    const numeric = Number(token.replace(/%$/, ''))
+    if (!Number.isFinite(numeric)) return
+    // Keep business-scale numbers and percentages; skip pure section/status noise
+    // unless the token is part of an evidence table with enough digits.
+    if (Math.abs(numeric) < 10 && !token.includes('.') && !token.endsWith('%')) return
+    tokens.push(token)
+  }
+  for (const file of Array.isArray(files) ? files : []) {
+    const text = String(file?.content || '')
+    if (!text) continue
+    for (const match of text.matchAll(/(?<![A-Za-z])(-?\d[\d,]*(?:\.\d+)?%?)(?![A-Za-z])/g)) {
+      add(match[1])
+    }
+  }
+  return tokens.slice(0, 20)
+}
+
+function validateAuthoredReportQuality(markdown, files) {
+  const text = String(markdown || '')
+  const normalizedText = text.replace(/,/g, '')
+  const plainLen = text.replace(/[#*_`\s|:-]/g, '').length
+  if (plainLen < 160) {
+    return { ok: false, error: 'final report is too thin — rewrite it as a complete business report with findings, evidence tables, numbers and caveats from every analysis file' }
+  }
+  const h2 = [...text.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1].trim())
+  const contentH2 = h2.filter((title) => !/^目录$/.test(title))
+  const firstH2 = contentH2[0] || ''
+  if (!/(摘要|核心结论|核心发现|主要发现|Executive Summary)/i.test(firstH2)) {
+    return {
+      ok: false,
+      error: 'final report chapters are not user-readable. Rewrite with a JoyAgent-style business report outline: 1) 报告摘要/核心结论 first, 2) 核心发现, 3) 分主题分析, 4) 结论与建议, 5) 数据口径与证据附录. Do not put task-file mapping, data boundaries, or evidence-file tables before the summary.',
+    }
+  }
+  const early = text.slice(0, 1200)
+  if (/(^|\n)##\s*(报告说明|分析过程|数据口径|数据边界|证据|任务文件|口径说明)/.test(early)
+    || /任务\s*\|.*证据文件|证据文件\s*\|.*任务|task\d+.*\.md/i.test(early)) {
+    return {
+      ok: false,
+      error: 'final report starts with engineering evidence/lineage instead of business conclusions. Move task mapping, data口径, boundary notes and evidence tables to an appendix after the recommendations; first page must explain the business result in plain language.',
+    }
+  }
+  if (!h2.some((title) => /(结论|建议|行动|风险|机会)/.test(title))) {
+    return {
+      ok: false,
+      error: 'final report needs a conclusion/recommendation chapter for business users, not only evidence tables. Add “结论与建议” before the appendix.',
+    }
+  }
+  if (!h2.some((title) => /(附录|口径|证据|方法)/.test(title))) {
+    return {
+      ok: false,
+      error: 'final report must keep evidence traceability, but place it at the end as “附录：数据口径与证据”.',
+    }
+  }
+  const sourceText = (Array.isArray(files) ? files : []).map((file) => String(file?.content || '')).join('\n')
+  const requiredEntityTokens = extractReportEvidenceTokens(files)
+  const missingEntities = requiredEntityTokens.filter((token) => !text.includes(token))
+  if (missingEntities.length) {
+    return {
+      ok: false,
+      error: `final report lost business entities from analysis files: ${missingEntities.slice(0, 6).join(', ')}. Include the actual IDs/names and their evidence instead of summarizing them away.`,
+    }
+  }
+  if (/(MchId|商户ID|商户)/.test(sourceText) && !/(MchId|商户ID|商户)/.test(text)) {
+    return { ok: false, error: 'final report must include merchant/entity analysis because the analysis files contain merchant evidence' }
+  }
+  const numericTokens = extractReportNumericEvidenceTokens(files)
+    .filter((token) => !requiredEntityTokens.includes(token))
+  if (numericTokens.length >= 3) {
+    const included = numericTokens.filter((token) => normalizedText.includes(token))
+    const required = Math.min(3, Math.ceil(numericTokens.length * 0.35))
+    if (included.length < required) {
+      return {
+        ok: false,
+        error: `final report is too generic and lost numeric evidence from analysis files. Include concrete values/ratios from the evidence tables (for example: ${numericTokens.slice(0, 6).join(', ')}), not only qualitative wording.`,
+      }
+    }
+  }
+  return { ok: true }
+}
+
 /** JoyAgent report_tool downloads every product file before invoking its report model. */
 export function runReadAnalysisFiles(_args = {}, opts = {}) {
   const session = sessionOf(opts)
@@ -287,6 +402,10 @@ export function runCommitReport(args, opts = {}) {
   const authored = String(args.markdown || args.content || '').trim()
   if (plan?.tasks?.length && !authored) {
     return { ok: false, error: 'final authored markdown is required after analysis planning' }
+  }
+  if (plan?.tasks?.length) {
+    const quality = validateAuthoredReportQuality(authored, session.analysisFiles)
+    if (!quality.ok) return quality
   }
   const rendered = authored ? renderAuthoredReport({ title, markdown: authored }) : renderReport({
     title,
@@ -507,7 +626,8 @@ export function registerAnalysisWorkerTools(ctx) {
     name: 'od_read_analysis_files',
     description:
       'REPORT GENERATOR ONLY. JoyAgent report_tool file download analogue. '
-      + 'After every data_analysis task is complete, read ALL independent Markdown files in full before authoring the final report.',
+      + 'After every data_analysis task is complete, read ALL independent Markdown files in full before authoring the final report. '
+      + 'Use the files as evidence, but do not copy their task/lineage structure into the opening chapters.',
     parameters: {},
     output: {
       schema: { type: 'object', additionalProperties: true },
@@ -532,6 +652,8 @@ export function registerAnalysisWorkerTools(ctx) {
     description:
       'ANALYSIS WORKER ONLY. JoyAgent report_tool analogue. Read all completed analysis task files and author one final report. '
       + 'Call exactly once after od_complete_analysis_task has produced every file. markdown/content must be a complete evidence-backed Chinese report, not a fixed template. '
+      + 'The chapter order must be readable for business users: 报告摘要/核心结论 first, then 核心发现, 分主题分析, 结论与建议, and finally 附录：数据口径与证据. '
+      + 'Do not put 报告说明、任务文件映射、数据边界、证据表 at the beginning; move those to the appendix. '
       + 'The harness only renders the authored Markdown to static HTML/MD and never invents sections. Conversation lead must not call this.',
     parameters: {
       title: { type: 'string' },
