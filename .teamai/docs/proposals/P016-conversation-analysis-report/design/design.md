@@ -70,12 +70,12 @@ Worker 对每个 data_analysis 子任务按 JoyAgent AutoAnalysis 做迭代分�
 
 postMessage 分两阶段，均使用 `source: 'opendashboard-dsh'`：
 
-- 过程：`type: 'od-report-progress'`。子会话工具把步骤写入进程内 `report-progress`（`GET /od/report-progress`）；dsh Web 每 400ms 轮询并 postMessage。事件中 `steps` 是真实工具节点；`plan` 是 PlanningAgent 的动态业务任务，两者禁止互相推导；`files` 随每个 data_analysis 完成追加中间 Markdown 文件。`od_commit_report` 成功后还会把最终 HTML/Markdown 正文写入 `files(final=true)`，作为 `report_ready` 事件丢失正文时的外层兜底交付通道。
+- 过程：`type: 'od-report-progress'`。子会话工具把步骤写入 `report-progress`（`GET /od/report-progress`），并同步写入 `OD_REPORT_PROGRESS_FILE` 指向的服务端快照文件（默认系统临时目录，24 小时 TTL）；dsh Web 每 400ms 轮询并 postMessage。事件中 `steps` 是真实工具节点；`plan` 是 PlanningAgent 的动态业务任务，两者禁止互相推导；`files` 随每个 data_analysis 完成追加中间 Markdown 文件。`od_commit_report` 成功后还会把最终 HTML/Markdown 正文写入 `files(final=true)`，作为 `report_ready` 事件丢失正文或进程内状态丢失时的外层兜底交付通道。
 - 错误与空数据产品化：`report-progress` 不把 `fetch failed`、`0 行 → none`、Python 预算耗尽等工程语言直接暴露给用户，而是标准化为 `issue/recovery`：数据服务不可用、没有取到可分析数据、代码分析预算已用完、当前维度不适合做洞察、没有形成显著结论等。长时间运行但未交付时返回 `health.status=needs_attention`，右侧工作区展示可操作诊断。
-- 数据集匹配产品化：报告场景中 `od_list_datasets` 会把用户原问、keyword 与上下文一起做业务排序。用户提到“订单/支付订单/订单表/t_pay_order”时，优先把 `t_pay_order` / `ds_012eb19e` 排到最前，并降低 `数据源清单/de_datasource`、demo sales 等非目标表权重；关键词过滤结果不足时补拉全量数据集做兜底排序，避免报告走错表。
+- 数据集匹配产品化：报告场景中 `od_list_datasets` 会把用户原问、keyword 与上下文一起做业务排序。用户提到“订单/支付订单/订单表/t_pay_order”时，优先把 `t_pay_order` / `ds_012eb19e` 排到最前，并降低 `数据源清单/de_datasource`、demo sales 等非目标表权重；关键词过滤结果不足时补拉全量数据集做兜底排序。Java demo seed 与 Flyway `V21__demo_payment_order_dataset.sql` 均注册 `ds_012eb19e · t_pay_order`；若本地/LAN demo 的 Java 目录尚未迁移或暂不可用，DSH 只在订单报告语义下提供标记为 `demo-fallback` 的同名订单数据集与聚合样例，避免验收链路退回 `ds_sales` 或空列表。
 - 恢复动作产品化：右侧诊断卡不仅显示 `issue/recovery`，还提供“放宽范围重试 / 换业务维度 / 跳过继续成稿”动作，点击后预填左侧对话，让用户能即时干预，而不是阅读工程日志后自行组织提示词。
 - 最终报告质量门禁：`od_commit_report` 不仅检查章节顺序、附录位置和业务实体保留，还会从所有 data_analysis 文件中抽取关键指标数值（排除商户 ID 等实体编号），要求最终 Markdown 至少保留足够的金额/数量/比例证据；只写“已核算/已量化/占主导”等泛化结论但没有具体数值时拒绝提交。
-- 回放兜底：外层 `ConversationDshSurface` 在挂载和 iframe load 后主动拉取 `/od/report-progress`；收到非 idle 进度或最终报告时，把最近一次报告快照写入 `localStorage`，24 小时内刷新/重登可恢复右侧报告过程与文件。该兜底不替代服务端 trace 持久化，后续商用应落会话事件表。
+- 回放兜底：外层 `ConversationDshSurface` 在挂载和 iframe load 后主动拉取 `/od/report-progress`；DSH 服务端优先返回内存态，缺失时读取 24 小时内的快照文件；外层收到非 idle 进度或最终报告时，再把最近一次报告快照写入 `localStorage`，刷新/重登可恢复右侧报告过程与文件。该实现解决本地进程/页面刷新回放断层；后续多用户商用仍应把 trace 落会话事件表并按 conversationId 隔离。
 - 对话栏：dsh React 插件 `JoyAnalysisDialogue` 用 `createPortal` 把灰底「思考过程」卡片和可点工具 pill 画进 **transcript**（JoyAgent Dialogue），**禁止**挂在 composer `input.dock` 当状态条
 - 产物：`type: 'od-open-report'`（title / format / html / markdown / filename）。子会话 `od_commit_report` 的 `report_ready` 必须先提升到父会话 `od_board_worker`，不能只留在 worker session
 - 点 pill 发 `od-report-select-step`，右栏切到对应任务跟随

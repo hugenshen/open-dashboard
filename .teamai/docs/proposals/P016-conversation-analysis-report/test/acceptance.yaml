@@ -22,7 +22,7 @@ items:
     command_or_path: open-dashboard-frontend/src/conversation/views/ConversationDshSurface.vue
     expected: report-progress 独立返回 steps/plan/files 且 step 带 taskIndex 映射；plan 来自 od_analysis_plan，files 随 od_complete_analysis_task 增长；右侧实时跟随为规划卡片 + 节点详情双栏，点击规划卡定位对应节点，点击「调整这步」预填左侧 composer；iframe React 插件把思考卡片和工具 pill 画进对话 transcript，并在完成/刷新后回放最近一次过程；点 pill 切实时跟随且人工回看不被轮询抢回；report_ready 提升到 Lead 后自动切「文件」，HTML iframe 无 allow-scripts，MD 安全渲染。点收起或新对话后右栏保持关闭，不被同一 run 的 od-report-progress 重开。
     status: wip
-    evidence: "2026-09-02 report-progress.test.js 覆盖空数据/数据服务失败/Python预算耗尽 issue+recovery；od_commit_report 成功后 progress.files(final=true) 保留最终 HTML/MD 正文，作为 report_ready 丢正文时的外层兜底。前端 build 通过，右栏支持 needs_action 诊断卡、恢复动作按钮（放宽范围/换业务维度/跳过继续成稿）、mount-time progress 拉取与 localStorage 最近报告快照恢复。真实 ds_sales E2E progress 已跑到 done，产出 5 个中间 MD + final HTML/MD；真实 ds_012eb19e 长链路仍待数据目录接入后手验。"
+    evidence: "2026-09-02 report-progress.test.js 覆盖空数据/数据服务失败/Python预算耗尽 issue+recovery；od_commit_report 成功后 progress.files(final=true) 保留最终 HTML/MD 正文。report-progress 新增服务端快照文件回放（OD_REPORT_PROGRESS_FILE / 默认 tmp / 24h TTL），内存态丢失后仍可恢复最终过程与文件；外层 Vue 同时保留 localStorage 最近报告快照。前端 build 通过，右栏支持 needs_action 诊断卡、恢复动作按钮（放宽范围/换业务维度/跳过继续成稿）、mount-time progress 拉取。真实 ds_sales E2E progress 已跑到 done；函数级订单 golden path 已验证 ds_012eb19e 产出 3 个中间 MD + final HTML/MD。仍需浏览器真实 worker 长链路手验。"
     blocker_of_done: true
 
   - id: PR-ANR-03
@@ -109,7 +109,7 @@ items:
     command_or_path: opendashboard-dsh-harness/packages/dsh-od-bi/src/analysis-worker.test.js
     expected: 单测覆盖动态 Plan 与工具节点分离、逐任务产文件、文件未齐禁止提交、三条洞察不自动成稿、Agent 撰写内容不被渲染器替换、薄报告/丢商户证据/工程口径前置被拒、报告意图不进入看板 semanticReady 门禁；真实浏览器可见动态计划、中间 MD 与最终 HTML/MD，最终报告第一屏先读懂业务结论。
     status: wip
-    evidence: "2026-09-02 P016 目标回归 58/58；analysis eval 2/2；函数级集成验证 commit 后 snapshotReportProgress.status=done 且包含 order-report.html/order-report.md 正文。od_list_datasets 已对报告请求中的订单/支付订单语义做业务排序，优先 t_pay_order / ds_012eb19e，避免数据源清单或 ds_sales 抢占；od_commit_report 新增指标数值证据覆盖门禁，只有实体 ID/泛化定性结论、未保留金额/数量等关键数值时拒绝提交。浏览器/HTTP E2E 证明 ds_sales progress 可最终 done 并产出 5 个中间 MD + final HTML/MD；真实 t_pay_order 报告仍待数据目录接入后手验。"
+    evidence: "2026-09-02 P016 目标回归 61/61；analysis eval 2/2；后端 Maven 编译通过。Java demo seed 与 V21 migration 新增 ds_012eb19e · t_pay_order；DSH 在 Java 目录缺失/未迁移时仅对订单报告语义提供 demo-fallback 同名订单数据集、schema 与聚合取数，避免退回 ds_sales。函数级订单 golden path 验证：规划 3 个任务，基于 ds_012eb19e 生成支付状态、商户金额、平台代理利润 3 个中间 MD，最终 snapshotReportProgress.status=done 且包含 ds_012eb19e_支付订单表经营分析报告.html/md；最终报告保留 M10004/M10001 等商户、1207000/570000/19950 等金额/利润证据。od_commit_report 修正实体抽取误杀，排除字段名和纯数值，数值证据另由 numeric gate 校验。浏览器真实 worker 长链路仍待手验。"
     blocker_of_done: true
 
   - id: PR-ANR-11

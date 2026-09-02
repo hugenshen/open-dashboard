@@ -92,6 +92,18 @@ public class DatasetService {
                 field("expense", "支出", "quota"),
                 field("profit", "利润", "quota")
         ));
+        putSeed("ds_012eb19e", "支付订单表", "订单经营", "t_pay_order", List.of(
+                field("PayOrderId", "支付订单ID", "dim"),
+                field("CreatedDate", "下单日期", "dim"),
+                field("Status", "支付状态（-1=未知/缺失；2=支付成功；3=业务处理完成）", "dim"),
+                field("ChannelId", "渠道ID", "dim"),
+                field("ProductId", "产品ID", "dim"),
+                field("MchId", "商户ID", "dim"),
+                field("Amount", "订单金额（单位分）", "quota"),
+                field("MchIncome", "商户入账金额（单位分）", "quota"),
+                field("AgentProfit", "平台代理利润（单位分）", "quota"),
+                field("MchRate", "商户费率", "quota")
+        ));
     }
 
     private void putSeed(String id, String name, String folder, String table, List<DatasetFieldVO> fields) {

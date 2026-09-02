@@ -1,5 +1,8 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import {
   beginReportStep,
   ensureReportRun,
@@ -13,7 +16,10 @@ import {
 } from './report-progress.js'
 
 describe('report-progress (PR-ANR-02 live nodes)', () => {
-  beforeEach(() => resetReportProgress())
+  beforeEach(() => {
+    process.env.OD_REPORT_PROGRESS_FILE = path.join(os.tmpdir(), `od-report-progress-test-${process.pid}.json`)
+    resetReportProgress()
+  })
 
   it('grows nodes as get_data / python / insight finish', async () => {
     ensureReportRun({ title: '写分析报告', key: 'test-progress' })
@@ -165,5 +171,28 @@ describe('report-progress (PR-ANR-02 live nodes)', () => {
     const snap = snapshotReportProgress()
     assert.equal(snap.status, 'idle')
     assert.equal(snap.startedAt, 0)
+  })
+
+  it('replays the latest report progress from persisted snapshot after memory loss', async () => {
+    await trackAnalysisTool(
+      'od_commit_report',
+      { title: '订单报告' },
+      async () => ({
+        ok: true,
+        title: '订单报告',
+        filename: 'order.html',
+        html: '<h1>订单报告</h1>',
+        markdown: '# 订单报告\n\n包含商户 M10004 与金额 570000。',
+      }),
+      { force: true, key: 'persisted-run' },
+    )
+    assert.equal(snapshotReportProgress('persisted-run').status, 'done')
+    const persisted = JSON.parse(fs.readFileSync(process.env.OD_REPORT_PROGRESS_FILE, 'utf8'))
+    resetReportProgress()
+    fs.writeFileSync(process.env.OD_REPORT_PROGRESS_FILE, JSON.stringify(persisted), 'utf8')
+    const snap = snapshotReportProgress('fresh-process')
+    assert.equal(snap.status, 'done')
+    assert.ok(snap.files.some((file) => file.name === 'order.html' && file.content.includes('<h1>')))
+    assert.match(snap.narrative, /报告|生成/)
   })
 })

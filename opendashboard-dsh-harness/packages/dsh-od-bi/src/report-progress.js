@@ -6,11 +6,56 @@
  * @module @opendashboard/dsh-od-bi/report-progress
  */
 
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { boardSessionKey, getBoardSession } from './board-store.js'
 
 const LAST = '__last__'
 const runs = new Map()
 let seq = 0
+const PERSIST_VERSION = 1
+
+function progressStoreFile() {
+  return process.env.OD_REPORT_PROGRESS_FILE
+    || path.join(os.tmpdir(), 'opendashboard-dsh-report-progress.json')
+}
+
+function persistRun(run) {
+  if (!run) return
+  try {
+    fs.mkdirSync(path.dirname(progressStoreFile()), { recursive: true })
+    fs.writeFileSync(progressStoreFile(), JSON.stringify({
+      version: PERSIST_VERSION,
+      savedAt: Date.now(),
+      run,
+    }), 'utf8')
+  } catch {
+    // Persistence is a best-effort replay aid; live progress must not fail
+    // because a tmp directory is read-only.
+  }
+}
+
+function loadPersistedRun() {
+  try {
+    const raw = fs.readFileSync(progressStoreFile(), 'utf8')
+    const parsed = JSON.parse(raw)
+    if (parsed?.version !== PERSIST_VERSION || !parsed.run) return null
+    const savedAt = Number(parsed.savedAt || parsed.run.startedAt || 0)
+    if (!savedAt || Date.now() - savedAt > 24 * 60 * 60 * 1000) return null
+    return parsed.run
+  } catch {
+    return null
+  }
+}
+
+function clearPersistedRun() {
+  try {
+    fs.rmSync(progressStoreFile(), { force: true })
+  } catch {
+    // ignore
+  }
+}
 
 export const REPORT_NODE_META = Object.freeze({
   od_analysis_plan: { title: '规划分析任务', category: 'PlanningAgent' },
@@ -197,22 +242,31 @@ function pushReportFiles(run, result) {
 
 function writeRun(run, key) {
   for (const k of liveKeys(key)) runs.set(k, run)
+  persistRun(run)
   return run
 }
 
 function getRun(key) {
   const k = key || boardSessionKey()
-  return runs.get(k) || runs.get(LAST) || null
+  const existing = runs.get(k) || runs.get(LAST)
+  if (existing) return existing
+  const persisted = loadPersistedRun()
+  if (!persisted) return null
+  runs.set(LAST, persisted)
+  if (k && k !== LAST) runs.set(k, persisted)
+  return persisted
 }
 
 export function resetReportProgress(key) {
   if (arguments.length === 0) {
     runs.clear()
     seq = 0
+    clearPersistedRun()
     return
   }
   runs.delete(key)
   if (key !== LAST) runs.delete(LAST)
+  clearPersistedRun()
 }
 
 export function ensureReportRun(opts = {}) {

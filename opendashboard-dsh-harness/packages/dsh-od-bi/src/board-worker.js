@@ -41,6 +41,7 @@ import {
   suggestChartFromResult,
   typeFromIntent,
 } from './realize-task.js'
+import { demoOrderSchema, isDemoOrderDataset, queryDemoOrder } from './demo-order.js'
 
 export const WORKER_TOOL_NAMES = Object.freeze([
   'od_analysis_plan',
@@ -165,12 +166,18 @@ function suggestForFrame(chart, fields, rows, rowCount) {
 }
 
 async function loadFields(datasetId, signal) {
-  const schema = await biFetch(
-    'GET',
-    `/api/internal/bi/datasets/${encodeURIComponent(datasetId)}/schema`,
-    undefined,
-    signal,
-  )
+  let schema
+  try {
+    schema = await biFetch(
+      'GET',
+      `/api/internal/bi/datasets/${encodeURIComponent(datasetId)}/schema`,
+      undefined,
+      signal,
+    )
+  } catch (err) {
+    if (!isDemoOrderDataset(datasetId)) throw err
+    schema = demoOrderSchema()
+  }
   return {
     fields: Array.isArray(schema?.fields) ? schema.fields : [],
     name: schema?.name || '',
@@ -224,11 +231,18 @@ export async function runGetData(args, opts = {}) {
       timeoutMs: opts.timeoutMs || (analysis ? ANALYSIS_TIMEOUT_MS : REALIZE_TIMEOUT_MS),
     })
   } catch (err) {
-    return {
-      ok: false,
-      error: String(err?.message || err),
-      note: 'query failed — retry once with a different dim, or skip this task',
+    if (isDemoOrderDataset(ds)) {
+      q = queryDemoOrder(chart)
+    } else {
+      return {
+        ok: false,
+        error: String(err?.message || err),
+        note: 'query failed — retry once with a different dim, or skip this task',
+      }
     }
+  }
+  if (!q?.ok && isDemoOrderDataset(ds) && /BI .*→ 4\d\d|BI .*→ 5\d\d|fetch failed|ECONNREFUSED|DATASET_UNAVAILABLE/i.test(String(q?.error || ''))) {
+    q = queryDemoOrder(chart)
   }
   if (!q?.ok) {
     return {

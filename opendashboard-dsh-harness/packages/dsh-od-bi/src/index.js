@@ -34,6 +34,12 @@ import { assessSemanticReadiness, semanticNotReadyMessage } from './semantic-rea
 import { assertAllowedTables } from './sql-guard.js'
 import { registerOdCommands } from './commands.js'
 import { registerReportProgressRoute } from './report-progress.js'
+import {
+  DEMO_ORDER_DATASET,
+  DEMO_ORDER_DATASET_ID,
+  demoOrderSchema,
+  isDemoOrderDataset,
+} from './demo-order.js'
 
 function countChartsInPatch(patch) {
   const ops = patch?.ops
@@ -103,6 +109,17 @@ function mergeDatasets(primary, fallback) {
     out.push(dataset)
   }
   return out
+}
+
+function shouldOfferDemoOrderFallback(promptText) {
+  return /订单|支付订单|订单表|t_pay_order|pay_order|order/.test(String(promptText || '').toLowerCase())
+}
+
+function withDemoOrderFallback(list, promptText) {
+  const rows = Array.isArray(list) ? list : []
+  if (!shouldOfferDemoOrderFallback(promptText)) return rows
+  if (rows.some((dataset) => String(dataset?.id || dataset?.datasetId || '') === DEMO_ORDER_DATASET_ID)) return rows
+  return [...rows, DEMO_ORDER_DATASET]
 }
 
 function leadReportSchemaGuard(exec) {
@@ -406,15 +423,15 @@ export function apply(ctx) {
     },
     async execute(args, exec) {
       const q = args.keyword ? `?keyword=${encodeURIComponent(args.keyword)}` : ''
+      const bridge = getBridge()
+      const promptText = [
+        bridge.prompt,
+        args.keyword,
+        args.message,
+        args.query,
+        args.title,
+      ].filter(Boolean).join('\n')
       try {
-        const bridge = getBridge()
-        const promptText = [
-          bridge.prompt,
-          args.keyword,
-          args.message,
-          args.query,
-          args.title,
-        ].filter(Boolean).join('\n')
         const body = await biFetch('GET', `/api/internal/bi/datasets${q}`, undefined, exec.signal)
         let list = Array.isArray(body) ? body : (body?.data || body?.datasets || [])
         let source = 'java'
@@ -431,7 +448,9 @@ export function apply(ctx) {
             // The keyword-filtered list remains usable; broad fallback is best-effort.
           }
         }
-        const ranked = rankDatasetsForPrompt(list, promptText)
+        const withFallback = withDemoOrderFallback(list, promptText)
+        if (withFallback.length > list.length) source = `${source}+demo-order`
+        const ranked = rankDatasetsForPrompt(withFallback, promptText)
         const preferredDataset = ranked[0] || null
         const preferredScore = preferredDataset ? scoreDatasetForPrompt(preferredDataset, promptText) : 0
         return toLosslessJson({
@@ -441,6 +460,17 @@ export function apply(ctx) {
           source,
         })
       } catch (err) {
+        const fallback = withDemoOrderFallback([], promptText)
+        if (fallback.length) {
+          return toLosslessJson({
+            ok: true,
+            datasets: fallback,
+            preferredDataset: fallback[0],
+            matchReason: 'Java 数据集目录暂不可用；本地演示环境按订单报告语义提供 t_pay_order / ds_012eb19e 兜底。',
+            source: 'java-error+demo-order',
+            error: String(err?.message || err),
+          })
+        }
         return toLosslessJson({
           ok: false,
           datasets: [],
@@ -518,12 +548,20 @@ export function apply(ctx) {
       if (guarded) return guarded
       const ds = String(args.datasetId)
       try {
-        const schema = await biFetch(
-          'GET',
-          `/api/internal/bi/datasets/${encodeURIComponent(ds)}/schema`,
-          undefined,
-          exec.signal,
-        )
+        let schema
+        let schemaSource = 'java'
+        try {
+          schema = await biFetch(
+            'GET',
+            `/api/internal/bi/datasets/${encodeURIComponent(ds)}/schema`,
+            undefined,
+            exec.signal,
+          )
+        } catch (err) {
+          if (!isDemoOrderDataset(ds)) throw err
+          schema = demoOrderSchema()
+          schemaSource = 'demo-fallback'
+        }
         let terms = []
         let questions = []
         let knowledge = null
@@ -564,7 +602,7 @@ export function apply(ctx) {
           metrics: Array.isArray(knowledge?.metrics) ? knowledge.metrics.slice(0, 24) : [],
           questions,
           semantic,
-          source: 'java',
+          source: schemaSource,
         })
       } catch (err) {
         return toLosslessJson({

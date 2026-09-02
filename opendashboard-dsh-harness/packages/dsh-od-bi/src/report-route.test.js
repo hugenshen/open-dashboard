@@ -2,6 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { setBridge } from '@opendashboard/dsh-od-auth/bridge-state'
 import { isAnalysisReportToolRequest, rankDatasetsForPrompt } from './index.js'
+import { DEMO_ORDER_DATASET, demoOrderSchema } from './demo-order.js'
 
 describe('analysis report routing guard', () => {
   it('detects report intent from tool args before dashboard semantic readiness gates', () => {
@@ -29,5 +30,17 @@ describe('analysis report routing guard', () => {
 
     assert.equal(ranked[0].id, 'ds_012eb19e')
     assert.equal(ranked.at(-1).tableName, 'de_datasource')
+  })
+
+  it('demo payment order fallback has schema needed by commercial report golden path', () => {
+    assert.equal(DEMO_ORDER_DATASET.id, 'ds_012eb19e')
+    assert.equal(DEMO_ORDER_DATASET.tableName, 't_pay_order')
+    const schema = demoOrderSchema()
+    const names = schema.fields.map((field) => field.name)
+    assert.ok(names.includes('Status'))
+    assert.ok(names.includes('MchId'))
+    assert.ok(names.includes('Amount'))
+    assert.ok(names.includes('MchIncome'))
+    assert.ok(names.includes('AgentProfit'))
   })
 })

@@ -224,6 +224,8 @@ function extractReportEvidenceTokens(files) {
   const add = (value) => {
     const token = String(value ?? '').trim()
     if (!token || token.length < 2 || tokens.includes(token)) return
+    if (/^(id|mchid|merchant|merchantid|appid|agent|agentid|store|storeid)$/i.test(token)) return
+    if (/^-?\d+(?:\.\d+)?%?$/.test(token.replace(/,/g, ''))) return
     tokens.push(token)
   }
   for (const file of Array.isArray(files) ? files : []) {
