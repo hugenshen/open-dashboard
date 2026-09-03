@@ -40,7 +40,7 @@ DataQ 是一套面向分析师、业务团队与数据产品开发者的开源 B
 
 数据不绕开语义层，AI 不脱离事实链路，编辑中的草稿也不会被误当成正式发布结果。你可以把 DataQ 独立部署，也可以将它嵌入现有业务系统，作为企业自己的智能分析底座。
 
-![DataQ 已发布仪表盘](./open-dashboard-frontend/public/help/screenshots/07-dashboard-preview.png)
+![DataQ 专业仪表盘编辑器](./open-dashboard-frontend/public/help/screenshots/01-dashboard-studio.jpg)
 
 ## 产品全景
 
@@ -79,7 +79,7 @@ DataQ 先解决“数据从哪里来、口径是什么”，再进入图表和 A
 
 DataQ 的 AI 能力复用数据集、查询、权限和资产生命周期。Agent 可以帮助理解问题、规划分析并生成草稿，但不能绕过治理链路直接制造“看起来合理”的答案。
 
-![DataQ 对话问数与生成看板](./open-dashboard-frontend/public/help/screenshots/24-conversation-gen-board.png)
+![DataQ AI 对话分析与报告产物](./open-dashboard-frontend/public/help/screenshots/26-conversation-analysis-latest.jpg)
 
 - **结果有来源**：展示使用的数据集、查询逻辑、筛选范围与结果明细。
 - **过程可修正**：先确认意图和规划，再执行查询或生成看板。

@@ -6,12 +6,13 @@ open-dashboard-frontend/dist/
 open-dashboard-frontend/public/help/*
 !open-dashboard-frontend/public/help/screenshots/
 open-dashboard-frontend/public/help/screenshots/*
+!open-dashboard-frontend/public/help/screenshots/01-dashboard-studio.jpg
 !open-dashboard-frontend/public/help/screenshots/02-datasources.png
 !open-dashboard-frontend/public/help/screenshots/03-datasets.png
 !open-dashboard-frontend/public/help/screenshots/06-dashboard-edit.png
 !open-dashboard-frontend/public/help/screenshots/07-dashboard-preview.png
 !open-dashboard-frontend/public/help/screenshots/08-report-edit.png
-!open-dashboard-frontend/public/help/screenshots/24-conversation-gen-board.png
+!open-dashboard-frontend/public/help/screenshots/26-conversation-analysis-latest.jpg
 open-dashboard-frontend/node_modules/
 .DS_Store
 *.log
