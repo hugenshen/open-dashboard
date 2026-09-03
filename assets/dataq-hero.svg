@@ -1,0 +1,112 @@
+<svg width="1600" height="680" viewBox="0 0 1600 680" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="90" y1="40" x2="1500" y2="650" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111827"/>
+      <stop offset="0.52" stop-color="#15143A"/>
+      <stop offset="1" stop-color="#24104B"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#8B7CFF"/>
+      <stop offset="1" stop-color="#5B4CF0"/>
+    </linearGradient>
+    <linearGradient id="line" x1="930" y1="160" x2="1480" y2="510" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9D8FFF"/>
+      <stop offset="1" stop-color="#60E6C5"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(1310 190) rotate(135) scale(590 430)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6D5DFB" stop-opacity=".38"/>
+      <stop offset="1" stop-color="#6D5DFB" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#030712" flood-opacity=".35"/>
+    </filter>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M44 0H0V44" stroke="#FFFFFF" stroke-opacity=".045"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="680" rx="32" fill="url(#bg)"/>
+  <rect width="1600" height="680" rx="32" fill="url(#glow)"/>
+  <rect width="1600" height="680" rx="32" fill="url(#grid)"/>
+
+  <g opacity=".5">
+    <circle cx="1492" cy="68" r="154" stroke="#8B7CFF" stroke-opacity=".22"/>
+    <circle cx="1492" cy="68" r="220" stroke="#8B7CFF" stroke-opacity=".12"/>
+    <circle cx="92" cy="658" r="188" stroke="#60E6C5" stroke-opacity=".1"/>
+  </g>
+
+  <g transform="translate(112 104)">
+    <g filter="url(#shadow)">
+      <rect width="88" height="88" rx="26" fill="url(#brand)"/>
+      <path d="M25 58V43M44 58V29M63 58V38" stroke="white" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="25" cy="36" r="4.5" fill="#73F0CE"/>
+      <circle cx="44" cy="22" r="4.5" fill="#73F0CE"/>
+      <circle cx="63" cy="31" r="4.5" fill="#73F0CE"/>
+    </g>
+    <text x="116" y="68" fill="white" font-family="Inter, Arial, sans-serif" font-size="66" font-weight="760" letter-spacing="-2">DataQ</text>
+  </g>
+
+  <text x="112" y="290" fill="white" font-family="Inter, Arial, sans-serif" font-size="66" font-weight="720" letter-spacing="-2">
+    Turn trusted data into
+  </text>
+  <text x="112" y="366" fill="#8F82FF" font-family="Inter, Arial, sans-serif" font-size="66" font-weight="720" letter-spacing="-2">
+    decisions that move.
+  </text>
+  <text x="114" y="423" fill="#B8C0D4" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="400">
+    Open-source AI-native analytics workspace
+  </text>
+  <text x="114" y="462" fill="#7E8AA5" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="20">
+    连接 · 建模 · 分析 · 仪表盘 · 报告 · AI 对话
+  </text>
+
+  <g transform="translate(112 523)">
+    <rect width="154" height="44" rx="22" fill="#FFFFFF" fill-opacity=".075" stroke="#FFFFFF" stroke-opacity=".12"/>
+    <circle cx="25" cy="22" r="5" fill="#60E6C5"/>
+    <text x="42" y="29" fill="#DDE3F0" font-family="Inter, Arial, sans-serif" font-size="17">Governed</text>
+    <rect x="170" width="144" height="44" rx="22" fill="#FFFFFF" fill-opacity=".075" stroke="#FFFFFF" stroke-opacity=".12"/>
+    <circle cx="195" cy="22" r="5" fill="#8F82FF"/>
+    <text x="212" y="29" fill="#DDE3F0" font-family="Inter, Arial, sans-serif" font-size="17">AI-native</text>
+    <rect x="330" width="168" height="44" rx="22" fill="#FFFFFF" fill-opacity=".075" stroke="#FFFFFF" stroke-opacity=".12"/>
+    <circle cx="355" cy="22" r="5" fill="#6EA8FF"/>
+    <text x="372" y="29" fill="#DDE3F0" font-family="Inter, Arial, sans-serif" font-size="17">Embeddable</text>
+  </g>
+
+  <g transform="translate(930 122)" filter="url(#shadow)">
+    <rect width="530" height="430" rx="26" fill="#151A2B" stroke="#FFFFFF" stroke-opacity=".13"/>
+    <rect x="28" y="28" width="474" height="48" rx="13" fill="#20263A"/>
+    <circle cx="53" cy="52" r="6" fill="#6D5DFB"/>
+    <rect x="72" y="45" width="112" height="13" rx="6.5" fill="#586078"/>
+    <rect x="399" y="42" width="74" height="20" rx="10" fill="#6D5DFB" fill-opacity=".7"/>
+
+    <g transform="translate(28 98)">
+      <rect width="144" height="86" rx="15" fill="#20263A"/>
+      <text x="18" y="28" fill="#8A94AC" font-family="Inter, Arial, sans-serif" font-size="12">REVENUE</text>
+      <text x="18" y="61" fill="white" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700">$4.96M</text>
+      <text x="102" y="60" fill="#60E6C5" font-family="Inter, Arial, sans-serif" font-size="12">↑ 18%</text>
+      <rect x="159" width="144" height="86" rx="15" fill="#20263A"/>
+      <text x="177" y="28" fill="#8A94AC" font-family="Inter, Arial, sans-serif" font-size="12">ORDERS</text>
+      <text x="177" y="61" fill="white" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700">12.8K</text>
+      <rect x="318" width="156" height="86" rx="15" fill="#20263A"/>
+      <text x="336" y="28" fill="#8A94AC" font-family="Inter, Arial, sans-serif" font-size="12">CONVERSION</text>
+      <text x="336" y="61" fill="white" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700">7.42%</text>
+    </g>
+
+    <g transform="translate(28 204)">
+      <rect width="304" height="198" rx="16" fill="#20263A"/>
+      <text x="18" y="28" fill="#D9DEEA" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600">Growth trend</text>
+      <path d="M22 154C55 146 73 129 103 135C136 142 149 104 181 111C214 118 225 72 277 55" stroke="url(#line)" stroke-width="4" stroke-linecap="round"/>
+      <path d="M22 154C55 146 73 129 103 135C136 142 149 104 181 111C214 118 225 72 277 55V174H22V154Z" fill="url(#line)" fill-opacity=".09"/>
+      <path d="M22 174H282M22 133H282M22 92H282M22 51H282" stroke="#FFFFFF" stroke-opacity=".06"/>
+      <circle cx="277" cy="55" r="6" fill="#60E6C5"/>
+      <rect x="321" width="153" height="198" rx="16" fill="#20263A"/>
+      <text x="340" y="28" fill="#D9DEEA" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="600">Channel mix</text>
+      <circle cx="397" cy="99" r="46" stroke="#343B52" stroke-width="18"/>
+      <path d="M397 53A46 46 0 0 1 438 120" stroke="#796AFF" stroke-width="18" stroke-linecap="round"/>
+      <path d="M438 120A46 46 0 0 1 370 136" stroke="#60E6C5" stroke-width="18" stroke-linecap="round"/>
+      <text x="379" y="105" fill="white" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="700">62%</text>
+      <rect x="345" y="165" width="104" height="8" rx="4" fill="#343B52"/>
+    </g>
+  </g>
+
+  <rect x=".75" y=".75" width="1598.5" height="678.5" rx="31.25" stroke="#FFFFFF" stroke-opacity=".09" stroke-width="1.5"/>
+</svg>

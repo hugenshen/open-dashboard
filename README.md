@@ -1,96 +1,134 @@
-# Open Dashboard
+<p align="center">
+  <img src="./assets/dataq-hero.svg" alt="DataQ — Open-source AI-native analytics workspace" width="100%" />
+</p>
 
-[![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js&logoColor=white)](./open-dashboard-frontend/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3-6DB33F?logo=springboot&logoColor=white)](./open-dashboard-backend/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](./open-dashboard-backend/)
+<h1 align="center">DataQ</h1>
 
-> 开源、可嵌入的智能 BI 与数据分析底座：从数据库连接、数据集建模，到仪表盘、在线报告和对话分析，让可信数据真正成为可持续运营的业务资产。
+<p align="center">
+  <strong>开源、可嵌入的 AI 原生数据分析工作台</strong>
+</p>
 
-Open Dashboard（产品名 **DataQ**）面向分析师、业务读者和报告作者。它把 **数据源 → 数据集 → 查询 → 仪表盘 / 报告** 串成一条完整链路：分析师可以接数、建模和编排内容，业务读者打开发布页即可查看、筛选和下载结果。
+<p align="center">
+  让团队从可信数据出发，完成连接、建模、分析、可视化与决策交付。
+</p>
 
-[产品介绍：DataQ × WorkBuddy](./.teamai/docs/proposals/P018-workbuddy-open-capabilities/req/dataq-workbuddy-introduction.html) · [快速开始](#快速开始) · [前端部署](./open-dashboard-frontend/deploy.md) · [后端部署](./open-dashboard-backend/deploy.md)
+<p align="center">
+  <a href="#快速开始">快速开始</a>
+  ·
+  <a href="#产品全景">产品全景</a>
+  ·
+  <a href="./.teamai/docs/proposals/P018-workbuddy-open-capabilities/req/dataq-workbuddy-introduction.html">产品愿景</a>
+  ·
+  <a href="./open-dashboard-frontend/deploy.md">部署文档</a>
+</p>
 
-![Open Dashboard 已发布仪表盘](./open-dashboard-frontend/public/help/screenshots/07-dashboard-preview.png)
+<p align="center">
+  <img src="https://img.shields.io/badge/AI--native-analytics-6D5DFB" alt="AI-native analytics" />
+  <img src="https://img.shields.io/badge/self--hosted-ready-12B886" alt="Self-hosted" />
+  <img src="https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js&logoColor=white" alt="Vue 3" />
+  <img src="https://img.shields.io/badge/Spring%20Boot-3-6DB33F?logo=springboot&logoColor=white" alt="Spring Boot 3" />
+  <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 16" />
+</p>
 
-## 为什么是 Open Dashboard
+---
 
-- **完整的数据产品链**：数据库接入、数据集语义、受控查询、可视化编排和内容发布在一个产品内闭环。
-- **面向业务的编辑体验**：通过网格画布、拖拽字段、PC / 移动端布局和模板快速完成专业看板。
-- **仪表盘与报告并重**：既支持实时刷新、筛选联动的看板，也支持正文与 live 图结合的在线报告。
-- **AI 能力建立在治理之上**：对话问数和生成看板复用同一数据集与查询链路，不绕开权限和业务口径。
-- **适合嵌入现有系统**：身份由接入方提供，数据、查询和发布能力保持清晰边界。
+## 不只是做一张图，而是完成一次可信的数据决策
 
-## 产品体验
+DataQ 是一套面向分析师、业务团队与数据产品开发者的开源 BI 系统。它把分散的数据工作收拢到同一条受治理的链路：
 
-### 连接数据，建立统一语义
+> **连接真实数据 → 建立统一语义 → 完成分析探索 → 生产仪表盘与报告 → 发布给业务使用**
 
-连接 MySQL / PostgreSQL，探查 Schema、表结构和样例数据；再把业务表整理为带维度、指标和计算字段的数据集。图表只绑定数据集，业务口径不散落在每一张图里。
+数据不绕开语义层，AI 不脱离事实链路，编辑中的草稿也不会被误当成正式发布结果。你可以把 DataQ 独立部署，也可以将它嵌入现有业务系统，作为企业自己的智能分析底座。
+
+![DataQ 已发布仪表盘](./open-dashboard-frontend/public/help/screenshots/07-dashboard-preview.png)
+
+## 产品全景
+
+| | DataQ 带来的能力 |
+|---|---|
+| **连接与建模** | 接入 MySQL / PostgreSQL，探查表结构与样例数据，用数据集统一维度、指标和计算字段 |
+| **可视化分析** | 用拖拽式画布组合指标卡、图表、明细表、筛选器和文本，支持模板与多页面 |
+| **多端交付** | PC 与移动端独立编排；草稿、预览、发布和分享各有明确边界 |
+| **在线报告** | 在正文中引用实时看板图，或直接创建新图表，形成可持续更新的数据报告 |
+| **对话分析** | 从自然语言问题得到查询、图表、明细和依据，并将确认后的结果沉淀为看板草稿 |
+| **开放集成** | 身份可插拔、能力可嵌入，适合作为现有门户、业务系统或 AI 工作台的数据能力层 |
+
+### 从数据库到统一语义
+
+DataQ 先解决“数据从哪里来、口径是什么”，再进入图表和 AI。所有业务查询经过数据集，避免同一个指标在不同看板里各算一遍。
 
 | 数据源连接与探库 | 数据集字段与语义 |
 |:---:|:---:|
-| ![数据源连接与探库](./open-dashboard-frontend/public/help/screenshots/02-datasources.png) | ![数据集字段与语义](./open-dashboard-frontend/public/help/screenshots/03-datasets.png) |
+| ![DataQ 数据源管理](./open-dashboard-frontend/public/help/screenshots/02-datasources.png) | ![DataQ 数据集管理](./open-dashboard-frontend/public/help/screenshots/03-datasets.png) |
 
-### 编排、发布与分享仪表盘
+### 从分析画布到业务发布
 
-在网格画布中组合查询控件、指标卡、图表、表格和文本，拖入维度与指标完成配置。编辑写入草稿，发布后生成稳定的只读视图；PC 与移动端可以分别编排布局。
+分析师在画布中完成结构、数据和样式编排；业务用户看到的是稳定、清晰、可筛选的发布版本。编辑体验与消费体验彼此独立，又共享同一份可信数据。
 
-| 可视化画布 | 发布后的业务看板 |
+| 专业分析画布 | 发布后的业务看板 |
 |:---:|:---:|
-| ![可视化仪表盘编辑器](./open-dashboard-frontend/public/help/screenshots/06-dashboard-edit.png) | ![发布后的业务看板](./open-dashboard-frontend/public/help/screenshots/07-dashboard-preview.png) |
+| ![DataQ 仪表盘编辑器](./open-dashboard-frontend/public/help/screenshots/06-dashboard-edit.png) | ![DataQ 业务仪表盘](./open-dashboard-frontend/public/help/screenshots/07-dashboard-preview.png) |
 
-### 把数据写进报告，也带进对话
+### 从实时图表到叙事报告
 
-在线报告支持撰写正文、引用已有看板图和新建图表，并在预览与发布时实时取数。对话分析能力正在持续建设：用户可以从自然语言问题得到查询结果、图表与明细，并将确认后的结果保存为看板草稿。
+图表不仅存在于 Dashboard。报告作者可以把 live 图与业务解读写在一起，形成适合周报、经营复盘和管理层汇报的在线内容。
 
-| 在线报告编辑 | 对话问数与生成看板（在途） |
-|:---:|:---:|
-| ![在线报告编辑器](./open-dashboard-frontend/public/help/screenshots/08-report-edit.png) | ![对话问数与生成看板](./open-dashboard-frontend/public/help/screenshots/24-conversation-gen-board.png) |
+![DataQ 在线报告编辑器](./open-dashboard-frontend/public/help/screenshots/08-report-edit.png)
 
-## 产品结构
+## AI-native，而不是给传统 BI 套一层聊天框
 
-```text
-数据源 → 数据集 → 受控查询 → 仪表盘 → 发布 / 分享
-                         └→ 在线报告
-                         └→ 对话分析（在途）
+DataQ 的 AI 能力复用数据集、查询、权限和资产生命周期。Agent 可以帮助理解问题、规划分析并生成草稿，但不能绕过治理链路直接制造“看起来合理”的答案。
+
+![DataQ 对话问数与生成看板](./open-dashboard-frontend/public/help/screenshots/24-conversation-gen-board.png)
+
+- **结果有来源**：展示使用的数据集、查询逻辑、筛选范围与结果明细。
+- **过程可修正**：先确认意图和规划，再执行查询或生成看板。
+- **资产可继续经营**：对话结果可以保存为 Dashboard 草稿，回到专业编辑器继续调整。
+- **失败必须诚实**：空结果、权限不足和查询失败不会被包装成虚构结论。
+
+> 对话问数、对话出板和分析报告仍在持续完善，目前作为预览能力提供。传统 BI 主链已经可以独立使用。
+
+## 一条事实链，服务多种交付
+
+```mermaid
+flowchart LR
+    A["业务数据库"] --> B["数据源"]
+    B --> C["数据集语义层"]
+    C --> D["受控查询"]
+    D --> E["仪表盘"]
+    D --> F["在线报告"]
+    D --> G["AI 对话分析"]
+    E --> H["发布与分享"]
+    F --> H
+    G --> I["看板草稿 / 分析产物"]
 ```
 
-| 模块 | 面向谁 | 解决什么问题 |
-|------|--------|--------------|
-| 数据源 | 数据管理员、分析师 | 连接数据库，探库并预览表结构与样例数据 |
-| 数据集 | 分析师 | 统一维度、指标、计算字段和查询入口 |
-| 仪表盘 | 分析师、业务读者 | 编排图表与筛选，发布、分享和下载数据 |
-| 在线报告 | 报告作者、管理者 | 在正文中引用实时图表，形成可发布的数据报告 |
-| 对话分析 | 业务读者、分析师 | 用自然语言问数、查看证据并生成看板草稿（在途） |
+DataQ 坚持五个产品原则：
 
-更完整的产品关系、目标用户、能力边界和开放路径，见 [DataQ × WorkBuddy 产品介绍](./.teamai/docs/proposals/P018-workbuddy-open-capabilities/req/dataq-workbuddy-introduction.html)。该文档会明确区分已交付、在途和规划能力。
+1. **数据集是统一取数入口**：图表和 Agent 都不能绕过语义层直连业务库。
+2. **配置与查询分离**：画布描述“看什么、怎么展示”，查询服务负责“如何正确出数”。
+3. **草稿与发布分离**：创作过程可以快速迭代，对外内容必须经过明确发布。
+4. **身份可插拔，权限不缺席**：DataQ 可被集成，但每次读写都要保留用户与权限上下文。
+5. **AI 结果可验证、可继续编辑**：AI 是分析协作者，不是不可追溯的答案生成器。
 
-## 设计原则
+## 能力状态
 
-1. **配置与取数分离** — 画布只存布局、字段绑定和样式；出数统一走 `POST /chartQuery/query`。
-2. **看板只绑定数据集** — 图表不能直连数据源；业务数据一律经 `datasetQuery` 取出。
-3. **草稿与发布分离** — 编辑写草稿；观看与分享只读已发布版本；移动端维护独立布局。
-4. **身份可插拔，权限不绕过** — 登录由接入方提供，写操作由权限码约束。
-5. **AI 不制造事实** — 对话能力必须复用受治理的数据链路；空结果与失败要如实呈现。
+| 稳定能力 | 预览与演进中 |
+|---|---|
+| MySQL / PostgreSQL 数据源 | 完整的对话问数体验 |
+| 数据集、维度、指标与计算字段 | 可解释、可修改的对话式出板 |
+| 仪表盘编辑、查询、发布与分享 | 对话分析报告与过程工作区 |
+| PC / 移动端独立布局 | 工作区、资源 ACL 与知识治理增强 |
+| 在线报告与实时图表 | WorkBuddy Connector / Skill |
+| Docker 一键启动与示例数据 | 更多数据源和开放集成形态 |
 
-## 当前版本
+想了解 DataQ 如何进入通用 AI 工作入口，以及我们对产品边界和开放路径的思考，可阅读：
 
-**已交付基线（v0.3 / v0.4）**
-
-- 数据库数据源与数据集建模
-- 仪表盘编辑、查询、移动端布局、发布、分享与表格导出
-- 在线报告编辑、引用看板图、报告内新建图和实时取数
-- PostgreSQL + API + Web + 示例数据的一键 Docker 启动
-
-**正在建设 / 尚未开放**
-
-- 完整的对话问数与对话生成看板产品闭环
-- 对话分析报告与过程工作区
-- 内置完整 IAM、资源级权限、行列权限和知识治理
-- WorkBuddy Connector / Skill 与跨产品授权
+### [DataQ × WorkBuddy：让可信数据能力进入 AI 工作入口 →](./.teamai/docs/proposals/P018-workbuddy-open-capabilities/req/dataq-workbuddy-introduction.html)
 
 ## 快速开始
 
-一条命令拉起 **PostgreSQL + API + Web**，中间件、迁移和示例数据源均已打包：
+使用 Docker 一次启动 PostgreSQL、DataQ API、Web 和示例数据：
 
 ```bash
 git clone https://github.com/hugenshen/open-dashboard.git
@@ -101,20 +139,21 @@ chmod +x scripts/*.sh
 
 启动完成后访问：
 
-- Web：http://127.0.0.1:8088
-- API：http://127.0.0.1:8080/api
+- DataQ Web：http://127.0.0.1:8088
+- DataQ API：http://127.0.0.1:8080/api
 
 ```bash
-./scripts/smoke.sh    # 运行冒烟检查
+./scripts/smoke.sh    # 验证核心链路
 ./scripts/logs.sh     # 查看服务日志
-./scripts/down.sh     # 停止服务（保留数据）
+./scripts/down.sh     # 停止服务并保留数据
 ```
 
-端口和密码见 [`.env.example`](./.env.example)。各服务的独立部署说明见 [前端 deploy](./open-dashboard-frontend/deploy.md) 与 [后端 deploy](./open-dashboard-backend/deploy.md)。
+端口和密码配置见 [`.env.example`](./.env.example)。生产部署与服务拆分请阅读 [前端部署](./open-dashboard-frontend/deploy.md) 和 [后端部署](./open-dashboard-backend/deploy.md)。
 
-## 本地开发
+<details>
+<summary><strong>本地开发</strong></summary>
 
-本机 **5432** 若被占用，可使用 Homebrew PostgreSQL **5433**，或用 Docker 只启动数据库 **5434**。
+本机 5432 端口被占用时，可使用 Homebrew PostgreSQL 5433，或通过 Docker 仅启动数据库 5434。
 
 ```bash
 # 数据库
@@ -132,11 +171,14 @@ npm run dev
 # → http://127.0.0.1:5173
 ```
 
-无数据库联调可使用 `--spring.profiles.active=stub`，该模式只提供 API stub，不执行真实 JDBC 查询。
+无数据库联调可以使用 `--spring.profiles.active=stub`。该模式只提供 API stub，不执行真实 JDBC 查询。
 
-## 对话 Agent（可选）
+</details>
 
-对话问数、生成看板与分析报告由 [opendashboard-dsh-harness](./opendashboard-dsh-harness/README.md) 提供，需要单独启动 dsh 运行时并与后端联调。产品 Web 壳位于 `open-dashboard-frontend/src/conversation/`。
+<details>
+<summary><strong>启动对话 Agent</strong></summary>
+
+对话问数、生成看板与分析报告由 [opendashboard-dsh-harness](./opendashboard-dsh-harness/README.md) 提供，需要单独启动 dsh 运行时并与 DataQ 后端联调。
 
 ```bash
 cd opendashboard-dsh-harness
@@ -145,27 +187,29 @@ pnpm approve-builds --all
 ./start.sh
 ```
 
-## 仓库结构
+</details>
+
+## 技术架构
+
+| 层 | 技术选型 |
+|---|---|
+| Web | Vue 3 · Vite · TypeScript · Pinia · Vue Router · ECharts |
+| API | JDK 21 · Spring Boot 3 · Spring JDBC · Flyway |
+| Architecture | COLA 多模块架构 |
+| Storage | PostgreSQL 16 |
+| Agent Runtime | [@deepseek-ai/dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) + DataQ plugins |
 
 ```text
 open-dashboard/
-├── open-dashboard-frontend/      # Vue 3 产品应用
-├── open-dashboard-backend/       # Spring Boot COLA 多模块
-│   ├── open-dashboard-domain/
-│   ├── open-dashboard-app/
-│   ├── open-dashboard-infrastructure/
-│   ├── open-dashboard-adapter/
-│   └── open-dashboard-start/
-├── opendashboard-dsh-harness/    # 对话 Agent（dsh）运行时
-├── scripts/                      # 启停、冒烟与 PostgreSQL 初始化
+├── open-dashboard-frontend/      # DataQ Web
+├── open-dashboard-backend/       # DataQ API / COLA 多模块
+├── opendashboard-dsh-harness/    # DataQ 对话 Agent 运行时
+├── scripts/                      # 启停、冒烟与数据库初始化
 └── .env.example
 ```
 
-## 技术栈
+---
 
-| 层 | 技术 |
-|----|------|
-| 前端 | Vue 3 · Vite · TypeScript · Pinia · Vue Router · ECharts |
-| 后端 | JDK 21 · Spring Boot 3 · Spring JDBC · Flyway · COLA 多模块 |
-| 数据库 | PostgreSQL 16 |
-| Agent | [@deepseek-ai/dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) + 本仓薄插件 |
+<p align="center">
+  <strong>DataQ</strong> · Make data trustworthy, analysis accessible, and decisions actionable.
+</p>
