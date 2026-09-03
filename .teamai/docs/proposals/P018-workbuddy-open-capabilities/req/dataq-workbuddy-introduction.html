@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="DataQ 与 WorkBuddy 的产品关系、用户、定位、能力边界与开放路径介绍。" />
+  <title>DataQ × WorkBuddy｜让可信数据能力进入 AI 工作入口</title>
+  <style>
+    :root {
+      --night: #0b1620;
+      --night-2: #102433;
+      --ink: #14212b;
+      --muted: #5d6b74;
+      --paper: #f7f8f5;
+      --white: #ffffff;
+      --line: #d9e0dc;
+      --mint: #58dfb5;
+      --mint-dark: #087a5d;
+      --blue: #5a8dff;
+      --sand: #f3e7cc;
+      --amber: #f3ab3f;
+      --red: #d96666;
+      --radius: 22px;
+      --shadow: 0 18px 50px rgba(9, 27, 39, .10);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+    }
+    a { color: inherit; }
+    .shell { width: min(1160px, calc(100% - 36px)); margin: 0 auto; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(255,255,255,.09);
+      background: rgba(11,22,32,.90);
+      backdrop-filter: blur(18px);
+    }
+    .topbar .shell {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .brand { color: var(--white); font-weight: 760; letter-spacing: -.02em; }
+    .brand span { color: var(--mint); }
+    nav { display: flex; gap: 22px; }
+    nav a { color: #c6d2d9; text-decoration: none; font-size: 13px; }
+    nav a:hover { color: var(--white); }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      color: var(--white);
+      background:
+        radial-gradient(circle at 84% 18%, rgba(90,141,255,.30), transparent 31%),
+        radial-gradient(circle at 9% 80%, rgba(88,223,181,.17), transparent 32%),
+        linear-gradient(135deg, var(--night) 0%, #102532 58%, #0d1d2a 100%);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: .15;
+      background-image: linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, black, transparent 90%);
+    }
+    .hero-inner {
+      position: relative;
+      z-index: 1;
+      min-height: 660px;
+      padding: 102px 0 84px;
+      display: grid;
+      grid-template-columns: 1.08fr .92fr;
+      gap: 72px;
+      align-items: center;
+    }
+    .kicker {
+      display: inline-flex;
+      gap: 9px;
+      align-items: center;
+      color: #cfe2e7;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .kicker::before { content: ""; width: 26px; height: 2px; background: var(--mint); }
+    h1 {
+      margin: 20px 0 24px;
+      max-width: 780px;
+      font-size: clamp(46px, 6vw, 78px);
+      line-height: 1.03;
+      letter-spacing: -.055em;
+    }
+    .hero h1 em { color: var(--mint); font-style: normal; }
+    .lead { margin: 0; color: #c8d4da; font-size: clamp(18px, 2vw, 22px); max-width: 680px; }
+    .hero-note { margin: 26px 0 0; color: #90a5af; font-size: 13px; }
+    .relationship-card {
+      position: relative;
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 28px;
+      padding: 28px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.22);
+    }
+    .system {
+      display: grid;
+      grid-template-columns: 1fr 42px 1fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+    .system-box { border-radius: 18px; padding: 22px; min-height: 214px; }
+    .system-box.wb { background: #edf3ff; color: #17335d; }
+    .system-box.dq { background: #dff9ef; color: #0b4938; }
+    .system-box small { display: block; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; opacity: .62; }
+    .system-box h2 { margin: 8px 0 14px; font-size: 25px; letter-spacing: -.03em; }
+    .system-box p { margin: 0; font-size: 14px; }
+    .bridge { display: grid; place-items: center; color: var(--mint); font-size: 28px; font-weight: 900; }
+    .connector-label { margin-top: 15px; color: #b8c9d0; text-align: center; font-size: 12px; letter-spacing: .05em; }
+    section { padding: 92px 0; }
+    section.alt { background: #eef1ed; }
+    section.dark { color: var(--white); background: var(--night); }
+    .section-head { max-width: 760px; margin-bottom: 42px; }
+    .eyebrow { margin: 0 0 10px; color: var(--mint-dark); font-weight: 780; font-size: 13px; letter-spacing: .11em; text-transform: uppercase; }
+    .dark .eyebrow { color: var(--mint); }
+    h2.section-title { margin: 0; font-size: clamp(34px, 4.5vw, 54px); line-height: 1.12; letter-spacing: -.045em; }
+    .section-intro { margin: 16px 0 0; color: var(--muted); font-size: 18px; }
+    .dark .section-intro { color: #aebec6; }
+    .statement {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .statement article {
+      padding: 34px;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .statement article:first-child { border-top: 5px solid var(--blue); }
+    .statement article:last-child { border-top: 5px solid var(--mint-dark); }
+    .statement .label { color: var(--muted); font-weight: 800; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+    .statement h3 { margin: 12px 0; font-size: 27px; line-height: 1.2; letter-spacing: -.03em; }
+    .statement p { margin: 0; color: var(--muted); }
+    .equation {
+      margin-top: 24px;
+      padding: 24px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      border-radius: 18px;
+      color: #173029;
+      background: linear-gradient(90deg, #dff9ef, #e9f0ff);
+      font-size: clamp(18px, 2.4vw, 25px);
+      font-weight: 760;
+      text-align: center;
+    }
+    .equation b { color: var(--mint-dark); font-size: 30px; }
+    .users {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+    }
+    .user-card { padding: 25px; border-radius: 18px; background: var(--white); border: 1px solid var(--line); }
+    .user-card .num { color: var(--mint-dark); font: 760 12px/1 monospace; }
+    .user-card h3 { margin: 18px 0 10px; font-size: 21px; }
+    .user-card p { margin: 0; color: var(--muted); font-size: 14px; }
+    .capability-flow {
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--white);
+      box-shadow: var(--shadow);
+    }
+    .flow-row { display: grid; grid-template-columns: repeat(9, auto); align-items: center; gap: 12px; }
+    .flow-node { min-height: 98px; min-width: 118px; display: grid; place-items: center; padding: 16px; border-radius: 16px; text-align: center; font-weight: 750; background: #edf2ef; }
+    .flow-node.primary { color: #064c39; background: #dff9ef; }
+    .flow-node.output { color: #17335d; background: #e7eeff; }
+    .arrow { color: #87949b; font-weight: 900; }
+    .principles { margin-top: 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .principle { border-left: 3px solid var(--mint-dark); padding: 5px 0 5px 18px; }
+    .principle strong { display: block; margin-bottom: 5px; }
+    .principle span { color: var(--muted); font-size: 14px; }
+    .ownership { overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: var(--radius); }
+    .ownership-row { display: grid; grid-template-columns: 1.15fr 1fr 1fr; }
+    .ownership-row > div { padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,.10); }
+    .ownership-row:last-child > div { border-bottom: 0; }
+    .ownership-row > div + div { border-left: 1px solid rgba(255,255,255,.10); }
+    .ownership-head { background: rgba(255,255,255,.08); font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .ownership-row .topic { color: #b8c7ce; }
+    .ownership-row .owner { color: var(--mint); font-weight: 750; }
+    .ownership-row .support { color: #c8d4da; }
+    .journeys { display: grid; gap: 16px; }
+    .journey {
+      display: grid;
+      grid-template-columns: 150px 1fr 1fr 1fr;
+      gap: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--white);
+    }
+    .journey > div { padding: 22px; }
+    .journey > div + div { border-left: 1px solid var(--line); }
+    .journey .role { background: #132532; color: white; font-weight: 750; }
+    .journey small { display: block; color: var(--muted); font-weight: 800; margin-bottom: 7px; letter-spacing: .07em; }
+    .journey .role small { color: var(--mint); }
+    .integration-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+    .integration-card { position: relative; min-height: 270px; padding: 26px; border-radius: 20px; border: 1px solid var(--line); background: var(--white); }
+    .integration-card.recommended { border: 2px solid var(--mint-dark); box-shadow: var(--shadow); }
+    .tag { display: inline-block; padding: 5px 9px; border-radius: 999px; color: #4b5b64; background: #e9eeeb; font-size: 11px; font-weight: 800; }
+    .recommended .tag { color: #085d47; background: #d8f7ec; }
+    .integration-card h3 { margin: 20px 0 10px; font-size: 22px; }
+    .integration-card p { color: var(--muted); font-size: 14px; }
+    .integration-card .fit { position: absolute; left: 26px; bottom: 22px; color: var(--mint-dark); font-weight: 750; font-size: 13px; }
+    .status-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .status-col { padding: 25px; border-radius: 20px; background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.11); }
+    .status-col h3 { margin: 0 0 18px; font-size: 20px; }
+    .status-dot { display: inline-block; width: 9px; height: 9px; margin-right: 8px; border-radius: 50%; background: var(--mint); }
+    .status-dot.wip { background: var(--amber); }
+    .status-dot.plan { background: #8292a0; }
+    .status-col ul { margin: 0; padding-left: 19px; color: #c5d1d7; }
+    .status-col li + li { margin-top: 9px; }
+    .boundary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+    }
+    .boundary article { padding: 28px; border-radius: 20px; background: var(--white); border: 1px solid var(--line); }
+    .boundary h3 { margin: 0 0 16px; font-size: 21px; }
+    .boundary ul { margin: 0; padding-left: 20px; color: var(--muted); }
+    .boundary li + li { margin-top: 10px; }
+    .boundary .yes { border-top: 5px solid var(--mint-dark); }
+    .boundary .no { border-top: 5px solid var(--red); }
+    .roadmap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .phase { position: relative; padding: 28px; border-radius: 20px; background: var(--white); border: 1px solid var(--line); }
+    .phase::before { content: attr(data-step); position: absolute; right: 22px; top: 20px; color: #d9e1dd; font-size: 42px; font-weight: 850; line-height: 1; }
+    .phase .phase-label { color: var(--mint-dark); font-size: 12px; font-weight: 800; letter-spacing: .1em; }
+    .phase h3 { margin: 13px 0 10px; font-size: 23px; }
+    .phase p { margin: 0; color: var(--muted); font-size: 14px; }
+    .pitch {
+      display: grid;
+      grid-template-columns: .8fr 1.2fr;
+      gap: 28px;
+      padding: 42px;
+      color: white;
+      border-radius: 28px;
+      background: linear-gradient(135deg, #0e7158, #153752);
+      box-shadow: var(--shadow);
+    }
+    .pitch h2 { margin: 0; font-size: 35px; line-height: 1.16; letter-spacing: -.035em; }
+    .pitch blockquote { margin: 0; color: #edf9f5; font-size: 19px; }
+    .pitch small { display: block; margin-top: 16px; color: #b9d7cf; }
+    .source-list { margin-top: 34px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+    .source-list a { color: var(--mint-dark); }
+    footer { padding: 32px 0 46px; color: #718087; font-size: 12px; }
+    .print-note { float: right; }
+    @media (max-width: 980px) {
+      .hero-inner, .statement, .pitch { grid-template-columns: 1fr; }
+      .hero-inner { gap: 48px; }
+      .users, .integration-grid { grid-template-columns: repeat(2, 1fr); }
+      .flow-row { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); justify-self: center; }
+      .journey { grid-template-columns: 130px 1fr; }
+      .journey > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
+      .journey > div:nth-child(4) { border-top: 1px solid var(--line); }
+    }
+    @media (max-width: 680px) {
+      nav { display: none; }
+      .hero-inner { min-height: auto; padding: 72px 0 58px; }
+      .system { grid-template-columns: 1fr; }
+      .bridge { transform: rotate(90deg); }
+      section { padding: 64px 0; }
+      .users, .integration-grid, .status-board, .boundary, .roadmap, .principles { grid-template-columns: 1fr; }
+      .ownership-row { grid-template-columns: 1fr; }
+      .ownership-row > div + div { border-left: 0; border-top: 1px solid rgba(255,255,255,.08); }
+      .journey { grid-template-columns: 1fr; }
+      .journey > div + div { border-left: 0; border-top: 1px solid var(--line); }
+      .pitch { padding: 28px; }
+      .print-note { float: none; display: block; margin-top: 5px; }
+    }
+    @media print {
+      .topbar { position: static; }
+      .hero-inner { min-height: auto; }
+      section { padding: 48px 0; }
+      .relationship-card, .statement article, .capability-flow, .pitch { box-shadow: none; }
+      .integration-card, .phase, .user-card, .journey, .status-col { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell">
+      <div class="brand">DataQ <span>×</span> WorkBuddy</div>
+      <nav aria-label="页面导航">
+        <a href="#relation">产品关系</a>
+        <a href="#users">用户</a>
+        <a href="#capabilities">产品能力</a>
+        <a href="#integration">开放方式</a>
+        <a href="#roadmap">落地路径</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="shell hero-inner">
+        <div>
+          <div class="kicker">Product relationship brief · 2026.09</div>
+          <h1>让可信数据能力，进入每个人的 <em>AI 工作入口</em></h1>
+          <p class="lead">WorkBuddy 负责理解任务、组织协作与交付结果；DataQ 负责连接真实数据、守住语义与权限，并生产可持续运营的仪表盘和报告。</p>
+          <p class="hero-note">本文是 P018 产品关系稿，不代表 WorkBuddy 接入已经上线。能力状态见下文。</p>
+        </div>
+        <div class="relationship-card" aria-label="WorkBuddy 与 DataQ 关系图">
+          <div class="system">
+            <div class="system-box wb">
+              <small>General AI workspace</small>
+              <h2>WorkBuddy</h2>
+              <p>用户入口 · 自然语言交互<br />Agent 编排 · Skills 生态<br />过程呈现 · 结果交付</p>
+            </div>
+            <div class="bridge" aria-hidden="true">↔</div>
+            <div class="system-box dq">
+              <small>Governed analytics</small>
+              <h2>DataQ</h2>
+              <p>数据源 · 数据集语义<br />受控查询 · BI 资产<br />草稿发布 · 权限审计</p>
+            </div>
+          </div>
+          <div class="connector-label">首选接合面：MCP CONNECTOR + SKILL</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="relation">
+      <div class="shell">
+        <div class="section-head">
+          <p class="eyebrow">01 · Product positioning</p>
+          <h2 class="section-title">不是替代关系，是入口与专业系统的协作</h2>
+          <p class="section-intro">DataQ 不需要重新做一个通用 AI 桌面，WorkBuddy 也不需要重建一套 BI 治理系统。两者通过清晰分工，把“用户一句话”接到“可信、可追溯、可继续经营的数据资产”。</p>
+        </div>
+        <div class="statement">
+          <article>
+            <span class="label">WorkBuddy 的定位</span>
+            <h3>全场景 AI 工作台</h3>
+            <p>面向普通职场人，以自然语言承接目标，调用专家、Skill 和 Connector 完成跨工具任务，并把过程和产物带回用户日常工作入口。</p>
+          </article>
+          <article>
+            <span class="label">DataQ 的定位</span>
+            <h3>可嵌入的智能 BI 与分析底座</h3>
+            <p>面向分析师、业务读者和报告作者，用数据集治理查询语义，用草稿/发布态管理资产生命周期，让数据结果可复用、可校核、可发布。</p>
+          </article>
+        </div>
+        <div class="equation"><span>WorkBuddy 的任务入口与智能体编排</span><b>＋</b><span>DataQ 的可信数据与 BI 资产能力</span><b>＝</b><span>会交付的数据工作搭子</span></div>
+      </div>
+    </section>
+
+    <section id="users" class="alt">
+      <div class="shell">
+        <div class="section-head">
+          <p class="eyebrow">02 · Who it serves</p>
+          <h2 class="section-title">四类用户，一条从提问到发布的链路</h2>
+        </div>
+        <div class="users">
+          <article class="user-card"><span class="num">01</span><h3>业务读者</h3><p>在 WorkBuddy 里直接问经营指标、看可信摘要；需要深入时打开 DataQ 已发布看板。</p></article>
+          <article class="user-card"><span class="num">02</span><h3>分析师</h3><p>从可问数据出发生成查询、图表或看板草稿，再进入 DataQ 精编与发布。</p></article>
+          <article class="user-card"><span class="num">03</span><h3>报告作者</h3><p>发起归因和解读任务，接收分析产物；正式报告继续在 DataQ 维护与发布。</p></article>
+          <article class="user-card"><span class="num">04</span><h3>管理员 / 接入方</h3><p>安装连接、映射身份和工作区；数据治理、权限与审计仍由 DataQ 统一执行。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="capabilities">
+      <div class="shell">
+        <div class="section-head">
+          <p class="eyebrow">03 · What DataQ brings</p>
+          <h2 class="section-title">DataQ 提供的是一条完整的数据产品链，而非零散工具</h2>
+          <p class="section-intro">核心治理原则是：业务数据先进入数据集语义层，再被查询、编排和发布；样式不进入查询，编辑态不等于发布态。</p>
+        </div>
+        <div class="capability-flow">
+          <div class="flow-row">
+            <div class="flow-node">数据源<br /><small>连接与探库</small></div><span class="arrow">→</span>
+            <div class="flow-node primary">数据集<br /><small>语义与权限</small></div><span class="arrow">→</span>
+            <div class="flow-node">受控查询<br /><small>筛选与聚合</small></div><span class="arrow">→</span>
+            <div class="flow-node output">仪表盘<br /><small>编排与分享</small></div><span class="arrow">/</span>
+            <div class="flow-node output">在线报告<br /><small>正文与 live 图</small></div>
+          </div>
+        </div>
+        <div class="principles">
+          <div class="principle"><strong>只经数据集取数</strong><span>不让 Agent 绕开语义层直连业务库，也不把裸 SQL 当作产品结果。</span></div>
+          <div class="principle"><strong>草稿与发布分离</strong><span>AI 可以协助生产草稿；对外阅读与分享只认经过确认的发布版本。</span></div>
+          <div class="principle"><strong>身份由接入方提供</strong><span>DataQ 可嵌入、不自建完整 IAM，但每次读写都必须带明确用户、工作区与权限。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dark">
+      <div class="shell">
+        <div class="section-head">
+          <p class="eyebrow">04 · Ownership</p>
+          <h2 class="section-title">谁负责什么，必须在产品层就说清楚</h2>
+          <p class="section-intro">清晰的责任边界决定用户信任，也决定后续认证、审计和故障恢复应该落在哪一侧。</p>
+        </div>
+        <div class="ownership" role="table" aria-label="产品责任边界">
+          <div class="ownership-row ownership-head" role="row"><div>环节</div><div>主责产品</div><div>另一侧如何配合</div></div>
+          <div class="ownership-row" role="row"><div class="topic">任务入口、自然语言、步骤编排</div><div class="owner">WorkBuddy</div><div class="support">DataQ 提供稳定能力描述和可调用工具</div></div>
+          <div class="ownership-row" role="row"><div class="topic">数据源、数据集、指标语义</div><div class="owner">DataQ</div><div class="support">WorkBuddy 只消费授权后的能力投影</div></div>
+          <div class="ownership-row" role="row"><div class="topic">查询执行、结果真实性、空结果</div><div class="owner">DataQ</div><div class="support">WorkBuddy 解释过程，不补造数据</div></div>
+          <div class="ownership-row" role="row"><div class="topic">Agent 调度、Skill 使用、过程呈现</div><div class="owner">WorkBuddy</div><div class="support">DataQ 返回结构化状态、错误和产物</div></div>
+          <div class="ownership-row" role="row"><div class="topic">看板 / 报告资产与发布生命周期</div><div class="owner">DataQ</div><div class="support">WorkBuddy 发起任务、确认写入并返回深链</div></div>
+          <div class="ownership-row" role="row"><div class="topic">资源权限与工作区隔离</div><div class="owner">DataQ</div><div class="support">WorkBuddy 传递已授权身份，不扩大权限</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell">
+        <div class="section-head">
+          <p class="eyebrow">05 · User journeys</p>
+          <h2 class="section-title">用户看到的是自然协作，背后仍有专业边界</h2>
+        </div>
+        <div class="journeys">
+          <article class="journey"><div class="role"><small>业务读者</small>问一个经营问题</div><div><small>WORKBUDDY</small>识别“问数”意图并组织问题</div><div><small>DATAQ</small>在授权数据集中查询并返回口径</div><div><small>交付</small>结果摘要 + 来源 + DataQ 深链</div></article>
+          <article class="journey"><div class="role"><small>分析师</small>做一张经营看板</div><div><small>WORKBUDDY</small>呈现规划并向用户确认</div><div><small>DATAQ</small>基于真实数据创建可编辑草稿</div><div><small>交付</small>草稿链接；精编与发布回 DataQ</div></article>
+          <article class="journey"><div class="role"><small>报告作者</small>解释业绩波动</div><div><small>WORKBUDDY</small>拆解分析任务并展示过程</div><div><small>DATAQ</small>受控取数、生成分析与证据</div><div><small>交付</small>带时点的报告产物；不冒充 live 看板</div></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="integration" class="alt">
+      <div class="shell">
+        <div class="section-head">
+          <p class="eyebrow">06 · How to open capabilities</p>
+          <h2 class="section-title">先做 Connector，再逐步包装专家与行业应用</h2>
+          <p class="section-intro">WorkBuddy 官方对已有 API 服务优先推荐 MCP + Skill。它也最符合 DataQ 的现状：保留专业产品与服务端治理，只把稳定能力开放给 Agent。</p>
+        </div>
+        <div class="integration-grid">
+          <article class="integration-card recommended"><span class="tag">首期推荐</span><h3>Connector</h3><p>用 MCP 暴露 DataQ 能力，用 Skill 说明触发条件、参数、风险确认和错误恢复。</p><span class="fit">适合：能力接入与市场分发</span></article>
+          <article class="integration-card"><span class="tag">第二阶段</span><h3>数据分析专家</h3><p>把行业提问方法、分析流程和 DataQ Connector 依赖包装成可召唤的专业角色。</p><span class="fit">适合：降低用户提问门槛</span></article>
+          <article class="integration-card"><span class="tag">成熟后</span><h3>Buddy 应用</h3><p>将工作模式、专家、Skills、Connector 和已有 DataQ 页面组合为垂直数据工作台。</p><span class="fit">适合：完整行业解决方案</span></article>
+          <article class="integration-card"><span class="tag">反向链路</span><h3>Third-Party App</h3><p>用于 DataQ 经 OAuth 调用 WorkBuddy 的任务、会话或产物 API，不是首期“能力开放出去”的主链。</p><span class="fit">适合：DataQ 主动调用 WorkBuddy</span></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="dark">
+      <div class="shell">
+        <div class="section-head">
+          <p class="eyebrow">07 · Honest capability status</p>
+          <h2 class="section-title">对外介绍要区分：已经有、正在做、准备开放</h2>
+        </div>
+        <div class="status-board">
+          <article class="status-col"><h3><span class="status-dot"></span>DataQ 已交付基线</h3><ul><li>数据库数据源与数据集建模</li><li>仪表盘编辑、取数、发布、分享与 CSV</li><li>在线报告、插入看板图和实时取数</li><li>可插拔身份与模块写权限</li></ul></article>
+          <article class="status-col"><h3><span class="status-dot wip"></span>DataQ 在途能力</h3><ul><li>完整的对话问数产品闭环</li><li>可解释、可修改的对话式出板</li><li>对话分析报告与过程工作区</li><li>工作区、资源 ACL 与知识治理完善</li></ul></article>
+          <article class="status-col"><h3><span class="status-dot plan"></span>WorkBuddy 开放待建设</h3><ul><li>DataQ MCP Connector 与 Skill</li><li>跨产品身份 / 工作区映射</li><li>结果卡、来源与 DataQ 深链</li><li>DataQ 数据分析专家 / Buddy 应用</li></ul></article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell">
+        <div class="section-head">
+          <p class="eyebrow">08 · Product boundaries</p>
+          <h2 class="section-title">开放能力，不开放治理缺口</h2>
+        </div>
+        <div class="boundary">
+          <article class="yes"><h3>我们要做</h3><ul><li>让用户在 WorkBuddy 中发现、调用 DataQ 的受控分析能力。</li><li>所有查询继续经过 DataQ 数据集、权限和查询链路。</li><li>结果带数据集、筛选/时点边界与可继续工作的深链。</li><li>写入前确认；AI 生成只落草稿，发布回 DataQ 完成。</li></ul></article>
+          <article class="no"><h3>我们明确不做</h3><ul><li>不把 WorkBuddy 当 DataQ 编辑器的完整复制品。</li><li>不让 Agent 直接连接业务库或绕过数据集生成裸 SQL。</li><li>不把 WorkBuddy 通用文件能力包装成 DataQ 自有能力。</li><li>不跨工作区、不默认提权、不在失败时生成“看起来正确”的结果。</li></ul></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="roadmap" class="alt">
+      <div class="shell">
+        <div class="section-head">
+          <p class="eyebrow">09 · Suggested rollout</p>
+          <h2 class="section-title">从可信问数开始，用三步验证真实价值</h2>
+        </div>
+        <div class="roadmap">
+          <article class="phase" data-step="1"><span class="phase-label">READ FIRST</span><h3>只读可信问数</h3><p>完成连接、身份与工作区映射；只开放资源发现、数据集问数、来源披露和深链。先证明“问得到且可信”。</p></article>
+          <article class="phase" data-step="2"><span class="phase-label">CONTROLLED WRITE</span><h3>受控内容生产</h3><p>在用户确认和权限校验后创建看板草稿；分析报告以带时点的产物返回。先草稿，后发布。</p></article>
+          <article class="phase" data-step="3"><span class="phase-label">ECOSYSTEM</span><h3>专家与 Buddy 应用</h3><p>把高频行业场景、分析方法与 DataQ Connector 组合成专家；成熟后形成开箱即用的垂直应用。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="shell">
+        <div class="pitch">
+          <h2>一句话怎么介绍这次合作？</h2>
+          <blockquote>“DataQ 把企业受治理的数据、分析方法和 BI 资产能力开放给 WorkBuddy；用户无需离开日常 AI 工作入口，就能可信地问数、发起分析并获得可继续编辑和发布的专业结果。”<small>更短版本：WorkBuddy 让 AI 会干活，DataQ 让数据工作有事实、有边界、有资产。</small></blockquote>
+        </div>
+        <div class="source-list">
+          <strong>事实来源：</strong>
+          DataQ 产品定位与当前能力来自本仓 <a href="../../../../../README.md">公开产品说明</a>及实现代码；WorkBuddy 定位与开放形态参考官方 <a href="https://www.workbuddy.cn/work/">产品介绍</a>、<a href="https://open.workbuddy.cn/docs/connector">Connector</a>、<a href="https://open.workbuddy.cn/docs/skill">Skill</a>、<a href="https://open.workbuddy.cn/docs/buddy-app">Buddy 应用</a>、<a href="https://open.workbuddy.cn/docs/third-party-app">Third-Party App</a> 文档。
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">P018 · DataQ × WorkBuddy 产品关系稿 · 2026-09-03 <span class="print-note">适合浏览器阅读与打印为 PDF</span></div>
+  </footer>
+</body>
+</html>

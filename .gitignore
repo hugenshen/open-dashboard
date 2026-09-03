@@ -3,7 +3,15 @@ dist/
 build/
 target/
 open-dashboard-frontend/dist/
-open-dashboard-frontend/public/help/
+open-dashboard-frontend/public/help/*
+!open-dashboard-frontend/public/help/screenshots/
+open-dashboard-frontend/public/help/screenshots/*
+!open-dashboard-frontend/public/help/screenshots/02-datasources.png
+!open-dashboard-frontend/public/help/screenshots/03-datasets.png
+!open-dashboard-frontend/public/help/screenshots/06-dashboard-edit.png
+!open-dashboard-frontend/public/help/screenshots/07-dashboard-preview.png
+!open-dashboard-frontend/public/help/screenshots/08-report-edit.png
+!open-dashboard-frontend/public/help/screenshots/24-conversation-gen-board.png
 open-dashboard-frontend/node_modules/
 .DS_Store
 *.log
@@ -17,8 +25,15 @@ coverage/
 .turbo/
 *.tsbuildinfo
 
-# Product docs kept locally; not tracked in git (restore when ready)
-.teamai/docs/
+# Product docs kept locally; publish only the explicitly selected introduction.
+.teamai/docs/*
+!.teamai/docs/proposals/
+.teamai/docs/proposals/*
+!.teamai/docs/proposals/P018-workbuddy-open-capabilities/
+.teamai/docs/proposals/P018-workbuddy-open-capabilities/*
+!.teamai/docs/proposals/P018-workbuddy-open-capabilities/req/
+.teamai/docs/proposals/P018-workbuddy-open-capabilities/req/*
+!.teamai/docs/proposals/P018-workbuddy-open-capabilities/req/dataq-workbuddy-introduction.html
 
 # Third-party reference clones
 .teamai/docs/prototypes/vendor/editor/
