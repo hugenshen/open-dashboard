@@ -17,7 +17,7 @@
   ·
   <a href="#产品全景">产品全景</a>
   ·
-  <a href="./.teamai/docs/proposals/P018-workbuddy-open-capabilities/req/dataq-workbuddy-introduction.html">产品愿景</a>
+  <a href="https://hugenshen.github.io/open-dashboard/">产品愿景</a>
   ·
   <a href="./open-dashboard-frontend/deploy.md">部署文档</a>
 </p>
@@ -124,7 +124,7 @@ DataQ 坚持五个产品原则：
 
 想了解 DataQ 如何进入通用 AI 工作入口，以及我们对产品边界和开放路径的思考，可阅读：
 
-### [DataQ × WorkBuddy：让可信数据能力进入 AI 工作入口 →](./.teamai/docs/proposals/P018-workbuddy-open-capabilities/req/dataq-workbuddy-introduction.html)
+### [DataQ × WorkBuddy：让可信数据能力进入 AI 工作入口 →](https://hugenshen.github.io/open-dashboard/)
 
 ## 快速开始
 
