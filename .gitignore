@@ -17,6 +17,9 @@ coverage/
 .turbo/
 *.tsbuildinfo
 
+# Product docs kept locally; not tracked in git (restore when ready)
+.teamai/docs/
+
 # Third-party reference clones
 .teamai/docs/prototypes/vendor/editor/
 
