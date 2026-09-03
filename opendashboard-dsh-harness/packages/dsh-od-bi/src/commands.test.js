@@ -24,7 +24,7 @@ function assertNoProtocol(text) {
 describe('slash follow-up copy', () => {
   it('/report keeps the user question and drops tool protocol', () => {
     const text = buildReportFollowup('订单表生成报告')
-    assert.equal(text, '写一份分析报告：订单表生成报告')
+    assert.equal(text, '写一份分析报告（不是看板）：订单表生成报告')
     assertNoProtocol(text)
   })
 

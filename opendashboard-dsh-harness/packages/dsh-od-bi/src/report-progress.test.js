@@ -1,5 +1,8 @@
 import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import {
   beginReportStep,
   ensureReportRun,
@@ -13,7 +16,10 @@ import {
 } from './report-progress.js'
 
 describe('report-progress (PR-ANR-02 live nodes)', () => {
-  beforeEach(() => resetReportProgress())
+  beforeEach(() => {
+    process.env.OD_REPORT_PROGRESS_FILE = path.join(os.tmpdir(), `od-report-progress-test-${process.pid}.json`)
+    resetReportProgress()
+  })
 
   it('grows nodes as get_data / python / insight finish', async () => {
     ensureReportRun({ title: '写分析报告', key: 'test-progress' })
@@ -49,6 +55,7 @@ describe('report-progress (PR-ANR-02 live nodes)', () => {
     beginReportStep('od_get_data', { question: '订单状态构成' }, { key: 'adv-plan', title: '写分析报告' })
     const snap = snapshotReportProgress('adv-plan')
     assert.equal(snap.steps.length, 1)
+    assert.equal(snap.steps[0].taskIndex, 0)
     assert.deepEqual(snap.plan.stages, ['状态异常', '商户归因', '生成汇总报告'])
     assert.equal(snap.plan.stepStatus[0], 'in_progress')
     assert.equal(snap.activeNode, '读取并核对数据')
@@ -83,12 +90,70 @@ describe('report-progress (PR-ANR-02 live nodes)', () => {
     await trackAnalysisTool(
       'od_commit_report',
       { title: '订单报告' },
-      async () => ({ ok: true, filename: 'order.html' }),
+      async () => ({
+        ok: true,
+        title: '订单报告',
+        filename: 'order.html',
+        html: '<h1>订单报告</h1>',
+        markdown: '# 订单报告',
+      }),
       { force: true },
     )
     const snap = snapshotReportProgress()
     assert.equal(snap.status, 'done')
     assert.ok(snap.steps.every((s) => s.status !== 'running'))
+    assert.equal(snap.steps[0].taskIndex, 0)
+    assert.ok(snap.files.some((file) => file.name === 'order.html' && file.final && file.content.includes('<h1>')))
+    assert.ok(snap.files.some((file) => file.name === 'order.md' && file.final && file.content.includes('# 订单报告')))
+  })
+
+  it('turns empty/failing data steps into user-actionable states', () => {
+    ensureReportRun({ title: '写分析报告', key: 'actionable' })
+    const emptyId = beginReportStep('od_get_data', {
+      datasetId: 'ds_orders',
+      question: '最近一天订单异常',
+      dim: 'merchant_id',
+      measure: 'amount',
+    }, { key: 'actionable', title: '写分析报告' })
+    finishReportStep(emptyId, {
+      ok: true,
+      rowCount: 0,
+      suggestedChartType: null,
+      note: '没有取到可用于分析的数据。',
+    }, { key: 'actionable' })
+    const failedId = beginReportStep('od_get_data', {
+      datasetId: 'ds_orders',
+      question: '订单表',
+      measure: 'amount',
+    }, { key: 'actionable', title: '写分析报告' })
+    finishReportStep(failedId, {
+      ok: false,
+      error: 'fetch failed',
+    }, { key: 'actionable' })
+    const snap = snapshotReportProgress('actionable')
+    assert.equal(snap.steps[0].status, 'needs_action')
+    assert.match(snap.steps[0].output, /没有取到可用于分析的数据/)
+    assert.match(snap.steps[0].recovery, /放宽时间范围/)
+    assert.equal(snap.steps[1].status, 'error')
+    assert.match(snap.steps[1].output, /数据服务暂时不可用/)
+    assert.match(snap.narrative, /建议/)
+  })
+
+  it('turns python budget failures into a reportable next action', () => {
+    ensureReportRun({ title: '写分析报告', key: 'py-budget' })
+    const id = beginReportStep('od_python', {
+      handle: 'h1',
+      code: 'print(df.describe())',
+    }, { key: 'py-budget', title: '写分析报告' })
+    finishReportStep(id, {
+      ok: false,
+      error: '代码分析预算已用完',
+      note: '请改用已经取得的聚合证据保存洞察并生成子任务文件。',
+    }, { key: 'py-budget' })
+    const snap = snapshotReportProgress('py-budget')
+    assert.equal(snap.steps[0].status, 'error')
+    assert.match(snap.steps[0].output, /代码分析预算已用完/)
+    assert.match(snap.steps[0].recovery, /已有洞察|聚合证据/)
   })
 
   it('exposes startedAt so the shell can ignore a dismissed run', () => {
@@ -106,5 +171,28 @@ describe('report-progress (PR-ANR-02 live nodes)', () => {
     const snap = snapshotReportProgress()
     assert.equal(snap.status, 'idle')
     assert.equal(snap.startedAt, 0)
+  })
+
+  it('replays the latest report progress from persisted snapshot after memory loss', async () => {
+    await trackAnalysisTool(
+      'od_commit_report',
+      { title: '订单报告' },
+      async () => ({
+        ok: true,
+        title: '订单报告',
+        filename: 'order.html',
+        html: '<h1>订单报告</h1>',
+        markdown: '# 订单报告\n\n包含商户 M10004 与金额 570000。',
+      }),
+      { force: true, key: 'persisted-run' },
+    )
+    assert.equal(snapshotReportProgress('persisted-run').status, 'done')
+    const persisted = JSON.parse(fs.readFileSync(process.env.OD_REPORT_PROGRESS_FILE, 'utf8'))
+    resetReportProgress()
+    fs.writeFileSync(process.env.OD_REPORT_PROGRESS_FILE, JSON.stringify(persisted), 'utf8')
+    const snap = snapshotReportProgress('fresh-process')
+    assert.equal(snap.status, 'done')
+    assert.ok(snap.files.some((file) => file.name === 'order.html' && file.content.includes('<h1>')))
+    assert.match(snap.narrative, /报告|生成/)
   })
 })

@@ -109,7 +109,11 @@ export async function runAnalysisPython(args, opts = {}) {
   }
   const used = Number(session.meta?.analysisPythonCalls || 0)
   if (used >= 2) {
-    return { ok: false, error: 'Python 分析预算已用完（最多 2 次）。不要继续探测；请基于现有 rows 执行洞察、保存结论并提交报告。' }
+    return {
+      ok: false,
+      error: '代码分析预算已用完',
+      note: '本轮 Python 分析次数已达到上限。请改用已经取得的聚合证据保存洞察并生成子任务文件；如需更深分析，可新开一轮或减少分析任务数。',
+    }
   }
   session.meta.analysisPythonCalls = used + 1
   const usedHandle = handle || Object.keys(frames)[0]

@@ -301,6 +301,7 @@ public class StubQueryService {
         return switch (datasetId) {
             case "ds_ops" -> "module";
             case "ds_fin" -> "month";
+            case "ds_012eb19e" -> "Status";
             default -> "region";
         };
     }
@@ -309,6 +310,7 @@ public class StubQueryService {
         return switch (datasetId) {
             case "ds_ops" -> "uv";
             case "ds_fin" -> "income";
+            case "ds_012eb19e" -> "Amount";
             default -> "amount";
         };
     }
@@ -393,6 +395,30 @@ public class StubQueryService {
                             "amount", 760, "qty", 16, "profit", 190, "order_cnt", 7),
                     row("region", "华南", "channel", "线下", "product", "C", "salesman", "李四",
                             "amount", 520, "qty", 11, "profit", 120, "order_cnt", 5)
+            );
+        }
+        if ("ds_012eb19e".equals(datasetId)) {
+            return List.of(
+                    row("PayOrderId", "P202609010001", "CreatedDate", "2026-09-01", "Status", "3", "ChannelId", "wx_app", "ProductId", "loan_a", "MchId", "M10001",
+                            "Amount", 186000, "MchIncome", 181350, "AgentProfit", 4650, "MchRate", 0.025),
+                    row("PayOrderId", "P202609010002", "CreatedDate", "2026-09-01", "Status", "3", "ChannelId", "wx_app", "ProductId", "loan_a", "MchId", "M10001",
+                            "Amount", 92000, "MchIncome", 89700, "AgentProfit", 2300, "MchRate", 0.025),
+                    row("PayOrderId", "P202609010003", "CreatedDate", "2026-09-01", "Status", "2", "ChannelId", "alipay", "ProductId", "loan_b", "MchId", "M10002",
+                            "Amount", 31500, "MchIncome", 30870, "AgentProfit", 630, "MchRate", 0.020),
+                    row("PayOrderId", "P202609010004", "CreatedDate", "2026-09-01", "Status", "-1", "ChannelId", "bank", "ProductId", "loan_c", "MchId", "M10003",
+                            "Amount", 128000, "MchIncome", 124160, "AgentProfit", 3840, "MchRate", 0.030),
+                    row("PayOrderId", "P202609020001", "CreatedDate", "2026-09-02", "Status", "3", "ChannelId", "wx_app", "ProductId", "loan_a", "MchId", "M10001",
+                            "Amount", 216000, "MchIncome", 210600, "AgentProfit", 5400, "MchRate", 0.025),
+                    row("PayOrderId", "P202609020002", "CreatedDate", "2026-09-02", "Status", "3", "ChannelId", "alipay", "ProductId", "loan_b", "MchId", "M10002",
+                            "Amount", 143000, "MchIncome", 140140, "AgentProfit", 2860, "MchRate", 0.020),
+                    row("PayOrderId", "P202609020003", "CreatedDate", "2026-09-02", "Status", "3", "ChannelId", "bank", "ProductId", "loan_c", "MchId", "M10004",
+                            "Amount", 268000, "MchIncome", 258620, "AgentProfit", 9380, "MchRate", 0.035),
+                    row("PayOrderId", "P202609020004", "CreatedDate", "2026-09-02", "Status", "2", "ChannelId", "wx_app", "ProductId", "loan_b", "MchId", "M10005",
+                            "Amount", 47000, "MchIncome", 45825, "AgentProfit", 1175, "MchRate", 0.025),
+                    row("PayOrderId", "P202609030001", "CreatedDate", "2026-09-03", "Status", "3", "ChannelId", "bank", "ProductId", "loan_c", "MchId", "M10004",
+                            "Amount", 302000, "MchIncome", 291430, "AgentProfit", 10570, "MchRate", 0.035),
+                    row("PayOrderId", "P202609030002", "CreatedDate", "2026-09-03", "Status", "-1", "ChannelId", "alipay", "ProductId", "loan_a", "MchId", "M10006",
+                            "Amount", 73000, "MchIncome", 71175, "AgentProfit", 1825, "MchRate", 0.025)
             );
         }
         // Unknown / user datasets: do NOT silently reuse sales demo rows.

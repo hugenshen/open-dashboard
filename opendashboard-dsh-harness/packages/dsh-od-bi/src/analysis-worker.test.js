@@ -49,7 +49,12 @@ describe('renderReport', () => {
     assert.match(r.html, /非可刷新看板/)
     assert.match(r.markdown, /静态快照/)
     assert.match(r.html, /上海/)
-    assert.match(r.html, /分析过程/)
+    assert.match(r.html, /报告摘要/)
+    assert.match(r.html, /核心发现/)
+    assert.match(r.html, /结论与建议/)
+    assert.match(r.markdown, /## 目录/)
+    assert.ok(r.html.indexOf('报告摘要') < r.html.indexOf('分主题分析'))
+    assert.ok(r.html.indexOf('分主题分析') < r.html.indexOf('附录：数据口径与证据'))
   })
 
   it('renders business labels, enum names and money units instead of label/value/raw codes', () => {
@@ -85,7 +90,7 @@ describe('renderReport', () => {
       { name: 'PayOrderId', label: '支付订单号', role: 'id' },
     ]
     const r = renderReport({ frames: [
-      { title: 'Top 商户', chart: { encode: { category: 'MchId', value: 'Amount' } }, fields, rows: [[1001, 8]], rowCount: 1 },
+      { title: 'Top 商户', chart: { encode: { category: 'MchId', value: 'Amount' } }, fields, rows: [['M1001', 8]], rowCount: 1 },
       { title: '状态订单量', chart: { encode: { category: 'Status', value: 'PayOrderId' } }, fields, rows: [[3, 8]], rowCount: 1 },
       { title: '状态支付金额', chart: { encode: { category: 'Status', value: 'Amount' } }, fields, rows: [[3, 800]], rowCount: 1 },
     ] })
@@ -97,7 +102,7 @@ describe('renderReport', () => {
 describe('/report followup (PR-ANR-01)', () => {
   it('shows a human request; protocol stays out of chat', () => {
     const text = buildReportFollowup('华东支付失败归因')
-    assert.match(text, /写一份分析报告：华东支付失败归因/)
+    assert.match(text, /写一份分析报告（不是看板）：华东支付失败归因/)
     assert.doesNotMatch(text, /ANALYSIS_REPORT=1/)
     assert.doesNotMatch(text, /od_board_worker/)
     assert.doesNotMatch(text, /od_get_data/)
@@ -284,28 +289,42 @@ describe('analysis worker', () => {
     }, {
       session,
       fields,
-      queryFn: async () => ({ ok: true, rowCount: 3, rows: [[1001, 5000], [1002, 3000], [1003, 2000]] }),
+      queryFn: async () => ({ ok: true, rowCount: 3, rows: [['M1001', 5000], ['M1002', 3000], ['M1003', 2000]] }),
     })
     assert.equal(runSaveInsight({
       taskIndex: 1, handle: merchant.handle,
       title: 'Top 商户支付金额',
       process: '按商户聚合并排序',
-      insight: '商户 1001 的支付金额最高。',
+      insight: '商户 M1001 的支付金额最高。',
     }, { session }).ok, true)
-    const second = runCompleteAnalysisTask({ taskIndex: 1, summary: '商户 1001 金额最高。' }, { session })
+    const second = runCompleteAnalysisTask({ taskIndex: 1, summary: '商户 M1001 金额最高。' }, { session })
     assert.equal(second.ok, true)
     const sourceFiles = runReadAnalysisFiles({}, { session })
     assert.equal(sourceFiles.ok, true)
     assert.equal(sourceFiles.fileCount, 2)
     assert.match(sourceFiles.files[1].content, /\| MchId \| Amount \|/)
-    assert.match(sourceFiles.files[1].content, /\| 1001 \| 5000 \|/)
+    assert.match(sourceFiles.files[1].content, /\| M1001 \| 5000 \|/)
     assert.match(String(runCommitReport({ title: '订单报告' }, { session }).error || ''), /authored markdown/)
+    assert.match(String(runCommitReport({
+      title: '订单报告',
+      markdown: '# 订单报告\n\n## 结论\n\n支付成功金额占主导，但不展开商户证据。',
+    }, { session }).error || ''), /too thin|chapters|lost business entities/)
+    assert.match(String(runCommitReport({
+      title: '订单报告',
+      markdown: '# 订单报告\n\n## 报告摘要\n\n订单履约状态与商户经营贡献均存在明显差异，报告已覆盖状态分布和商户排名两个主题，但这里没有展开具体金额证据。\n\n## 核心发现\n\n- 支付成功金额占主导。\n- 商户 M1001、商户 M1002、商户 M1003 都出现在经营主体排名中，但未给出各自金额。\n\n## 分主题分析\n\n履约状态和商户差异都说明订单贡献集中，需要进一步复核。\n\n## 结论与建议\n\n建议优先查看头部商户贡献。\n\n## 附录：数据口径与证据\n\n证据来自两个 data_analysis 文件。',
+    }, { session }).error || ''), /numeric evidence|too generic/)
+    assert.match(String(runCommitReport({
+      title: '订单报告',
+      markdown: '# 订单报告\n\n## 报告说明与数据口径\n\n| 任务 | 证据文件 |\n| --- | --- |\n| task0 | task0.md |\n\n## 核心结论\n\n订单履约状态与商户经营贡献均存在明显差异，商户 M1001 金额最高，为 5000；商户 M1002 为 3000；商户 M1003 为 2000。\n\n## 结论与建议\n\n建议优先查看头部商户贡献。\n\n## 附录：数据口径与证据\n\n| MchId | Amount |\n| --- | --- |\n| M1001 | 5000 |\n| M1002 | 3000 |\n| M1003 | 2000 |',
+    }, { session }).error || ''), /not user-readable|engineering evidence/)
     const report = runCommitReport({
       title: '订单报告',
-      markdown: '# 订单报告\n\n## 履约状态\n\n支付成功金额占主导。\n\n## 商户差异\n\n商户 1001 金额最高。',
+      markdown: '# 订单报告\n\n## 报告摘要\n\n订单履约状态与商户经营贡献均存在明显差异，以下结论完全来自两个 data_analysis 文件的聚合证据。\n\n## 核心发现\n\n- 支付成功金额占主导。状态 0 的支付金额为 2000，状态 2 的支付金额为 8000，说明已支付状态贡献了主要金额，需要继续结合状态口径解释业务完成情况。\n- 商户 M1001 金额最高，为 5000；商户 M1002 为 3000；商户 M1003 为 2000。源数据只提供 MchId，没有商户名称字段，因此报告保留真实商户 ID，不改写成虚构名称。\n\n## 分主题分析\n\n### 履约状态\n\n状态金额切片显示支付成功金额占主导，业务处理完成状态也贡献主要体量。\n\n### 商户差异\n\n头部商户贡献差异明显，应继续追踪商户 M1001 的订单结构与支付成功率。\n\n## 结论与建议\n\n建议优先围绕头部商户与履约状态交叉复核，识别是否存在集中风险或运营机会。\n\n## 附录：数据口径与证据\n\n| MchId | Amount |\n| --- | --- |\n| M1001 | 5000 |\n| M1002 | 3000 |\n| M1003 | 2000 |',
     }, { session })
     assert.equal(report.ok, true)
-    assert.match(report.html, /商户 1001/)
+    assert.match(report.markdown, /## 目录/)
+    assert.match(report.html, /<table>/)
+    assert.match(report.html, /商户 M1001/)
     assert.equal(report.analysisFiles.length, 2)
   })
 
@@ -328,19 +347,26 @@ describe('analysis worker', () => {
       fields, chart: { encode: { category: 'Status', value: 'Status' } }, suggestedChartType: 'pie',
     })
     putFrame(session, 'merchant-amount', {
-      handle: 'merchant-amount', rowCount: 2, rows: [{ label: 1001, value: 6000 }, { label: 1002, value: 4000 }],
+      handle: 'merchant-amount', rowCount: 2, rows: [{ label: 'M1001', value: 6000 }, { label: 'M1002', value: 4000 }],
       fields, chart: { encode: { category: 'MchId', value: 'Amount' } }, suggestedChartType: 'hbar',
     })
     assert.equal(runSaveInsight({ taskIndex: 0, handle: 'status-amount', insight: '业务处理完成金额占主导。' }, { session }).savedCount, 1)
     assert.equal(runSaveInsight({ taskIndex: 0, handle: 'status-count', insight: '业务处理完成订单数占主导。' }, { session }).savedCount, 2)
-    const third = runSaveInsight({ taskIndex: 0, handle: 'merchant-amount', insight: '商户 1001 金额最高。' }, { session })
+    const third = runSaveInsight({ taskIndex: 0, handle: 'merchant-amount', insight: '商户 M1001 金额最高。' }, { session })
     assert.equal(third.autoCommitted, undefined)
     assert.equal(consumePresentation(session.key), null)
     assert.equal(runCompleteAnalysisTask({ taskIndex: 0, summary: '三项证据已汇总。' }, { session }).ok, true)
-    const authored = '# 订单报告\n\n## 实际业务结论\n\n商户 1001 金额最高。'
+    assert.match(String(runCommitReport({
+      title: '订单报告',
+      markdown: '# 订单报告\n\n## 实际业务结论\n\n金额最高。',
+    }, { session }).error || ''), /too thin|chapters|lost business entities/)
+    const authored = '# 订单报告\n\n## 报告摘要\n\n该订单报告基于状态金额、状态订单量与商户金额三个聚合切片整理。业务处理完成状态在金额和订单数上均占主导：状态金额证据中业务处理完成为 8000、支付成功为 2000；状态订单量证据中业务处理完成为 80、支付成功为 20。商户 M1001 金额最高，为 6000；商户 M1002 为 4000。源数据只提供 MchId，没有商户名称字段，因此这里保留真实商户 ID，并把商户作为经营主体维度解读。\n\n## 核心发现\n\n- 业务处理完成状态在金额和订单数上均占主导，金额为 8000、订单量为 80。\n- 商户 M1001 是当前样本中的头部经营主体，金额为 6000。\n\n## 分主题分析\n\n状态和商户两个视角共同说明订单贡献集中，需要继续看支付状态与商户的交叉分布。\n\n## 结论与建议\n\n建议对商户 M1001 做进一步订单结构核查，并关注状态完成率是否稳定。\n\n## 附录：数据口径与证据\n\n| MchId | Amount |\n| --- | --- |\n| M1001 | 6000 |\n| M1002 | 4000 |'
     const report = runCommitReport({ title: '订单报告', markdown: authored }, { session })
-    assert.match(report.markdown, /实际业务结论/)
-    assert.match(report.html, /商户 1001/)
+    assert.match(report.markdown, /## 目录/)
+    assert.match(report.markdown, /报告摘要/)
+    assert.match(report.markdown, /结论与建议/)
+    assert.match(report.markdown, /附录：数据口径与证据/)
+    assert.match(report.html, /商户 M1001/)
   })
 
   it('runs python on a cached frame when python3 exists', async () => {

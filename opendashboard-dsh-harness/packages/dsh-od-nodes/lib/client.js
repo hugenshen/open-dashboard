@@ -100,6 +100,21 @@ window.__ModuleLoader__.load({
       }
     }
 
+    function syncPromptToBridge(prompt) {
+      const text = String(prompt || '').trim()
+      if (!text) return
+      try {
+        fetch('/od/bridge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ prompt: text }),
+        }).catch(() => {})
+      } catch {
+        /* ignore */
+      }
+    }
+
     function notifyOpenReport(payload) {
       if (!isEmbedded()) return
       notifyParent({
@@ -271,6 +286,67 @@ window.__ModuleLoader__.load({
       return fromCalls
     }
 
+    const REPORT_TRACE_KEY = 'opendashboard:last-analysis-report-trace'
+
+    function reportTraceKey() {
+      try {
+        const ctx = SessionChromeAction._ctx
+        const list = ctx?.sessions?.list?.getSnapshot?.()
+        const current = list?.current || ctx?.sessions?.current || ''
+        if (current) return `${REPORT_TRACE_KEY}:${current}`
+      } catch {
+        /* ignore */
+      }
+      return `${REPORT_TRACE_KEY}:${SessionChromeAction._odTenantKey || 'default'}`
+    }
+
+    function saveReportTrace(progress) {
+      if (!progress || progress.status === 'idle') return
+      try {
+        const slim = {
+          title: progress.title || '',
+          status: progress.status || '',
+          startedAt: progress.startedAt || Date.now(),
+          activeNode: progress.activeNode || '',
+          narrative: progress.narrative || '',
+          plan: progress.plan || null,
+          files: (progress.files || []).map((file) => ({
+            name: file.name,
+            type: file.type,
+            size: file.size,
+          })),
+          thoughts: (progress.thoughts || []).slice(-24),
+          steps: (progress.steps || []).slice(-80).map((step) => ({
+            id: step.id,
+            nodeName: step.nodeName,
+            category: step.category,
+            title: step.title,
+            detail: step.detail,
+            status: step.status,
+            output: step.output,
+            issue: step.issue,
+            recovery: step.recovery,
+            taskIndex: step.taskIndex,
+          })),
+        }
+        window.localStorage?.setItem(reportTraceKey(), JSON.stringify(slim))
+      } catch {
+        /* ignore */
+      }
+    }
+
+    function loadReportTrace() {
+      try {
+        const raw = window.localStorage?.getItem(reportTraceKey())
+        if (!raw) return null
+        const parsed = JSON.parse(raw)
+        if (!parsed || (!parsed.thoughts?.length && !parsed.steps?.length && !parsed.plan?.stages?.length)) return null
+        return parsed
+      } catch {
+        return null
+      }
+    }
+
     function ReportProcessBridgeInner({ useSession }) {
       const runningCalls = useSession((snapshot) => snapshot.runningCalls || [])
       const fromCalls = reportProcessFromCalls(runningCalls)
@@ -321,6 +397,7 @@ window.__ModuleLoader__.load({
         : ''
       React.useEffect(() => {
         if (!process || !isEmbedded()) return
+        saveReportTrace(process)
         notifyParent({
           type: 'od-report-progress',
           ...process,
@@ -366,6 +443,13 @@ window.__ModuleLoader__.load({
     }
 
     function actionLabel(step) {
+      if (step.status === 'error' || step.status === 'needs_action') {
+        if (step.nodeName === 'od_get_data') return '取数需要处理'
+        if (step.nodeName === 'od_python') return '代码分析需要处理'
+        if (step.nodeName === 'od_insight') return '洞察未形成'
+        if (step.nodeName === 'od_commit_report') return '报告生成失败'
+        return '需要处理'
+      }
       if (step.status === 'running') {
         if (step.nodeName === 'od_python') return '正在运行 Python'
         if (step.nodeName === 'od_get_data') return '正在取数'
@@ -385,6 +469,7 @@ window.__ModuleLoader__.load({
     function JoyAnalysisDialogue() {
       const wrapRef = React.useRef(null)
       const [progress, setProgress] = React.useState(null)
+      const [cached, setCached] = React.useState(() => loadReportTrace())
       const [host, setHost] = React.useState(null)
 
       React.useEffect(() => {
@@ -396,9 +481,12 @@ window.__ModuleLoader__.load({
               if (stop) return
               const next = data?.progress
               if (next && next.status && next.status !== 'idle') {
+                saveReportTrace(next)
                 setProgress(next)
+                setCached(next)
               } else {
                 setProgress(null)
+                setCached(loadReportTrace())
               }
             })
             .catch(() => {})
@@ -425,18 +513,31 @@ window.__ModuleLoader__.load({
         return undefined
       })
 
-      const thoughts = progress?.thoughts || []
-      const visibleSteps = (progress?.steps || []).filter((step) => (
+      const viewProgress = progress || cached
+      const thoughts = viewProgress?.thoughts || []
+      const visibleSteps = (viewProgress?.steps || []).filter((step) => (
         step.nodeName !== 'od_board_worker' && step.status !== 'pending'
       ))
-      const show = Boolean(progress && progress.status !== 'idle' && (thoughts.length || visibleSteps.length))
+      const show = Boolean(viewProgress && viewProgress.status !== 'idle' && (thoughts.length || visibleSteps.length))
       if (!show) return null
+      const replay = !progress && cached
 
       const ui = h('div', {
         ref: wrapRef,
         'data-od-joy-dialogue': '1',
         style: { width: '100%', fontSize: 14, color: '#27272a' },
       }, [
+        replay
+          ? h('div', {
+            key: 'replay-head',
+            style: {
+              marginTop: 8,
+              color: '#646a73',
+              fontSize: 12,
+              lineHeight: '18px',
+            },
+          }, `分析过程回放 · ${viewProgress.title || '分析报告'}`)
+          : null,
         ...thoughts.slice(-12).map((item) => h('div', {
           key: item.id,
           style: {
@@ -499,8 +600,8 @@ window.__ModuleLoader__.load({
               height: 8,
               borderRadius: '50%',
               flex: 'none',
-              background: step.status === 'running' ? '#4040ff' : (step.status === 'error' ? '#dc2626' : '#16a34a'),
-              boxShadow: step.status === 'running' ? '0 0 0 4px rgba(64,64,255,0.15)' : 'none',
+              background: step.status === 'running' ? '#4040ff' : (step.status === 'error' ? '#dc2626' : (step.status === 'needs_action' ? '#d97706' : '#16a34a')),
+              boxShadow: step.status === 'running' ? '0 0 0 4px rgba(64,64,255,0.15)' : (step.status === 'needs_action' ? '0 0 0 4px rgba(217,119,6,0.14)' : 'none'),
             },
           }),
           h('span', {
@@ -2082,6 +2183,41 @@ window.__ModuleLoader__.load({
       })
     }
 
+    /** Shell → iframe: prefill the composer so users can adjust a running plan. */
+    function pinShellPrefillMessage() {
+      window.addEventListener('message', (event) => {
+        const data = event.data
+        if (!data || data.source !== 'opendashboard-shell') return
+        if (data.type !== 'od-prefill-message') return
+        const text = String(data.text || '').trim()
+        if (!text) return
+        const textarea = document.querySelector('textarea')
+        if (!textarea) return
+        textarea.value = text
+        textarea.dispatchEvent(new Event('input', { bubbles: true }))
+        textarea.dispatchEvent(new Event('change', { bubbles: true }))
+        textarea.focus()
+      })
+    }
+
+    /** Keep the server bridge aware of the latest user prompt before tools run. */
+    function pinPromptBridge() {
+      document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return
+        const el = event.target
+        if (!el || String(el.tagName || '').toLowerCase() !== 'textarea') return
+        syncPromptToBridge(el.value)
+      }, true)
+      document.addEventListener('click', (event) => {
+        const button = event.target?.closest?.('button')
+        if (!button) return
+        const label = `${button.getAttribute('aria-label') || ''} ${button.getAttribute('title') || ''} ${button.textContent || ''}`
+        if (!/发送|send/i.test(label)) return
+        const textarea = document.querySelector('textarea')
+        syncPromptToBridge(textarea?.value)
+      }, true)
+    }
+
     function apply(ctx) {
       pinEmbedChrome()
       pinOdLandingCopy()
@@ -2089,6 +2225,8 @@ window.__ModuleLoader__.load({
       pinSessionBridge(ctx)
       pinOdWorkspaceBind(ctx)
       pinShellOpenSession(ctx)
+      pinShellPrefillMessage()
+      pinPromptBridge()
       pinProductChatSurface(ctx)
       SessionChromeAction._ctx = ctx
       ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({

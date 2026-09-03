@@ -98,6 +98,29 @@ describe('runGetData / save / commit', () => {
     assert.equal(saved.chartType, 'pie')
   })
 
+  it('uses local payment-order demo data when Java catalog is not ready', async () => {
+    const s = resetBoardSession('test-payment-order-fallback')
+    const got = await runGetData({
+      datasetId: 'ds_012eb19e',
+      purpose: 'analysis',
+      intent: 'rank',
+      dim: 'MchId',
+      measure: 'Amount',
+      agg: 'sum',
+      question: '订单表商户金额排行',
+      title: '商户金额排行',
+    }, {
+      session: s,
+      queryFn: async () => {
+        throw new Error('BI POST /api/internal/bi/query/chart → 404')
+      },
+    })
+    assert.equal(got.ok, true)
+    assert.equal(got.rowCount > 0, true)
+    assert.equal(got.suggestedChartType, 'hbar')
+    assert.ok(got.sample.some((row) => JSON.stringify(row).includes('M10004')))
+  })
+
   it('drops empty tasks; remaining commit still writes', async () => {
     const s = resetBoardSession('test-board-2')
     const empty = await runGetData({

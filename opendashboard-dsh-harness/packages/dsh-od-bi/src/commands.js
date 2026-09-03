@@ -19,7 +19,7 @@ export function buildReportFollowup(rawInput = '', opts = {}) {
       ? '我想写分析报告。请用当前已选的数据集，等我提出具体解读问题后再生成。'
       : '我想写分析报告。请先帮我确认数据集，等我提出具体解读问题后再生成。'
   }
-  return `写一份分析报告：${q}`
+  return `写一份分析报告（不是看板）：${q}`
 }
 
 /** User-visible /board line. HITL / spawn rules stay on od_plan_charts and od_board_worker. */

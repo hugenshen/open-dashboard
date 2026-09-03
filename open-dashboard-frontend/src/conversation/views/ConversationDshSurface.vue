@@ -8,6 +8,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { getAuthBundle } from '@/api/http'
 import DashboardEditorHost from '@/dashboard/hifi/DashboardEditorHost.vue'
 
+const REPORT_PROGRESS_STORAGE_KEY = 'od.analysis.report.latest'
+
 const route = useRoute()
 const router = useRouter()
 const ready = ref(false)
@@ -35,12 +37,15 @@ type ReportProcessStep = {
   category?: string
   title: string
   detail?: string
-  status: 'pending' | 'running' | 'done' | 'error'
+  status: 'pending' | 'running' | 'done' | 'error' | 'needs_action'
   depth?: number
   durationMs?: number
   inputs?: Array<{ label: string; value: string }>
   output?: string
   code?: string
+  taskIndex?: number
+  issue?: string
+  recovery?: string
 }
 type ReportPlan = {
   stages: string[]
@@ -48,7 +53,7 @@ type ReportPlan = {
   steps: string[]
   taskIds?: string[]
 }
-type ReportArtifact = { name: string; type: string; content: string; size: number }
+type ReportArtifact = { name: string; type: string; content: string; size: number; final?: boolean }
 const reportProcessSteps = ref<ReportProcessStep[]>([])
 const reportPlan = ref<ReportPlan>({ stages: [], stepStatus: [], steps: [] })
 const reportArtifacts = ref<ReportArtifact[]>([])
@@ -56,9 +61,11 @@ const selectedArtifactName = ref('')
 const reportProcessStatus = ref<'running' | 'done' | 'error'>('running')
 const reportActiveNode = ref('')
 const reportNarrative = ref('')
+const reportHealth = ref<{ status?: string; title?: string; message?: string; recovery?: string } | null>(null)
 const selectedStepId = ref('')
 const followPinned = ref(false)
 const planExpanded = ref(false)
+let reportProgressTimer = 0
 const followStep = computed(() => {
   const steps = reportProcessSteps.value
   if (!steps.length) return null
@@ -103,11 +110,28 @@ const planStage = computed(() => {
     status: status === 'completed' ? 'done' : status === 'in_progress' ? 'running' : status === 'error' ? 'error' : 'pending',
   } as ReportProcessStep
 })
+const planCards = computed(() => reportPlan.value.stages.map((title, index) => {
+  const status = reportPlan.value.stepStatus[index]
+  const normalized = status === 'completed' ? 'done' : status === 'in_progress' ? 'running' : status === 'error' ? 'error' : 'pending'
+  const steps = reportProcessSteps.value.filter((step) => Number(step.taskIndex) === index)
+  const running = steps.find((step) => step.status === 'running')
+  const latest = [...steps].reverse().find((step) => step.status !== 'pending')
+  return {
+    id: reportPlan.value.taskIds?.[index] || `plan-${index + 1}`,
+    index,
+    title,
+    detail: reportPlan.value.steps[index] || '',
+    status: normalized as ReportProcessStep['status'],
+    stepCount: steps.length,
+    latest: running || latest || null,
+  }
+}))
 const planStatusLabel = computed(() => {
   const status = planStage.value?.status
   if (status === 'done') return '已完成'
   if (status === 'running') return '进行中'
   if (status === 'error') return '失败'
+  if (status === 'needs_action') return '需要处理'
   return '未开始'
 })
 
@@ -125,7 +149,7 @@ const browserSteps = computed(() => reportProcessSteps.value.filter((step) => {
 const reportFiles = computed(() => {
   const base = String(reportFilename.value || 'analysis-report').replace(/\.(html?|md|markdown)$/i, '')
   return [
-    ...reportArtifacts.value.map((file) => ({ format: 'artifact' as const, name: file.name, size: file.size })),
+    ...reportArtifacts.value.filter((file) => !file.final).map((file) => ({ format: 'artifact' as const, name: file.name, size: file.size })),
     reportHtml.value ? { format: 'html' as const, name: `${base}.html`, size: new Blob([reportHtml.value]).size } : null,
     reportMarkdown.value ? { format: 'markdown' as const, name: `${base}.md`, size: new Blob([reportMarkdown.value]).size } : null,
   ].filter(Boolean) as Array<{ format: 'artifact' | 'html' | 'markdown'; name: string; size: number }>
@@ -204,11 +228,16 @@ function renderMarkdownLite(src: string) {
   const lines = String(src || '').split('\n')
   const out: string[] = []
   let inList = false
+  let inOrderedList = false
   let inTable = false
   const flushList = () => {
     if (inList) {
       out.push('</ul>')
       inList = false
+    }
+    if (inOrderedList) {
+      out.push('</ol>')
+      inOrderedList = false
     }
   }
   const flushTable = () => {
@@ -270,14 +299,31 @@ function renderMarkdownLite(src: string) {
       flushList()
       out.push(`<h1>${inline(line.slice(2))}</h1>`)
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      if (inOrderedList) {
+        out.push('</ol>')
+        inOrderedList = false
+      }
       if (!inList) {
         out.push('<ul>')
         inList = true
       }
       out.push(`<li>${inline(line.slice(2))}</li>`)
+    } else if (/^\d+[.)]\s+/.test(line)) {
+      if (inList) {
+        out.push('</ul>')
+        inList = false
+      }
+      if (!inOrderedList) {
+        out.push('<ol>')
+        inOrderedList = true
+      }
+      out.push(`<li>${inline(line.replace(/^\d+[.)]\s+/, ''))}</li>`)
     } else if (/^---+$/.test(line.trim())) {
       flushList()
       out.push('<hr/>')
+    } else if (line.startsWith('&gt; ')) {
+      flushList()
+      out.push(`<blockquote>${inline(line.slice(5))}</blockquote>`)
     } else if (!line.trim()) {
       flushList()
     } else {
@@ -356,6 +402,46 @@ function resumeLiveFollow() {
   reportView.value = 'process'
 }
 
+function selectPlanStage(index: number) {
+  const step = [...reportProcessSteps.value].reverse().find((item) => Number(item.taskIndex) === index)
+    || reportProcessSteps.value[index]
+  if (step?.id) {
+    selectedStepId.value = step.id
+    followPinned.value = true
+  }
+  reportView.value = 'process'
+}
+
+function postPrefillMessage(text: string) {
+  if (!frameEl.value?.contentWindow) return
+  frameEl.value.contentWindow.postMessage(
+    {
+      source: 'opendashboard-shell',
+      type: 'od-prefill-message',
+      text,
+    },
+    dshOrigin(),
+  )
+}
+
+function requestPlanEdit(index: number) {
+  const title = reportPlan.value.stages[index] || `第 ${index + 1} 步`
+  const detail = reportPlan.value.steps[index] || ''
+  postPrefillMessage(`调整报告计划：请修改第 ${index + 1} 步「${title}」。当前规划：${detail}`)
+}
+
+function requestReportRecovery(action: 'broaden' | 'dimension' | 'skip') {
+  const step = followStep.value
+  const title = step?.title || reportActiveNode.value || '当前分析步骤'
+  const detail = step?.detail || step?.issue || reportHealth.value?.message || ''
+  const map = {
+    broaden: `继续生成报告：请对「${title}」放宽取数范围或降低筛选粒度后重试。当前问题：${detail}`,
+    dimension: `继续生成报告：请把「${title}」切换到更稳定的业务维度（如商户、支付状态、渠道、日期）重新分析。当前问题：${detail}`,
+    skip: `继续生成报告：请跳过「${title}」这一节，保留已完成证据，先完成最终 HTML 和 Markdown 报告，并在报告中说明该节未完成原因。当前问题：${detail}`,
+  }
+  postPrefillMessage(map[action])
+}
+
 function dshOrigin(): string {
   try {
     return new URL(dshBase.value, window.location.origin).origin
@@ -388,6 +474,11 @@ function isDismissedRun(startedAt) {
 function closeReport() {
   reportDismissed.value = true
   dismissedStartedAt.value = Date.now()
+  try {
+    window.localStorage.removeItem(REPORT_PROGRESS_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
   hasReport.value = false
   hasReportProcess.value = false
   reportTitle.value = ''
@@ -403,6 +494,7 @@ function closeReport() {
   reportProcessStatus.value = 'running'
   reportActiveNode.value = ''
   reportNarrative.value = ''
+  reportHealth.value = null
   selectedStepId.value = ''
   followPinned.value = false
   planExpanded.value = false
@@ -417,6 +509,7 @@ function openReportProcess(payload: {
   steps?: ReportProcessStep[]
   plan?: ReportPlan
   files?: ReportArtifact[]
+  health?: { status?: string; title?: string; message?: string; recovery?: string } | null
 }) {
   if (payload.status === 'idle' || isDismissedRun(payload.startedAt)) return
   reportDismissed.value = false
@@ -439,6 +532,14 @@ function openReportProcess(payload: {
     reportActiveNode.value = String(payload.activeNode || '')
   }
   if (payload.narrative != null) reportNarrative.value = String(payload.narrative)
+  reportHealth.value = payload.health
+    ? {
+      status: payload.health.status ? String(payload.health.status) : '',
+      title: payload.health.title ? String(payload.health.title) : '',
+      message: payload.health.message ? String(payload.health.message) : '',
+      recovery: payload.health.recovery ? String(payload.health.recovery) : '',
+    }
+    : null
   if (payload.plan && Array.isArray(payload.plan.stages)) {
     reportPlan.value = {
       stages: payload.plan.stages.map(String),
@@ -448,6 +549,7 @@ function openReportProcess(payload: {
       steps: (payload.plan.steps || []).map(String),
       taskIds: Array.isArray(payload.plan.taskIds) ? payload.plan.taskIds.map(String) : undefined,
     }
+    if (!planExpanded.value) planExpanded.value = true
   }
   if (Array.isArray(payload.files)) {
     reportArtifacts.value = payload.files.map((file) => ({
@@ -455,7 +557,21 @@ function openReportProcess(payload: {
       type: String(file.type || 'markdown'),
       content: String(file.content || ''),
       size: Math.max(0, Number(file.size || new Blob([String(file.content || '')]).size)),
+      final: Boolean((file as ReportArtifact).final),
     })).filter((file) => file.name)
+    const finalHtml = reportArtifacts.value.find((file) => file.final && /html?/i.test(file.type || file.name))
+      || reportArtifacts.value.find((file) => /\.html?$/i.test(file.name) && file.content)
+    const finalMd = reportArtifacts.value.find((file) => file.final && /markdown|md/i.test(file.type || file.name))
+      || reportArtifacts.value.find((file) => /\.(md|markdown)$/i.test(file.name) && file.content)
+    if (payload.status === 'done' && (finalHtml?.content || finalMd?.content)) {
+      reportHtml.value = finalHtml?.content || reportHtml.value
+      reportMarkdown.value = finalMd?.content || reportMarkdown.value
+      reportFilename.value = finalHtml?.name || finalMd?.name || reportFilename.value
+      reportFormat.value = finalHtml?.content ? 'html' : 'markdown'
+      selectedArtifactName.value = ''
+      hasReport.value = true
+      reportView.value = 'files'
+    }
   }
   reportProcessSteps.value = Array.isArray(payload.steps)
     ? payload.steps.map((step, index) => ({
@@ -466,11 +582,12 @@ function openReportProcess(payload: {
       detail: step.detail ? String(step.detail) : undefined,
       status: fileReady
         ? (step.status === 'error' ? 'error' : 'done')
-        : ['pending', 'running', 'done', 'error'].includes(step.status)
+        : ['pending', 'running', 'done', 'error', 'needs_action'].includes(step.status)
           ? step.status
         : 'pending',
       depth: Math.max(0, Number(step.depth || 0)),
       durationMs: Math.max(0, Number(step.durationMs || 0)),
+      taskIndex: Number.isFinite(Number(step.taskIndex)) ? Math.max(0, Number(step.taskIndex)) : undefined,
       inputs: Array.isArray(step.inputs)
         ? step.inputs.map((item) => ({ label: String(item.label || ''), value: String(item.value || '') })).filter((item) => item.label && item.value)
         : [],
@@ -478,10 +595,107 @@ function openReportProcess(payload: {
         ? '报告文件已生成，可在「文件」中查看 HTML / Markdown。'
         : step.output ? String(step.output) : undefined,
       code: step.code ? String(step.code) : undefined,
+      issue: step.issue ? String(step.issue) : undefined,
+      recovery: step.recovery ? String(step.recovery) : undefined,
     }))
     : reportProcessSteps.value
   if (!followPinned.value) selectedStepId.value = ''
   else if (!reportProcessSteps.value.some((step) => step.id === selectedStepId.value)) resumeLiveFollow()
+  saveReportSnapshot()
+}
+
+function saveReportSnapshot() {
+  if (!hasReport.value && !hasReportProcess.value) return
+  try {
+    window.localStorage.setItem(REPORT_PROGRESS_STORAGE_KEY, JSON.stringify({
+      title: reportTitle.value,
+      status: reportProcessStatus.value,
+      activeNode: reportActiveNode.value,
+      narrative: reportNarrative.value,
+      steps: reportProcessSteps.value,
+      plan: reportPlan.value,
+      files: reportArtifacts.value,
+      health: reportHealth.value,
+      filename: reportFilename.value,
+      format: reportFormat.value,
+      html: reportHtml.value,
+      markdown: reportMarkdown.value,
+      savedAt: Date.now(),
+    }))
+  } catch {
+    // Snapshot is a convenience for refresh/reopen, not the source of truth.
+  }
+}
+
+function restoreReportSnapshot() {
+  try {
+    const raw = window.localStorage.getItem(REPORT_PROGRESS_STORAGE_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    if (!saved || typeof saved !== 'object') return
+    // Avoid resurrecting very old in-memory-only reports.
+    if (Date.now() - Number(saved.savedAt || 0) > 24 * 60 * 60 * 1000) return
+    reportFilename.value = saved.filename ? String(saved.filename) : ''
+    reportFormat.value = String(saved.format || '').toLowerCase() === 'markdown' ? 'markdown' : 'html'
+    reportHtml.value = saved.html ? String(saved.html) : ''
+    reportMarkdown.value = saved.markdown ? String(saved.markdown) : ''
+    if (reportHtml.value || reportMarkdown.value) hasReport.value = true
+    openReportProcess({
+      title: saved.title ? String(saved.title) : undefined,
+      status: saved.status ? String(saved.status) : undefined,
+      activeNode: saved.activeNode ? String(saved.activeNode) : undefined,
+      narrative: saved.narrative != null ? String(saved.narrative) : undefined,
+      steps: Array.isArray(saved.steps) ? saved.steps : undefined,
+      plan: saved.plan && typeof saved.plan === 'object' ? saved.plan : undefined,
+      files: Array.isArray(saved.files) ? saved.files : undefined,
+      health: saved.health && typeof saved.health === 'object' ? saved.health : undefined,
+    })
+  } catch {
+    /* ignore invalid snapshot */
+  }
+}
+
+function reportProgressUrl() {
+  return new URL('od/report-progress', new URL(dshBase.value, window.location.origin)).toString()
+}
+
+function stopReportProgressPolling() {
+  if (reportProgressTimer) {
+    window.clearTimeout(reportProgressTimer)
+    reportProgressTimer = 0
+  }
+}
+
+async function refreshReportProgressOnce() {
+  try {
+    const res = await fetch(reportProgressUrl(), { credentials: 'include' })
+    if (!res.ok) return
+    const body = await res.json()
+    const progress = body?.progress
+    if (!progress || progress.status === 'idle') return
+    openReportProcess({
+      title: progress.title ? String(progress.title) : undefined,
+      status: progress.status ? String(progress.status) : undefined,
+      startedAt: progress.startedAt != null ? Number(progress.startedAt) : undefined,
+      activeNode: progress.activeNode ? String(progress.activeNode) : undefined,
+      narrative: progress.narrative != null ? String(progress.narrative) : undefined,
+      steps: Array.isArray(progress.steps) ? progress.steps : undefined,
+      plan: progress.plan && typeof progress.plan === 'object' ? progress.plan : undefined,
+      files: Array.isArray(progress.files) ? progress.files : undefined,
+      health: progress.health && typeof progress.health === 'object' ? progress.health : undefined,
+    })
+    if (progress.status === 'running') scheduleReportProgressPolling()
+  } catch {
+    // DSH may still be booting or unavailable; iframe postMessage remains the primary live path.
+  }
+}
+
+function scheduleReportProgressPolling() {
+  stopReportProgressPolling()
+  reportProgressTimer = window.setTimeout(async () => {
+    reportProgressTimer = 0
+    await refreshReportProgressOnce()
+  }, 2500)
 }
 
 function selectReportStep(id: string) {
@@ -516,6 +730,7 @@ function openReport(payload: {
   reportMarkdown.value = String(payload.markdown || '')
   hasReport.value = Boolean(reportHtml.value || reportMarkdown.value)
   hasReportProcess.value = reportProcessSteps.value.length > 0 || hasReportProcess.value
+  saveReportSnapshot()
 }
 
 function openDashboard(payload: { dashboardId: string; title?: string }) {
@@ -578,6 +793,7 @@ function onMessage(event: MessageEvent) {
       steps: Array.isArray(data.steps) ? data.steps : undefined,
       plan: data.plan && typeof data.plan === 'object' ? data.plan : undefined,
       files: Array.isArray(data.files) ? data.files : undefined,
+      health: data.health && typeof data.health === 'object' ? data.health : undefined,
     })
     return
   }
@@ -610,9 +826,12 @@ onMounted(() => {
   ready.value = true
   syncFromQuery()
   window.addEventListener('message', onMessage)
+  restoreReportSnapshot()
+  void refreshReportProgressOnce()
 })
 
 onBeforeUnmount(() => {
+  stopReportProgressPolling()
   window.removeEventListener('message', onMessage)
 })
 
@@ -628,6 +847,7 @@ watch(
 
 function onFrameLoad() {
   syncSessionDeepLink()
+  void refreshReportProgressOnce()
 }
 </script>
 
@@ -661,64 +881,88 @@ function onFrameLoad() {
       </nav>
       <div class="od-dsh-surface__dash-body">
         <div v-if="reportView === 'process'" class="od-dsh-surface__report-process">
-          <div class="od-dsh-surface__workspace">
-            <div class="od-dsh-surface__follow-title">{{ followStep?.title || '任务跟随' }}</div>
-            <div class="od-dsh-surface__follow-body">
-              <template v-if="followStep">
-                <div class="od-dsh-surface__follow-meta">
-                  <span class="od-dsh-surface__process-dot" :class="followStep.status" />
-                  <code>{{ followStep.nodeName || followStep.category || 'agent' }}</code>
-                  <span>{{ followStep.status === 'done' ? '已完成' : followStep.status === 'error' ? '失败' : '执行中' }}</span>
-                  <span v-if="followStep.durationMs">{{ (followStep.durationMs / 1000).toFixed(1) }}s</span>
+          <div class="od-dsh-surface__process-grid">
+            <aside v-if="reportPlan.stages.length" class="od-dsh-surface__plan">
+              <div class="od-dsh-surface__plan-head">
+                <div>
+                  <strong>规划任务</strong>
+                  <p>{{ planIndex + 1 }} / {{ reportPlan.stages.length }} · 可点选回看，调整会带入对话框</p>
                 </div>
-                <p v-if="followStep.detail" class="od-dsh-surface__follow-detail">{{ followStep.detail }}</p>
-                <dl v-if="followStep.inputs?.length" class="od-dsh-surface__follow-inputs">
-                  <template v-for="item in followStep.inputs" :key="`${item.label}:${item.value}`">
-                    <dt>{{ item.label }}</dt><dd>{{ item.value }}</dd>
-                  </template>
-                </dl>
-                <pre v-if="followStep.code" class="od-dsh-surface__tool-output"><code>{{ followStep.code }}</code></pre>
-                <pre v-if="followStep.output" class="od-dsh-surface__tool-output"><code>{{ followStep.output }}</code></pre>
-                <div v-else-if="followHtml" class="od-dsh-surface__process-narrative-body" v-html="followHtml" />
-              </template>
-              <p v-else class="od-dsh-surface__node-empty">任务正在执行，产出会实时出现在这里</p>
-            </div>
-            <div v-if="reportProcessSteps.length" class="od-dsh-surface__follow-nav">
-              <button type="button" :disabled="followIndex <= 0" aria-label="上一个节点" @click="selectFollowOffset(-1)">‹</button>
-              <button type="button" :disabled="followIndex >= reportProcessSteps.length - 1" aria-label="下一个节点" @click="selectFollowOffset(1)">›</button>
-              <div class="od-dsh-surface__follow-track"><span :style="{ width: `${((followIndex + 1) / reportProcessSteps.length) * 100}%` }" /></div>
-              <span>{{ followIndex + 1 }} / {{ reportProcessSteps.length }}</span>
-              <button v-if="followPinned" type="button" class="live" @click="resumeLiveFollow">回到实时</button>
-            </div>
-          </div>
-          <div v-if="reportPlan.stages.length" class="od-dsh-surface__plan">
-            <button type="button" class="od-dsh-surface__plan-head" @click="planExpanded = !planExpanded">
-              <span>任务进度</span>
-              <span class="od-dsh-surface__plan-count">{{ planIndex + 1 }} / {{ reportPlan.stages.length }}</span>
-            </button>
-            <div v-if="!planExpanded && planStage" class="od-dsh-surface__plan-current">
-              <span class="od-dsh-surface__process-dot" :class="planStage.status" />
-              <div>
-                <strong>{{ planStage.title }}</strong>
-                <p>{{ planStage.detail || planStatusLabel }}</p>
+                <button v-if="followPinned" type="button" @click="resumeLiveFollow">实时跟随</button>
+              </div>
+              <ol class="od-dsh-surface__plan-list">
+                <li
+                  v-for="card in planCards"
+                  :key="card.id"
+                  :class="[card.status, { selected: card.index === planIndex || Number(followStep?.taskIndex) === card.index }]"
+                  @click="selectPlanStage(card.index)"
+                >
+                  <span class="od-dsh-surface__plan-index">{{ card.index + 1 }}</span>
+                  <div class="od-dsh-surface__plan-main">
+                    <div class="od-dsh-surface__plan-row">
+                      <strong>{{ card.title }}</strong>
+                      <em>{{ card.status === 'done' ? '完成' : card.status === 'running' ? '进行中' : card.status === 'error' ? '失败' : '待执行' }}</em>
+                    </div>
+                    <p>{{ card.detail || planStatusLabel }}</p>
+                    <small v-if="card.latest">{{ card.latest.title }} · {{ card.latest.output || card.latest.detail }}</small>
+                    <small v-else>等待该任务开始后展示取数、计算、洞察节点</small>
+                    <button type="button" @click.stop="requestPlanEdit(card.index)">调整这步</button>
+                  </div>
+                </li>
+              </ol>
+            </aside>
+            <div class="od-dsh-surface__workspace">
+              <div class="od-dsh-surface__follow-title">
+                <span>{{ followStep?.title || '实时跟随' }}</span>
+                <small>{{ reportActiveNode || (reportProcessStatus === 'done' ? '报告已完成' : '正在分析') }}</small>
+              </div>
+              <div class="od-dsh-surface__follow-body">
+                <div v-if="reportHealth" class="od-dsh-surface__health-card">
+                  <strong>{{ reportHealth.title || '需要处理' }}</strong>
+                  <p>{{ reportHealth.message }}</p>
+                  <small>{{ reportHealth.recovery }}</small>
+                  <div class="od-dsh-surface__recovery-actions">
+                    <button type="button" @click="requestReportRecovery('broaden')">放宽范围重试</button>
+                    <button type="button" @click="requestReportRecovery('dimension')">换业务维度</button>
+                    <button type="button" @click="requestReportRecovery('skip')">跳过继续成稿</button>
+                  </div>
+                </div>
+                <template v-if="followStep">
+                  <div class="od-dsh-surface__follow-meta">
+                    <span class="od-dsh-surface__process-dot" :class="followStep.status" />
+                    <code>{{ followStep.nodeName || followStep.category || 'agent' }}</code>
+                    <span>{{ followStep.status === 'done' ? '已完成' : followStep.status === 'error' ? '失败' : followStep.status === 'needs_action' ? '需要处理' : '执行中' }}</span>
+                    <span v-if="followStep.durationMs">{{ (followStep.durationMs / 1000).toFixed(1) }}s</span>
+                  </div>
+                  <div v-if="followStep.issue || followStep.recovery" class="od-dsh-surface__issue-card">
+                    <strong>{{ followStep.issue || '需要处理' }}</strong>
+                    <p v-if="followStep.recovery">建议：{{ followStep.recovery }}</p>
+                    <div class="od-dsh-surface__recovery-actions">
+                      <button type="button" @click="requestReportRecovery('broaden')">放宽范围重试</button>
+                      <button type="button" @click="requestReportRecovery('dimension')">换业务维度</button>
+                      <button type="button" @click="requestReportRecovery('skip')">跳过继续成稿</button>
+                    </div>
+                  </div>
+                  <p v-if="followStep.detail" class="od-dsh-surface__follow-detail">{{ followStep.detail }}</p>
+                  <dl v-if="followStep.inputs?.length" class="od-dsh-surface__follow-inputs">
+                    <template v-for="item in followStep.inputs" :key="`${item.label}:${item.value}`">
+                      <dt>{{ item.label }}</dt><dd>{{ item.value }}</dd>
+                    </template>
+                  </dl>
+                  <pre v-if="followStep.code" class="od-dsh-surface__tool-output"><code>{{ followStep.code }}</code></pre>
+                  <pre v-if="followStep.output" class="od-dsh-surface__tool-output"><code>{{ followStep.output }}</code></pre>
+                  <div v-else-if="followHtml" class="od-dsh-surface__process-narrative-body" v-html="followHtml" />
+                </template>
+                <p v-else class="od-dsh-surface__node-empty">任务正在执行，规划、取数、计算和成稿过程会实时出现在这里</p>
+              </div>
+              <div v-if="reportProcessSteps.length" class="od-dsh-surface__follow-nav">
+                <button type="button" :disabled="followIndex <= 0" aria-label="上一个节点" @click="selectFollowOffset(-1)">‹</button>
+                <button type="button" :disabled="followIndex >= reportProcessSteps.length - 1" aria-label="下一个节点" @click="selectFollowOffset(1)">›</button>
+                <div class="od-dsh-surface__follow-track"><span :style="{ width: `${((followIndex + 1) / reportProcessSteps.length) * 100}%` }" /></div>
+                <span>{{ followIndex + 1 }} / {{ reportProcessSteps.length }}</span>
+                <button v-if="followPinned" type="button" class="live" @click="resumeLiveFollow">回到实时</button>
               </div>
             </div>
-            <ol v-else class="od-dsh-surface__plan-list">
-              <li
-                v-for="(stage, index) in reportPlan.stages"
-                :key="reportPlan.taskIds?.[index] || `plan-${index}`"
-                :class="[
-                  reportPlan.stepStatus[index] === 'completed' ? 'done' : reportPlan.stepStatus[index] === 'in_progress' ? 'running' : reportPlan.stepStatus[index],
-                  { selected: index === planIndex },
-                ]"
-              >
-                <span class="od-dsh-surface__process-dot" :class="reportPlan.stepStatus[index] === 'completed' ? 'done' : reportPlan.stepStatus[index] === 'in_progress' ? 'running' : reportPlan.stepStatus[index]" />
-                <div>
-                  <strong>{{ stage }}</strong>
-                  <p>{{ reportPlan.steps[index] }}</p>
-                </div>
-              </li>
-            </ol>
           </div>
         </div>
         <div v-else-if="reportView === 'browser'" class="od-dsh-surface__browser-list">
@@ -914,14 +1158,17 @@ function onFrameLoad() {
 .od-dsh-surface__report-process {
   position: absolute;
   inset: 0;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
   padding: 8px 16px 16px;
   background: #fff;
 }
+.od-dsh-surface__process-grid {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(300px, 36%) minmax(0, 1fr);
+  gap: 12px;
+}
 .od-dsh-surface__workspace {
-  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -931,21 +1178,78 @@ function onFrameLoad() {
 }
 .od-dsh-surface__follow-title {
   flex: none;
-  height: 34px;
-  padding: 0 16px;
+  min-height: 42px;
+  padding: 8px 16px;
   border-bottom: 1px solid #e9e9f0;
   color: #1f2329;
   font-size: 12px;
   font-weight: 650;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.od-dsh-surface__follow-title small {
+  min-width: 0;
+  color: #848581;
+  font-size: 11px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .od-dsh-surface__follow-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 16px;
+}
+.od-dsh-surface__health-card,
+.od-dsh-surface__issue-card {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #f2d28a;
+  border-radius: 10px;
+  background: #fff8e7;
+  color: #7a4b00;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.od-dsh-surface__health-card strong,
+.od-dsh-surface__issue-card strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #8a5200;
+  font-size: 13px;
+}
+.od-dsh-surface__health-card p,
+.od-dsh-surface__issue-card p {
+  margin: 0;
+}
+.od-dsh-surface__health-card small {
+  display: block;
+  margin-top: 4px;
+  color: #9a6b1c;
+}
+.od-dsh-surface__recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.od-dsh-surface__recovery-actions button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #f0c36a;
+  border-radius: 999px;
+  background: #fff;
+  color: #7a4b00;
+  font-size: 12px;
+  cursor: pointer;
+}
+.od-dsh-surface__recovery-actions button:hover {
+  border-color: #e6a23c;
+  background: #fff4d6;
 }
 .od-dsh-surface__follow-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: #646a73; font-size: 12px; }
 .od-dsh-surface__follow-meta .od-dsh-surface__process-dot { margin-top: 0; }
@@ -980,24 +1284,38 @@ function onFrameLoad() {
   white-space: pre-wrap;
 }
 .od-dsh-surface__plan {
-  flex: none;
-  margin-top: 12px;
-  padding: 12px 16px 8px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
   border: 1px solid #e9e9f0;
   border-radius: 12px;
-  background: #fff;
+  background: #fbfcff;
+  overflow: hidden;
 }
 .od-dsh-surface__plan-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   width: 100%;
-  height: 32px;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid #eceef5;
   color: #1f2329;
   font: inherit;
   font-size: 13px;
+}
+.od-dsh-surface__plan-head strong { display: block; margin-bottom: 3px; font-size: 14px; font-weight: 700; }
+.od-dsh-surface__plan-head p { margin: 0; color: #848581; font-size: 12px; line-height: 1.4; }
+.od-dsh-surface__plan-head button {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #d8dbef;
+  border-radius: 14px;
+  background: #fff;
+  color: #4040ff;
+  font-size: 12px;
   cursor: pointer;
 }
 .od-dsh-surface__plan-count {
@@ -1005,30 +1323,95 @@ function onFrameLoad() {
   color: #848581;
   font-size: 12px;
 }
-.od-dsh-surface__plan-current,
 .od-dsh-surface__plan-list li {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 8px 0 4px;
+  gap: 12px;
 }
 .od-dsh-surface__plan-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   list-style: none;
   margin: 8px 0 0;
-  padding: 12px;
-  border-radius: 6px;
-  background: #f9f9fc;
+  padding: 0 2px 0 0;
 }
 .od-dsh-surface__plan-list li {
   cursor: pointer;
-  border-radius: 6px;
-  padding: 8px;
+  border: 1px solid #eceef5;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+  transition: border-color .15s, box-shadow .15s, background .15s;
 }
-.od-dsh-surface__plan-list li.selected { background: #eef1ff; }
-.od-dsh-surface__plan-current strong,
-.od-dsh-surface__plan-list strong { color: #27272a; font-size: 13px; font-weight: 600; }
-.od-dsh-surface__plan-current p,
-.od-dsh-surface__plan-list p { margin: 2px 0 0; color: #2029459e; font-size: 12px; line-height: 1.45; }
+.od-dsh-surface__plan-list li + li { margin-top: 10px; }
+.od-dsh-surface__plan-list li:hover {
+  border-color: #cfd4ff;
+  box-shadow: 0 6px 16px rgba(45, 55, 110, 0.08);
+}
+.od-dsh-surface__plan-list li.selected { border-color: #8f9bff; background: #f5f7ff; }
+.od-dsh-surface__plan-list li.running { border-color: #b9c0ff; }
+.od-dsh-surface__plan-list li.done .od-dsh-surface__plan-index { background: #16a34a; color: #fff; }
+.od-dsh-surface__plan-list li.error .od-dsh-surface__plan-index { background: #dc2626; color: #fff; }
+.od-dsh-surface__plan-index {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef1ff;
+  color: #4040ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.od-dsh-surface__plan-main { min-width: 0; flex: 1; }
+.od-dsh-surface__plan-row { display: flex; align-items: center; gap: 8px; }
+.od-dsh-surface__plan-row strong {
+  min-width: 0;
+  flex: 1;
+  color: #27272a;
+  font-size: 13px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.od-dsh-surface__plan-row em {
+  flex: none;
+  font-style: normal;
+  color: #646a73;
+  font-size: 11px;
+}
+.od-dsh-surface__plan-main p {
+  margin: 6px 0 0;
+  color: #202945cc;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.od-dsh-surface__plan-main small {
+  display: block;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #f4f6f9;
+  color: #646a73;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.od-dsh-surface__plan-main button {
+  margin-top: 8px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: #eef1ff;
+  color: #4040ff;
+  font-size: 12px;
+  cursor: pointer;
+}
 .od-dsh-surface__process-dot {
   flex: none;
   width: 8px;
@@ -1041,6 +1424,7 @@ function onFrameLoad() {
 .od-dsh-surface__process-dot.running { border-color: #4040ff; background: #4040ff; box-shadow: 0 0 0 4px rgba(64, 64, 255, 0.15); }
 .od-dsh-surface__process-dot.done { border-color: #16a34a; background: #16a34a; }
 .od-dsh-surface__process-dot.error { border-color: #dc2626; background: #dc2626; }
+.od-dsh-surface__process-dot.needs_action { border-color: #d97706; background: #d97706; }
 .od-dsh-surface__process-dot.pending { border-color: #c7cbd1; background: #fff; }
 .od-dsh-surface__node-empty { margin: 0 !important; padding: 8px 10px; border-radius: 7px; background: #f4f6f9; color: #8f959e !important; }
 .od-dsh-surface__browser-list { position: absolute; inset: 0; overflow: auto; padding: 16px; }
@@ -1084,6 +1468,15 @@ function onFrameLoad() {
 .od-dsh-surface__report-md :deep(h4) { font-size: 13px; margin: 14px 0 6px; }
 .od-dsh-surface__report-md :deep(p) { margin: 0 0 10px; }
 .od-dsh-surface__report-md :deep(ul) { margin: 0 0 12px 18px; }
+.od-dsh-surface__report-md :deep(ol) { margin: 0 0 12px 20px; }
+.od-dsh-surface__report-md :deep(blockquote) {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-left: 4px solid #6464ff;
+  border-radius: 0 8px 8px 0;
+  background: #f5f7ff;
+  color: #303133;
+}
 .od-dsh-surface__report-md :deep(hr) { border: 0; border-top: 1px solid #eceef2; margin: 16px 0; }
 .od-dsh-surface__report-md :deep(table) {
   width: 100%;

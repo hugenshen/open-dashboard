@@ -41,6 +41,7 @@ import {
   suggestChartFromResult,
   typeFromIntent,
 } from './realize-task.js'
+import { demoOrderSchema, isDemoOrderDataset, queryDemoOrder } from './demo-order.js'
 
 export const WORKER_TOOL_NAMES = Object.freeze([
   'od_analysis_plan',
@@ -165,12 +166,18 @@ function suggestForFrame(chart, fields, rows, rowCount) {
 }
 
 async function loadFields(datasetId, signal) {
-  const schema = await biFetch(
-    'GET',
-    `/api/internal/bi/datasets/${encodeURIComponent(datasetId)}/schema`,
-    undefined,
-    signal,
-  )
+  let schema
+  try {
+    schema = await biFetch(
+      'GET',
+      `/api/internal/bi/datasets/${encodeURIComponent(datasetId)}/schema`,
+      undefined,
+      signal,
+    )
+  } catch (err) {
+    if (!isDemoOrderDataset(datasetId)) throw err
+    schema = demoOrderSchema()
+  }
   return {
     fields: Array.isArray(schema?.fields) ? schema.fields : [],
     name: schema?.name || '',
@@ -224,11 +231,18 @@ export async function runGetData(args, opts = {}) {
       timeoutMs: opts.timeoutMs || (analysis ? ANALYSIS_TIMEOUT_MS : REALIZE_TIMEOUT_MS),
     })
   } catch (err) {
-    return {
-      ok: false,
-      error: String(err?.message || err),
-      note: 'query failed — retry once with a different dim, or skip this task',
+    if (isDemoOrderDataset(ds)) {
+      q = queryDemoOrder(chart)
+    } else {
+      return {
+        ok: false,
+        error: String(err?.message || err),
+        note: 'query failed — retry once with a different dim, or skip this task',
+      }
     }
+  }
+  if (!q?.ok && isDemoOrderDataset(ds) && /BI .*→ 4\d\d|BI .*→ 5\d\d|fetch failed|ECONNREFUSED|DATASET_UNAVAILABLE/i.test(String(q?.error || ''))) {
+    q = queryDemoOrder(chart)
   }
   if (!q?.ok) {
     return {
@@ -281,7 +295,7 @@ export async function runGetData(args, opts = {}) {
       sample: [],
       suggestedChartType: null,
       note: analysis
-        ? 'empty result — retry once with a revised question or different dim, then od_insight; do not od_save_chart'
+        ? '没有取到可用于分析的数据。请放宽时间范围、移除过窄筛选，或改用状态/渠道/商户/产品等业务维度重新取数；不要把空结果写成业务结论。retry with a revised question or different dim.'
         : 'empty result — retry once with a different dim, or skip (do not od_save_chart)',
     })
   }
@@ -303,8 +317,8 @@ export async function runGetData(args, opts = {}) {
     detailDump: detailDump || undefined,
     note: analysis
       ? (detailDump
-        ? 'This looks like a detail/ID dump. Do NOT od_insight or save. Retry od_get_data with a categorical dim (status/channel/type), never PayOrderId or other keys.'
-        : 'Chart type was chosen by harness from DATE/row count. Next: od_python for descriptive/correlation/anomaly, and/or od_insight with one analysis_method. You may od_get_data again with another dim.')
+        ? '当前结果像明细或高基数 ID 列表，不适合写成报告洞察。请改用状态、渠道、产品、商户等业务维度重新取数。'
+        : '已取得可分析聚合结果。下一步可做 Python/变换/洞察，并把有业务意义的结论保存到子任务文件。')
       : 'Chart type was chosen by harness from DATE/row count. Do not pick pie vs bar. od_save_chart next (or od_data_trans first).',
   })
 }
@@ -653,8 +667,10 @@ export function registerBoardWorkerTools(ctx, deps) {
       render: (_args, value) => [{
         type: 'text',
         text: value.ok
-          ? `get_data ${value.handle}: ${value.rowCount} rows → ${value.suggestedChartType || 'none'}${value.note ? `\n${value.note}` : ''}`
-          : `get_data failed: ${value.error || 'unknown'}`,
+          ? (value.rowCount
+            ? `取数完成：已取得 ${value.rowCount} 行聚合结果，可继续分析。${value.note ? `\n${value.note}` : ''}`
+            : `取数需要调整：没有取到可用于分析的数据。\n${value.note || '请换时间范围、筛选条件或业务维度后重试。'}`)
+          : `取数失败：${value.error || '未知错误'}。请检查数据服务、数据集和字段配置后重试。`,
       }],
     },
     ...workerToolMeta('od_get_data'),

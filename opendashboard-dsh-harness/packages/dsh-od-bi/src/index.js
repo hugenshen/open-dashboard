@@ -22,7 +22,7 @@ import {
 } from './gen-board.js'
 import { planBoardAnalysis, planBoardFromGoalPlan } from './goal-planner.js'
 import { registerAnalysisWorkerTools } from './analysis-worker.js'
-import { registerBoardWorkerTools } from './board-worker.js'
+import { callerDepth, registerBoardWorkerTools } from './board-worker.js'
 import { realizeBoundCharts } from './realize-task.js'
 import { biFetch, PREVIEW_ROW_LIMIT, toLosslessJson } from './http.js'
 import {
@@ -34,11 +34,110 @@ import { assessSemanticReadiness, semanticNotReadyMessage } from './semantic-rea
 import { assertAllowedTables } from './sql-guard.js'
 import { registerOdCommands } from './commands.js'
 import { registerReportProgressRoute } from './report-progress.js'
+import {
+  DEMO_ORDER_DATASET,
+  DEMO_ORDER_DATASET_ID,
+  demoOrderSchema,
+  isDemoOrderDataset,
+} from './demo-order.js'
 
 function countChartsInPatch(patch) {
   const ops = patch?.ops
   if (!Array.isArray(ops)) return 0
   return ops.filter((o) => o && o.op === 'upsert_chart').length
+}
+
+function isAnalysisReportPrompt(text) {
+  return /写.*分析报告|生成.*报告|分析报告|解读报告|归因报告|经营报告/.test(String(text || ''))
+}
+
+export function isAnalysisReportToolRequest(args = {}) {
+  const bridge = getBridge()
+  return isAnalysisReportPrompt([
+    bridge.prompt,
+    args.message,
+    args.title,
+    args.query,
+  ].filter(Boolean).join('\n'))
+}
+
+function datasetBusinessText(dataset) {
+  const d = dataset && typeof dataset === 'object' ? dataset : {}
+  return [
+    d.id,
+    d.datasetId,
+    d.name,
+    d.title,
+    d.tableName,
+    d.table,
+    d.groupName,
+    d.description,
+  ].filter(Boolean).join(' ').toLowerCase()
+}
+
+function scoreDatasetForPrompt(dataset, promptText) {
+  const prompt = String(promptText || '').toLowerCase()
+  const haystack = datasetBusinessText(dataset)
+  let score = 0
+  if (/订单|支付订单|订单表|t_pay_order|pay_order|order/.test(prompt)) {
+    if (/ds_012eb19e/.test(haystack)) score += 120
+    if (/t_pay_order|pay_order/.test(haystack)) score += 100
+    if (/支付/.test(haystack)) score += 45
+    if (/订单|order/.test(haystack)) score += 45
+    if (/销售|sales|fact_sales/.test(haystack)) score -= 15
+    if (/数据源清单|de_datasource|datasource/.test(haystack)) score -= 80
+  }
+  if (/商户|merchant|mch/.test(prompt) && /商户|merchant|mch/.test(haystack)) score += 20
+  return score
+}
+
+export function rankDatasetsForPrompt(datasets, promptText) {
+  const list = Array.isArray(datasets) ? datasets : []
+  return list
+    .map((dataset, index) => ({ dataset, index, score: scoreDatasetForPrompt(dataset, promptText) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map(({ dataset }) => dataset)
+}
+
+function mergeDatasets(primary, fallback) {
+  const seen = new Set()
+  const out = []
+  for (const dataset of [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(fallback) ? fallback : [])]) {
+    const key = String(dataset?.id || dataset?.datasetId || dataset?.tableName || JSON.stringify(dataset))
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(dataset)
+  }
+  return out
+}
+
+function shouldOfferDemoOrderFallback(promptText) {
+  return /订单|支付订单|订单表|t_pay_order|pay_order|order/.test(String(promptText || '').toLowerCase())
+}
+
+function withDemoOrderFallback(list, promptText) {
+  const rows = Array.isArray(list) ? list : []
+  if (!shouldOfferDemoOrderFallback(promptText)) return rows
+  if (rows.some((dataset) => String(dataset?.id || dataset?.datasetId || '') === DEMO_ORDER_DATASET_ID)) return rows
+  return [...rows, DEMO_ORDER_DATASET]
+}
+
+function leadReportSchemaGuard(exec) {
+  if (callerDepth(exec) >= 1) return null
+  const bridge = getBridge()
+  if (!isAnalysisReportPrompt(bridge.prompt)) return null
+  return toLosslessJson({
+    ok: false,
+    error: 'Analysis-report path: Lead must immediately call od_board_worker once with description=写分析报告 and prompt first line ANALYSIS_REPORT=1 plus datasetId and the user question. Do not call schema/profile on the Lead path; PlanningAgent inside the worker reads schema.',
+  })
+}
+
+function reportMustUseWorkerError() {
+  return toLosslessJson({
+    ok: false,
+    source: 'analysis-report-route',
+    error: '这是分析报告任务，不是看板规划任务；报告生成不依赖 semanticReady。请立即调用 od_board_worker，description=写分析报告，prompt 第一行 ANALYSIS_REPORT=1，并包含 datasetId 与用户原话。',
+  })
 }
 
 /**
@@ -308,9 +407,12 @@ export function apply(ctx) {
           return `- ${id}: ${name}${table}`
         })
         const more = rows.length > 40 ? `\n… +${rows.length - 40} more` : ''
+        const preferred = value.preferredDataset
+          ? `\npreferred: ${value.preferredDataset.id || value.preferredDataset.datasetId || '?'} · ${value.preferredDataset.name || value.preferredDataset.title || ''}${value.preferredDataset.tableName ? ` · ${value.preferredDataset.tableName}` : ''}`
+          : ''
         return [{
           type: 'text',
-          text: `datasets(${rows.length}) via ${value.source}${value.error ? ` err=${value.error}` : ''}\n${lines.join('\n')}${more}`,
+          text: `datasets(${rows.length}) via ${value.source}${value.error ? ` err=${value.error}` : ''}${preferred}\n${lines.join('\n')}${more}`,
         }]
       },
     },
@@ -321,11 +423,54 @@ export function apply(ctx) {
     },
     async execute(args, exec) {
       const q = args.keyword ? `?keyword=${encodeURIComponent(args.keyword)}` : ''
+      const bridge = getBridge()
+      const promptText = [
+        bridge.prompt,
+        args.keyword,
+        args.message,
+        args.query,
+        args.title,
+      ].filter(Boolean).join('\n')
       try {
         const body = await biFetch('GET', `/api/internal/bi/datasets${q}`, undefined, exec.signal)
-        const list = Array.isArray(body) ? body : (body?.data || body?.datasets || [])
-        return toLosslessJson({ datasets: list, source: 'java' })
+        let list = Array.isArray(body) ? body : (body?.data || body?.datasets || [])
+        let source = 'java'
+        if (args.keyword && /订单|支付订单|订单表|t_pay_order|pay_order|order/.test(promptText)) {
+          try {
+            const allBody = await biFetch('GET', '/api/internal/bi/datasets', undefined, exec.signal)
+            const all = Array.isArray(allBody) ? allBody : (allBody?.data || allBody?.datasets || [])
+            const merged = mergeDatasets(list, all)
+            if (merged.length > list.length) {
+              list = merged
+              source = 'java+ranked-all'
+            }
+          } catch {
+            // The keyword-filtered list remains usable; broad fallback is best-effort.
+          }
+        }
+        const withFallback = withDemoOrderFallback(list, promptText)
+        if (withFallback.length > list.length) source = `${source}+demo-order`
+        const ranked = rankDatasetsForPrompt(withFallback, promptText)
+        const preferredDataset = ranked[0] || null
+        const preferredScore = preferredDataset ? scoreDatasetForPrompt(preferredDataset, promptText) : 0
+        return toLosslessJson({
+          datasets: ranked,
+          preferredDataset,
+          matchReason: preferredScore > 0 ? '已按用户问题中的业务实体优先排序；订单/支付订单请求优先 t_pay_order / ds_012eb19e。' : undefined,
+          source,
+        })
       } catch (err) {
+        const fallback = withDemoOrderFallback([], promptText)
+        if (fallback.length) {
+          return toLosslessJson({
+            ok: true,
+            datasets: fallback,
+            preferredDataset: fallback[0],
+            matchReason: 'Java 数据集目录暂不可用；本地演示环境按订单报告语义提供 t_pay_order / ds_012eb19e 兜底。',
+            source: 'java-error+demo-order',
+            error: String(err?.message || err),
+          })
+        }
         return toLosslessJson({
           ok: false,
           datasets: [],
@@ -399,14 +544,24 @@ export function apply(ctx) {
       content: result.content,
     }),
     async execute(args, exec) {
+      const guarded = leadReportSchemaGuard(exec)
+      if (guarded) return guarded
       const ds = String(args.datasetId)
       try {
-        const schema = await biFetch(
-          'GET',
-          `/api/internal/bi/datasets/${encodeURIComponent(ds)}/schema`,
-          undefined,
-          exec.signal,
-        )
+        let schema
+        let schemaSource = 'java'
+        try {
+          schema = await biFetch(
+            'GET',
+            `/api/internal/bi/datasets/${encodeURIComponent(ds)}/schema`,
+            undefined,
+            exec.signal,
+          )
+        } catch (err) {
+          if (!isDemoOrderDataset(ds)) throw err
+          schema = demoOrderSchema()
+          schemaSource = 'demo-fallback'
+        }
         let terms = []
         let questions = []
         let knowledge = null
@@ -447,7 +602,7 @@ export function apply(ctx) {
           metrics: Array.isArray(knowledge?.metrics) ? knowledge.metrics.slice(0, 24) : [],
           questions,
           semantic,
-          source: 'java',
+          source: schemaSource,
         })
       } catch (err) {
         return toLosslessJson({
@@ -910,6 +1065,8 @@ export function apply(ctx) {
       content: result.content,
     }),
     async execute(args, exec) {
+      const guarded = leadReportSchemaGuard(exec)
+      if (guarded) return guarded
       const ds = String(args.datasetId)
       try {
         // Heavy on large MySQL tables (multiple full-table probes). Prefer schema+plan for gen.
@@ -970,7 +1127,8 @@ export function apply(ctx) {
   ctx.tools.register(defineTool({
     name: 'od_plan_charts',
     description:
-      'Plan dashboard analysis tasks from schema/profile (CapabilityCard → LLM tasks → bind + review). '
+      'Dashboard-only. Do NOT use for analysis reports; reports must call od_board_worker(description=写分析报告) and must not depend on semanticReady. '
+      + 'Plan dashboard analysis tasks from schema/profile (CapabilityCard → LLM tasks → bind + review). '
       + 'Each task is a business question + dim/measure — do NOT lock chartType here. '
       + 'Live path NEVER uses rule enumerateGoals. If LLM is unavailable or all tasks fail the quality gate, '
       + 'return error — do not invent charts. Shows question list and ALWAYS ends the turn — do NOT call '
@@ -1067,6 +1225,7 @@ export function apply(ctx) {
       content: result.content,
     }),
     async execute(args, exec) {
+      if (isAnalysisReportToolRequest(args)) return reportMustUseWorkerError()
       const ds = String(args.datasetId)
       const loaded = await loadSchemaAndProfile(ds, exec.signal)
       let fields = Array.isArray(args.fields) && args.fields.length ? args.fields : loaded.fields
@@ -1400,7 +1559,8 @@ export function apply(ctx) {
   ctx.tools.register(defineTool({
     name: 'od_generate_board',
     description:
-      'LAST-RESORT write of a full dashboard draft when od_board_worker is unavailable. '
+      'Dashboard-only. Do NOT use for analysis reports; reports must call od_board_worker(description=写分析报告) and must not depend on semanticReady. '
+      + 'LAST-RESORT write of a full dashboard draft when od_board_worker is unavailable. '
       + 'Prefer od_board_worker after the user confirms plan tasks (确认/生成/可以/OK). '
       + 'Never call in the same turn as od_plan_charts. '
       + 'This path realizes each task with a sampled chartQuery then picks chart type — still do NOT call od_run_query yourself. '
@@ -1476,6 +1636,7 @@ export function apply(ctx) {
       return { card: 'generic', title: args.title || 'generate', content: result.content }
     },
     async execute(args, exec) {
+      if (isAnalysisReportToolRequest(args)) return reportMustUseWorkerError()
       const ds = String(args.datasetId || '').trim()
       const title = String(args.title || 'AI 生成看板')
       if (!ds) {
