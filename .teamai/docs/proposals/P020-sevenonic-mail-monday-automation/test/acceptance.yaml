@@ -90,3 +90,14 @@ items:
     evidence: null
     status: pending
     blocker_of_done: true
+
+  - id: PR-SMA-09
+    title: 邮件移动删除、Outlook 撤回和业务取消不被混淆
+    gate: acceptance
+    criterion: 受管范围内已获取的 MIME 与附件按保留策略独立归档；Graph removed 只更新邮箱技术状态，不删除证据或自动取消 PO；Recall 通知和客户取消请求分别形成可追溯的关联业务事件，关键订单必须经授权人员确认后才将 monday 状态改为已取消；恢复订单同样新增事件而不覆盖历史。
+    method: integration
+    command_or_path: 待实现补充
+    expected: 邮件从 Inbox 移动、被删除或出现 Recall 通知时，monday 订单均不会被误取消；发送明确取消邮件后进入 CANCEL_PENDING；授权批准后才为 CANCELLED；随后恢复时保留原始、取消和恢复三段证据链。
+    evidence: null
+    status: pending
+    blocker_of_done: true

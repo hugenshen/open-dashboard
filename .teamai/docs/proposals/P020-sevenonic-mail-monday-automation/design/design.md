@@ -1314,6 +1314,273 @@ flowchart LR
   ER2 --> WO["write_operation：写 monday 草稿"]
 ```
 
+#### 11.1.1 是否把所有邮件都存档：是，但有明确边界
+
+本方案的原则是“**先接住原件，再判断它有没有业务价值**”。因此，只要邮件满足下面三个条件，就保存原始 MIME、附件或附件元数据：
+
+1. 邮件出现在 `mailbox_registry` 配置的受管 mailbox 中。
+2. 邮件位于系统实际监听的 folder 范围内。
+3. 系统在邮件被删除或变得不可访问之前，已成功从 Graph 取回内容。
+
+也就是说，下面这些邮件即使最后不写 monday，也会留下接收记录：
+
+- 正常 PO、报价、新款、评语邮件。
+- 同一封邮件在三个邮箱中的三个物理副本。
+- 自动回复、退信、已读回执和无法分类的邮件。
+- PDF 损坏、加密、扫描质量差或格式未知的异常邮件。
+- 客户发来的撤回说明、取消订单、补件和修订邮件。
+
+但“所有邮件”不等于整个 Microsoft 365 租户的所有邮件：
+
+- 未加入 Exchange Application RBAC 范围的邮箱，应用无权读取。
+- 未登记的 folder 不在 Delta 对账范围内。
+- 邮件在系统首次抓取前已被永久删除，Graph 只可能返回删除变化，系统无法凭空恢复原文和附件。
+- Graph Outlook Mail API 不支持访问 in-place archive mailbox；若员工把邮件移入该归档邮箱，不能假设仍可从普通 mailbox API 取回。
+- `referenceAttachment` 或正文中的 OneDrive/Dropbox 链接不等于附件字节；链接无权限或过期时只能保存邮件、链接和失败原因。
+
+因此对外承诺应该写成：
+
+> **对所有受管范围内、已被系统成功看见和取回的邮件做不可变归档；不能承诺恢复抓取前已永久消失、无权访问或外链已失效的内容。**
+
+#### 11.1.2 “归档成功”不能只有一个模糊状态
+
+推荐把邮件接收、原件归档、附件处理和业务判断拆成不同字段：
+
+```text
+mail_copy.graph_presence
+  PRESENT | REMOVED_FROM_FOLDER | DELETED_OR_UNAVAILABLE
+
+mail_copy.archive_status
+  PENDING | MIME_ARCHIVED | FULLY_ARCHIVED | METADATA_ONLY | ARCHIVE_FAILED
+
+mail_copy.security_status
+  NOT_SCANNED | CLEAN | QUARANTINED | BLOCKED
+
+canonical_message.classification
+  PO | QUOTE | NEW_STYLE | COMMENT | RECALL_NOTICE |
+  CANCEL_REQUEST | AUTO_REPLY | NON_BUSINESS | UNKNOWN
+```
+
+实例：一封带密码 PDF 的取消邮件可能同时是：
+
+```text
+graph_presence   = PRESENT
+archive_status   = FULLY_ARCHIVED       # 加密 PDF 原字节已经保存
+security_status  = QUARANTINED          # 不解密、不解析、不外发
+classification   = CANCEL_REQUEST       # 由正文识别出取消意图
+business_status  = REVIEW_REQUIRED      # 禁止自动取消
+```
+
+“附件不能解析”不等于“邮件没有存档”；“邮件后来从 Inbox 消失”也不等于“业务订单被取消”。
+
+#### 11.1.3 必须分清四件事：移动、删除、Outlook 撤回、业务取消
+
+| 现场动作 | Graph/邮箱层可能看到什么 | 业务含义 | 系统动作 | monday 动作 |
+|---|---|---|---|---|
+| 员工把邮件从 Inbox 移到 Customer-A | Inbox Delta 返回 `@removed`；目标 folder 可能返回同一 ImmutableId | 只是整理邮箱 | 更新 `current_folder_id`，原件和业务事件不变 | 不操作 |
+| 员工删除邮件 | 当前 folder 返回 removed；可能进入 Deleted Items，之后也可能永久删除 | 只是邮箱操作，不能证明客户撤单 | 标记邮件当前位置/可用性，保留已归档原件 | 不删除 item、不取消 PO |
+| 发件人使用 Outlook Recall | 成功条件受租户和收件状态限制；跨组织客户通常不能依赖召回 | 只表示发件人试图撤回邮件，不等于业务取消已获确认 | 若收到撤回通知则作为新邮件归档并关联原邮件；进入人工判断 | 最多标“撤回待确认”，不自动删除/取消 |
+| 客户发“Cancel PO-7788”新邮件 | 新 mail_copy、新 canonical_message | 明确的业务取消请求 | 新建 `PO_CANCEL_REQUEST`，关联目标 PO/revision，强制人工确认 | 原 item 改“取消待确认”；批准后改“已取消”，保留 item |
+| 客户发“请忽略上一封，以附件 R3 为准” | 新邮件和新附件 | 修订/替代意图 | 新建 revision 候选，校验 R3；没有 R3 附件则阻断 | 展示 R2→R3 差异，批准后流转 |
+
+最重要的红线：
+
+```text
+Graph @removed != 客户取消订单
+Outlook Recall != 已确认取消订单
+删除原邮件 != 删除 monday item
+客户正文写 Cancel != 自动执行取消
+```
+
+Microsoft 官方说明，Outlook Recall 是否可用受发送方/接收方账号类型、是否属于同一 Microsoft 365 组织、邮箱位置、客户端与租户策略等条件限制。Sevenonic 与外部客户通常不在同一组织，因此真正可靠的业务取消必须是一条独立、可审计、经确认的业务请求，不能依赖“召回是否成功”。Graph 的普通 message/delta 响应也没有一个可普遍依赖的 `isRecalled=true` 业务字段；本系统能做的是识别实际收到的撤回通知、替代邮件或取消文字，并把它们送审，不能保证感知发送方在外部租户内发起但未投递到我方的撤回操作。
+
+#### 11.1.4 撤回或取消 PO 的完整实例
+
+原始事件：
+
+```text
+09:06  客户发送 PO-7788 R2，数量 1600
+09:08  系统已归档三份邮箱副本，建立 BE-7788-R2
+09:10  monday 已有待复核草稿 item 9876543210
+```
+
+客户 09:15 又发送：
+
+```text
+From: buyer@customer-a.com
+Subject: URGENT - Cancel PO-7788 Rev 2
+Body: Please cancel PO-7788 R2. We will issue a new PO tomorrow.
+```
+
+系统不能覆盖或删除 BE-7788-R2，而应形成第二个事件：
+
+```text
+mail_copy       MC-150：取消邮件在 po@ 的物理副本
+canonical       CM-590：客户这次取消发送
+business_event  BE-7788-R2-CANCEL：event_type=PO_CANCEL_REQUEST
+target_event    BE-7788-R2
+status          REVIEW_REQUIRED
+```
+
+monday 处理：
+
+```text
+原 item 9876543210 仍保留
+review_col     = 取消待确认
+issue_col      = 客户邮件请求取消；等待跟单负责人确认
+evidence_col   = 取消邮件证据链接
+生产类 automation 暂停
+```
+
+负责人确认后：
+
+```text
+review_decision = APPROVE_CANCEL
+business_event BE-7788-R2.status = CANCELLED
+monday item review_col = 已取消
+write_operation action = APPLY_CANCELLATION
+```
+
+第二天客户又说恢复订单，也不能把 CANCEL 记录抹掉，而应建立 `PO_REINSTATE_REQUEST`，再次审核。最终审计链能说明“谁在什么时间依据哪封邮件取消，又依据哪封邮件恢复”。
+
+#### 11.1.5 客户侧可能出现的邮件边界情况
+
+| # | 客户邮件情况 | 五层判断结果 | 是否自动写 monday | 业务处理 |
+|---:|---|---|---|---|
+| C01 | 正常新 PO，单 PDF，字段一致 | 新 mail_copy/canonical/event | 可建待复核草稿 | 人工确认关键字段后正式流转 |
+| C02 | To 主邮箱并 Cc 两个受管邮箱 | 3 mail_copy→1 canonical→1 event | 只写一张草稿 | 显示三份收件证据 |
+| C03 | 客户原样重发同一 R2，Message-ID 相同 | 新/重复副本归并；同业务 payload | 不新增 item | 标记 `RESENT_DUPLICATE` |
+| C04 | 客户转发同一 R2，Message-ID 改变 | 新 canonical；业务键和 payload 相同 | 不新增 item | 关联原 event，保留重发证据 |
+| C05 | 明确发送 R3，数量 1600→1800 | 新 revision event | 建 revision 待复核 | 展示字段差异，不能覆盖 R2 证据 |
+| C06 | 附件内容变了但仍写 R2 | 同业务键、不同 payload | 禁止自动更新 | `BUSINESS_CONFLICT`，确认是否漏改 revision |
+| C07 | 主题写 R3、PDF 内写 R2 | revision 冲突 | 可建阻断草稿 | 人工确认正确版本 |
+| C08 | 正文写 1500、PDF 写 1600 | 字段证据冲突 | 可建阻断草稿 | 不静默信任任一方 |
+| C09 | “Cancel PO”取消邮件 | 新取消请求事件，关联原 PO | 更新为取消待确认 | 负责人确认后才能取消 |
+| C10 | “Recall previous email”但没有替代附件 | 撤回/替代意图不完整 | 不更新正式字段 | 等客户补件或人工电话确认 |
+| C11 | 一封邮件带 R1、R2、R3 三个附件 | 多候选附件 | 禁止自动选最新文件名 | 用正文意图、PDF revision 和时间共同判断；仍不清楚则人工 |
+| C12 | 回复链保留旧附件，又增加一个新附件 | 新旧附件混杂 | 阻断或仅建候选草稿 | 标出每个附件 hash/revision，人工选有效附件 |
+| C13 | 一个 PDF 中含两个 PO | 一个 canonical，拆两个 event 候选 | 分别查重和建草稿 | 不能把两个 PO 合成一个 item |
+| C14 | 一封邮件带两个独立 PO PDF | 一个 canonical，两个 business_event | 每个 PO 最多一张草稿 | 共享邮件证据，但独立 revision/审核 |
+| C15 | 一个 PO 分三封邮件、附件分批到达 | 三个 canonical，业务证据不完整 | 未收齐前不正式写 | 按 PO/part 标记 `WAITING_FOR_PARTS`，超时提醒 |
+| C16 | PDF 加密、损坏、扫描倾斜、乱码 | 原件归档；extraction 失败 | 只建异常草稿或不建 | `QUARANTINED/UNKNOWN_FORMAT`，人工处理 |
+| C17 | 只有 OneDrive/Dropbox 链接 | MIME/链接归档，无稳定附件字节 | 默认不自动抽取 | 仅允许白名单域、受控下载和 hash；失败则补件 |
+| C18 | ZIP 内包含 PDF/Excel | ZIP 作为原件归档 | 默认隔离 | 防 Zip Bomb、路径穿越、病毒；通过后逐文件解析 |
+| C19 | 伪装成 PDF 的可执行文件/宏文档 | MIME、扩展名、magic bytes 不一致 | 不写 | 安全隔离与告警，不交给 LLM |
+| C20 | 新发件域、个人 Gmail、From/Reply-To 不一致 | 来源风险 | 可入人工队列，不自动正式写 | 核验客户主数据和邮件认证结果 |
+| C21 | 同一个 PO号被两个不同客户使用 | customer 不同，两个 event | 分别处理 | 业务键必须含 customer_id |
+| C22 | 邮件无 Message-ID 或网关重写头 | canonical 候选置信不足 | 不直接合并 | 用内容/附件指纹候选并人工确认 |
+| C23 | 退信、自动回复、休假通知、已读回执 | NON_BUSINESS | 不写 | 归档后结束，避免循环回复 |
+| C24 | 邮件先到老板邮箱，主邮箱晚到 10 分钟 | 两个 mail_copy 到达乱序 | 最终仍只写一张 | canonical/event 创建要支持后来的副本补关联 |
+| C25 | R3 先处理，R2 因延迟后到 | 识别迟到 revision | 不回滚 | `STALE_REVISION_BLOCKED` |
+| C26 | Bcc 或分发组投递，To/Cc 看不到真实受管地址 | mailbox 仍有物理副本 | 正常接收 | 以实际 mailbox_id 为准，不只看 To/Cc |
+
+#### 11.1.6 Microsoft Graph 与邮箱平台的异常情况
+
+| # | 平台异常 | 系统表现 | 正确处理 | 不能错误地做什么 |
+|---:|---|---|---|---|
+| G01 | Webhook 重复通知 | 同 subscription/resource 多次到达 | notification hash 去重；重复唤醒同一 SYNC job | 直接重复解析/写 monday |
+| G02 | Webhook 乱序：updated 先于 created | 通知顺序与资源当前状态不一致 | 只把通知当门铃，Delta 读取当前账本 | 按通知顺序构造 PO 历史 |
+| G03 | Webhook 漏失或 endpoint 被标 slow/drop | 没有即时唤醒 | 10～15 分钟 Delta sweep 补账并告警 | 认为没通知就是没邮件 |
+| G04 | subscription 到期/被移除 | 不再收到通知 | 重建订阅后立即 Delta；订阅守护告警 | 从当前时间重新开始而放弃旧游标 |
+| G05 | Delta 429 | 当前 mailbox 被限流 | 按 Retry-After 退避并加抖动；其他 mailbox 独立继续 | 紧密循环重试扩大限流 |
+| G06 | Graph 5xx/网络超时 | 请求结果未知或失败 | 幂等重试 GET；保留旧 cursor | 超时后跳过本轮并提交新 cursor |
+| G07 | deltaLink 失效/410/syncStateNotFound | 旧同步状态不可继续 | 只对该 mailbox+folder 做受控全量重建 | 清空全部邮箱状态或静默漏掉缺口 |
+| G08 | Delta 一轮多页，中间崩溃 | 只保存了部分 page | 从旧 cursor 重跑，mail_copy 去重 | 第一页后提前提交新 deltaLink |
+| G09 | 同一 message 在一轮/多轮重复出现 | mail_copy 冲突 | UPSERT 并比较 lastModified；业务层不重复 | 把每次出现都当新订单 |
+| G10 | isRead/category 等非业务更新 | Delta 返回 updated | 内容/附件指纹不变则只更新技术状态 | 新建 extraction_run 或 monday item |
+| G11 | 邮件移出受管 folder | 源 folder 出现 removed | 更新 current folder/presence；查受管目标 folder | 推断为客户取消 |
+| G12 | 邮件移入 in-place archive mailbox | 普通 Mail API 无法继续访问；ImmutableId 也可能变化 | 已归档原件保留；标记外部不可访问并告警 | 承诺一定能从 Graph 再下载 |
+| G13 | Graph token/证书过期或权限被撤销 | 401/403 | 停止该连接、告警、修复身份后补 Delta | 当作邮箱没有新邮件 |
+| G14 | 附件下载一半连接断开 | size/hash 不匹配 | 临时对象不晋级，重试下载；最终隔离 | 将半个 PDF 标为归档成功 |
+| G15 | internetMessageId 缺失或异常复用 | 无法安全归并 | 内容指纹候选 + 冲突队列 | 只用主题、发件时间强行合并 |
+
+#### 11.1.7 我们平台自身的异常情况
+
+| # | 系统异常 | 防护设计 | 最终状态/告警 |
+|---:|---|---|---|
+| S01 | Webhook 到达时 PostgreSQL 不可用 | 不返回成功，允许 Graph 重试；健康检查报警 | `INGRESS_PERSIST_FAILED` |
+| S02 | 数据库成功、对象存储失败 | 不提交 deltaLink；任务按相同 mail_copy 重试 | `ARCHIVE_FAILED` |
+| S03 | 对象写成功、数据库事务失败 | 对象使用确定性路径/hash；重试时对账并补记录 | orphan scanner 告警 |
+| S04 | worker 在创建 mail_copy 后崩溃 | job 租约超时回收；状态机从未完成步骤继续 | 不重复原件，不漏后续任务 |
+| S05 | 同一 job 被两个 worker 领取 | `FOR UPDATE SKIP LOCKED` + 租约 + 唯一约束 | 一个成功，另一个 NO_OP |
+| S06 | 毒 PDF 每次解析都崩溃 | 接收与解析分离；限次重试后进入死信/隔离 | `PDF_PARSE_FAILED`，游标可前进 |
+| S07 | parser 新版本把列读错 | extraction_run 版本化、留出集和 shadow compare | 回滚 parser version，原件可重放 |
+| S08 | LLM 超时/返回非法 JSON | schema 校验、限次重试、返回 null/人工 | `EXTRACTION_FAILED`，不写正式字段 |
+| S09 | LLM 返回值但找不到原文证据 | evidence gate 拒绝该字段 | `UNSUPPORTED_FIELD` |
+| S10 | 模型 API 重复计费/无限重试 | 每 event+version 调用 ledger、预算和 max_attempts | 告警并降级人工 |
+| S11 | 数据库与对象 hash 不一致 | 读取时重算 hash；不可变存储版本 | `EVIDENCE_INTEGRITY_FAILED`，整单阻断 |
+| S12 | 存储空间不足/保留策略误删 | 容量阈值、对象版本/备份、删除审计 | 提前告警；证据不完整禁止正式流转 |
+| S13 | 配置误删 mailbox/folder | 配置变更审计、dry-run、停用不硬删 cursor | 显示 coverage 缺口，要求负责人确认 |
+| S14 | 密钥写入日志或 prompt | secret redaction、网络隔离、LLM 无 token | 安全事件，轮换凭据 |
+| S15 | 人工点击“重放”多次 | extraction_run/write_operation 唯一约束 | 可生成指定新版本，不能重复外部副作用 |
+| S16 | 系统时钟漂移 | 以服务端时间、receivedDateTime 和数据库 UTC 为主 | 时间告警；不以本机时间做唯一业务判断 |
+
+#### 11.1.8 monday 平台和人工操作的异常情况
+
+| # | monday/人工情况 | 风险 | 正确处理 |
+|---:|---|---|---|
+| M01 | `create_item` 成功但响应超时 | 重试产生两张卡 | write_operation=UNKNOWN；先按 event_id 回查，再复用原 Idempotency-Key |
+| M02 | HTTP 200 但 JSON 含 `errors` | 系统误记成功 | 同时校验 HTTP、`errors` 数组和目标 data；有应用级错误不得 SUCCEEDED |
+| M03 | 429/复杂度/日调用额度用尽 | writer 堵塞或狂重试 | 按 Retry-After/rate headers 延迟，合并查询，outbox 保留 |
+| M04 | Idempotency-Key 超过 30 分钟缓存期 | 同 key 可能重新执行 | 永久本地 ledger + event_id 远端回查，不能只靠 monday 缓存 |
+| M05 | 管理员删除/重建 event_id 列 | 查重失效 | schema hash 变化立即停 writer；重新映射和回归后恢复 |
+| M06 | 状态 label 改名或 index 调整 | 写入错误状态/recipe 不触发 | 部署前和定时 schema guard；优先固定已核验 index，变更需审批 |
+| M07 | 目标 group 被删除或移动 | create_item 失败/落错组 | 使用真实 group id 预检；失败不回退到默认组 |
+| M08 | 现有 recipe 监听“创建 item” | 草稿误触发排产/通知 | 改成监听“审核通过”，或使用独立隔离 board |
+| M09 | 人工复制一张 item | event_id 重复 | 对账任务发现远端多条同 event_id，进入 `REMOTE_DUPLICATE_CONFLICT` |
+| M10 | 人工删除/归档系统 item | 本地仍认为成功 | 周期对账标记 `REMOTE_MISSING`；是否重建必须人工决定 |
+| M11 | 人工修改数量但没点审核通过 | 本地/远端值不同 | 保留为草稿差异，不触发正式写入 |
+| M12 | 无权限人员把状态改为审核通过 | 越权业务动作 | webhook 后二次读取、核验 actor/权限；无权则阻断和回滚状态 |
+| M13 | monday webhook 重复、延迟或乱序 | 重复审批或旧状态覆盖新状态 | 回调只入队；按 item id 再读当前值；review_decision 幂等 |
+| M14 | monday webhook 连续失败 | 事件最多重试一段时间，可能丢 | 增加定时 `REVIEW_STATUS_RECONCILIATION` 补查待复核 item |
+| M15 | board 被复制，配置仍指向旧/新错误 board | 数据写错环境 | board id、account id、环境白名单三重校验；生产 token 不写测试 board |
+| M16 | 写入 Formula/Mirror/父 item rollup 列 | API可能不支持或值不生效 | schema guard 禁止把这些列当幂等键/直接写目标；写可编辑叶子列 |
+| M17 | monday 文件 `public_url` 过期 | 一小时后无法下载取证 | 收到 URL 后立即转存受控对象存储；数据库保留 asset id/hash |
+| M18 | 人工错误批准了错误值 | 错误进入正式流程 | 高风险字段双人/角色审批、保留 before/after 和撤销流程；技术不能假装消灭人为错误 |
+
+monday 的 GraphQL 应用级错误可能仍返回 HTTP 200，因此 writer 的成功条件必须是：
+
+```text
+HTTP 2xx
+AND response.errors 不存在或为空
+AND response.data.create_item.id 存在
+AND 写后回读 event_id/payload_hash 与本地一致
+```
+
+只检查 HTTP 状态码会把 `InvalidColumnIdException`、`ColumnValueException` 等错误误记为成功。
+
+#### 11.1.9 三类状态必须分开，避免“一删全删”
+
+```mermaid
+flowchart LR
+  subgraph TECH["邮箱技术状态"]
+    T1["PRESENT"] --> T2["REMOVED_FROM_FOLDER"]
+    T2 --> T3["DELETED_OR_UNAVAILABLE"]
+  end
+  subgraph ARCH["归档状态"]
+    A1["PENDING"] --> A2["MIME_ARCHIVED"]
+    A2 --> A3["FULLY_ARCHIVED"]
+    A2 --> A4["METADATA_ONLY / QUARANTINED"]
+  end
+  subgraph BIZ["PO业务状态"]
+    B1["REVIEW_REQUIRED"] --> B2["APPROVED"]
+    B2 --> B3["CANCEL_PENDING"]
+    B3 --> B4["CANCELLED"]
+    B3 --> B2
+  end
+  T2 -."不自动改变".-> B1
+  T3 -."不删除".-> A3
+  B4 -."保留证据".-> A3
+```
+
+规则总结：
+
+- 邮箱状态变化只更新 `mail_copy.graph_presence/current_folder_id`。
+- 归档状态只说明证据是否完整，不直接说明订单有效与否。
+- PO 状态只能由业务事件、校验规则和授权审核改变。
+- monday item 是业务协作投影，不是唯一原始证据；删除 monday item 也不能删除归档邮件和审计记录。
+- 所有自动删除必须服从甲方确认的数据保留策略，不能跟随 Graph removed 或 monday item 删除实时级联。
+
 ### 11.2 把 PO-7788 R2 从收到到写入完整走一遍
 
 #### 第一步：三个邮箱确实产生三份物理副本
@@ -1685,7 +1952,9 @@ CREATE TABLE mail_copy (
   evidence_sha256     text NOT NULL,
   archive_uri         text NOT NULL,
   received_at         timestamptz,
-  status              text NOT NULL,
+  graph_presence      text NOT NULL DEFAULT 'PRESENT',
+  archive_status      text NOT NULL DEFAULT 'PENDING',
+  security_status     text NOT NULL DEFAULT 'NOT_SCANNED',
   UNIQUE (mailbox_id, immutable_id)
 );
 
@@ -1720,6 +1989,7 @@ CREATE TABLE canonical_message_copy (
 
 CREATE TABLE business_event (
   id             bigserial PRIMARY KEY,
+  target_event_id bigint REFERENCES business_event(id),
   event_type     text NOT NULL,
   customer_id    text NOT NULL,
   po_no          text NOT NULL,
@@ -2507,14 +2777,18 @@ parser_name, parser_version, extraction_run_id, decision
 - [Microsoft Graph mailFolder 资源与 well-known folder](https://learn.microsoft.com/en-us/graph/api/resources/mailfolder?view=graph-rest-1.0)
 - [枚举自定义邮件文件夹 childFolders](https://learn.microsoft.com/en-us/graph/api/mailfolder-list-childfolders?view=graph-rest-1.0)
 - [Outlook Immutable ID](https://learn.microsoft.com/en-us/graph/outlook-immutable-id)
+- [Microsoft Graph Mail API 能力与 in-place archive mailbox 边界](https://learn.microsoft.com/en-us/graph/api/resources/mail-api-overview?view=graph-rest-1.0)
+- [Outlook 邮件撤回的条件与限制](https://support.microsoft.com/en-us/outlook/mail/how-to-recall-an-email-in-outlook-requirements-limitations-steps)
 - [Microsoft Graph Outlook 限流](https://learn.microsoft.com/en-us/graph/throttling-limits)
 - [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
 - [monday Items 和 create_item](https://developer.monday.com/api-reference/reference/items)
 - [monday items_page_by_column_values](https://developer.monday.com/api-reference/reference/items-page-by-column-values)
 - [monday Idempotency-Key](https://developer.monday.com/api-reference/docs/idempotency)
+- [monday API 错误处理与 HTTP 200 中的 GraphQL errors](https://developer.monday.com/api-reference/docs/error-handling)
 - [monday Rate Limits](https://developer.monday.com/api-reference/docs/rate-limits)
 - [monday API Versioning](https://developer.monday.com/api-reference/docs/api-versioning)
 - [monday Webhooks、URL challenge 与重试](https://developer.monday.com/api-reference/reference/webhooks)
+- [monday Files/Assets 与 public_url 有效期](https://developer.monday.com/api-reference/reference/files-1)
 - [monday 修改多列 change_multiple_column_values](https://developer.monday.com/api-reference/reference/columns)
 - [FastAPI 官方仓库](https://github.com/fastapi/fastapi)
 - [MSAL for Python 官方仓库](https://github.com/AzureAD/microsoft-authentication-library-for-python)
