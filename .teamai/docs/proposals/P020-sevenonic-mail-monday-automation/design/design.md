@@ -625,7 +625,185 @@ merch.b@ : D-MB-0900   -> 没有变化               -> 新游标 D-MB-0907
 
 `deltaLink` 是微软针对某一个查询范围生成的不透明状态，不能自己拼，也不能把 `po@` 的游标拿去查 `boss@`。若数据库只有一个全局 cursor，最后完成的邮箱会覆盖前面邮箱的状态，轻则重复读取，重则无法从正确位置继续。
 
-### 3.4 场景三：为什么必须读完所有分页再提交游标
+### 3.4 deltaLink 到底是什么：把它理解成“这个文件夹的对账书签”
+
+#### 3.4.1 它不是邮件 ID，也不是一个时间戳
+
+第一次查询 `po@` 的 Inbox 时，我们请求：
+
+```http
+GET https://graph.microsoft.com/v1.0/users/po@sevenonic.com/mailFolders/inbox/messages/delta?$select=id,subject,internetMessageId,receivedDateTime&$top=50
+Prefer: IdType="ImmutableId"
+```
+
+Graph 可能先返回若干页 `@odata.nextLink`。全部读完后，最后一页才返回：
+
+```json
+{
+  "value": [],
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/users/po@sevenonic.com/mailFolders/inbox/messages/delta?$deltatoken=eyJ...opaque..."
+}
+```
+
+这个完整 URL 就是 deltaLink。大白话讲：
+
+> 微软告诉我们：“`po@` 的 Inbox，我已经和你对账到状态 S100。下次把这张书签原样交回来，我只告诉你 S100 之后的变化。”
+
+它内部包含微软生成的不透明状态 token，也编码了第一次查询的 `$select` 等条件。我们的系统只负责**整条加密保存、整条取出、整条原样 GET**，不解析 `$deltatoken`，不把它改成自己的时间戳，也不追加或删除查询参数。
+
+数据库保存的不是：
+
+```text
+last_sync_time = 2026-09-10 09:00:00
+```
+
+而是：
+
+```text
+mailbox_cursor
+mailbox_id            = po@sevenonic.com
+folder_id             = inbox
+delta_link            = https://graph.microsoft.com/v1.0/...?$deltatoken=eyJ...opaque...
+last_success_at        = 2026-09-10T01:00:00Z
+last_full_sync_at      = 2026-09-01T00:00:00Z
+status                 = ACTIVE
+```
+
+仅记“上次查询时间”无法代替 deltaLink：不同服务器的时间边界、同一秒多封邮件、延迟提交和更新/删除事件都可能让按时间筛选出现缝隙；deltaLink 才是 Graph 的服务端同步状态。
+
+#### 3.4.2 下一轮拿 deltaLink 会得到什么
+
+09:06 客户发来 PO-7788 R2。09:10 定时任务从数据库取出完整 deltaLink：
+
+```http
+GET https://graph.microsoft.com/v1.0/users/po@sevenonic.com/mailFolders/inbox/messages/delta?$deltatoken=eyJ...opaque...
+Prefer: IdType="ImmutableId"
+```
+
+Graph 返回“自 S100 之后”的变化：
+
+```json
+{
+  "value": [{
+    "id": "AAk-PO-101",
+    "subject": "PO-7788 Revision 2",
+    "internetMessageId": "<PO-7788-R2.20260910@customer-a.com>",
+    "receivedDateTime": "2026-09-10T01:06:31Z"
+  }],
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/users/po@sevenonic.com/mailFolders/inbox/messages/delta?$deltatoken=eyJ...S101..."
+}
+```
+
+系统先可靠保存消息和原件，再把数据库中的 S100 URL 替换为 S101 URL。下一次又从 S101 继续。若返回 `nextLink`，说明这一轮还没读完，正式 cursor 仍保持 S100，直到最终拿到新的 deltaLink。
+
+#### 3.4.3 folder_id 在这里到底起什么作用
+
+`folder_id` 决定“对哪个邮件集合做增量对账”。同一个邮箱的 Inbox、客户归档目录和 Archive 是三个不同集合，所以有三本不同的对账账簿：
+
+| mailbox_id | folder_id | 人能看到的目录 | 独立 deltaLink |
+|---|---|---|---|
+| `po@sevenonic.com` | `inbox` | 收件箱 | `D-PO-INBOX-S101` |
+| `po@sevenonic.com` | `AQMk...CustomerA` | `Orders/Customer-A` 自定义文件夹 | `D-PO-CUSTA-S66` |
+| `po@sevenonic.com` | `archive` | Microsoft 预定义 Archive | `D-PO-ARCHIVE-S12` |
+
+`inbox`、`archive` 是微软提供的 well-known name，可以直接放在 URL。用户自建的 `Orders/Customer-A` 没有通用名称，需要先枚举文件夹，取得真实 ID：
+
+```http
+GET https://graph.microsoft.com/v1.0/users/po@sevenonic.com/mailFolders?$select=id,displayName,parentFolderId,wellKnownName
+```
+
+假设先找到 `Orders` 的 ID，再查它的子目录：
+
+```http
+GET https://graph.microsoft.com/v1.0/users/po@sevenonic.com/mailFolders/{orders-folder-id}/childFolders?$select=id,displayName,parentFolderId,wellKnownName
+```
+
+得到：
+
+```json
+{
+  "value": [{
+    "id": "AQMk...CustomerA",
+    "displayName": "Customer-A",
+    "parentFolderId": "AQMk...Orders",
+    "wellKnownName": null
+  }]
+}
+```
+
+然后目标文件夹的 Delta URL 是：
+
+```http
+GET /v1.0/users/po@sevenonic.com/mailFolders/AQMk...CustomerA/messages/delta
+```
+
+不能把 Inbox 返回的 `$deltatoken` 拼到 `Customer-A` 的 URL 上。那张书签记录的是 Inbox 集合的状态，不是整个邮箱状态。
+
+#### 3.4.4 邮件从 Inbox 搬到 Customer-A 时会发生什么
+
+假设 PO-7788 在同一个 `po@` mailbox 内被 Outlook 规则搬走：
+
+```text
+09:06:31  邮件进入 Inbox
+09:06:33  Outlook 规则移动到 Orders/Customer-A
+09:10:00  两个文件夹的 Delta Worker 分别对账
+```
+
+可能看到的变化是：
+
+```text
+Inbox delta：AAk-PO-101 带 @removed，表示它已删除或移出这个集合
+Customer-A delta：AAk-PO-101 作为加入该集合的消息返回
+```
+
+由于所有请求都带 `Prefer: IdType="ImmutableId"`，邮件留在同一 mailbox 内移动文件夹时，消息 ImmutableId 保持 `AAk-PO-101`。因此：
+
+- `mailbox_id + immutable_id` 仍命中同一条 `mail_copy`，不会重新归档成第二封。
+- `mail_copy.current_folder_id` 更新成 `AQMk...CustomerA`。
+- Inbox 的 `@removed` 不能被解释成“客户撤销 PO”，它只说明邮件离开了 Inbox 集合。
+- 如果系统没有监听 `Customer-A` 文件夹，只靠 Inbox Delta 不能长期跟踪移动后的状态。
+
+由此可见，`folder_id` 解决的是**技术同步范围**，不是客户分类、PO 归属或业务状态。
+
+#### 3.4.5 一个邮箱到底应该配几个 folder_id
+
+不是所有文件夹都监听，而是根据真实 Exchange/Outlook 规则列出“邮件可能实际落到的业务入口”：
+
+```yaml
+mailboxes:
+  - mailbox_id: po@sevenonic.com
+    folders:
+      - folder_id: inbox
+        purpose: 未分拣客户来件
+      - folder_id: AQMk...CustomerA
+        purpose: Outlook规则归档的客户A来件
+  - mailbox_id: merch.a@sevenonic.com
+    folders:
+      - folder_id: inbox
+        purpose: 跟单A直接收件
+  - mailbox_id: boss@sevenonic.com
+    folders:
+      - folder_id: inbox
+        purpose: 负责人抄送副本
+```
+
+上述配置会产生 4 条 `mailbox_cursor`；如果四个邮箱都再监听两个目录，就是 8 条。数量计算公式是“受管 mailbox 与实际目标 folder 的组合数”，不是抄送人数，也不是一个租户一条。
+
+#### 3.4.6 deltaLink 能解决什么、不能解决什么
+
+| deltaLink 能解决 | deltaLink 不能解决 | 由谁补上 |
+|---|---|---|
+| 不用每次重扫整个文件夹，只取上次完整同步后的变化 | 不负责低延迟通知；只有定时查询仍会等待 | Webhook 立即唤醒 |
+| 断电恢复后从已提交状态继续 | token 不是永久有效，可能收到 40x/`syncStateNotFound` 或 410 | 触发该 mailbox+folder 全量重建，再生成新 deltaLink |
+| 返回新增、更新以及移出/删除集合的变化 | 同一变化仍可能重放，也不保证业务上只处理一次 | `mail_copy` 唯一约束和五层身份模型 |
+| 记住某个文件夹集合的同步状态 | 不能覆盖另一个邮箱或另一个文件夹 | 每个 mailbox+folder 独立 cursor |
+| 初次同步后持续维护本地镜像 | 第一次调用通常会返回当前集合中已有邮件，不天然只取“上线后的新邮件” | 上线时确定回溯窗口/基线策略，并做好幂等 |
+| 告诉系统邮件资源发生了技术变化 | 不知道这是新 PO、重发、R2、客户撤单或普通已读状态变化 | canonical/business_event/policy 层 |
+| 在同 mailbox 内配合 ImmutableId 识别移动后的同一邮件 | 不会归并不同 mailbox 的三份副本 | Message-ID 候选 + 内容/附件指纹 |
+
+因此 `mailbox_id + folder_id + deltaLink` 只解决“从 Graph 哪个账簿、从哪里继续读”的问题，不能替代后面的跨邮箱去重、PO 版本判断、人工审核和 monday 幂等。
+
+### 3.5 场景三：为什么必须读完所有分页再提交游标
 
 假设老板邮箱积压了 120 封变化，Graph 每页返回 50 封：
 
@@ -644,7 +822,7 @@ merch.b@ : D-MB-0900   -> 没有变化               -> 新游标 D-MB-0907
 
 如果处理完第 1 页就把正式 cursor 向前提交，第 2、3 页在故障后可能再也查不到，这就是“游标过早提交造成永久漏信”。
 
-### 3.5 场景四：一份坏 PDF 不能堵住整个邮箱
+### 3.6 场景四：一份坏 PDF 不能堵住整个邮箱
 
 09:10，`po@` 一轮 Delta 返回三封邮件：
 
@@ -667,13 +845,94 @@ Graph 接收层：三封原始 MIME/附件都归档，三条 mail_copy 都成功
 
 这里“允许游标前进”不等于“坏 PO 已获业务批准”，只代表“系统已经可靠接住它，不会丢”。
 
-### 3.6 场景五：Outlook 规则搬邮件和主机停机
+### 3.7 场景五：Outlook 规则搬邮件和主机停机
 
 客户邮件 09:06 到达 Inbox，但 Outlook 规则 09:06:02 就把它搬到 `Orders/Customer-A`。如果系统 10:00 才只查 Inbox，它可能只看到删除/移动变化，甚至拿不到可用于业务处理的当前邮件；而目标文件夹从未查询。因此实施前需要问清真实规则，并为实际落点建立独立的 `mailbox_id + folder_id + deltaLink`。
 
 再假设 VPS 从 09:00 停到 13:00：Webhook 在停机时无法叫醒系统。恢复后系统不能从“当前时间”重新查，而应拿 09:00 保存的旧 deltaLink 补齐四小时内的变化。若 subscription 也已失效，则重建 subscription，但历史缺口仍由 Delta 补，不靠 Webhook 补历史。
 
 另一方面，只使用 Webhook 也不成立：通知可能重复、乱序、延迟或出现 `missed`；subscription 也有到期时间。因此正确选择是“Webhook 唤醒 + Delta 对账”。
+
+### 3.8 截图 2、截图 3 与截图 4 的方案对比
+
+为避免把三张图中的“当前技术选择”“首期交付物”和“分阶段上线”混成一件事，先给它们重新命名：
+
+- **方案 A（截图 2）**：每小时按邮箱做 Graph Delta；不使用 Change Notifications；`ImmutableId + internetMessageId + 版本号` 哈希去重；写入前查重。
+- **方案 B（截图 3）**：首期交付 PO 确定性校验器、280 封评测框架和邮件管道 L1 影子模式；影子阶段不碰 monday。
+- **治理框架 C（截图 4）**：L0 基线→L1 影子→L2 隔离板→L3 分类型进入生产→L4 稳态抽检。这不是另一套获取技术，而是控制上线风险的阶段框架。
+
+#### 3.8.1 总体对比
+
+| 对比维度 | 方案 A：每小时 Delta + 原哈希 | 方案 B：校验器/评测/L1影子 | 本文修正版 |
+|---|---|---|---|
+| 核心目标 | 用最少运维实现定时收件 | 先证明解析质量，不产生外部副作用 | 既保证邮件可靠接收，又分阶段证明业务正确和 monday 安全 |
+| 邮件时效 | 最坏约 60 分钟 | 仍取决于 Delta 调度频率 | Webhook 即时唤醒 + 10～15 分钟 Delta 补账 |
+| 断电/漏通知 | Delta 可沿游标补账 | 影子模式可重跑 | Delta 是权威账本；Webhook 只做门铃；持久 job 和旧游标恢复 |
+| 邮箱范围 | 说“按邮箱各自游标”，但未说明 folder | 只写“主业务邮箱” | 每个 `mailbox + 实际落点folder` 独立 subscription/cursor；RBAC 限权 |
+| 跨邮箱抄送 | 原哈希含不同 ImmutableId，会生成不同键 | 留出集可测试，但未给生产身份模型 | 3 个 mail_copy→1 canonical_message→1 business_event |
+| 客户重发/转发 | internetMessageId 改变时可能漏判 | 可作为评测样例 | 用业务键和 payload 判断 RESENT_DUPLICATE/CONFLICT |
+| prompt/rules 升级 | 哈希带版本号，可能错误产生新业务 ID | 影子评测可以比较版本 | 只新增 extraction_run，不新增 event，不自动重写 monday |
+| PO 字段正确性 | 去重设计本身不解决 | 纯 Python 校验器对已知模板很强 | 已知模板走确定性 parser；不确定内容才用只读 LLM；全部走证据与业务门 |
+| monday 风险 | 写前查重，但外部超时和跨日重放说明不足 | L1 完全不写，安全但没验证写链路 | L2 隔离草稿 + 本地 ledger + monday idempotency + event_id 回查 |
+| 能否验证真实副作用 | 可以，但若直接写正式板风险高 | 不能；影子只验证读和解析 | L2 专门验证 create/update/超时/重复，但不触发生产 automation |
+| 运维复杂度 | 最低，但以延迟换简单 | 中等；需要数据集与评测工具 | 中等偏上；多 subscription、续租、公网回调、任务队列和告警 |
+| 适用条件 | 业务明确接受 60 分钟延迟，且 VPS 调度稳定 | 项目尚未证明准确率时必须先做 | 作为最终目标；按治理框架 C 分阶段上线 |
+
+#### 3.8.2 方案 A 能解决与不能解决的
+
+方案 A 能解决：
+
+- 无需公网 Webhook，部署简单；系统恢复后可从各邮箱 deltaLink 补历史变化。
+- 邮箱量少、业务接受小时级延迟时，API 请求量低。
+- 如果真的按 `mailbox + folder` 正确保存游标并读完分页，可以做到可靠增量抓取。
+
+方案 A 不能解决：
+
+- 每小时轮询天然无法满足紧急 PO/revision 的分钟级复核。
+- “免费实例可能被回收”同样会让 cron 不运行；不用 Webhook 不代表没有运行环境风险。
+- 原公式 `sha256(immutableId | internetMessageId | prompt_version | ruleset_version)` 不能跨邮箱归并，并把解析版本错误混进业务身份。
+- Delta 只描述邮件资源变化，不判断客户重发、PO revision、正文/PDF冲突或 monday 副作用。
+- 若只写 mailbox 而未写 folder，Outlook 自动搬件后同步范围仍不完整。
+
+因此方案 A 不是非法方案，而是**可作为无公网回调时的降级获取方式**；必须修正 cursor 维度和五层身份，不能原样用于正式去重。
+
+#### 3.8.3 方案 B 能解决与不能解决的
+
+方案 B 的三个交付物分别解决不同问题：
+
+| 交付物 | 能解决 | 不能解决 |
+|---|---|---|
+| PO 交叉校验器 | 对已知 PDF/HTML 格式做表格、合计、范围和正文/PDF差异校验；结果确定、好解释 | 客户换 ERP、扫描件、自由文本或复杂版式时可能失效；它不负责收件和 monday 幂等 |
+| 280 封评测框架 | 在上线前量化分类、字段、证据和幻觉/错误；让 parser/prompt 升级可回归 | 数据集偏差、未来模板漂移和罕见故障仍存在；评测通过不等于生产永不出错 |
+| L1 邮件影子模式 | 在不碰 monday 的条件下验证 Graph 获取、分类、解析、耗时和重复拦截 | 没有真实 create/update，无法验证 monday schema、幂等键、超时回查和 automation 误触发 |
+
+方案 B 里“PO 校验器纯 Python 零 AI”适合定义为**已知模板的确定性主路径**，不宜扩大成“所有客户所有 PO 永远不用 AI”。一旦出现未知版式，正确动作是停写/人工或进入受控 LLM 候选流程，而不是硬解析出垃圾。
+
+方案 B 的 L1 若只拉主邮箱，可以先证明单邮箱接入，但无法实测跨邮箱抄送去重。要验收本文的三层邮件身份，影子期至少应同时读取 `po@` 和一个真实 Cc 邮箱；推荐直接读取 RBAC 白名单内的全部受管邮箱，但仍只落日志/本地库，不写 monday。
+
+#### 3.8.4 治理框架 C 应怎样承载本文方案
+
+截图 4 的 L0～L4 思路应保留，但每个阶段填入本文的具体技术内容：
+
+| 阶段 | 实际开启的能力 | 业务人员看到什么 | 本阶段解决的问题 | 仍未解决/禁止进入下一阶段的条件 |
+|---|---|---|---|---|
+| L0 基线 | 人工处理 10 封真实 PO；记录每步耗时、正确值、邮箱规则 | 仍按现流程工作 | 得到真实基线和规则，不凭想象设计 | 样本、责任人和 mailbox/folder 未确认，不进 L1 |
+| L1 影子 | Graph Webhook+Delta、原件归档、五层身份、parser/LLM候选、评测日志；不调用 monday mutation | 收到每日对照报告，不改变工作方式 | 验证收件完整性、跨邮箱归并、字段质量和耗时 | PO 文档级全对率、零无证据自动写入、重复重放等门槛未过，不进 L2 |
+| L2 隔离板 | 开启 monday schema guard、event_id 查重、`create_item`，只写 AI 待复核区 | 在隔离区看草稿、证据和冲突，人工裁决 | 验证真实 monday 写入、超时、重试和复核体验 | 任何 create 触发生产动作、重复 item、UNKNOWN 无法回收，不进 L3 |
+| L3 分类型生产 | 先放开 PO 类；审核通过后才进入正式组，其余仍排队/影子 | 已批准 PO 自动流转，其他邮件维持人工 | 控制爆炸半径，验证端到端价值 | 该类型文档准确率、人工打回率、SLA 或审计不达标即退回 L2 |
+| L4 稳态 | 逐类型开放、每周随机抽检、模板漂移告警、版本回滚 | 只处理异常和抽检 | 长期监控真实漂移 | 抽样错误率 >3% 或关键错误 >0 时，受影响类别立即回到 L3/L2 |
+
+#### 3.8.5 最终推荐不是三选一，而是组合
+
+```text
+获取底座：采用本文修正后的 Webhook + 每 mailbox/folder Delta
+确定性解析：采用截图3的 PO 交叉校验器
+质量证明：采用截图3的分组评测集和一键复跑
+上线治理：采用截图4的 L0→L4 阶段门
+身份与副作用：采用本文五层身份 + monday 三层幂等
+```
+
+部署约束若暂时无法提供稳定公网 HTTPS 和 subscription 续租，可在 L1 临时使用 10～15 分钟 Delta-only，而不是每小时；它是明确的降级模式，业务上接受更高延迟。等 Webhook 运维条件满足后，只增加“即时唤醒入口”，不改变 Delta Worker、五层身份和后续业务流程。
 
 ## 4. 多邮箱监听配置
 
@@ -1179,7 +1438,147 @@ WO-3002 | event=BE-7788-R2 | action=APPLY_HUMAN_APPROVAL
 
 一句话总结：**邮件去重不能代替订单版本判断，订单版本判断也不能代替 monday 写入幂等。**
 
-### 11.4 两种哈希必须分开
+### 11.4 五层逐层能解决什么、不能解决什么
+
+#### 第一层 mail_copy：只回答“这个邮箱副本接过没有”
+
+输入例子：
+
+```text
+mailbox_id  = po@sevenonic.com
+immutable_id = AAk-PO-101
+folder_id   = inbox
+```
+
+能解决：
+
+- Delta 或 Webhook 重复触发 10 次，`po@ + AAk-PO-101` 仍只有一条记录。
+- 邮件在 `po@` 内从 Inbox 搬到 Customer-A，因为 ImmutableId 不变，仍更新同一条 mail_copy。
+- 能证明 `po@`、`merch.a@`、`boss@` 哪些邮箱确实收到并归档了原件。
+
+不能解决：
+
+- 三个 mailbox 的 ImmutableId 不同，mail_copy 不知道它们是同一次客户发送。
+- 客户第二天重发相同 PO 会产生新邮件副本，mail_copy 不知道业务上应不应该新建订单。
+- 它不判断 PDF 数量是否正确，也不阻止 monday 重复写入。
+
+下一层补什么：由 `canonical_message` 做跨邮箱同一次发送归并。
+
+#### 第二层 canonical_message：只回答“是不是客户同一次发送”
+
+输入例子：
+
+```text
+MC-101 po@      -> Message-ID=<PO-7788-R2...>, content_hash=C77
+MC-102 merch.a@ -> Message-ID=<PO-7788-R2...>, content_hash=C77
+MC-103 boss@    -> Message-ID=<PO-7788-R2...>, content_hash=C77
+```
+
+三者归到 `CM-501`。
+
+能解决：
+
+- 同一次 To/Cc 在多个受管邮箱形成的副本只分类、解析一次。
+- Message-ID 一样但正文/附件不同会报冲突，防止只信 Message-ID 错误合并。
+- 保留“一次客户发送关联了哪些邮箱原件”的证据链。
+
+不能解决：
+
+- 客户使用转发或邮件网关重写 Message-ID 时，同一业务重发可能形成新的 canonical_message。
+- 两封完全不同的邮件都可能在业务上指向 `PO-7788 R2`。
+- 它不知道这是 PO、报价、评语，还是 R1/R2。
+
+下一层补什么：由 `business_event` 使用客户、业务类型、PO号和 revision 判断业务身份。
+
+#### 第三层 business_event：回答“业务上是不是同一件事”
+
+输入例子：
+
+```text
+event_type = PO
+customer   = CUSTOMER_A
+po_no      = PO-7788
+revision   = 2
+payload_hash = H-1600
+```
+
+能解决：
+
+- 客户换一个 Message-ID 重发相同 R2，仍识别为同一个业务版本并标记 `RESENT_DUPLICATE`。
+- R1→R2→R3 被识别为同一 PO 的不同 revision，不会按附件文件名随意覆盖。
+- 同款号 S-100 出现在 PO-7788 和 PO-7799 时，仍是两个订单事件。
+- 同为 R2 但 payload 不同会标记 `BUSINESS_CONFLICT`；R3 已存在时迟到 R2 被阻断。
+
+不能解决：
+
+- 如果客户附件根本没写 revision，业务规则仍需人工判断。
+- 业务键相同不代表抽取值一定正确；错误 parser 也可能生成错误 payload。
+- 它不记录“哪个 prompt/parser 得到这个结果”，也不保证 monday 只写一次。
+
+下一层补什么：`extraction_run` 记录识别版本与证据，`write_operation` 控制外部副作用。
+
+#### 第四层 extraction_run：回答“这一次是怎么识别出来的”
+
+输入例子：
+
+```text
+ER-9001 = BE-7788-R2 + parser-v1 + prompt-v3 + rules-v4
+ER-9175 = BE-7788-R2 + parser-v2 + prompt-v4 + rules-v5
+```
+
+能解决：
+
+- parser、prompt 或规则升级后，可以用归档原件重跑并保存新结果，不覆盖旧结果。
+- 能比较旧结果“交期为空”和新结果“交期 2026-10-15”的差异。
+- 能把每个字段追溯到 PDF 页码、bbox 和原文，支持评测和人工复核。
+
+不能解决：
+
+- 模型给出三个相同答案不代表它们真实；没有证据仍须拒绝。
+- 新 extraction_run 不代表新业务事件，也不得自动触发第二次 monday 写入。
+- 它不决定哪次结果已由人批准；需要业务审核状态。
+
+下一层补什么：policy 选择可用 extraction_run，人工确认关键字段，再产生 write_operation。
+
+#### 第五层 write_operation：只回答“对外写动作做过没有”
+
+输入例子：
+
+```text
+target       = monday:board:18430298578
+event_id     = BE-7788-R2
+action       = CREATE_REVIEW_DRAFT
+payload_hash = M-PAYLOAD-88
+```
+
+能解决：
+
+- worker 重试、HTTP 超时、程序重启或 Graph 重放时，不重复 `create_item`。
+- 保存 PENDING、SENT、UNKNOWN、SUCCEEDED 状态；UNKNOWN 时先按 event_id 回查 monday。
+- 区分 `CREATE_REVIEW_DRAFT` 与 `APPLY_HUMAN_APPROVAL` 两种不同外部动作。
+
+不能解决：
+
+- 如果送入的 payload 本身就是错的，它只能保证“稳定地只写错一次”，不能保证业务正确。
+- 人工在 monday 手工删除 event_id 列或复制 item，单靠本地表无法完全阻止远端脏数据。
+- 不同 payload_hash 的同一事件不会自动视为重复，必须先做业务冲突判断。
+
+下一层补什么：写前 schema guard、event_id 远端回查、业务版本规则和上线后审计共同兜底。
+
+#### 五层整体仍然不能承诺的事
+
+即使五层全部实现，系统仍不能独自解决以下问题：
+
+- 未被授权或未登记的邮箱，Graph 根本不会返回，必须先修复权限/配置。
+- 客户本身发错附件、伪造发件地址或漏写 revision，需要发件人策略与人工确认。
+- Outlook 规则把邮件移到未登记 folder，当前同步范围仍会漏掉目标位置。
+- PDF 格式全新且无法识别，只能安全停写，不能凭空恢复正确字段。
+- 人工审核人选错值，技术只能保留责任链、双人复核和回滚证据，不能替代业务责任。
+- Microsoft Graph 或 monday 长时间不可用，系统可以排队与恢复，但不能保证外部平台即时可用。
+
+所以五层模型是**重复与追溯框架**，不是邮件权限、文档正确性、人工责任和外部平台 SLA 的万能替代品。
+
+### 11.5 两种哈希必须分开
 
 ```text
 evidence_sha256 = sha256(原始 MIME 字节)
@@ -1205,7 +1604,7 @@ canonical_content_hash = sha256(
 - `internetMessageId` 相同但内容指纹不同：`MESSAGE_ID_CONTENT_CONFLICT`，不能静默合并。
 - `internetMessageId` 缺失：用发件人、发送时间窗口、主题和附件哈希生成候选，只能进入人工复核。
 
-### 11.5 PO 业务版本规则
+### 11.6 PO 业务版本规则
 
 | 已有状态 | 新邮件 | 处理结果 |
 |---|---|---|
@@ -1280,6 +1679,7 @@ CREATE TABLE mail_copy (
   id                  bigserial PRIMARY KEY,
   mailbox_id          text NOT NULL,
   folder_id           text NOT NULL,
+  current_folder_id   text NOT NULL,
   immutable_id        text NOT NULL,
   internet_message_id text,
   evidence_sha256     text NOT NULL,
@@ -2103,6 +2503,9 @@ parser_name, parser_version, extraction_run_id, decision
 - [创建 Subscription](https://learn.microsoft.com/en-us/graph/api/subscription-post-subscriptions?view=graph-rest-1.0)
 - [Subscription 生命周期事件](https://learn.microsoft.com/en-us/graph/change-notifications-lifecycle-events)
 - [Message Delta](https://learn.microsoft.com/en-us/graph/api/message-delta?view=graph-rest-1.0)
+- [Microsoft Graph Delta Query 工作机制、状态 token、重放与同步重置](https://learn.microsoft.com/en-us/graph/delta-query-overview)
+- [Microsoft Graph mailFolder 资源与 well-known folder](https://learn.microsoft.com/en-us/graph/api/resources/mailfolder?view=graph-rest-1.0)
+- [枚举自定义邮件文件夹 childFolders](https://learn.microsoft.com/en-us/graph/api/mailfolder-list-childfolders?view=graph-rest-1.0)
 - [Outlook Immutable ID](https://learn.microsoft.com/en-us/graph/outlook-immutable-id)
 - [Microsoft Graph Outlook 限流](https://learn.microsoft.com/en-us/graph/throttling-limits)
 - [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)

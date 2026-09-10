@@ -26,12 +26,12 @@ items:
     blocker_of_done: true
 
   - id: PR-SMA-03
-    title: Delta 游标、分页和异常邮件不造成漏信
+    title: Delta 游标、文件夹范围、分页和异常邮件不造成漏信
     gate: acceptance
-    criterion: 每个 mailbox+folder 独立保存完整 deltaLink；只有所有 nextLink 页面及原件可靠落库后才提交新游标；单封损坏 PDF 被隔离且不阻塞同批其他邮件。
+    criterion: 每个 mailbox+folder 独立保存 Graph 返回的完整 deltaLink，well-known folder 和自定义 folder ID 均有可核对配置；只有所有 nextLink 页面及原件可靠落库后才提交新游标；同邮箱移动不重复归档；token 失效能对该范围全量重建；单封损坏 PDF 被隔离且不阻塞同批其他邮件。
     method: fault-injection
     command_or_path: 待实现补充
-    expected: 在第二页注入宕机后重跑无漏信；已落库页由 mail_copy 唯一约束去重；毒 PDF 后续邮件仍进入处理队列。
+    expected: 在第二页注入宕机后重跑无漏信；Inbox 移至受管自定义 folder 后仍关联同一 mail_copy；把 Inbox token 用于另一 folder 会被禁止；模拟 syncStateNotFound 后只重建对应 mailbox+folder；毒 PDF 后续邮件仍进入处理队列。
     evidence: null
     status: pending
     blocker_of_done: true
