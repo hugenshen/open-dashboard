@@ -1,0 +1,92 @@
+# P020 acceptance — Sevenonic 多邮箱监听与 monday 业务自动化
+proposal: P020
+status: pending
+
+items:
+  - id: PR-SMA-01
+    title: 多邮箱范围与最小权限可验证
+    gate: proposal
+    criterion: 配置明确列出真实 mailbox、alias/分发组映射、监听 folder 与 Outlook 规则；Graph 应用权限通过 Exchange Application RBAC 限定到受管邮箱，新增或移除邮箱无需改代码。
+    method: review
+    command_or_path: design/design.md
+    expected: 未在安全组和 mailbox_registry 中登记的邮箱不可读取；每个 mailbox+folder 有独立配置。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-02
+    title: Webhook 唤醒与 Delta 补账形成单一同步链
+    gate: acceptance
+    criterion: Webhook 只校验并持久入队，在 3 秒窗口内返回 2xx；定时 sweep 每 10～15 分钟产生同一种 SYNC_MAILBOX 任务；漏通知或停机恢复后可从旧 deltaLink 补齐变化。
+    method: integration
+    command_or_path: 待实现补充
+    expected: 关闭 Webhook 后发送测试邮件，恢复定时任务仍能接收；两种触发不会产生两套业务结果。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-03
+    title: Delta 游标、分页和异常邮件不造成漏信
+    gate: acceptance
+    criterion: 每个 mailbox+folder 独立保存完整 deltaLink；只有所有 nextLink 页面及原件可靠落库后才提交新游标；单封损坏 PDF 被隔离且不阻塞同批其他邮件。
+    method: fault-injection
+    command_or_path: 待实现补充
+    expected: 在第二页注入宕机后重跑无漏信；已落库页由 mail_copy 唯一约束去重；毒 PDF 后续邮件仍进入处理队列。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-04
+    title: 跨邮箱、副本、重发和 revision 分层去重
+    gate: acceptance
+    criterion: 一封邮件 To 主邮箱并 Cc 两个受管邮箱时形成 3 个 mail_copy、1 个 canonical_message、1 个业务事件；重发同 R2 不新增业务事件，同 R2 异值阻断，R3 形成新 revision，parser/prompt 升级只新增 extraction_run。
+    method: integration
+    command_or_path: 待实现补充
+    expected: 重放每个输入 10 次仍保持预期对象数，且 monday 不出现重复 item。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-05
+    title: PO 候选值具备原文证据并通过格式和业务校验
+    gate: acceptance
+    criterion: 每个关键字段包含 source、page、bbox/raw_text，值可由证据确定性复算；正文/PDF冲突、未知模板、合计不平、revision 倒退和同版本异值不得自动正式写入。
+    method: evaluation
+    command_or_path: 待实现补充
+    expected: unsupported_auto_write_rate=0，critical_false_accept=0；未知格式可见停写并保留原件重放。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-06
+    title: monday 隔离草稿和外部写入幂等
+    gate: acceptance
+    criterion: 写前读取目标 board 真实 schema，并以 event_id 回查；本地 write_operation、固定 Idempotency-Key 和远端 event_id 三层保护 create/update；接口成功但客户端超时时进入 UNKNOWN 并先回查。
+    method: integration
+    command_or_path: 待实现补充
+    expected: create_item 响应丢失、跨日重放和 worker 并发场景均只产生一张隔离草稿；schema 漂移时 writer 停止。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-07
+    title: 人工审核是正式业务自动化的硬门
+    gate: acceptance
+    criterion: 草稿固定进入 AI 待复核区；PO号、数量、交期、报价和金额等关键字段由有权限人员确认；系统保存确认前后值、审核人、时间与原因，并二次读取 monday 当前状态后才允许正式流转。
+    method: ui
+    command_or_path: 待实现补充
+    expected: create_item 本身不会触发排产/财务动作；只有审核状态变为已批准才移动正式组、通知或计时；未授权人员不能批准。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-08
+    title: 状态、原件、任务和故障全链路可追溯恢复
+    gate: acceptance
+    criterion: 从 monday item 可追溯到 write_operation、review_decision、business_event、extraction_run、canonical_message、各邮箱 mail_copy 和原始 MIME/PDF；任务采用持久租约，失败进入重试/死信并告警。
+    method: fault-injection
+    command_or_path: 待实现补充
+    expected: VPS/worker 重启不丢任务；Graph/monday 429 按服务端重试提示退避；对象存储或数据库不可用时不提前推进游标或正式写入。
+    evidence: null
+    status: pending
+    blocker_of_done: true
