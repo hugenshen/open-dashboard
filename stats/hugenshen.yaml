@@ -1,17 +1,9 @@
 username: hugenshen
-updatedAt: 2026-09-04T13:36:44.206Z
+updatedAt: 2026-09-10T00:16:45.279Z
 skills:
   home:
     count: 1
     lastUsed: 2026-08-24T06:03:29.632Z
-interventions:
-  sessions: 11
-  interrupt: 5
-  toolReject: 2
-  correction: 1
-prompts: 38
-tokens:
-  input: 0
-  output: 0
-  cacheRead: 0
-  cacheCreation: 0
+  Users:
+    count: 2
+    lastUsed: 2026-09-04T13:38:51.915Z
