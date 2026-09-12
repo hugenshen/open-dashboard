@@ -2766,7 +2766,631 @@ parser_name, parser_version, extraction_run_id, decision
 14. 原始 MIME/PDF 保存位置、保留期限、加密、脱敏、删除和业务人员查看权限。
 15. Webhook 公网 HTTPS、Graph/monday 凭据、VPS/数据库/对象存储、备份、监控和告警分别由谁维护。
 
-## 24. 官方依据
+## 24. 甲方新增截图所反映的真实业务
+
+### 24.1 截图能确认什么，暂时不能确认什么
+
+甲方提供的三张 Excel 截图不是普通订单表，而是服装技术包（Tech Pack）中的不同工作表或阶段数据。截图中可辨认的页签和区域包括：
+
+| 截图内容 | 可辨认结构 | 在业务中的用途 | 系统不能直接假设的事 |
+|---|---|---|---|
+| `3. MEASUREMENT` | 款式图、量度点、容差、1st/2nd fit 实测值与评语 | 样衣首版、二版的尺寸核对和修改 | 不能只按列号读取；不同客户会插列、合并单元格或改变轮次 |
+| `4. Graded Specs` | US/AU 尺码映射、基码、放码值、容差、备注 | 从基码生成各尺码规格 | 红蓝颜色不是可靠业务字段，必须读取表头语义和公式/数值 |
+| `6. PP COMMENTS` | PP 阶段意见与复核 | 产前样问题、客户意见、整改闭环 | 截图没有展示完整字段，需真实脱敏 Excel 才能确认评论结构 |
+| `7. PHOTO SAMPLE APPROVAL` | 图片样审批页签 | 图片样确认、版次批准 | 页签存在不等于已经批准，必须读取明确状态/日期/责任人 |
+| `8. FULL SIZE MEASURE BULK` | 全码实测、目标值、正负差 | 大货前全码尺寸确认 | 不能把所有矩阵单元格直接铺成 monday 列 |
+
+截图还显示 monday 工作区采用多个阶段板。可辨认的板包括“HM设计部-数据输入”“HM样衣面辅料采购”“HM样衣-打板”“样衣制作”“样衣审核”，以及定金、产前样、大货生产、总检和出运等生产阶段。板中可见“项目、负责人、设计稿链接、现状、第几版、确认键、修改日、面料、里布、辅料”等列。
+
+这些是**截图观察结果，不是已经冻结的接口契约**。开发前仍必须由甲方提供：真实脱敏 `.xlsx`、monday board schema 导出、自动化 recipe 清单、人员与角色清单。特别是人员姓名、列 ID、状态 label/index 和板间连接关系，不能从截图猜测后写死。
+
+### 24.2 对原方案的范围修正
+
+原方案主要围绕“PO/PDF → monday 草稿”。根据新增材料，首期应调整为两条互相关联但独立验收的管道：
+
+```mermaid
+flowchart LR
+  A["管道一：订单来件"] --> B["PO / 报价 / 交期 / revision"]
+  B --> C["订单与款号主事件"]
+  D["管道二：服装技术包"] --> E["XLSX量度 / 放码 / PP意见 / 审批"]
+  E --> F["款式版本与样衣轮次事件"]
+  C --> G["style_id / po_no 关联"]
+  F --> G
+  G --> H["monday 多角色任务投影"]
+```
+
+首期生产化交付应支持：
+
+- 邮件中的 PDF、XLSX、XLSM 和图片附件安全归档；XLSM 只读，不执行宏。
+- 识别款号、客户、技术包版本、工作表类型、样衣轮次、量度点、目标值、实测值、容差、评语和审批状态。
+- 对同款技术包不同版本做字段级差异，而不是用“最新文件覆盖旧文件”。
+- 将完整矩阵保存在我方数据库和对象存储；monday 只保存任务摘要、阶段状态、负责人、版次、关键异常和证据链接。
+- 以款号、PO、技术包 revision、sample round 建立业务关联，避免“邮件名相同就覆盖”和“每个附件都新建项目”。
+
+首期不承诺：任意品牌的任意 Excel 都能零配置解析；自动改写客户原始 Excel；根据单元格颜色自动批准；无人审核直接推进大货；把数百个量度点全部建成 monday 顶层列。
+
+## 25. 落地总体架构
+
+### 25.1 生产化逻辑架构
+
+```mermaid
+flowchart TB
+  subgraph CUSTOMER["客户与甲方业务域"]
+    C1["客户邮件：PO / Tech Pack / Comments"]
+    C2["跟单 / 设计 / 纸样 / 面辅料 / 样衣 / QC / 生产"]
+  end
+
+  subgraph MS["Microsoft 365 平台"]
+    EX["Exchange Online 受管邮箱"]
+    GR["Microsoft Graph：Subscription + Delta + MIME"]
+  end
+
+  subgraph INGRESS["我方接入与可靠任务层"]
+    WH["Webhook Receiver"]
+    SC["Scheduler / Subscription Guardian"]
+    SY["Mailbox Sync Worker"]
+    JOB["PostgreSQL Job + Outbox"]
+  end
+
+  subgraph DOC["我方文档智能层"]
+    AV["文件安全门：类型 / 大小 / 病毒 / Zip Bomb"]
+    AR["原件归档：MIME / 附件 / Manifest / Hash"]
+    RT["Parser Router：PDF / XLSX / Image"]
+    XL["Excel Sandbox：OOXML + LibreOffice Render"]
+    PE["模板指纹与确定性解析"]
+    LM["按需模型分类/候选抽取，只读"]
+    VL["证据、容差、版本与业务规则校验"]
+    DF["Tech Pack Revision Diff"]
+  end
+
+  subgraph DATA["我方数据与审计层"]
+    PG["PostgreSQL：邮件、事件、版本、任务、写入账本"]
+    OS["对象存储：原始文件、渲染件、差异报告"]
+    OBS["日志、指标、追踪、告警、审计"]
+  end
+
+  subgraph MONDAY["monday 工作管理平台"]
+    MW["Schema Registry + Idempotent Writer"]
+    BO["设计 / 面辅料 / 打板 / 样衣 / 审核 / 生产板"]
+    MH["monday Webhook + Reconciliation"]
+  end
+
+  subgraph REVIEW["Open Dashboard 审核与运维面"]
+    RV["邮件/附件证据、Excel差异、人工裁决"]
+    OP["邮箱游标、失败任务、模板与板配置"]
+  end
+
+  C1 --> EX --> GR
+  GR --> WH --> JOB
+  SC --> GR
+  JOB --> SY --> GR
+  SY --> AV --> AR
+  AR --> OS
+  AR --> PG
+  AV --> RT
+  RT --> XL --> PE
+  RT --> LM
+  PE --> VL
+  LM --> VL
+  VL --> DF --> PG
+  PG --> MW --> BO
+  BO --> MH --> JOB
+  PG --> RV
+  OS --> RV
+  PG --> OP
+  C2 --> BO
+  C2 --> RV
+  OBS --- INGRESS
+  OBS --- DOC
+  OBS --- MONDAY
+```
+
+### 25.2 一封真实服装邮件的完整数据流
+
+以客户发送 `HMV071 Tech Pack Rev 4.xlsx` 为例：
+
+| 顺序 | 平台/组件 | 输入 | 处理 | 持久化结果 | 对业务人员可见结果 |
+|---:|---|---|---|---|---|
+| 1 | Exchange/Graph | 邮件、XLSX、正文 | Webhook 只唤醒，Delta 获取真实变化 | notification、delta cursor | 暂无 |
+| 2 | Mail worker | message ID、MIME、附件 | 下载、hash、跨邮箱归并 | mail_copy、artifact | “邮件已接收” |
+| 3 | 安全门 | XLSX 字节 | magic bytes、压缩比、宏、外链、病毒检查 | security verdict | 异常文件进入隔离 |
+| 4 | Excel Sandbox | 原始工作簿 | 清单化 sheet、隐藏项、命名区域、图片、公式；生成 PDF/PNG 预览 | workbook manifest、preview | 可查看原件和预览 |
+| 5 | 模板路由 | sheet 名、表头、布局指纹 | 识别客户模板族和版本；未知模板拒绝自动解析 | template_family、compatibility | “已识别/未知模板” |
+| 6 | 确定性 parser | Measurement/Graded/Comments 等 sheet | 提取款号、量度点、轮次、尺寸、容差、意见 | style_revision、measurement、comment | 结构化候选值 |
+| 7 | 规则引擎 | 值、公式结果、证据坐标 | 校验单位、尺码映射、容差、缺行、重复 Ref#、版本倒退 | validation_issue | 红黄绿异常清单 |
+| 8 | 差异引擎 | Rev 3 与 Rev 4 | 识别新增/删除/修改的量度点、目标值和评论 | document_diff | “Rev3→Rev4 改了什么” |
+| 9 | policy | 验证结果、当前业务状态 | 生成待复核事件，不自动批准高风险变更 | business_event | 审核工作台待办 |
+| 10 | monday writer | 通过安全门的摘要命令 | event_id 查重、schema guard、幂等写入 | write_operation | 对应阶段板出现一条任务 |
+| 11 | 角色处理 | monday 状态/人工修改 | Webhook 入队后二次读取、校验 actor 和当前值 | review_decision、transition | 下一角色收到任务 |
+
+### 25.3 部署单元与网络边界
+
+首期建议一个生产环境、一个测试环境，代码同源但凭据、数据库、对象桶和 monday board 完全隔离：
+
+| 部署单元 | 是否公网 | 允许访问 | 不允许访问 |
+|---|---|---|---|
+| API/Webhook | 仅 `/graph/notifications`、`/monday/events` 公网 HTTPS | Graph/monday 回调、内部 job | 数据库公网直连 |
+| Worker | 不对公网提供入口 | Graph、monday、对象存储、数据库 | 用户浏览器直接访问 |
+| Excel Sandbox | 无长期凭据、限制网络出口 | 只读临时输入、临时输出目录 | Graph/monday token、生产数据库 |
+| Review API/UI | 甲方 SSO 或受控 VPN | 证据签名 URL、审核 API | 对象桶永久公链 |
+| PostgreSQL | 私网 | API/worker 最小权限账号 | 互联网访问 |
+| Object Storage | 私有桶 | 服务身份、短时签名 URL | anonymous public read |
+
+首期月度量不大时不强制 Kubernetes。推荐 Docker Compose 或托管容器 + PostgreSQL + S3 兼容对象存储；任务量、并发或可用性达到约定阈值后再拆多节点队列。生产最低要求是每日数据库备份、对象版本/保留策略、证书与 subscription 到期告警、恢复演练，而不是“买一台 VPS 就算上线”。
+
+## 26. 服装 Excel 技术包解析设计
+
+### 26.1 为什么不能只用 openpyxl 读几个格子
+
+技术包常见的困难包括：合并单元格、多行表头、隐藏 sheet、公式缓存、图片/形状、命名区域、条件格式、WPS/Excel 保存差异、插入空行、同一字段跨工作表重复出现、不同轮次横向扩列。`openpyxl` 可以读取 OOXML 单元格，但不负责计算公式，也不能独自证明视觉布局和实际业务语义一致。
+
+首期采用组合解析：
+
+1. 原始字节不修改地归档，生成 SHA-256。
+2. OOXML 层读取 workbook/sheet relationship、单元格、合并区、公式、cached value、图片锚点和隐藏状态。
+3. 在无凭据、受限网络的沙箱中用 LibreOffice headless 生成 PDF/PNG 预览；必要时重算公式，但重算件只能作为派生物，不能覆盖原件。
+4. 依据 sheet 语义和表头锚点识别模板族，不用固定坐标作为唯一依据。
+5. 规则 parser 输出值、来源 sheet、cell/range、原始显示文本和公式证据。
+6. 未识别模板或关键证据冲突时停止自动写 monday，保留原件供扩充 parser 后重放。
+
+### 26.2 工作簿清单 manifest
+
+每个附件先形成与业务解析无关的 manifest：
+
+```json
+{
+  "artifact_id": "ART-4102",
+  "filename": "HMV071-Tech-Pack-Rev4.xlsx",
+  "sha256": "sha256:9d2...",
+  "container": "OOXML",
+  "has_vba": false,
+  "has_external_links": true,
+  "calculation_mode": "auto",
+  "sheets": [
+    {"name": "3. MEASUREMENT", "state": "visible", "max_row": 86, "max_column": 29},
+    {"name": "4. Graded Specs (2)", "state": "visible", "max_row": 52, "max_column": 18},
+    {"name": "6. PP COMMENTS", "state": "visible", "max_row": 40, "max_column": 26},
+    {"name": "7. PHOTO SAMPLE APPROVAL", "state": "visible", "max_row": 38, "max_column": 20},
+    {"name": "8. FULL SIZE MEASURE BULK", "state": "visible", "max_row": 70, "max_column": 30}
+  ],
+  "embedded_images": 2,
+  "security_verdict": "REVIEW_EXTERNAL_LINKS"
+}
+```
+
+这里的数字只是实例，不是从截图反推的最终数据。真实 manifest 必须由真实附件产生。
+
+### 26.3 规范化数据模型
+
+| 对象 | 业务主键建议 | 关键字段 | 解释 |
+|---|---|---|---|
+| `style` | `customer_id + normalized_style_no` | 款号、品类、品牌、季节 | HMV071 是款式，不等于一封邮件 |
+| `tech_pack_revision` | `style_id + revision` | 文件 hash、模板族、接收时间、状态 | 同款每个技术包版本单独保存 |
+| `workbook_sheet` | `revision_id + sheet_semantic + sheet_name` | 原 sheet 名、范围、指纹 | `MEASUREMENT` 与 `PP_COMMENTS` 不能混用 |
+| `measurement_point` | `style_id + normalized_ref + definition_version` | Ref#、中英文位置名、单位 | 如 front length、1/2 bust |
+| `measurement_spec` | `revision_id + point_id + size` | given、tolerance、grading | 客户目标值 |
+| `sample_round` | `style_id + round_type + round_no` | first fit、second fit、PP、photo sample | 一款可以多次打板和复样 |
+| `measurement_observation` | `round_id + point_id + size` | actual、deviation、out_of_tol | 样衣/大货实测 |
+| `approval_comment` | `revision_id + round_id + source_location` | comment、author、date、decision | 评语必须与版次和轮次绑定 |
+| `document_diff` | `from_revision + to_revision` | added/removed/changed、severity | 告诉业务“这版改了什么” |
+
+数值不应只存一个 `35`，还应保存：
+
+```json
+{
+  "point_ref": "2",
+  "measurement_point": "1/2 BUST CIRC. 2.5CM BELOW U/ARM",
+  "size": "US 4 / AU 8",
+  "unit": "cm",
+  "given": 35.0,
+  "tolerance_plus": 0.5,
+  "tolerance_minus": 0.5,
+  "round": "SECOND_FIT",
+  "actual": 36.0,
+  "deviation": 1.0,
+  "decision": "OUT_OF_TOLERANCE",
+  "evidence": {"sheet": "3. MEASUREMENT", "cell": "N18", "display_text": "36"}
+}
+```
+
+### 26.4 量度、放码和评语的规则
+
+| 规则 | 失败例子 | 系统动作 |
+|---|---|---|
+| 单位统一 | 一页是 cm，另一个 sheet 是 inch | 不静默换算；识别明确单位后换算并保留原值，否则人工 |
+| Ref# 唯一 | 同一 sheet 两个 `Ref 6`，名称不同 | 标记模板冲突，不能覆盖 |
+| 目标/实测分离 | 把 `1ST GIVEN` 当成 `1ST FIT MEASURE` | 证据列语义校验，失败停写 |
+| 容差校验 | given=65.5、actual=58、容差±1 | 生成严重超差问题，不自动把目标值改成 58 |
+| 尺码映射 | US 4 对应 AU 8，模板插入新尺码 | 读取双层表头并验证映射；不能按固定第 4 列 |
+| 放码对称性 | SURE BE W/GRADE 与 OUT BY 符号反了 | 规则按客户模板定义校验，不凭字体颜色判断 |
+| 轮次单调 | 二版数据先到，一版后到 | 保存迟到记录，不让旧轮次覆盖新轮次 |
+| 评论和决定分离 | 评论写“please revise”，状态却显示 approved | 进入冲突队列，授权角色裁决 |
+| 空白语义 | 空格可能表示未量、无此部位或沿用上版 | 按模板定义区分；未知时保持 null，不填 0 |
+| 公式可信度 | cached value 过期或外链公式不可算 | 标记 `FORMULA_STALE/EXTERNAL_DEPENDENCY`，不自动批准 |
+
+### 26.5 技术包版本差异实例
+
+Rev 3：
+
+```text
+Style HMV071
+Ref 2 / US4-AU8 / 1st given = 35.0cm
+Ref 6 / US4-AU8 / 1st given = 65.5cm
+PP comment = Increase front hem by 1cm
+```
+
+Rev 4：
+
+```text
+Ref 2 / US4-AU8 / updated for 2nd fit = 36.0cm
+Ref 6 / US4-AU8 / updated for 2nd fit = 63.0cm
+PP comment = Front hem accepted; revise bust only
+```
+
+系统生成的不是“Excel 已更新”，而是：
+
+```json
+{
+  "style": "HMV071",
+  "from_revision": 3,
+  "to_revision": 4,
+  "changes": [
+    {"path": "measurement.Ref2.US4", "before": 35.0, "after": 36.0, "severity": "REVIEW"},
+    {"path": "measurement.Ref6.US4", "before": 65.5, "after": 63.0, "severity": "REVIEW"},
+    {"path": "pp_comment", "before": "Increase front hem by 1cm", "after": "Front hem accepted; revise bust only", "severity": "INFO"}
+  ],
+  "decision": "PATTERN_MASTER_REVIEW_REQUIRED"
+}
+```
+
+纸样师只处理与纸样相关的差异，面辅料人员不需要查看全部量度矩阵；跟单和负责人仍能看到完整证据链。
+
+## 27. monday 多角色工作流设计
+
+### 27.1 不重建甲方所有板，而是增加稳定的贯穿键
+
+截图显示甲方已经按部门/阶段拆板。建议保留这一习惯，在每个受管 board 增加或确认以下系统列：
+
+| 列 | 类型 | 用途 |
+|---|---|---|
+| `event_id` | Text，锁定或受控 | 我方业务事件唯一键，所有查重与对账依据 |
+| `style_id` | Text | 跨板关联同一款式 |
+| `po_no` | Text | 订单关联；没有 PO 的开发样可为空 |
+| `tech_pack_revision` | Numbers/Text | 当前待处理技术包版次 |
+| `sample_round` | Status/Text | FIRST_FIT、SECOND_FIT、PP、PHOTO_SAMPLE、BULK |
+| `review_status` | Status | 待复核、资料不足、处理中、已确认、已阻断、已取消 |
+| `evidence_url` | Link | 跳到我方证据和差异页，不直接使用永久公开 URL |
+| `payload_hash` | Text | 检测人工/接口写入漂移 |
+| `source_mail_received_at` | Date | 原始来件时间，不用 item 创建时间代替 |
+
+不能用“项目名称”当唯一键，因为名称会改、会重复，也可能包含同一款式的不同版本。
+
+### 27.2 推荐的角色与阶段
+
+| 阶段 | 主责角色 | monday 板/任务 | 输入 | 完成门 | 下一步 |
+|---|---|---|---|---|---|
+| 新品输入 | 跟单/设计资料员 | `HM设计部-数据输入` | 客户邮件、款号、设计稿、Tech Pack | 款号、客户、版次、附件证据确认 | 面辅料与纸样可并行 |
+| 设计确认 | 设计师/跟单 | 设计数据项 | 设计图、结构、客户意见 | 状态=设计确认；记录确认人 | 面辅料采购、打板 |
+| 面辅料准备 | 面辅料采购 | `HM样衣面辅料采购` | 面料、里布、辅料要求 | 三类材料齐套或明确豁免 | 样衣制作 |
+| 打板 | 纸样师 | `HM样衣-打板-*` | Tech Pack、量度点、放码、设计稿 | 纸样版本、关键尺寸差异确认 | 样衣制作 |
+| 样衣制作 | 样衣师 | 样衣制作板 | 纸样、材料、工艺 | 实物完成、轮次、完成时间 | 样衣审核 |
+| 样衣审核 | 跟单/技术/QC | 样衣审核板 | 实测、图片、客户 comments | 问题关闭或产生下一轮 | 返工或客户送样 |
+| PP/Photo Sample | 客户/跟单/技术 | PP/图片样任务 | PP comments、审批意见 | 明确批准/修改/拒绝和证据 | 产前确认 |
+| 产前样 | 生产/技术/QC | 产前样板 | 已批准版本、材料、尺寸 | 授权角色批准 | 大货生产 |
+| 大货与总检 | 生产/QC | 大货、总检板 | PO、交期、全码实测 | 全码/抽检符合规则 | 出运 |
+| 出运 | 物流/跟单/财务 | 出运任务 | 装箱、单据、付款条件 | 业务与财务门通过 | 关闭 |
+
+板名和角色名在开发前必须由甲方确认，上表只给出基于截图的推荐映射。
+
+### 27.3 一个款式如何跨角色流转
+
+```mermaid
+flowchart TD
+  A["收到 HMV071 Rev4.xlsx"] --> B["设计输入：待人工复核"]
+  B -->|"设计资料确认"| C["面辅料任务"]
+  B -->|"设计资料确认"| D["打板任务"]
+  C --> E{"面料/里布/辅料齐套?"}
+  D --> F{"纸样和关键量度确认?"}
+  E -->|"否"| C1["缺料/替代料待确认"]
+  F -->|"否"| D1["版本冲突/量度异常"]
+  E -->|"是"| G["样衣制作"]
+  F -->|"是"| G
+  G --> H["样衣实测与审核"]
+  H -->|"需修改"| I["创建下一 sample round，不覆盖本轮"]
+  I --> D
+  H -->|"批准"| J["PP / Photo Sample"]
+  J -->|"客户批准"| K["产前样"]
+  K -->|"授权批准"| L["大货生产"]
+  L --> M["全码实测 / 总检"]
+  M -->|"通过"| N["出运"]
+```
+
+自动化只负责创建任务、带入已验证摘要、提醒和状态投影。设计确认、量度冲突裁决、样衣批准、取消订单、产前放行和财务动作仍是人工授权门。
+
+### 27.4 monday 写入粒度
+
+推荐粒度如下：
+
+- 顶层 item：一个 `style + 当前业务阶段`，用于负责人、截止日、状态和跨板连接。
+- subitem：一个需要处理的异常或关键量度点，例如“Ref 6 二版超差 -7.5cm”。
+- 我方详情页：完整 30～数百个量度点、各尺码矩阵、原始证据和 revision diff。
+- 对象存储：原始 Excel、MIME、派生 PDF/PNG，不把 monday 当文件唯一仓库。
+
+这样能避免 monday 出现数百列、复杂度和维护成本急剧上升，也避免甲方复制 board 时把数据模型一起复制坏。
+
+### 27.5 状态迁移与权限矩阵
+
+| 当前状态 | 允许操作角色 | 可到状态 | 系统校验 |
+|---|---|---|---|
+| 待人工复核 | 跟单/资料员 | 资料不足、已确认、已阻断 | 关键字段证据齐全、event_id 唯一 |
+| 资料不足 | 跟单 | 待人工复核、已取消 | 补件邮件必须关联原事件 |
+| 纸样处理中 | 指定纸样师 | 待样衣、版本冲突 | 当前 tech pack revision 未过期 |
+| 待样衣审核 | 技术/QC/跟单 | 需返工、待客户确认 | 实测和问题清单齐全 |
+| 待客户确认 | 授权跟单/负责人 | 已批准、需返工、已取消 | 审批证据、时间和人员存在 |
+| 已批准 | 生产授权人 | 产前/大货 | 不存在未解决阻断项 |
+| 已取消 | 负责人 | 恢复待确认 | 必须有新的恢复业务事件 |
+
+monday Webhook 只表示“某列可能变化”。我方收到后再次查询 item 当前值、操作者和关联键，验证角色及合法迁移，成功后写 `review_decision`。如果人工绕过流程直接改到“已批准”，系统应标记 `UNAUTHORIZED_TRANSITION`，停止下游任务，而不是照单全收。
+
+## 28. 我方平台需要落地的模块和代码边界
+
+| 模块 | 主要职责 | 关键接口/任务 | 主要表/存储 | 首期形态 |
+|---|---|---|---|---|
+| Identity/Config | Entra、RBAC 邮箱范围、monday board/列映射、角色映射 | config validate、schema snapshot | mailbox_registry、board_schema | 后端配置 + 受控配置文件/管理页 |
+| Graph Ingress | Subscription、Webhook、Delta、MIME/附件 | renew、SYNC_MAILBOX | subscription、cursor、mail_copy | 独立 adapter + worker |
+| Artifact Vault | 原件、派生物、hash、保留与签名链接 | archive、get signed URL | mail_artifact、对象桶 | 私有对象存储 |
+| Document Gateway | 文件检测、沙箱、parser 路由 | PARSE_ARTIFACT | document、manifest | worker + sandbox |
+| Garment Parser | Tech Pack 指纹、量度/放码/评论抽取 | EXTRACT_TECH_PACK | style、revision、measurement | 版本化 parser 包 |
+| Validation/Diff | 证据、单位、容差、版本、状态规则 | VALIDATE、DIFF_REVISION | validation_issue、document_diff | 纯 Python 规则 |
+| Review Service | 候选值、证据、差异、人工裁决 | review API | review_decision、audit_log | Open Dashboard 新模块或独立服务 |
+| monday Adapter | schema guard、查重、写入、Webhook、对账 | WRITE_MONDAY、RECONCILE | write_operation、remote_binding | adapter + outbox worker |
+| Operations | 游标、任务、死信、存储、依赖健康度 | replay、retry、alert | job、metric、audit | 运维页 + 告警 |
+
+代码落地前必须先形成 OpenAPI 草案，至少覆盖：
+
+```text
+GET  /api/mail-events/{event_id}
+GET  /api/documents/{document_id}/manifest
+GET  /api/tech-packs/{revision_id}/diff?against={previous_revision_id}
+POST /api/reviews/{event_id}/decisions
+GET  /api/operations/mailboxes
+POST /api/operations/jobs/{job_id}/replay
+POST /webhooks/graph
+POST /webhooks/monday
+```
+
+Review API 的写操作必须接收 `expected_version`，使用乐观锁避免两位审核人同时提交互相覆盖。所有 replay 只产生新 extraction_run；不得直接绕过 policy 重放 monday 副作用。
+
+## 29. 实施先后顺序和依赖
+
+### 29.1 推荐 12～14 周生产化首期
+
+```mermaid
+gantt
+  title Sevenonic 首期实施基线（甲方资料按时提供）
+  dateFormat  YYYY-MM-DD
+  axisFormat  %m/%d
+  section P0
+  业务梳理与数据盘点       :p0, 2026-09-21, 10d
+  section P1
+  环境安全与数据底座       :p1, after p0, 10d
+  section P2
+  Graph邮件接入与归档      :p2, after p1, 10d
+  section P3
+  PDF/XLSX解析与评测       :p3, after p2, 20d
+  section P4
+  monday角色流与审核       :p4, after p3, 15d
+  section P5
+  联调UAT灰度与上线        :p5, after p4, 15d
+```
+
+日期仅作为 2026-09-21 启动的示例。实际启动日、节假日、甲方资料到位和反馈时长会改变日历日期，但阶段门顺序不应改变。
+
+### 29.2 分阶段任务、产物和退出门
+
+| 阶段 | 周期 | 乙方任务 | 甲方配合 | 交付物 | 退出门 |
+|---|---:|---|---|---|---|
+| P0 需求与数据冻结 | 2周 | 访谈、邮箱/板盘点、样本分组、字段字典、威胁模型、基线计时 | 提供脱敏邮件/Excel、board schema、角色和现有自动化 | As-Is/To-Be、字段字典、样本 manifest、固定范围与正式报价 | 业务键、3个模板族、6块板、审批人和验收集签字 |
+| P1 安全与底座 | 2周 | 测试/生产环境、PostgreSQL、对象存储、Secret、任务/outbox、日志备份 | 准备域名/云账号/网络、Entra 协助 | 部署图、迁移脚本、备份恢复记录 | 测试环境可恢复；凭据不落代码/日志 |
+| P2 邮件管道 | 2周 | Graph 授权、subscription/delta、归档、五层身份、异常恢复 | 建应用、Exchange RBAC、测试邮箱 | 多邮箱影子接收、运维页、故障演练 | 漏 webhook 可补账；重放10次无重复；原件100%归档 |
+| P3 文档智能 | 3～4周 | PDF/XLSX安全门、manifest、3个模板族 parser、diff、评测工具 | 完成金标和业务仲裁 | parser 包、评测报告、未知模板队列、差异页 | 受支持模板达到第32节指标；未知模板不静默写 |
+| P4 monday 与角色流 | 2～3周 | schema registry、隔离组/板、任务投影、Webhook、角色状态机、对账 | 建测试板、确认列和 recipe、安排角色 UAT | 6块板映射、角色流、幂等报告 | 重复/超时不重复建卡；越权迁移被阻断 |
+| P5 UAT 与上线 | 2～3周 | 影子运行、缺陷修复、培训、灰度、回滚演练、交接 | 每日处理 UAT、签收和上线窗口 | UAT报告、SOP、Runbook、培训、上线记录 | 连续10个工作日达到门槛后逐类放开 |
+
+### 29.3 为什么这个顺序不能倒过来
+
+1. 不先拿真实 Excel 和 board schema，就无法冻结解析字段与报价。
+2. 不先建原件归档和任务账本，parser 出错后无法重放，monday 超时后也无法查账。
+3. 不先跑影子模式，就无法知道模板覆盖率，直接自动写会把错误扩散到多个角色板。
+4. 不先完成 monday schema guard 和现有 recipe 审计，新建草稿可能立即触发生产动作。
+5. 不先通过角色 UAT，技术测试全绿也无法证明设计、纸样、跟单和生产的交接能用。
+
+### 29.4 可执行 WBS
+
+| WBS | 任务 | 依赖 | 主责 | 估算人日 | 验收证据 |
+|---|---|---|---|---:|---|
+| 0.1 | 邮箱、alias、folder、邮件量盘点 | 无 | BA/甲方IT | 2 | mailbox inventory |
+| 0.2 | Excel 模板族与样本 manifest | 无 | BA/业务 | 4 | 脱敏样本清单与 hash |
+| 0.3 | monday board/column/recipe 导出 | 无 | monday管理员 | 3 | schema snapshot |
+| 0.4 | 字段字典、角色和状态签字 | 0.1～0.3 | 产品/业务 | 5 | signed scope |
+| 1.1 | 环境、CI/CD、Secret、数据库与对象桶 | 0.4 | DevOps/后端 | 10 | deploy/restore log |
+| 1.2 | job/outbox、审计和可观测性 | 1.1 | 后端 | 8 | fault test |
+| 2.1 | Entra/Graph adapter 与最小权限 | 1.1 | 后端/甲方IT | 7 | auth/RBAC test |
+| 2.2 | Subscription/Delta/MIME/附件归档 | 2.1、1.2 | 后端 | 10 | replay/failure report |
+| 2.3 | 五层身份和跨邮箱去重 | 2.2 | 后端 | 5 | dedupe suite |
+| 3.1 | 文件安全门与 Excel sandbox | 1.1 | 后端/安全 | 7 | malicious fixture suite |
+| 3.2 | workbook manifest/render | 3.1 | 文档工程 | 6 | source/preview consistency |
+| 3.3 | 3个模板族 parser | 3.2、0.2 | 文档工程/业务 | 15 | field evaluation |
+| 3.4 | Tech Pack revision diff | 3.3 | 后端 | 7 | diff fixtures |
+| 3.5 | 评测集与一键回归 | 3.3 | QA/业务 | 8 | frozen report |
+| 4.1 | monday schema registry 与 adapter | 0.3、1.2 | 后端 | 8 | schema drift test |
+| 4.2 | 6个阶段板映射与状态机 | 4.1、0.4 | 后端/业务 | 10 | role transition test |
+| 4.3 | monday webhook、对账和幂等 | 4.1 | 后端 | 7 | timeout/duplicate test |
+| 4.4 | 审核/差异/运维页面 | 3.4、4.1 | 前后端 | 12 | UI UAT |
+| 5.1 | 安全、性能、恢复与回滚演练 | 全部 | QA/DevOps | 8 | test report |
+| 5.2 | 影子运行、灰度、培训和交接 | 5.1 | 全体 | 10 | UAT/sign-off |
+
+人日是预算估算输入，不代表所有任务严格串行；关键依赖和阶段门仍必须按表执行。
+
+## 30. 甲方与乙方责任边界
+
+### 30.1 甲方必须提供的材料
+
+| 类别 | 最低材料 | 用途 | 未提供的影响 |
+|---|---|---|---|
+| 邮箱 | 受管邮箱清单、类型、alias/分发组、folder、Outlook规则、三个月量级 | Graph 范围和容量 | 无法保证不漏文件夹或正确去重 |
+| 邮件样本 | 建议不少于 280 封脱敏历史邮件，保留 MIME 结构和附件；按客户/类型/版本分组 | 评测、重复/revision 案例 | 无法给出准确率和覆盖率 |
+| Excel | 首期每个模板族至少 20～30 份，包含正常、插列、缺页、旧版、新版、不同轮次 | parser 和漂移测试 | 只能做通用归档，不能承诺结构化 |
+| 字段金标 | 款号、版次、量度点、尺码、容差、评论和批准结果 | 客观验收 | 模型/规则结果无法判定对错 |
+| monday | 测试 workspace、board/group/column schema、API token、automation recipe 导出 | 映射和副作用检查 | 不能安全写入或报价锁定 |
+| 角色 | 跟单、设计、纸样、面辅料、样衣、QC、生产、管理员名单和权限 | 状态机和UAT | 无法验证越权和交接 |
+| 基础设施 | 域名、HTTPS、Entra 应用、Exchange RBAC、云账号/网络策略 | 部署与安全 | 项目停在本地测试 |
+| 合规 | 保存期限、数据区域、脱敏规则、可查看人员、删除审批 | 归档设计 | 不能上线存真实邮件 |
+
+### 30.2 RACI
+
+| 工作 | 甲方业务 | 甲方IT/monday管理员 | 乙方 | 最终批准人 |
+|---|---|---|---|---|
+| 业务字段和流程 | R | C | C/A文档化 | 甲方业务负责人 |
+| Entra/邮箱授权 | C | R/A | C | 甲方IT负责人 |
+| monday board/recipe 变更 | R | R/A | C/实施 | monday管理员 |
+| 架构、代码、测试 | C | C | R/A | 乙方技术负责人 |
+| 金标与业务异常裁决 | R/A | C | C | 甲方业务负责人 |
+| 生产部署与监控 | C | A或R，按托管模式 | R或A，按合同 | 双方项目负责人 |
+| 上线放行 | R | R | C | 甲方项目负责人 |
+
+### 30.3 变更控制
+
+以下任何一项变化都应重新评估工期和报价：支持的 Excel 模板族超过 3 个；受管 board 超过 6 个；新增财务/付款自动执行；引入 SharePoint/企微/ERP 双向写；需要在中国大陆特定云合规部署；历史数据迁移；高可用跨区；客户要求改写原 Excel；新增 OCR 手写批注。
+
+## 31. 上线、运维与降级
+
+### 31.1 三段放量
+
+| 模式 | 持续建议 | 系统权限 | 业务影响 | 升级条件 |
+|---|---:|---|---|---|
+| 影子模式 | 至少10个工作日 | 只读邮件、归档、解析；不写生产板 | 人工流程照旧 | 邮件覆盖、归档和解析指标通过 |
+| 隔离草稿 | 至少10个工作日 | 写测试板或 AI 待复核区 | 人工比较草稿与现有录入 | 无重复写入，关键误放行=0 |
+| 受控生产 | 按文档类型逐类开放 | 审核通过后触发现有自动化 | 真实角色流转 | 每周抽检、可一键回退到影子模式 |
+
+### 31.2 降级顺序
+
+```text
+正常自动化
+  -> 只创建待复核草稿
+  -> 只分类、摘要和附件归档
+  -> 只归档原件并每日汇总
+  -> 暂停接入并告警（仅在权限/存储/证据完整性失效时）
+```
+
+任何降级都不能丢掉 Delta 游标前的待处理任务，也不能把失败附件标成成功。Graph/monday/模型不可用时分别降级，不能因为模型失败让邮件接收也停止。
+
+### 31.3 运维指标与责任
+
+| 指标 | 目标/告警建议 | 处理人 |
+|---|---|---|
+| 邮件接收到本地归档 P95 | ≤5分钟；超过15分钟告警 | 乙方运维/甲方IT |
+| delta cursor age | 任一受管范围 >20分钟告警 | 乙方运维 |
+| subscription 剩余时间 | 低于24小时且续订失败告警 | 乙方运维 |
+| archive failure | 任一失败立即告警，禁止提交对应游标 | 乙方运维 |
+| unknown template rate | 单日 >5% 或同比突增告警 | 文档工程/业务 |
+| monday write UNKNOWN | 超过5分钟未对账告警 | 乙方运维 |
+| unauthorized transition | 任一发生告警并阻断 | monday管理员/业务负责人 |
+| 对象存储容量 | 70%/85% 两级告警 | 基础设施负责人 |
+
+## 32. 首期验收指标
+
+| 类别 | 指标 | 首期门槛 |
+|---|---|---|
+| 接收 | 受管范围内测试邮件接收/归档 | 100%；Webhook 丢失可由 Delta 补齐 |
+| 原件 | MIME、附件 hash、manifest 可追溯 | 100%；原件不被派生处理覆盖 |
+| Excel 分类 | 3个已支持模板族识别 | macro-F1 ≥95%；未知模板拒答率100% |
+| Excel 字段 | 款号、revision、sheet 类型 | exact match ≥98%，关键误放行=0 |
+| 量度矩阵 | 已支持模板的非空目标/实测单元格 | 标准化正确率 ≥97%，按模板族分别报告 |
+| 证据 | 所有自动进入草稿的值可定位 sheet/cell/range | 100% |
+| 差异 | 冻结 Rev A/Rev B 案例的新增/删除/修改项 | precision/recall 均 ≥95% |
+| 业务版本 | 重发、迟到版、同版异值、多轮次 | 灾难用例全部通过 |
+| monday | 邮件/worker/mutation 重放10次 | 每个 event/action 最多一个成功副作用 |
+| 角色流 | 合法状态迁移和越权阻断 | UAT用例全部通过 |
+| 时效 | 正常文本 PDF/XLSX 到待复核草稿 P95 | ≤10分钟，超大/复杂文件另计 |
+| 恢复 | worker/数据库/对象存储/monday 短时故障 | 不丢任务、不提前游标、不重复写入 |
+
+这些门槛只适用于甲方提供并冻结的模板族与测试集。“截图看起来能读”不能作为准确率验收，未提供金标也不能承诺识别率。
+
+## 33. 预算级报价与商务假设
+
+### 33.1 推荐首期报价
+
+以下是用于立项的 ROM（Rough Order of Magnitude）预算，不是未看真实样本就承诺的固定总价。建议先签 P0，完成范围冻结后把剩余阶段转为固定报价。
+
+**推荐首期生产化包：人民币 32.8 万元，未税，预计 12～14 周。**
+
+| 报价项 | 范围 | 金额（万元，未税） |
+|---|---|---:|
+| P0 需求、数据和方案冻结 | 邮箱/Excel/monday/角色盘点、字段字典、评测切分、最终SOW | 2.8 |
+| P1 安全与可靠底座 | 测试/生产部署、PostgreSQL、对象存储、job/outbox、Secret、日志备份 | 4.6 |
+| P2 Graph 邮件管道 | 3～5个受管邮箱、Subscription+Delta、归档、去重、恢复与运维 | 5.2 |
+| P3 PDF/XLSX 文档智能 | 最多3个冻结模板族、manifest、量度/放码/评论解析、版本diff、评测 | 7.8 |
+| P4 monday 多角色工作流 | 1个workspace、最多6块受管板、角色状态机、幂等写入、Webhook和对账 | 5.6 |
+| P5 审核与运维界面 | 证据、差异、人工裁决、失败任务、邮箱/模板健康度 | 3.8 |
+| P6 UAT、灰度、培训和交接 | 影子/草稿/生产三段放量、恢复演练、SOP、两次培训 | 3.0 |
+| **合计** | **不含第三方许可证、云资源、税费与新增范围** | **32.8** |
+
+如果只签 P0，价格为 2.8 万元；若 P0 后签完整首期，P0 金额计入 32.8 万元，不重复收费。P0 冻结后若真实复杂度与假设一致，建议将总价偏差控制在 ±10%；冻结前 ROM 风险区间为 ±25%。
+
+### 33.2 报价包含的明确上限
+
+```text
+受管邮箱：3～5个
+邮件历史评测集：最多280封，由甲方脱敏和标注
+Excel模板族：最多3个，每族20～30个代表文件
+monday：1个workspace、最多6个board、最多8类角色
+系统映射字段/状态：累计最多50个
+部署环境：测试1套、生产1套
+培训：管理员1场、业务用户1场
+质保：验收后30天缺陷修复
+```
+
+模板族的定义是相同的 sheet 语义、布局骨架和字段规则；仅文件名或款号不同不算新模板族，表头结构、轮次列布局或公式体系显著变化则可能算新模板族。
+
+### 33.3 可选项
+
+| 可选项 | 参考增量报价（万元，未税） | 说明 |
+|---|---:|---|
+| 新增一个中等复杂度 Excel 模板族 | 1.2～2.5 | 含规则、fixture、评测；复杂图形/OLE/外链另估 |
+| 新增一块 monday 阶段板 | 0.5～1.2 | 取决于列数、连接、recipe 和权限 |
+| 扫描件/OCR/手写批注 | 2.5～4.5 | 需单独样本和准确率门槛 |
+| SharePoint 文档库归档 | 1.5～3.0 | 含 Sites.Selected、上传、权限与审计 |
+| 高可用、跨区灾备 | 3.5～6.0 | 不含云资源费 |
+| 企微通知/审批 | 1.5～3.0 | 仅通知机器人与自建应用审批不是同一范围 |
+| ERP/财务/生产系统双向接口 | 单独评估 | 必须重新做权限、幂等和责任边界 |
+| 年度运维支持 | 6.6/年起 | 含例行升级、监控复核和约20人日；新功能另计 |
+
+### 33.4 第三方费用
+
+第三方费用由甲方账号直接承担、按实际账单结算，不混入软件开发报价：
+
+- Microsoft 365/Exchange Online 用户或共享邮箱许可；Graph 不是“看到接口就等于永久免费”，应以甲方租户许可和微软对相关 API 的计费政策为准。本文使用的常规 Mail/Delta/Change Notification 接口不应与其他 metered API 混为一谈。
+- monday 套餐和席位；API 可用额度、复杂度和每日调用额度取决于 monday 套餐与平台政策，实施前读取账户 headers 和真实计划验证。
+- 云主机、托管 PostgreSQL、对象存储、备份、流量和监控。首期非高可用环境可预留约 0.15～0.50 万元/月预算，高可用与数据保留年限另计。
+- 模型/OCR 调用费。首期建议预留约 0.03～0.30 万元/月，实际受邮件量、页数、图片和命中确定性 parser 的比例影响。
+- 域名、证书、短信/企微、杀毒引擎等其他第三方服务。
+
+商务合同中应把“开发服务费”和“第三方持续费用”分栏，避免将 monday/Microsoft 调价风险转成乙方无限责任。
+
+### 33.5 建议付款里程碑
+
+| 里程碑 | 比例 | 付款条件 |
+|---|---:|---|
+| 合同与 P0 启动 | 30% | 项目启动、资料清单发出 |
+| P2 邮件管道验收 | 25% | 多邮箱影子接收、归档和去重通过 |
+| P3/P4 联调验收 | 25% | Excel评测和monday测试环境流程通过 |
+| 生产灰度 | 15% | 完成上线、培训和恢复演练 |
+| 最终验收 | 5% | 文档、代码、Runbook和遗留清单签收 |
+
+若甲方资料、授权或业务仲裁延迟，受影响任务日期顺延；若范围变化，双方先签变更单再实施，避免开发完成后用新增模板或新增板否定原验收。
+
+## 34. 官方依据
 
 - [Microsoft Graph Change Notifications 概览与订阅时限](https://learn.microsoft.com/en-us/graph/change-notifications-overview)
 - [Microsoft Graph Webhook 投递与响应要求](https://learn.microsoft.com/en-us/graph/change-notifications-delivery-webhooks)
@@ -2780,12 +3404,14 @@ parser_name, parser_version, extraction_run_id, decision
 - [Microsoft Graph Mail API 能力与 in-place archive mailbox 边界](https://learn.microsoft.com/en-us/graph/api/resources/mail-api-overview?view=graph-rest-1.0)
 - [Outlook 邮件撤回的条件与限制](https://support.microsoft.com/en-us/outlook/mail/how-to-recall-an-email-in-outlook-requirements-limitations-steps)
 - [Microsoft Graph Outlook 限流](https://learn.microsoft.com/en-us/graph/throttling-limits)
+- [Microsoft Graph metered API 与付费能力说明](https://learn.microsoft.com/en-us/graph/metered-api-overview)
 - [Exchange Online Application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac)
 - [monday Items 和 create_item](https://developer.monday.com/api-reference/reference/items)
 - [monday items_page_by_column_values](https://developer.monday.com/api-reference/reference/items-page-by-column-values)
 - [monday Idempotency-Key](https://developer.monday.com/api-reference/docs/idempotency)
 - [monday API 错误处理与 HTTP 200 中的 GraphQL errors](https://developer.monday.com/api-reference/docs/error-handling)
 - [monday Rate Limits](https://developer.monday.com/api-reference/docs/rate-limits)
+- [monday 官方套餐与价格页面](https://monday.com/pricing)
 - [monday API Versioning](https://developer.monday.com/api-reference/docs/api-versioning)
 - [monday Webhooks、URL challenge 与重试](https://developer.monday.com/api-reference/reference/webhooks)
 - [monday Files/Assets 与 public_url 有效期](https://developer.monday.com/api-reference/reference/files-1)
@@ -2797,6 +3423,8 @@ parser_name, parser_version, extraction_run_id, decision
 - [psycopg 3 官方文档](https://www.psycopg.org/psycopg3/docs/)
 - [pdfplumber 官方仓库与表格/坐标能力](https://github.com/jsvine/pdfplumber)
 - [pypdf 文本抽取与 OCR 能力边界](https://pypdf.readthedocs.io/en/stable/user/extract-text.html)
+- [openpyxl 公式读取边界：data_only 返回缓存值](https://openpyxl.readthedocs.io/en/stable/api/openpyxl.reader.excel.html)
+- [LibreOffice 命令行参数](https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html)
 - [Dramatiq 官方文档（达到扩容阈值后的候选）](https://dramatiq.io/)
 - [LangChain Structured Output 官方文档（首期不采用的对比依据）](https://docs.langchain.com/oss/python/langchain/structured-output)
 - [DSPy FAQ（与工作流框架的定位差异）](https://github.com/stanfordnlp/dspy/blob/main/docs/docs/faqs.md)

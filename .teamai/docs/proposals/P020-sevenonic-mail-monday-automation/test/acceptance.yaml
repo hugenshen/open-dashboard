@@ -1,4 +1,4 @@
-# P020 acceptance — Sevenonic 多邮箱监听与 monday 业务自动化
+# P020 acceptance — Sevenonic 多邮箱、服装技术包与 monday 业务自动化
 proposal: P020
 status: pending
 
@@ -98,6 +98,39 @@ items:
     method: integration
     command_or_path: 待实现补充
     expected: 邮件从 Inbox 移动、被删除或出现 Recall 通知时，monday 订单均不会被误取消；发送明确取消邮件后进入 CANCEL_PENDING；授权批准后才为 CANCELLED；随后恢复时保留原始、取消和恢复三段证据链。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-10
+    title: 服装 Excel 原件、安全清单与派生预览可追溯
+    gate: acceptance
+    criterion: 邮件中的 XLSX/XLSM 原始字节先以 hash 和不可变路径归档；系统记录 sheet、隐藏状态、公式、外链、宏和图片等 workbook manifest；宏不执行，渲染/重算在无生产凭据的受限沙箱完成，派生 PDF/PNG 不覆盖原件。
+    method: security-and-integration
+    command_or_path: 待实现补充
+    expected: 正常技术包可从预览追溯到原 Excel；含宏、外链、Zip Bomb、伪装扩展名或损坏 OOXML 的样本被隔离且不阻塞后续邮件；对象 hash 不一致时禁止进入业务流。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-11
+    title: 首期技术包模板可解析、可拒答、可比较版本
+    gate: acceptance
+    criterion: 对甲方冻结的最多 3 个模板族，系统提取款号、技术包 revision、sheet 语义、量度点、尺码、目标/实测、容差、样衣轮次、评论和审批证据；每个值保留 sheet+cell/range；未知模板、单位冲突、公式缓存失效、同版异值和关键证据缺失不得自动写正式字段；相邻 revision 生成新增、删除、修改差异。
+    method: evaluation
+    command_or_path: 待实现补充
+    expected: 模板分类 macro-F1>=95%，款号/revision/sheet 类型 exact match>=98%，已支持模板非空量度单元格标准化正确率>=97%，未知模板拒答率=100%，关键误放行=0，冻结版本差异 precision/recall 均>=95%。
+    evidence: null
+    status: pending
+    blocker_of_done: true
+
+  - id: PR-SMA-12
+    title: monday 多角色跨板流转只投影任务且受状态门保护
+    gate: acceptance
+    criterion: 首期最多 6 块受管 board 使用稳定 event_id/style_id 关联设计输入、面辅料、打板、样衣、审核和生产阶段；完整量度矩阵保存在我方证据页，monday 仅保存摘要、负责人、版次、轮次、关键异常和短时证据链接；合法角色和状态迁移由配置定义，Webhook 后必须二次读取当前值和操作者。
+    method: integration-and-ui
+    command_or_path: 待实现补充
+    expected: 设计确认后可并行生成面辅料和打板任务，两者未通过时不能进入样衣；返工新增 sample round 而不覆盖历史；无权限人员直接改为已批准会被标记并阻断；board 复制、列删除或状态改名触发 schema guard，不能落错板或继续生产自动化。
     evidence: null
     status: pending
     blocker_of_done: true
