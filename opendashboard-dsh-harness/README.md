@@ -1,6 +1,6 @@
 # Open Dashboard · dsh conversation harness (P011)
 
-对话 UI + Agent 运行时：npm 锁 `@deepseek-ai/dsh@0.1.1-rc.2`，本仓薄插件挂在 profile `od-conversation`。
+对话 UI + Agent 运行时：npm 锁 `@deepseek-ai/dsh@0.1.2-alpha.5`（`alpha` 通道），本仓薄插件挂在 profile `od-conversation`。跟随上游见 [P017](../.teamai/docs/proposals/P017-dsh-follow-upgrade/)。
 
 > 开发入口：[P011 README](../.teamai/docs/proposals/P011-dsh-conversation-surface/README.md) · [migration](../.teamai/docs/proposals/P011-dsh-conversation-surface/migration.md) · [架构图](../.teamai/docs/proposals/P011-dsh-conversation-surface/dataq-dsh-harness-architecture.png)
 
@@ -53,7 +53,7 @@ pnpm approve-builds --all   # 首次：允许 node-pty / koffi 等原生构建
 
 ## 嵌入 OD 前端
 
-本地开发 iframe 用**同域** `/dsh/`（Vite 把 dsh `/api` RPC/WS 与 Java `/api` 拆开），别人打开 `http://<局域网IP>:5173` 即可对话，无需选手动工作区。不要把 iframe 写死成 `127.0.0.1:3090`：那是**打开者自己的机器**。本机自测请用 `http://127.0.0.1:5173`。若本机用局域网 IP 打开时 Composer 停在「选择工作区」，把该 IP 加入系统代理绕过（Chrome 不认 Clash 里 `192.168.0.0/16` 这类 CIDR，WebSocket 会被 7897 掐掉）。
+本地开发 iframe 用**同域** `/dsh/`（Vite 把 dsh `/api` RPC/WS 与 Java `/api` 拆开），别人打开 `http://<局域网IP>:5173` 即可对话，无需选手动工作区。0.1.2 起 iframe 必须带本进程启动 token：壳先 `GET /od/launch`，再打开 `/dsh/?token=…`；Vite 把换 cookie 的 303 `Location: /` 改写成 `/dsh/`。不要把 iframe 写死成 `127.0.0.1:3090`：那是**打开者自己的机器**。本机自测请用 `http://127.0.0.1:5173`。若本机用局域网 IP 打开时 Composer 停在「选择工作区」，把该 IP 加入系统代理绕过（Chrome 不认 Clash 里 `192.168.0.0/16` 这类 CIDR，WebSocket 会被 7897 掐掉）。
 
 | 变量 | 说明 |
 |------|------|

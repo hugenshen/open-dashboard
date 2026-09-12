@@ -83,6 +83,10 @@
 - id: tool-workflow
   disabled: true
 
+# 0.1.2-alpha.4+ custom profiles default web_fetch. BI surface stays off-net.
+- id: tool-web
+  disabled: true
+
 # Stop scanning monorepo AGENTS.md / project skills (coding-agent defaults).
 - id: agent-instructions
   disabled: true
@@ -140,8 +144,8 @@
       If the parent prompt contains REPORT_GENERATION_TASK=1:
         You are the dedicated JoyAgent report_tool report model. Do not query or analyze data again.
         1. Call od_read_analysis_files exactly once. It returns EVERY independent data_analysis Markdown file with full structured evidence. You must use all of them as the sole knowledge base.
-        2. Do organization, not a short summary: preserve all relevant facts, actual business entities, amounts, counts, ratios, units, comparisons, anomalies, task caveats and evidence tables. Organize macro-to-micro with clear Markdown headings and comparison tables. Conclusions must point to concrete evidence. Do not invent or infer any unprovided data. If a field only contains an ID (for example MchId), present the real ID and explicitly say no merchant name field was available; never erase the entity.
-        3. Call od_commit_report exactly once with a complete, detailed Chinese report in markdown/content. Use a task-specific Chinese title and filename. The same authored Markdown will be delivered as both MD and rendered HTML. Then stop.
+        2. Do organization, not a short summary: preserve all relevant facts, actual business entities, amounts, counts, ratios, units, comparisons, anomalies, task caveats and evidence tables. Before writing conclusions, copy every dimension/value evidence row into the report table without reordering values between rows; a status code/label and its measure are an indivisible pair. Derive prose only from that copied table. Organize macro-to-micro with clear Markdown headings and comparison tables. Conclusions must point to concrete evidence. Do not invent or infer any unprovided data. If a field only contains an ID (for example MchId), present the real ID and explicitly say no merchant name field was available; never erase the entity.
+        3. Call od_commit_report with a complete, detailed Chinese report in markdown/content. Use a task-specific Chinese title and filename. The same authored Markdown will be delivered as both MD and rendered HTML. If the tool returns a repairable quality instruction, keep the loaded files, revise the same report to address that exact instruction, and retry od_commit_report; allow at most 3 total commit attempts and never re-read, re-plan or re-query. A dimension/value mismatch response includes canonical evidence rows: replace every affected table and prose mapping from that canonical list instead of correcting only one row. Stop after the first successful commit, or after the third failed commit with the exact remaining limitation.
         NEVER call od_get_data, od_python, od_data_trans, od_insight, od_save_insight, od_complete_analysis_task, od_analysis_plan or od_board_worker.
       Else if the parent prompt contains DATA_ANALYSIS_TASK=1:
         You are one JoyAgent data_analysis CodeAgent. Do not plan the whole report.
@@ -158,8 +162,8 @@
         NEVER call od_analysis_plan, od_commit_report, od_save_chart, od_commit_board or od_board_worker.
       Else if the parent prompt contains ANALYSIS_REPORT=1:
         You are the JoyAgent PlanningAgent/report orchestrator. Do not perform data analysis yourself and do not speak to the end user.
-        Your tools are od_get_schema, od_analysis_plan, od_board_worker and od_commit_report. NEVER call od_get_data, od_python, od_data_trans, od_insight, od_save_insight, od_complete_analysis_task, od_save_chart or od_commit_board yourself.
-        1. Call od_get_schema, then od_analysis_plan exactly once. Create a dynamic non-overlapping plan from the user's actual question, schema and business semantics. Never reuse a fixed status/merchant/channel checklist. Every task needs a concrete task and businessKnowledge.
+        Your tools are od_get_schema, od_analysis_plan, od_wait_report_approval, od_board_worker and od_commit_report. NEVER call od_get_data, od_python, od_data_trans, od_insight, od_save_insight, od_complete_analysis_task, od_save_chart or od_commit_board yourself.
+        1. Call od_get_schema, then od_analysis_plan exactly once. Create a dynamic non-overlapping plan from the user's actual question, schema and business semantics. Never reuse a fixed status/merchant/channel checklist. Every task needs a concrete task and businessKnowledge. Then call od_wait_report_approval exactly once and do not launch any data worker until it returns ok=true.
         2. For EACH planned task in order, call od_board_worker exactly once with DATA_ANALYSIS_TASK=1 on the first line. Its prompt must include datasetId, zero-based taskIndex, task title, exact task text, businessKnowledge, and schema field names relevant to this task. Wait for that fresh worker to finish its independent analysis file before launching the next task.
         3. After ALL data_analysis workers have produced their files, call od_board_worker exactly once with REPORT_GENERATION_TASK=1 on the first line and the user's original report request. This fresh report model will read all files and generate the final HTML/MD. Wait for it, then stop. NEVER author or commit the final report yourself.
       Otherwise you are the dashboard board worker.
@@ -175,6 +179,7 @@
     toolFilter:
       allow:
         - od_analysis_plan
+        - od_wait_report_approval
         - od_board_worker
         - od_commit_report
         - od_get_schema
@@ -222,8 +227,8 @@
 - id: ui-brand-official
   disabled: true
 
-- id: ui-workspace
-  disabled: true
+# 0.1.2: ui-conversation injects uiWorkspace. Keep the plugin on so the iframe can boot;
+# od-nodes CSS still hides the folder-picker chrome (对话页不选手动工作区).
 
 # LAN share: bind all interfaces so http://<lan-ip>:5173 iframe can reach :3090.
 # Coding shells/fs are disabled in this profile. CLI --host 0.0.0.0 is blocked;

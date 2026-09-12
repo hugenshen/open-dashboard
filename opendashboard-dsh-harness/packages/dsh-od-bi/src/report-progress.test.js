@@ -11,6 +11,7 @@ import {
   completeAnalysisPlanTask,
   resetReportProgress,
   setAnalysisPlan,
+  setReportAuthority,
   snapshotReportProgress,
   trackAnalysisTool,
 } from './report-progress.js'
@@ -34,7 +35,7 @@ describe('report-progress (PR-ANR-02 live nodes)', () => {
       'od_python',
       { handle: 'h1', code: 'print(df.describe())' },
       async () => ({ ok: true, stdout: 'count 4' }),
-      { force: true, title: '写分析报告' },
+      { force: true, key: 'test-progress', title: '写分析报告' },
     )
     const snap = snapshotReportProgress('test-progress')
     const names = snap.steps.map((s) => s.nodeName)
@@ -59,6 +60,25 @@ describe('report-progress (PR-ANR-02 live nodes)', () => {
     assert.deepEqual(snap.plan.stages, ['状态异常', '商户归因', '生成汇总报告'])
     assert.equal(snap.plan.stepStatus[0], 'in_progress')
     assert.equal(snap.activeNode, '读取并核对数据')
+  })
+
+  it('does not let stale report keys overwrite the active visible snapshot', () => {
+    setAnalysisPlan({ reportTitle: '当前订单报告', tasks: [
+      { title: '商户贡献', task: '分析商户贡献', businessKnowledge: '保留真实商户 ID' },
+    ] }, { key: 'current-report' })
+    const staleId = beginReportStep('od_get_data', {
+      datasetId: 'ds_ops',
+      question: '旧运营日报趋势',
+      dim: 'day',
+      measure: 'pv',
+    }, { key: 'stale-report', title: '旧运营日报' })
+    finishReportStep(staleId, { ok: true, rowCount: 4, suggestedChartType: 'line' }, { key: 'stale-report' })
+
+    const visible = snapshotReportProgress()
+    assert.equal(visible.title, '当前订单报告')
+    assert.deepEqual(visible.plan.stages, ['商户贡献', '生成汇总报告'])
+    assert.equal(visible.steps.some((step) => step.inputs?.some((input) => input.value === 'ds_ops')), false)
+    assert.equal(snapshotReportProgress('stale-report').steps.length, 1)
   })
 
   it('skips board-path get_data', async () => {
@@ -162,6 +182,16 @@ describe('report-progress (PR-ANR-02 live nodes)', () => {
     assert.equal(typeof snap.startedAt, 'number')
     assert.ok(snap.startedAt > 0)
     assert.equal(snap.status, 'running')
+  })
+
+  it('exposes the Java authority id and approval state for the report workspace', () => {
+    ensureReportRun({ title: '写分析报告', key: 'authority-run' })
+    setReportAuthority({ runId: '901', conversationId: '8', planVersion: 2, status: 'awaiting_plan_approval' }, { key: 'authority-run' })
+    const snap = snapshotReportProgress('authority-run')
+    assert.equal(snap.reportRunId, '901')
+    assert.equal(snap.conversationId, '8')
+    assert.equal(snap.planVersion, 2)
+    assert.equal(snap.authorityStatus, 'awaiting_plan_approval')
   })
 
   it('reset drops LAST so a later snapshot is idle', () => {

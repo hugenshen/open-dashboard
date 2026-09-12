@@ -15,7 +15,7 @@ import {
 } from './session-list-title.js'
 
 export const name = 'od-auth'
-export const inject = ['webServer', 'workspaceRegistry', 'sessionPersistence']
+export const inject = ['webServer', 'workspaceRegistry', 'sessionPersistence', 'connection']
 
 /**
  * @param {import('@deepseek-ai/cordis').Context} ctx
@@ -102,6 +102,27 @@ export function apply(ctx) {
 
     webServer.register({
       kind: 'exact',
+      path: '/od/launch',
+      async handler(req, res) {
+        if (req.method === 'OPTIONS') {
+          corsOptions(res)
+          return
+        }
+        if (req.method !== 'GET') {
+          sendJson(res, 405, { ok: false, error: 'method not allowed' })
+          return
+        }
+        let token = ''
+        try {
+          const href = ctx.connection?.authenticatedUrl?.('http://127.0.0.1/')
+          if (href) token = new URL(href).searchParams.get('token') || ''
+        } catch { /* token optional for dump-config */ }
+        sendJson(res, 200, { ok: true, token })
+      },
+    })
+
+    webServer.register({
+      kind: 'exact',
       path: '/od/bridge',
       async handler(req, res) {
         if (req.method === 'OPTIONS') {
@@ -160,6 +181,27 @@ export function apply(ctx) {
           const sessionsSvc = ctx.get?.('sessions')
           const titleSvc = ctx.get?.('sessionTitle')
 
+          /** 0.1.2 dropped Session.events; prefer snapshotEvents / inspect.events. */
+          const readEvents = async (id, live, inspectedHint) => {
+            if (live && typeof live.snapshotEvents === 'function') {
+              try {
+                const snap = live.snapshotEvents()
+                if (Array.isArray(snap)) return snap
+              } catch { /* fall through */ }
+            }
+            if (Array.isArray(live?.events)) return live.events
+            if (Array.isArray(inspectedHint?.events)) return inspectedHint.events
+            try {
+              const inspected = await persist.inspect(id)
+              if (Array.isArray(inspected?.events)) return inspected.events
+              if (typeof inspected?.snapshotEvents === 'function') {
+                const snap = inspected.snapshotEvents()
+                if (Array.isArray(snap)) return snap
+              }
+            } catch { /* empty */ }
+            return []
+          }
+
           /** @type {Array<{ id: string, title: string, displayTitle: string, updatedAt: number, blank: boolean, origin?: string }>} */
           const rows = []
           for (const snap of snapshots || []) {
@@ -168,11 +210,9 @@ export function apply(ctx) {
             if (header.cwd !== path) continue
             const id = String(header.id)
             const rev = String(snap.revision || '')
-            let events = []
             let folded = ''
             const live = sessionsSvc?.get?.(id)
             if (live) {
-              events = live.events || []
               try {
                 const shot = titleSvc?.get?.(live)
                 if (shot?.title) folded = String(shot.title)
@@ -188,14 +228,8 @@ export function apply(ctx) {
                 origin: header.origin,
               })
               continue
-            } else {
-              try {
-                const inspected = await persist.inspect(id)
-                events = inspected?.events || []
-              } catch {
-                events = []
-              }
             }
+            const events = await readEvents(id, live)
             const blank = !sessionHasHumanMessage(events)
             const updatedAt = lastEventTime(events, Number(header.createdAt) || 0)
             const displayTitle = displaySessionTitle(events, folded)

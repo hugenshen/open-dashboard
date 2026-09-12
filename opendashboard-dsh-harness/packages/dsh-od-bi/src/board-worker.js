@@ -30,6 +30,7 @@ import { biFetch, toLosslessJson } from './http.js'
 import { assessSemanticReadiness, semanticNotReadyMessage } from './semantic-readiness.js'
 import { looksLikeDetailDump } from './insight.js'
 import { trackAnalysisTool } from './report-progress.js'
+import { acquireReportTask, consumeReportBudget } from './report-execution.js'
 import {
   applyDisplayFromData,
   categoryIsTimeField,
@@ -45,6 +46,7 @@ import { demoOrderSchema, isDemoOrderDataset, queryDemoOrder } from './demo-orde
 
 export const WORKER_TOOL_NAMES = Object.freeze([
   'od_analysis_plan',
+  'od_wait_report_approval',
   'od_get_data',
   'od_data_trans',
   'od_python',
@@ -209,7 +211,10 @@ export async function runGetData(args, opts = {}) {
   }
   const analysis = String(args.purpose || '').toLowerCase() === 'analysis'
   if (analysis) session.meta.purpose = 'analysis'
-  chart.encode.resultLimit = analysis ? ANALYSIS_RESULT_LIMIT : resultLimitFor(chart)
+  const runBudget = session.meta?.reportBudget || {}
+  chart.encode.resultLimit = analysis
+    ? Math.min(ANALYSIS_RESULT_LIMIT, Math.max(1, Number(runBudget.maxRows || ANALYSIS_RESULT_LIMIT)))
+    : resultLimitFor(chart)
 
   const rewritten = retargetWeakTableDim(chart, fields)
   if (rewritten?.encode?.category && rewritten.encode.category !== chart.encode.category) {
@@ -228,7 +233,9 @@ export async function runGetData(args, opts = {}) {
   try {
     q = await queryFn(chart, {
       signal: opts.signal,
-      timeoutMs: opts.timeoutMs || (analysis ? ANALYSIS_TIMEOUT_MS : REALIZE_TIMEOUT_MS),
+      timeoutMs: opts.timeoutMs || (analysis
+        ? Math.min(ANALYSIS_TIMEOUT_MS, Math.max(1000, Number(runBudget.queryTimeoutSeconds || 15) * 1000))
+        : REALIZE_TIMEOUT_MS),
     })
   } catch (err) {
     if (isDemoOrderDataset(ds)) {
@@ -282,6 +289,9 @@ export async function runGetData(args, opts = {}) {
     rowCount,
     suggestedChartType,
     datasetId: ds,
+    taskIndex: analysis && Number.isFinite(Number(session.meta?.analysisTaskIndex))
+      ? Number(session.meta.analysisTaskIndex)
+      : undefined,
     previewOnlyTransform: false,
   })
   session.meta.datasetId = ds
@@ -661,6 +671,7 @@ export function registerBoardWorkerTools(ctx, deps) {
       title: { type: 'string' },
       message: { type: 'string', description: 'Original user theme (units)' },
       handle: { type: 'string', description: 'Reuse a handle to retry the same task with a new dim' },
+      taskIndex: { type: 'integer', description: 'Report task index; dependencies and concurrency are checked before querying' },
     },
     output: {
       schema: { type: 'object', additionalProperties: true },
@@ -681,6 +692,18 @@ export function registerBoardWorkerTools(ctx, deps) {
         async () => {
           if (String(args.purpose || '').toLowerCase() === 'analysis' && !getBoardSession().analysisPlan) {
             return { ok: false, error: 'JoyAgent workflow requires od_get_schema then od_analysis_plan before od_get_data.' }
+          }
+          if (String(args.purpose || '').toLowerCase() === 'analysis'
+            && getBoardSession().meta?.reportRunId && !getBoardSession().meta?.reportPlanApproved) {
+            return { ok: false, error: 'Report plan requires explicit user approval. Call od_wait_report_approval first.' }
+          }
+          if (String(args.purpose || '').toLowerCase() === 'analysis') {
+            const session = getBoardSession()
+            const acquired = acquireReportTask(session, args.taskIndex)
+            if (!acquired.ok) return acquired
+            session.meta.analysisTaskIndex = acquired.taskIndex
+            const budget = consumeReportBudget(session, 'query')
+            if (!budget.ok) return budget
           }
           return toLosslessJson(await runGetData(args, { signal: exec.signal }))
         },

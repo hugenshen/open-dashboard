@@ -3,7 +3,7 @@
  * P011 M4: editor-side AI panel embeds the same dsh Web surface (no /harness SSE).
  */
 import { computed, onMounted, ref } from 'vue'
-import { getAuthBundle } from '@/api/http'
+import { buildDshEmbedSrc, fetchDshLaunchToken, odBridgePayload, postOdBridge } from '@/conversation/dshEmbed'
 
 const props = defineProps<{
   dashboardId: string
@@ -18,33 +18,35 @@ defineEmits<{
 
 const open = ref(false)
 const ready = ref(false)
+const launchToken = ref<string | null>(null)
+const frameSrc = ref('')
 
-const dshSrc = computed(() => {
-  const base =
-    (import.meta.env.VITE_OD_DSH_URL as string) || '/dsh/'
-  const url = new URL(base, window.location.origin)
-  const bundle = getAuthBundle()
-  const bridge = {
-    userId: bundle.userId || '',
-    workspaceId: bundle.workspaceId || '',
-    perms: bundle.permissions || '',
+function panelBridge() {
+  return odBridgePayload({
     dashboardId: props.dashboardId || '',
     linkedDashboardId: props.dashboardId || '',
     selectedChartId: props.selectedChartId || '',
-  }
-  url.hash = `od_bridge=${encodeURIComponent(JSON.stringify(bridge))}`
-  if (url.origin !== window.location.origin) {
-    return url.toString()
-  }
-  return url.pathname + url.search + url.hash
+  })
+}
+
+const dshSrc = computed(() => {
+  if (launchToken.value === null) return ''
+  const base = (import.meta.env.VITE_OD_DSH_URL as string) || '/dsh/'
+  return buildDshEmbedSrc(base, panelBridge(), launchToken.value)
 })
 
-onMounted(() => {
+onMounted(async () => {
   try {
     open.value = localStorage.getItem('od.dsh.panel.open') === '1'
   } catch {
     /* ignore */
   }
+  const [token] = await Promise.all([
+    fetchDshLaunchToken(),
+    postOdBridge(panelBridge()),
+  ])
+  launchToken.value = token
+  frameSrc.value = dshSrc.value
   ready.value = true
 })
 
@@ -72,7 +74,7 @@ function toggle() {
         v-if="ready"
         class="od-dsh-panel__frame"
         title="DataQ 对话"
-        :src="dshSrc"
+        :src="frameSrc"
         allow="clipboard-read; clipboard-write"
       />
       <p v-else class="od-dsh-panel__loading">加载中…</p>

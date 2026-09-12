@@ -2,10 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { dashboardApi, dashboardTreeApi } from '../../api/dashboard'
+import { templateHeat, templateSketchHtml } from '../pageTemplates'
 import type { DashboardTemplateVO } from '../../types/dashboard'
 
 const CATS = [
-  { id: 'all', label: '全部' },
+  { id: 'all', label: '企业内部模板' },
   { id: '推荐', label: '推荐' },
   { id: '销售', label: '销售' },
   { id: '运营', label: '运营' },
@@ -24,7 +25,7 @@ const q = ref('')
 const cat = ref<(typeof CATS)[number]['id']>('all')
 const applying = ref<string | null>(null)
 const preview = ref<DashboardTemplateVO | null>(null)
-const device = ref<'pc' | 'tablet' | 'phone'>('pc')
+const device = ref<'pc' | 'pad' | 'phone'>('pc')
 
 const filtered = computed(() => {
   const needle = q.value.trim().toLowerCase()
@@ -39,6 +40,9 @@ const filtered = computed(() => {
     )
   })
 })
+
+const catLabel = computed(() => CATS.find((c) => c.id === cat.value)?.label ?? '企业内部模板')
+const searchQuery = computed(() => q.value.trim())
 
 onMounted(async () => {
   loading.value = true
@@ -55,14 +59,21 @@ onMounted(async () => {
   }
 })
 
-function family(id: string) {
-  if (id === 'blank') return 'blank'
-  if (id === 'exec' || id === 'kpi-wall' || id === 'hr' || id === 'store') return 'hero'
-  if (['ops', 'promo', 'funnel', 'traffic', 'sla'].includes(id)) return 'ops'
-  if (['finance', 'cash', 'cost'].includes(id)) return 'fin'
-  if (['inventory', 'supply', 'quality'].includes(id)) return 'stock'
-  if (['crm', 'cohort', 'nps'].includes(id)) return 'crm'
-  return 'sales'
+function heat(id: string) {
+  return templateHeat(id)
+}
+
+function sketch(id: string) {
+  return templateSketchHtml(id)
+}
+
+function openPreview(t: DashboardTemplateVO) {
+  preview.value = t
+  device.value = 'pc'
+}
+
+function closePreview() {
+  preview.value = null
 }
 
 async function apply(t: DashboardTemplateVO) {
@@ -85,318 +96,563 @@ async function apply(t: DashboardTemplateVO) {
 </script>
 
 <template>
-  <div class="tpl-market">
-    <header class="tpl-top">
-      <button type="button" class="back" @click="router.push('/dashboards')">← 仪表盘</button>
-      <div>
-        <h1>模板市场</h1>
-        <p>选一张开箱稿面，应用后自带画布筛选和移动布局</p>
+  <div v-if="preview" class="tpl-preview">
+    <div class="tpl-prev-bar">
+      <button type="button" class="btn ghost" @click="closePreview">← 返回市场</button>
+      <h2>{{ preview.name }}</h2>
+      <span class="sub">{{ preview.responsive ? '开箱多端' : '空白 · 可手排移动端' }}</span>
+      <div class="spacer" />
+      <div class="tpl-devices" role="tablist">
+        <button type="button" :class="{ on: device === 'pc' }" @click="device = 'pc'">PC</button>
+        <button type="button" :class="{ on: device === 'pad' }" @click="device = 'pad'">平板</button>
+        <button type="button" :class="{ on: device === 'phone' }" @click="device = 'phone'">手机</button>
       </div>
-      <input v-model="q" type="search" placeholder="搜索模板…" />
+      <button type="button" class="btn primary" :disabled="!!applying" @click="apply(preview)">
+        {{ applying === preview.id ? '创建中…' : '应用此模板' }}
+      </button>
+    </div>
+    <div class="tpl-prev-stage">
+      <div
+        class="tpl-frame"
+        :class="{ 'is-pad': device === 'pad', 'is-phone': device === 'phone' }"
+      >
+        <div class="tpl-sketch" v-html="sketch(preview.id)" />
+        <p class="tpl-desc">{{ preview.description }}</p>
+      </div>
+    </div>
+  </div>
+
+  <div v-else class="tpl-market">
+    <header class="tpl-head">
+      <button type="button" class="btn ghost" @click="router.push('/dashboards')">← 仪表盘</button>
+      <div>
+        <h2>从模板新建</h2>
+        <div class="sub">{{ templates.length }} 张 · 应用后手机端已排好，不必再改造</div>
+      </div>
+      <div class="spacer" />
+      <label class="tpl-search">
+        <span aria-hidden="true">⌕</span>
+        <input v-model="q" type="search" placeholder="搜索模板" />
+      </label>
     </header>
-    <p v-if="error" class="err">{{ error }}</p>
+
+    <p v-if="error" class="tpl-err">{{ error }}</p>
+
     <div class="tpl-body">
-      <aside>
+      <aside class="tpl-cats">
+        <div class="tpl-cats-head">模板市场</div>
         <button
           v-for="c in CATS"
           :key="c.id"
           type="button"
+          class="tpl-cat"
           :class="{ on: cat === c.id }"
           @click="cat = c.id"
         >
           {{ c.label }}
         </button>
       </aside>
-      <section>
-        <p v-if="loading" class="muted">加载模板…</p>
-        <div v-else class="grid">
-          <article v-for="t in filtered" :key="t.id" class="card">
-            <div class="cover" :class="'fam-' + family(t.id)">
-              <div class="mini-bar"></div>
-              <div v-if="family(t.id) === 'hero'" class="mini-hero"></div>
-              <div class="mini-kpis">
-                <i /><i /><i /><i />
-              </div>
-              <div class="mini-charts">
-                <b /><b /><b />
-              </div>
-              <div class="hover">
-                <button type="button" @click="preview = t; device = 'pc'">预览</button>
-                <button type="button" class="pri" :disabled="!!applying" @click="apply(t)">
-                  {{ applying === t.id ? '创建中…' : '应用' }}
-                </button>
-              </div>
-            </div>
-            <div class="meta">
-              <strong>{{ t.name }}</strong>
-              <span>{{ t.description }}</span>
-              <em v-if="t.responsive">多端</em>
-            </div>
-          </article>
-          <p v-if="!filtered.length" class="muted">没有匹配的模板</p>
-        </div>
-      </section>
-    </div>
 
-    <div v-if="preview" class="mask" @click.self="preview = null">
-      <div class="preview-dlg">
-        <header>
-          <h2>{{ preview.name }}</h2>
-          <div class="devs">
-            <button type="button" :class="{ on: device === 'pc' }" @click="device = 'pc'">PC</button>
-            <button type="button" :class="{ on: device === 'tablet' }" @click="device = 'tablet'">平板</button>
-            <button type="button" :class="{ on: device === 'phone' }" @click="device = 'phone'">手机</button>
+      <div class="tpl-grid-wrap">
+        <p v-if="loading" class="tpl-muted">加载模板…</p>
+        <template v-else>
+          <div v-if="searchQuery" class="tpl-search-hit">
+            搜索「{{ searchQuery }}」为你找到 {{ filtered.length }} 个结果
           </div>
-          <button type="button" class="pri" :disabled="!!applying" @click="apply(preview)">应用</button>
-          <button type="button" @click="preview = null">关闭</button>
-        </header>
-        <p class="hint">
-          {{ preview.responsive ? '应用后已写入移动布局，无需再勾选上板。' : '空白画布仍走 P001 C 档，可稍后手排移动端。' }}
-        </p>
-        <div class="stage" :class="device">
-          <div class="cover lg" :class="'fam-' + family(preview.id)">
-            <div class="mini-bar"></div>
-            <div v-if="family(preview.id) === 'hero'" class="mini-hero"></div>
-            <div class="mini-kpis"><i /><i /><i /><i /></div>
-            <div class="mini-charts"><b /><b /><b /></div>
+          <div class="tpl-sec">
+            {{ catLabel }}
+            <small>{{ filtered.length }} 张</small>
           </div>
-        </div>
+          <div class="tpl-grid">
+            <article
+              v-for="t in filtered"
+              :key="t.id"
+              class="tpl-card"
+              @click="openPreview(t)"
+            >
+              <i v-if="t.recommended" class="tpl-ribbon" aria-hidden="true" />
+              <div class="tpl-cover">
+                <div class="tpl-sketch" v-html="sketch(t.id)" />
+                <div class="tpl-hover" @click.stop>
+                  <button type="button" class="btn" @click="openPreview(t)">预览</button>
+                  <button
+                    type="button"
+                    class="btn primary"
+                    :disabled="!!applying"
+                    @click="apply(t)"
+                  >
+                    {{ applying === t.id ? '创建中…' : '应用' }}
+                  </button>
+                </div>
+              </div>
+              <div class="tpl-meta">
+                <div class="tpl-meta-row">
+                  <b>{{ t.name }}</b>
+                  <span class="tpl-heat">{{ heat(t.id).views }} · {{ heat(t.id).uses }}</span>
+                </div>
+                <span class="tpl-official">{{ t.id === 'blank' ? '空白画布' : '官方' }}</span>
+              </div>
+            </article>
+            <p v-if="!filtered.length" class="tpl-muted">没有匹配的模板</p>
+          </div>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.tpl-market {
+.tpl-market,
+.tpl-preview {
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #eef2ff 0%, #f6f7fb 28%);
-  color: var(--od-ink, #111827);
-  min-height: 0;
+  color: var(--od-ink, #1f2329);
 }
-.tpl-top {
+
+.tpl-market {
+  background: #f4f7fc;
+}
+
+.tpl-head {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
-  flex-shrink: 0;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 56px;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.82);
+  border-bottom: 1px solid rgba(222, 226, 233, 0.8);
+  backdrop-filter: blur(10px);
 }
-.tpl-top h1 {
+
+.tpl-head h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
+  font-weight: 720;
 }
-.tpl-top p {
-  margin: 2px 0 0;
+
+.tpl-head .sub,
+.tpl-prev-bar .sub {
   font-size: 12px;
-  color: var(--od-muted, #4b5563);
+  color: #8f959e;
 }
-.tpl-top input {
-  margin-left: auto;
+
+.spacer {
+  flex: 1;
+}
+
+.tpl-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   height: 34px;
-  width: 220px;
-  border: 1px solid var(--od-line, #dfe3ea);
-  border-radius: 8px;
-  padding: 0 10px;
-}
-.back,
-.devs button,
-.hover button,
-.preview-dlg header button {
-  height: 32px;
-  border: 1px solid var(--od-line, #dfe3ea);
-  background: #fff;
-  border-radius: 8px;
   padding: 0 12px;
-  cursor: pointer;
+  border: 1px solid #e4e7ed;
+  border-radius: 18px;
+  background: #fff;
+  width: min(280px, 42vw);
+  box-shadow: 0 1px 2px rgba(31, 35, 41, 0.04);
 }
-.err {
-  margin: 0 20px 8px;
+
+.tpl-search input {
+  border: 0;
+  outline: 0;
+  flex: 1;
+  font-size: 13px;
+  min-width: 0;
+  background: transparent;
+}
+
+.tpl-err {
+  margin: 0;
+  padding: 8px 20px;
   color: #b42318;
   font-size: 13px;
+  background: #fff5f5;
 }
+
 .tpl-body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 8px;
-  padding: 0 16px 16px;
+  grid-template-columns: 200px minmax(0, 1fr);
 }
-aside {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+
+.tpl-cats {
+  overflow: auto;
+  padding: 12px 10px;
+  border-right: 1px solid rgba(222, 226, 233, 0.85);
+  background: rgba(255, 255, 255, 0.9);
 }
-aside button {
+
+.tpl-cats-head {
+  font-size: 15px;
+  font-weight: 700;
+  padding: 4px 12px 12px;
+  color: #1f2329;
+}
+
+.tpl-cat {
+  display: block;
+  width: 100%;
   text-align: left;
   border: 0;
   background: transparent;
-  height: 36px;
+  padding: 8px 12px;
   border-radius: 8px;
-  padding: 0 12px;
+  font-size: 13px;
+  color: #646a73;
   cursor: pointer;
-  color: var(--od-muted, #4b5563);
 }
-aside button.on {
-  background: #fff;
-  color: var(--od-brand, #4f46e5);
+
+.tpl-cat:hover {
+  background: #f5f7fb;
+}
+
+.tpl-cat.on {
+  background: #e8f0ff;
+  color: #2f6bff;
+  font-weight: 650;
+  position: relative;
+}
+
+.tpl-cat.on::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: #3370ff;
+}
+
+.tpl-grid-wrap {
+  overflow: auto;
+  padding: 18px 24px 40px;
+  background:
+    radial-gradient(900px 280px at 12% -10%, rgba(120, 160, 255, 0.22), transparent 60%),
+    radial-gradient(700px 240px at 92% 8%, rgba(186, 160, 255, 0.18), transparent 55%),
+    linear-gradient(180deg, #eef3fb 0%, #f5f7fb 42%, #f4f6f8 100%);
+}
+
+.tpl-search-hit {
+  font-size: 18px;
+  font-weight: 650;
+  margin: 2px 0 16px;
+  color: #1f2329;
+}
+
+.tpl-sec {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
   font-weight: 700;
+  margin: 4px 0 14px;
+  color: #1f2329;
 }
-.grid {
+
+.tpl-sec small {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8f959e;
+}
+
+.tpl-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
-  overflow: auto;
-  padding: 4px 4px 24px;
+  gap: 20px;
 }
-.card {
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.06);
-  overflow: hidden;
-}
-.cover {
+
+.tpl-card {
   position: relative;
-  aspect-ratio: 320 / 194;
-  background: #e8edf4;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
   overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+  box-shadow:
+    0 1px 2px rgba(31, 35, 41, 0.04),
+    0 8px 24px rgba(47, 90, 160, 0.06);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
-.cover .mini-bar {
-  height: 14px;
-  background: #fff;
+
+.tpl-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(47, 90, 160, 0.14);
 }
-.mini-hero {
-  margin: 8px 10px 0;
-  height: 28px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #6d5efc, #ff7a59 52%, #3ec8ff);
+
+.tpl-cover {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 320 / 194;
+  background: #eef2f7;
 }
-.mini-kpis {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  padding: 8px 10px 0;
-}
-.mini-kpis i {
-  height: 28px;
-  background: #fff;
-  border-radius: 4px;
+
+.tpl-sketch :deep(.tpl-shot) {
   display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0;
+  background: #eef2f7;
+  max-width: 100%;
+  min-width: 0;
 }
-.mini-charts {
+
+.tpl-sketch :deep(.tpl-shot-blank) {
+  height: 100%;
+  aspect-ratio: 320 / 194;
+  background: repeating-linear-gradient(-45deg, #fafbfc 0 8px, #f3f4f7 8px 16px);
   display: grid;
-  grid-template-columns: 1.1fr 1fr 0.9fr;
-  gap: 6px;
-  padding: 8px 10px 10px;
+  place-items: center;
+  color: #8f959e;
+  font-size: 13px;
+  font-weight: 650;
 }
-.mini-charts b {
-  height: 46px;
-  background: #fff;
-  border-radius: 4px;
-  display: block;
+
+.tpl-ribbon {
+  position: absolute;
+  top: 0;
+  right: 16px;
+  z-index: 2;
+  width: 18px;
+  height: 26px;
+  background: linear-gradient(180deg, #5b8cff, #3370ff);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+  pointer-events: none;
 }
-.fam-ops .mini-kpis i:first-child { background: #e6f4ff; }
-.fam-fin .mini-kpis i:first-child { background: #fff7e6; }
-.fam-crm .mini-kpis i:first-child { background: #fff0f6; }
-.fam-stock .mini-kpis i:first-child { background: #f6ffed; }
-.fam-blank .mini-kpis,
-.fam-blank .mini-charts {
-  opacity: 0.35;
-}
-.hover {
+
+.tpl-hover {
+  display: none;
   position: absolute;
   inset: 0;
-  display: none;
-  place-items: center;
-  gap: 8px;
-  background: rgba(17, 24, 39, 0.28);
+  z-index: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(20, 28, 48, 0.38);
+  backdrop-filter: blur(3px);
 }
-.cover:hover .hover {
+
+.tpl-card:hover .tpl-hover,
+.tpl-card:focus-within .tpl-hover {
+  display: flex;
+}
+
+.tpl-meta {
+  padding: 10px 14px 14px;
+}
+
+.tpl-meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tpl-meta b {
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.tpl-heat {
+  font-size: 12px;
+  color: #8f959e;
+  white-space: nowrap;
+}
+
+.tpl-official {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8f959e;
+}
+
+.tpl-muted {
+  color: #8f959e;
+  font-size: 13px;
+}
+
+.btn {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  color: #1f2329;
+}
+
+.btn.primary {
+  background: var(--od-brand, #3370ff);
+  border-color: var(--od-brand, #3370ff);
+  color: #fff;
+}
+
+.btn.primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: #646a73;
+}
+
+.tpl-cover .tpl-hover .btn:not(.primary) {
+  background: #fff;
+  border-color: #fff;
+  color: #1f2329;
+}
+
+.tpl-cover .tpl-hover .btn {
+  min-width: 76px;
+}
+
+/* 全页预览 */
+.tpl-preview {
+  background: var(--od-bg, #f5f7fb);
+}
+
+.tpl-prev-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 52px;
+  padding: 8px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--od-line, #e4e7ed);
+}
+
+.tpl-prev-bar h2 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.tpl-devices {
+  display: flex;
+  gap: 4px;
+  background: #f0f2f5;
+  padding: 3px;
+  border-radius: 8px;
+}
+
+.tpl-devices button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+  color: #646a73;
+  cursor: pointer;
+}
+
+.tpl-devices button.on {
+  background: #fff;
+  color: #1f2329;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.tpl-prev-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
+  background:
+    radial-gradient(900px 280px at 8% -20%, rgba(120, 160, 255, 0.2), transparent 60%),
+    radial-gradient(640px 220px at 96% 0%, rgba(186, 160, 255, 0.16), transparent 55%),
+    linear-gradient(180deg, #eef3fb, #f5f7fb);
 }
-.pri {
-  background: var(--od-brand, #4f46e5) !important;
-  border-color: transparent !important;
-  color: #fff !important;
-}
-.meta {
-  padding: 10px 12px 12px;
-}
-.meta strong {
-  display: block;
-  font-size: 13px;
-}
-.meta span {
-  display: block;
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--od-muted, #4b5563);
-}
-.meta em {
-  display: inline-block;
-  margin-top: 6px;
-  font-style: normal;
-  font-size: 10px;
-  color: var(--od-brand, #4f46e5);
-  background: var(--od-brand-soft, #eef2ff);
-  border-radius: 999px;
-  padding: 1px 7px;
-}
-.muted {
-  color: var(--od-muted, #4b5563);
-  font-size: 13px;
-}
-.mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(17, 24, 39, 0.45);
-  display: grid;
-  place-items: center;
-  z-index: 40;
-}
-.preview-dlg {
-  width: min(920px, 94vw);
+
+.tpl-frame {
   background: #fff;
-  border-radius: 16px;
-  padding: 16px;
-}
-.preview-dlg header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.preview-dlg h2 {
-  margin: 0;
-  font-size: 16px;
-  flex: 1;
-}
-.devs button.on {
-  border-color: var(--od-brand, #4f46e5);
-  color: var(--od-brand, #4f46e5);
-}
-.hint {
-  font-size: 12px;
-  color: var(--od-muted, #4b5563);
-}
-.stage {
-  margin: 8px auto 0;
-  background: #eef1f6;
+  border: 1px solid var(--od-line, #e4e7ed);
   border-radius: 12px;
-  padding: 16px;
-  display: grid;
-  place-items: center;
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(31, 35, 41, 0.06);
+  width: min(960px, 100%);
 }
-.stage .cover.lg {
-  width: 100%;
-  max-width: 640px;
+
+.tpl-frame.is-pad {
+  width: min(720px, 100%);
 }
-.stage.tablet .cover.lg {
-  max-width: 420px;
+
+.tpl-frame.is-phone {
+  width: 390px;
+  border-radius: 28px;
+  border-width: 6px;
+  border-color: #2f343c;
+  padding: 10px;
 }
-.stage.phone .cover.lg {
-  max-width: 280px;
+
+.tpl-frame .tpl-sketch :deep(.tpl-shot) {
+  min-height: 360px;
+}
+
+.tpl-frame .tpl-sketch :deep(.tpl-shot-blank) {
+  min-height: 360px;
+  height: 360px;
+}
+
+.tpl-desc {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #8f959e;
+  line-height: 1.55;
+}
+
+@media (max-width: 900px) {
+  .tpl-body {
+    grid-template-columns: 1fr;
+  }
+
+  .tpl-cats {
+    display: flex;
+    gap: 6px;
+    overflow: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--od-line, #e4e7ed);
+    padding: 8px 12px;
+  }
+
+  .tpl-cats-head {
+    display: none;
+  }
+
+  .tpl-cat {
+    width: auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .tpl-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tpl-frame.is-phone {
+    width: 100%;
+  }
 }
 </style>

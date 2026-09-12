@@ -338,5 +338,7 @@ describe('installSpawnWorkerPresentation', () => {
     assert.match(String(tool.description), /写分析报告/)
     await tool.execute({ description: '写分析报告', prompt: 'datasetId=ds_1\n订单表' })
     assert.match(String(seen[0].prompt), /^ANALYSIS_REPORT=1\n/)
+    await tool.execute({ description: '写分析报告', prompt: 'REPORT_GENERATION_TASK=1\n只负责成稿' })
+    assert.equal(seen[1].prompt, 'REPORT_GENERATION_TASK=1\n只负责成稿')
   })
 })

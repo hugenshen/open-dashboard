@@ -44,6 +44,15 @@ export function activateAnalysisSession(key) {
   return getBoardSession(activeAnalysisKey)
 }
 
+/**
+ * Release the cross-agent execution pointer without deleting the completed
+ * report session. The retained session still makes duplicate commits
+ * idempotent; the next report run can start with a fresh execution context.
+ */
+export function deactivateAnalysisSession(key) {
+  if (!key || activeAnalysisKey === String(key)) activeAnalysisKey = ''
+}
+
 export function activeAnalysisSessionKey() {
   return activeAnalysisKey
 }

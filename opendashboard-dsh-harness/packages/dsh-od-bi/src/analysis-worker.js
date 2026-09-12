@@ -8,19 +8,32 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { reportPresentationMeta } from './answer-meta.js'
 import { runAnalysisPython } from './analysis-python.js'
-import { activateAnalysisSession, getBoardSession, getFrame, rememberPresentation, resetBoardSession, boardSessionKey } from './board-store.js'
+import {
+  activateAnalysisSession,
+  boardSessionKey,
+  deactivateAnalysisSession,
+  getBoardSession,
+  getFrame,
+  rememberPresentation,
+  resetBoardSession,
+} from './board-store.js'
 import { toLosslessJson } from './http.js'
 import { computeInsights, insightNote, looksLikeDetailDump, normalizeInsightMethod, INSIGHT_METHODS } from './insight.js'
 import { renderAuthoredReport, renderReport } from './report-render.js'
 import {
   completeAnalysisPlanTask,
+  resetReportProgress,
   setAnalysisPlan,
+  setReportAuthority,
   trackAnalysisTool,
 } from './report-progress.js'
+import { createRemoteReportRun, publishRemoteReportResult, waitForRemotePlanApproval } from './report-run-client.js'
+import { acquireReportTask, consumeReportBudget, initializeReportExecution } from './report-execution.js'
 import { fname, isEntitySubjectDim, parseValueMapFromLabel } from './gen-board.js'
 
 export const ANALYSIS_TOOL_NAMES = Object.freeze([
   'od_analysis_plan',
+  'od_wait_report_approval',
   'od_python',
   'od_insight',
   'od_save_insight',
@@ -34,7 +47,11 @@ function sessionOf(opts) {
 }
 
 function planRequired(session = getBoardSession()) {
-  return session.analysisPlan ? null : { ok: false, error: 'JoyAgent workflow requires od_get_schema then od_analysis_plan first.' }
+  if (!session.analysisPlan) return { ok: false, error: 'JoyAgent workflow requires od_get_schema then od_analysis_plan first.' }
+  if (session.meta?.reportRunId && !session.meta?.reportPlanApproved) {
+    return { ok: false, error: 'Report plan requires explicit user approval. Call od_wait_report_approval before executing data tasks.' }
+  }
+  return null
 }
 
 function ensureInsights(session) {
@@ -84,11 +101,25 @@ function semanticRows(frame) {
   })
 }
 
+function resolveCurrentAnalysisFrame(session, requestedHandle) {
+  const requested = String(requestedHandle || '')
+  const exact = getFrame(session, requested)
+  if (exact) return { handle: requested, frame: exact, recovered: false }
+  const taskIndex = Number.isFinite(Number(session.meta?.analysisTaskIndex))
+    ? Number(session.meta.analysisTaskIndex)
+    : 0
+  const entries = [...session.frames.entries()]
+  const currentTask = entries.filter(([, frame]) => Number(frame?.taskIndex) === taskIndex)
+  const fallback = currentTask.at(-1) || entries.at(-1)
+  if (!fallback) return null
+  return { handle: String(fallback[0]), frame: fallback[1], recovered: true }
+}
+
 export function runInsight(args, opts = {}) {
   const session = sessionOf(opts)
-  const handle = String(args.handle || '')
-  const frame = getFrame(session, handle)
-  if (!frame) return { ok: false, error: 'unknown handle — call od_get_data first' }
+  const resolved = resolveCurrentAnalysisFrame(session, args.handle)
+  if (!resolved) return { ok: false, error: 'unknown handle — call od_get_data first' }
+  const { handle, frame, recovered } = resolved
   const method = normalizeInsightMethod(args.analysisMethod || args.analysis_method)
   if ((args.analysisMethod || args.analysis_method) && !method) {
     return { ok: false, error: `analysis_method must be one of ${INSIGHT_METHODS.join('|')}` }
@@ -101,6 +132,10 @@ export function runInsight(args, opts = {}) {
   }
   const items = computeInsights(semanticRows(frame), insightOpts(args, frame))
   const useful = usableInsights(items)
+  const taskIndex = Number.isFinite(Number(session.meta?.analysisTaskIndex)) ? Number(session.meta.analysisTaskIndex) : 0
+  const evidenceOnlyCompletion = !useful.length && session.analysisPlan?.tasks?.[taskIndex]
+    ? runCompleteAnalysisTask({ taskIndex, summary: '已保留聚合证据；未识别到通过显著性门控的额外洞察。' }, { session })
+    : null
   return toLosslessJson({
     ok: true,
     handle,
@@ -108,15 +143,19 @@ export function runInsight(args, opts = {}) {
     rowCount: frame.rowCount || 0,
     suggestedChartType: frame.suggestedChartType || null,
     insights: useful,
-    note: insightNote(useful, method),
+    taskCompleted: Boolean(evidenceOnlyCompletion?.ok),
+    analysisFile: evidenceOnlyCompletion?.ok ? evidenceOnlyCompletion.filename : null,
+    note: evidenceOnlyCompletion?.ok
+      ? `未形成显著洞察，已直接用聚合证据生成 ${evidenceOnlyCompletion.filename}；不要继续探测当前任务，请执行下一任务。`
+      : `${recovered ? `已自动改用当前任务最近的聚合结果 ${handle}。` : ''}${insightNote(useful, method)}`,
   })
 }
 
 export function runSaveInsight(args, opts = {}) {
   const session = sessionOf(opts)
-  const handle = String(args.handle || '')
-  const frame = getFrame(session, handle)
-  if (!frame) return { ok: false, error: 'unknown handle — call od_get_data first' }
+  const resolved = resolveCurrentAnalysisFrame(session, args.handle)
+  if (!resolved) return { ok: false, error: 'unknown handle — call od_get_data first' }
+  const { handle, frame, recovered } = resolved
   if (!frame.rowCount) {
     return { ok: false, error: 'empty result cannot be saved — retry od_get_data with another dim' }
   }
@@ -154,7 +193,7 @@ export function runSaveInsight(args, opts = {}) {
     savedCount: session.insights.length,
     suggestedChartType: block.suggestedChartType,
     title: block.title,
-    note: 'Saved snapshot insight. Continue other questions / methods, then od_commit_report once.',
+    note: `${recovered ? `Automatically used the latest task frame ${handle}. ` : ''}Saved snapshot insight. Continue other questions / methods, then od_commit_report once.`,
   }
   return toLosslessJson(saved)
 }
@@ -166,16 +205,24 @@ function normalizeTasks(input) {
     title: String(task?.title || task?.task || `分析任务 ${index + 1}`),
     task: String(task?.task || task?.title || `分析任务 ${index + 1}`),
     businessKnowledge: String(task?.businessKnowledge || task?.business_knowledge || ''),
-    status: index === 0 ? 'in_progress' : 'not_started',
+    dependsOn: Array.isArray(task?.dependsOn) ? task.dependsOn.map(String) : [],
+    budget: task?.budget && typeof task.budget === 'object' ? task.budget : {},
+    status: 'not_started',
   }))
 }
 
 export function runAnalysisPlan(args, opts = {}) {
   const session = opts.session || resetBoardSession(boardSessionKey())
   activateAnalysisSession(session.key)
+  resetReportProgress(session.key)
   if (session.analysisPlan?.tasks?.length) return { ok: false, error: 'od_analysis_plan may only be called once per report run' }
   const tasks = normalizeTasks(args.tasks)
   if (!tasks.length) return { ok: false, error: 'tasks must contain at least one analysis subtask' }
+  const executionBudget = initializeReportExecution(session, args.budget || {})
+  if (tasks.length > executionBudget.maxTasks) {
+    return { ok: false, needsAction: true, error: `REPORT_BUDGET_EXCEEDED:maxTasks:${executionBudget.maxTasks}`,
+      disclosure: `报告计划包含 ${tasks.length} 个任务，超过 maxTasks=${executionBudget.maxTasks}。` }
+  }
   session.analysisPlan = {
     title: String(args.reportTitle || args.title || '分析报告'),
     tasks,
@@ -196,6 +243,61 @@ export function runAnalysisPlan(args, opts = {}) {
     note: 'Plan created. Execute each data_analysis task in order, then generate one task file.',
     progress,
   })
+}
+
+/**
+ * A successful report keeps its result for idempotent duplicate commits, but
+ * that retained state must never become the execution context of the next
+ * report requested in the same conversation.
+ */
+export function sessionForNewAnalysisPlan(candidate = getBoardSession()) {
+  return candidate.meta?.completedReport?.ok
+    ? resetBoardSession(candidate.key)
+    : candidate
+}
+
+async function persistAnalysisPlan(args, result, session) {
+  if (!result?.ok) return result
+  try {
+    const remote = await createRemoteReportRun(args)
+    if (!remote.ok) return { ...result, authority: remote }
+    session.meta.reportRunId = remote.runId
+    session.meta.reportConversationId = remote.conversationId
+    session.meta.reportPlanVersion = remote.planVersion
+    session.meta.reportPlanApproved = false
+    setReportAuthority(remote, { key: session.key })
+    return { ...result, reportRunId: remote.runId, planVersion: remote.planVersion, requiresApproval: true,
+      note: 'Plan persisted. Call od_wait_report_approval and wait for the user to confirm it in the report workspace.' }
+  } catch (error) {
+    return { ...result, authority: { ok: false, optional: true, error: String(error?.message || error) } }
+  }
+}
+
+async function waitReportApproval(args = {}, opts = {}) {
+  const session = sessionOf(opts)
+  if (!session.meta?.reportRunId) return { ok: true, optional: true, note: 'No authoritative run is attached in this context.' }
+  const remote = {
+    runId: session.meta.reportRunId,
+    conversationId: session.meta.reportConversationId,
+    planVersion: session.meta.reportPlanVersion,
+  }
+  const result = await waitForRemotePlanApproval(remote, { timeoutMs: Number(args.timeoutMs || 300_000) })
+  if (result.ok) {
+    session.meta.reportPlanApproved = true
+    if (Array.isArray(result.tasks) && result.tasks.length) {
+      session.analysisPlan.tasks = result.tasks.map((task, index) => ({
+        ...normalizeTasks([task.spec || {}])[0],
+        id: String(task.spec?.taskId || task.taskKey || `analysis-${index + 1}`),
+        dependsOn: Array.isArray(task.dependsOn) ? task.dependsOn.map(String) : [],
+        budget: task.budget || {},
+        status: 'not_started',
+      }))
+      session.meta.reportPlanVersion = Number(result.planVersion || session.meta.reportPlanVersion)
+      initializeReportExecution(session, result.budget || {})
+    }
+    setReportAuthority({ ...remote, status: 'running' }, { key: session.key })
+  }
+  return result
 }
 
 function markdownEvidenceTable(rows) {
@@ -219,12 +321,148 @@ function taskFileMarkdown(task, blocks, summary) {
   return `# ${task.title}\n\n## 任务\n\n${task.task}\n\n## 业务知识\n\n${task.businessKnowledge || '未提供额外业务知识，仅依据 schema 与聚合结果。'}\n\n${sections}\n\n## 子任务总结\n\n${String(summary || '').trim() || blocks.flatMap((block) => block.items || []).map((item) => item.text).filter(Boolean).join('\n')}`
 }
 
+function evidenceBlocksForTask(session, taskIndex) {
+  const frames = session.frames instanceof Map ? [...session.frames.values()] : []
+  return frames
+    .filter((frame) => Number(frame?.taskIndex) === Number(taskIndex)
+      && Number(frame?.rowCount || 0) > 0 && frame?.suggestedChartType)
+    .filter((frame) => isEntityAggregate(frame) || !looksLikeDetailDump(frame.rows, frame.chart?.encode?.category))
+    .map((frame) => ({
+      taskIndex: Number(taskIndex),
+      handle: frame.handle,
+      title: String(frame.chart?.title || frame.chart?.question || `任务 ${Number(taskIndex) + 1} 聚合证据`),
+      process: '保留聚合证据；未识别到通过显著性门控的额外洞察',
+      suggestedChartType: frame.suggestedChartType,
+      rowCount: frame.rowCount,
+      rows: semanticRows(frame).slice(0, 20),
+      chart: frame.chart,
+      fields: frame.fields,
+      items: [],
+    }))
+}
+
+function budgetLimitationForTask(session, taskIndex) {
+  const limitations = Array.isArray(session.meta?.reportBudgetLimitations)
+    ? session.meta.reportBudgetLimitations
+    : []
+  const taskLevel = limitations.find((item) => item.scope === 'task'
+    && item.kind === 'query' && Number(item.taskIndex) === Number(taskIndex))
+  if (taskLevel) return taskLevel
+  return limitations.find((item) => item.scope === 'report' && ['query', 'time'].includes(item.kind)) || null
+}
+
+function taskLimitationMarkdown(task, limitation) {
+  return `# ${task.title}\n\n## 任务\n\n${task.task}\n\n## 分析限制\n\n${limitation.disclosure}\n\n本子任务未形成可验证的数据证据，因此不输出渠道、商户、趋势、比例或其他事实性结论。最终报告必须明确标注此缺口及其对结论完整性的影响，不得根据其他子任务推断本任务结果。\n\n## 建议恢复方式\n\n缩小本任务范围或提高预算后单独重试；本轮先使用已经完成的子任务证据生成部分报告。`
+}
+
+function materializeBudgetLimitationFiles(session) {
+  const plan = session.analysisPlan
+  if (!plan?.tasks?.length) return []
+  session.analysisFiles ||= []
+  const created = []
+  plan.tasks.forEach((task, index) => {
+    if (session.analysisFiles.some((file) => Number(file.taskIndex) === index)) return
+    const limitation = budgetLimitationForTask(session, index)
+    if (!limitation) return
+    const content = taskLimitationMarkdown(task, limitation)
+    const file = {
+      name: `analysis-task-${index + 1}-limitation.md`,
+      type: 'markdown',
+      content,
+      size: Buffer.byteLength(content, 'utf8'),
+      taskIndex: index,
+      taskId: task.id,
+      limitationOnly: true,
+      limitation: limitation.disclosure,
+    }
+    session.analysisFiles.push(file)
+    task.status = 'skipped'
+    task.skipReason = limitation.disclosure
+    completeAnalysisPlanTask(index, file, { key: session.key })
+    created.push(file)
+  })
+  return created
+}
+
+function stableEvidenceDigest(value) {
+  const text = JSON.stringify(value ?? null)
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`
+}
+
+function evidenceUnit(block) {
+  const measure = String(block?.chart?.encode?.value || '')
+  const field = (Array.isArray(block?.fields) ? block.fields : []).find((item) => fname(item) === measure)
+  const label = String(field?.label || '')
+  const match = label.match(/(?:单位|unit)\s*[:：]?\s*([\p{L}%￥¥]+)|\b(fen|yuan|cny|rmb|percent)\b/iu)
+  return match ? String(match[1] || match[2] || '') : ''
+}
+
+function reportEvidence(session, insights) {
+  return (Array.isArray(insights) ? insights : []).map((block) => {
+    const rows = (Array.isArray(block?.rows) ? block.rows : []).filter((row) => (
+      row && typeof row === 'object' && Object.values(row).some((value) => value != null && value !== '')
+    )).slice(0, 20)
+    if (!rows.length) return null
+    const encode = block?.chart?.encode || {}
+    const task = session.analysisPlan?.tasks?.[Number(block?.taskIndex || 0)]
+    return {
+      datasetId: String(block?.datasetId || session.meta?.datasetId || ''),
+      metric: String(encode.value || block?.title || task?.title || '聚合指标'),
+      aggregation: String(encode.agg || 'aggregate'),
+      filters: block?.chart?.filter ? { expression: block.chart.filter } : undefined,
+      unit: evidenceUnit(block) || undefined,
+      resultSummary: {
+        title: String(block?.title || task?.title || `分析证据 ${index + 1}`),
+        rowCount: Number(block?.rowCount || rows.length),
+        rows,
+      },
+      resultDigest: stableEvidenceDigest(rows),
+      taskIndex: Number(block?.taskIndex || 0),
+    }
+  }).filter(Boolean).map((item, index) => ({ ...item, id: `local-ev-${index + 1}` }))
+}
+
+function coreFindingStatements(markdown) {
+  const text = String(markdown || '')
+  const section = text.match(/(?:^|\n)##[^\n]*(?:核心发现|核心结论)[^\n]*\n([\s\S]*?)(?=\n##\s|$)/)?.[1] || ''
+  const bullets = [...section.matchAll(/^\s*[-*]\s+(.+)$/gm)].map((match) => match[1].trim())
+  if (bullets.length) return bullets.slice(0, 8)
+  return section.split(/\n\s*\n/).map((item) => item.replace(/\s+/g, ' ').trim())
+    .filter((item) => item && !item.startsWith('#')).slice(0, 8)
+}
+
+function reportClaims(markdown, evidence) {
+  const allRefs = evidence.map((item) => item.id)
+  return coreFindingStatements(markdown).map((statement, index) => {
+    const matched = evidence.filter((item) => {
+      const summary = item.resultSummary || {}
+      const tokens = [item.metric, summary.title, ...(Array.isArray(summary.rows)
+        ? summary.rows.flatMap((row) => Object.values(row || {})) : [])]
+        .map(String).filter((token) => token.length >= 2)
+      return tokens.some((token) => statement.includes(token))
+    }).map((item) => item.id)
+    return {
+      id: `local-cl-${index + 1}`,
+      statement,
+      evidenceRefs: matched.length ? matched : allRefs,
+      validationStatus: 'pass',
+    }
+  })
+}
+
 function extractReportEvidenceTokens(files) {
   const tokens = []
   const add = (value) => {
     const token = String(value ?? '').trim()
     if (!token || token.length < 2 || tokens.includes(token)) return
-    if (/^(id|mchid|merchant|merchantid|appid|agent|agentid|store|storeid)$/i.test(token)) return
+    // Section labels such as “商户 Top” are not business entity values. Keeping
+    // them would make the quality guard ask the model to cite a fake entity.
+    if (/^(id|mchid|merchant|merchantid|appid|agent|agentid|store|storeid|top|bottom|rank|ranking|total|sum|count|value|amount)$/i.test(token)) return
     if (/^-?\d+(?:\.\d+)?%?$/.test(token.replace(/,/g, ''))) return
     tokens.push(token)
   }
@@ -273,7 +511,96 @@ function extractReportNumericEvidenceTokens(files) {
   return tokens.slice(0, 20)
 }
 
-function validateAuthoredReportQuality(markdown, files) {
+function reportIncludesNumericEvidence(normalizedText, token) {
+  const escape = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const has = (value) => new RegExp(`(^|[^0-9.])${escape(value)}(?![0-9.])`).test(normalizedText)
+  if (has(token)) return true
+  if (String(token).endsWith('%')) return false
+  const numeric = Number(token)
+  // Amount/MchIncome/AgentProfit are stored in 分 but business reports are
+  // expected to present 元. Treat the exact ÷100 representation as the same
+  // traceable evidence instead of rejecting a correct unit conversion.
+  if (!Number.isFinite(numeric) || Math.abs(numeric) < 100) return false
+  return has(String(numeric / 100))
+}
+
+function evidencePairsFromFiles(files) {
+  const pairs = []
+  const splitRow = (line) => line.split('|').slice(1, -1).map((cell) => cell.trim().replace(/\\\|/g, '|'))
+  for (const file of Array.isArray(files) ? files : []) {
+    const lines = String(file?.content || '').split(/\r?\n/)
+    for (let i = 0; i < lines.length - 2; i += 1) {
+      if (!/^\|.*\|$/.test(lines[i]) || !/^\|(?:\s*:?-{3,}:?\s*\|)+$/.test(lines[i + 1])) continue
+      const columns = splitRow(lines[i])
+      const categoryIndex = columns.findIndex((column) => /^(Status|状态|Channel|渠道|MchId|商户|Merchant|AppId|应用|Agent|代理|Store|门店)$/i.test(column))
+      const measureIndex = columns.findIndex((column) => /(Amount|金额|收入|利润|数量|订单量|count|sum|value)/i.test(column))
+      if (categoryIndex < 0 || measureIndex < 0 || categoryIndex === measureIndex) continue
+      for (let rowIndex = i + 2; rowIndex < lines.length && /^\|.*\|$/.test(lines[rowIndex]); rowIndex += 1) {
+        const cells = splitRow(lines[rowIndex])
+        const value = String(cells[measureIndex] || '').replace(/,/g, '')
+        if (!Number.isFinite(Number(value))) continue
+        pairs.push({ category: columns[categoryIndex], measure: columns[measureIndex], dimension: cells[categoryIndex], value })
+      }
+    }
+  }
+  return pairs
+}
+
+function evidencePairMismatch(markdown, insights, files = []) {
+  const lines = String(markdown || '').replace(/,/g, '').split(/\r?\n/)
+  const escape = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const containsNumber = (line, value) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return false
+    const candidates = [String(numeric)]
+    if (Math.abs(numeric) >= 100) candidates.push(String(numeric / 100))
+    return candidates.some((candidate) => new RegExp(`(^|[^0-9.])${escape(candidate)}(?![0-9.])`).test(line))
+  }
+  const pairs = evidencePairsFromFiles(files)
+  for (const block of Array.isArray(insights) ? insights : []) {
+    const category = String(block?.chart?.encode?.category || '')
+    const measure = String(block?.chart?.encode?.value || '')
+    if (!category || !measure || category === measure) continue
+    const rows = (Array.isArray(block?.rows) ? block.rows : []).filter((row) => (
+      row && typeof row === 'object'
+      && (row[category] ?? row.label) != null
+      && Number.isFinite(Number(row[measure] ?? row.value))
+    ))
+    if (rows.length < 2) continue
+    for (const row of rows) {
+      pairs.push({
+        category,
+        measure,
+        dimension: String(row[category] ?? row.label),
+        value: row[measure] ?? row.value,
+      })
+    }
+  }
+  const uniquePairs = pairs.filter((pair, index) => pair.dimension
+    && pairs.findIndex((candidate) => candidate.category === pair.category
+      && candidate.measure === pair.measure && candidate.dimension === pair.dimension
+      && String(candidate.value) === String(pair.value)) === index)
+  for (const pair of uniquePairs) {
+    const categoryPattern = /^status$/i.test(pair.category) ? '(?:Status|状态)' : escape(pair.category)
+    const qualifiedMention = new RegExp(`${categoryPattern}\\s*(?:=|:|：)?\\s*${escape(pair.dimension)}(?![0-9A-Za-z_])`, 'i')
+    const semanticMention = /[\p{L}\p{Script=Han}]/u.test(pair.dimension)
+      ? (line) => line.includes(pair.dimension)
+      : () => false
+    for (const line of lines.filter((candidate) => qualifiedMention.test(candidate) || semanticMention(candidate))) {
+      if (containsNumber(line, pair.value)) continue
+      const conflicting = uniquePairs.find((other) => other !== pair && containsNumber(line, other.value))
+      if (conflicting) {
+        const canonical = uniquePairs.slice(0, 12)
+          .map((item) => `${item.category}=${item.dimension} → ${item.measure}=${item.value}`)
+          .join('; ')
+        return `${pair.category}=${pair.dimension} is paired with another row's ${pair.measure}; expected ${pair.value} (or its exact unit conversion), not ${conflicting.value}. Canonical evidence rows: ${canonical}`
+      }
+    }
+  }
+  return ''
+}
+
+export function validateAuthoredReportQuality(markdown, files, insights = []) {
   const text = String(markdown || '')
   const normalizedText = text.replace(/,/g, '')
   const plainLen = text.replace(/[#*_`\s|:-]/g, '').length
@@ -309,28 +636,42 @@ function validateAuthoredReportQuality(markdown, files) {
       error: 'final report must keep evidence traceability, but place it at the end as “附录：数据口径与证据”.',
     }
   }
-  const sourceText = (Array.isArray(files) ? files : []).map((file) => String(file?.content || '')).join('\n')
-  const requiredEntityTokens = extractReportEvidenceTokens(files)
-  const missingEntities = requiredEntityTokens.filter((token) => !text.includes(token))
-  if (missingEntities.length) {
+  const limitationFiles = (Array.isArray(files) ? files : []).filter((file) => file?.limitationOnly)
+  if (limitationFiles.length && !/(分析限制|报告限制|局限|未完成|未覆盖|预算)/.test(text)) {
     return {
       ok: false,
-      error: `final report lost business entities from analysis files: ${missingEntities.slice(0, 6).join(', ')}. Include the actual IDs/names and their evidence instead of summarizing them away.`,
+      error: 'final report must disclose unfinished budget-limited tasks. Add an “分析限制” section that names the uncovered topics and explains the impact; do not present the partial report as complete.',
     }
   }
-  if (/(MchId|商户ID|商户)/.test(sourceText) && !/(MchId|商户ID|商户)/.test(text)) {
+  const requiredEntityTokens = extractReportEvidenceTokens(files)
+  const includedEntities = requiredEntityTokens.filter((token) => text.includes(token))
+  const requiredEntityCount = Math.min(3, requiredEntityTokens.length)
+  if (includedEntities.length < requiredEntityCount) {
+    return {
+      ok: false,
+      error: `final report needs traceable top-entity evidence: include at least ${requiredEntityCount} actual IDs/names from the analysis files (for example: ${requiredEntityTokens.slice(0, requiredEntityCount).join(', ')}). Long-tail entities may stay in the appendix file and do not all need to be repeated.`,
+    }
+  }
+  if (requiredEntityTokens.length && !/(MchId|商户ID|商户)/.test(text)) {
     return { ok: false, error: 'final report must include merchant/entity analysis because the analysis files contain merchant evidence' }
   }
   const numericTokens = extractReportNumericEvidenceTokens(files)
     .filter((token) => !requiredEntityTokens.includes(token))
   if (numericTokens.length >= 3) {
-    const included = numericTokens.filter((token) => normalizedText.includes(token))
+    const included = numericTokens.filter((token) => reportIncludesNumericEvidence(normalizedText, token))
     const required = Math.min(3, Math.ceil(numericTokens.length * 0.35))
     if (included.length < required) {
       return {
         ok: false,
         error: `final report is too generic and lost numeric evidence from analysis files. Include concrete values/ratios from the evidence tables (for example: ${numericTokens.slice(0, 6).join(', ')}), not only qualitative wording.`,
       }
+    }
+  }
+  const pairMismatch = evidencePairMismatch(text, insights, files)
+  if (pairMismatch) {
+    return {
+      ok: false,
+      error: `final report has a dimension/value evidence mismatch: ${pairMismatch}. Correct the row mapping from the analysis evidence before retrying.`,
     }
   }
   return { ok: true }
@@ -341,6 +682,7 @@ export function runReadAnalysisFiles(_args = {}, opts = {}) {
   const session = sessionOf(opts)
   const plan = session.analysisPlan
   if (!plan?.tasks?.length) return { ok: false, error: 'call od_analysis_plan first' }
+  const limitationFiles = materializeBudgetLimitationFiles(session)
   if (session.analysisFiles.length < plan.tasks.length) {
     return { ok: false, error: `analysis task files incomplete (${session.analysisFiles.length}/${plan.tasks.length})` }
   }
@@ -352,7 +694,12 @@ export function runReadAnalysisFiles(_args = {}, opts = {}) {
       fileName: file.name,
       description: file.name,
       content: file.content,
+      limitationOnly: Boolean(file.limitationOnly),
     })),
+    partial: limitationFiles.length > 0 || session.analysisFiles.some((file) => file.limitationOnly),
+    disclosure: session.analysisFiles.some((file) => file.limitationOnly)
+      ? '部分分析任务因预算限制未取得可验证证据；最终报告必须保留“分析限制”章节。'
+      : '',
   })
 }
 
@@ -363,19 +710,63 @@ export function runCompleteAnalysisTask(args, opts = {}) {
   const index = Number.isFinite(Number(args.taskIndex)) ? Number(args.taskIndex) : Number(session.meta.analysisTaskIndex || 0)
   const task = plan.tasks[index]
   if (!task) return { ok: false, error: `unknown taskIndex ${index}` }
-  if (index !== Number(session.meta.analysisTaskIndex || 0)) {
-    return { ok: false, error: `complete task ${session.meta.analysisTaskIndex || 0} before task ${index}` }
+  if (['completed', 'skipped'].includes(task.status)) {
+    const existing = session.analysisFiles.find((file) => Number(file.taskIndex) === index)
+    if (existing) {
+      return toLosslessJson({
+        ok: true,
+        alreadyComplete: true,
+        partial: Boolean(existing.limitationOnly),
+        skipped: Boolean(existing.limitationOnly),
+        taskIndex: index,
+        title: task.title,
+        filename: existing.name,
+        file: existing,
+        completedCount: session.analysisFiles.length,
+        totalTasks: plan.tasks.length,
+        note: '该任务文件已经生成；无需重复完成，请继续下一任务。',
+      })
+    }
   }
-  const blocks = ensureInsights(session).filter((block) => Number(block.taskIndex || 0) === index)
-  if (!blocks.length) return { ok: false, error: 'this analysis task has no saved insight' }
+  const acquired = acquireReportTask(session, index)
+  if (!acquired.ok) return acquired
+  const insights = ensureInsights(session)
+  const savedBlocks = insights.filter((block) => Number(block.taskIndex || 0) === index)
+  const savedHandles = new Set(savedBlocks.map((block) => block.handle))
+  const evidenceOnly = evidenceBlocksForTask(session, index).filter((block) => !savedHandles.has(block.handle))
+  if (evidenceOnly.length) insights.push(...evidenceOnly)
+  let blocks = [...savedBlocks, ...evidenceOnly]
+  if (!blocks.length) {
+    blocks = []
+  }
+  if (!blocks.length) {
+    const created = materializeBudgetLimitationFiles(session)
+    const limitationFile = created.find((file) => Number(file.taskIndex) === index)
+      || session.analysisFiles.find((file) => Number(file.taskIndex) === index && file.limitationOnly)
+    if (limitationFile) {
+      return toLosslessJson({
+        ok: true,
+        partial: true,
+        skipped: true,
+        taskIndex: index,
+        title: task.title,
+        filename: limitationFile.name,
+        file: limitationFile,
+        completedCount: session.analysisFiles.length,
+        totalTasks: plan.tasks.length,
+        note: '该任务因预算限制生成了限制说明文件；继续下一任务，最终报告必须披露此缺口。',
+      })
+    }
+    return { ok: false, error: 'this analysis task has no saved insight' }
+  }
   const content = taskFileMarkdown(task, blocks, args.summary)
   const filename = String(args.filename || `analysis-task-${index + 1}.md`)
-  const file = { name: filename, type: 'markdown', content, size: Buffer.byteLength(content, 'utf8') }
+  const file = { name: filename, type: 'markdown', content, size: Buffer.byteLength(content, 'utf8'), taskIndex: index, taskId: task.id }
   session.analysisFiles.push(file)
   task.status = 'completed'
-  const next = plan.tasks[index + 1]
-  if (next) next.status = 'in_progress'
-  session.meta.analysisTaskIndex = index + 1
+  const next = plan.tasks.find((candidate) => candidate.status === 'not_started'
+    && (candidate.dependsOn || []).every((id) => plan.tasks.some((item) => item.id === id && ['completed', 'skipped'].includes(item.status))))
+  session.meta.analysisTaskIndex = next ? plan.tasks.indexOf(next) : plan.tasks.length
   completeAnalysisPlanTask(index, file, { key: session.key })
   return toLosslessJson({
     ok: true,
@@ -391,11 +782,16 @@ export function runCompleteAnalysisTask(args, opts = {}) {
 
 export function runCommitReport(args, opts = {}) {
   const session = sessionOf(opts)
+  if (session.meta?.completedReport?.ok) {
+    return toLosslessJson({ ...session.meta.completedReport, alreadyCommitted: true,
+      note: 'Report was already committed successfully. Reuse this result; do not submit again.' })
+  }
   const insights = ensureInsights(session)
   if (!insights.length) {
     return { ok: false, error: 'no insights saved — od_get_data then od_save_insight at least once' }
   }
   const plan = session.analysisPlan
+  if (plan?.tasks?.length) materializeBudgetLimitationFiles(session)
   if (plan?.tasks?.length && session.analysisFiles.length < plan.tasks.length) {
     return { ok: false, error: `analysis task files incomplete (${session.analysisFiles.length}/${plan.tasks.length})` }
   }
@@ -406,7 +802,7 @@ export function runCommitReport(args, opts = {}) {
     return { ok: false, error: 'final authored markdown is required after analysis planning' }
   }
   if (plan?.tasks?.length) {
-    const quality = validateAuthoredReportQuality(authored, session.analysisFiles)
+    const quality = validateAuthoredReportQuality(authored, session.analysisFiles, insights)
     if (!quality.ok) return quality
   }
   const rendered = authored ? renderAuthoredReport({ title, markdown: authored }) : renderReport({
@@ -425,6 +821,7 @@ export function runCommitReport(args, opts = {}) {
     })),
   })
   const filename = String(args.filename || (format === 'markdown' ? 'analysis-report.md' : 'analysis-report.html'))
+  const evidence = reportEvidence(session, insights)
   const result = toLosslessJson({
     ok: true,
     title: rendered.title,
@@ -433,6 +830,8 @@ export function runCommitReport(args, opts = {}) {
     html: rendered.html,
     markdown: rendered.markdown,
     analysisFiles: Array.isArray(session.analysisFiles) ? session.analysisFiles : [],
+    evidence,
+    claims: reportClaims(rendered.markdown, evidence),
     insightCount: insights.length,
     dashboardId: null,
     source: 'analysis-worker',
@@ -442,7 +841,33 @@ export function runCommitReport(args, opts = {}) {
   rememberPresentation(meta, session.key)
   const liveKey = boardSessionKey()
   if (liveKey !== session.key) rememberPresentation(meta, liveKey)
-  resetBoardSession(session.key)
+  return result
+}
+
+export async function executeReportCommit(args, opts = {}) {
+  const session = sessionOf(opts)
+  const remote = session.meta?.reportRunId ? {
+    runId: session.meta.reportRunId,
+    conversationId: session.meta.reportConversationId,
+  } : null
+  const result = toLosslessJson(runCommitReport(args, { session }))
+  if (result.ok && remote) {
+    const publish = opts.publishRemote || publishRemoteReportResult
+    result.authority = await publish(remote, result, session)
+  }
+  if (remote) {
+    setReportAuthority({
+      ...remote,
+      status: result.authority?.status || (result.ok ? 'quality_check' : 'needs_action'),
+    }, { key: session.key })
+  }
+  // A quality failure is repairable. Keep the exact plan, evidence frames and
+  // analysis files so the report agent can revise Markdown and retry. Clearing
+  // here made every first-pass quality issue unrecoverable.
+  if (result.ok) {
+    session.meta.completedReport = result
+    deactivateAnalysisSession(session.key)
+  }
   return result
 }
 
@@ -481,9 +906,12 @@ export function registerAnalysisWorkerTools(ctx) {
             title: { type: 'string', required: true },
             task: { type: 'string', required: true },
             businessKnowledge: { type: 'string', required: true },
+            dependsOn: { type: 'array', items: { type: 'string' }, description: 'Task ids that must complete first' },
+            budget: { type: 'object', additionalProperties: true },
           },
         },
       },
+      budget: { type: 'object', additionalProperties: true, description: 'Report execution limits such as maxTasks, concurrency, maxQueries, maxPythonCalls, maxRows and timeouts' },
     },
     output: {
       schema: { type: 'object', additionalProperties: true },
@@ -494,7 +922,24 @@ export function registerAnalysisWorkerTools(ctx) {
     },
     ...toolMeta('od_analysis_plan'),
     execute(args) {
-      return trackAnalysisTool('od_analysis_plan', args, () => runAnalysisPlan(args), { force: true })
+      return trackAnalysisTool('od_analysis_plan', args, async () => {
+        const session = sessionForNewAnalysisPlan(getBoardSession())
+        return persistAnalysisPlan(args, runAnalysisPlan(args, { session }), session)
+      }, { force: true })
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'od_wait_report_approval',
+    description: 'ANALYSIS WORKER ONLY. After od_analysis_plan, wait until the user confirms the exact plan version in Open Dashboard. Execution must not start before this succeeds.',
+    parameters: { timeoutMs: { type: 'integer', description: 'Maximum wait, defaults to 300000 ms' } },
+    output: {
+      schema: { type: 'object', additionalProperties: true },
+      render: (_args, value) => [{ type: 'text', text: value.ok ? 'report plan approved' : `approval wait failed: ${value.error || value.status}` }],
+    },
+    ...toolMeta('od_wait_report_approval'),
+    execute(args) {
+      return trackAnalysisTool('od_wait_report_approval', args, () => waitReportApproval(args), { force: true })
     },
   }))
 
@@ -524,7 +969,12 @@ export function registerAnalysisWorkerTools(ctx) {
       return trackAnalysisTool(
         'od_python',
         args,
-        async () => planRequired() || toLosslessJson(await runAnalysisPython(args)),
+        async () => {
+          const required = planRequired()
+          if (required) return required
+          const budget = consumeReportBudget(getBoardSession(), 'python')
+          return budget.ok ? toLosslessJson(await runAnalysisPython(args)) : budget
+        },
         { force: true },
       )
     },
@@ -535,7 +985,7 @@ export function registerAnalysisWorkerTools(ctx) {
     description:
       'ANALYSIS WORKER ONLY. Run one JoyAgent insight method on a get_data handle. '
       + `analysis_method: ${INSIGHT_METHODS.join(' | ')}. `
-      + 'Omit method to scan all gated methods. Empty insights mean 无分析结论 — do not save. '
+      + 'Omit method to scan all gated methods. Empty insights mean 无分析结论 — do not retry other methods for the same evidence; complete the task with an evidence-only file. '
       + 'Conversation lead must not call this.',
     parameters: {
       handle: { type: 'string', required: true },
@@ -598,8 +1048,9 @@ export function registerAnalysisWorkerTools(ctx) {
     name: 'od_complete_analysis_task',
     description:
       'ANALYSIS WORKER ONLY. JoyAgent data_analysis final_answer analogue. '
-      + 'After one planned subtask has saved all useful insights, create its independent Markdown analysis file. '
-      + 'Call once per task in plan order. Do not call od_commit_report before every task file exists.',
+      + 'After the planned evidence queries finish, create its independent Markdown analysis file. Saved insights are optional when usable aggregate frames exist. '
+      + 'Call once per task in plan order. If query budget is exhausted, do not retry: this tool creates a limitation file when no evidence is available. '
+      + 'Do not call od_commit_report before every task file exists.',
     parameters: {
       taskIndex: { type: 'integer', required: true, description: 'Zero-based task index from od_analysis_plan' },
       title: { type: 'string' },
@@ -628,8 +1079,9 @@ export function registerAnalysisWorkerTools(ctx) {
     name: 'od_read_analysis_files',
     description:
       'REPORT GENERATOR ONLY. JoyAgent report_tool file download analogue. '
-      + 'After every data_analysis task is complete, read ALL independent Markdown files in full before authoring the final report. '
-      + 'Use the files as evidence, but do not copy their task/lineage structure into the opening chapters.',
+      + 'After data_analysis stops, read ALL independent Markdown files in full before authoring the final report. '
+      + 'Budget-limited unfinished tasks are materialized as limitation files instead of blocking delivery. '
+      + 'Use the files as evidence, disclose every limitation, and do not copy their task/lineage structure into the opening chapters.',
     parameters: {},
     output: {
       schema: { type: 'object', additionalProperties: true },
@@ -653,7 +1105,9 @@ export function registerAnalysisWorkerTools(ctx) {
     name: 'od_commit_report',
     description:
       'ANALYSIS WORKER ONLY. JoyAgent report_tool analogue. Read all completed analysis task files and author one final report. '
-      + 'Call exactly once after od_complete_analysis_task has produced every file. markdown/content must be a complete evidence-backed Chinese report, not a fixed template. '
+      + 'Call after od_read_analysis_files. markdown/content must be a complete evidence-backed Chinese report, not a fixed template. '
+      + 'If the quality gate returns a repair instruction, revise the Markdown and call again; the plan and evidence remain available until commit succeeds. '
+      + 'If any input file is limitationOnly, add an explicit “分析限制” section and never invent conclusions for uncovered topics. '
       + 'The chapter order must be readable for business users: 报告摘要/核心结论 first, then 核心发现, 分主题分析, 结论与建议, and finally 附录：数据口径与证据. '
       + 'Do not put 报告说明、任务文件映射、数据边界、证据表 at the beginning; move those to the appendix. '
       + 'The harness only renders the authored Markdown to static HTML/MD and never invents sections. Conversation lead must not call this.',
@@ -681,7 +1135,7 @@ export function registerAnalysisWorkerTools(ctx) {
       return trackAnalysisTool(
         'od_commit_report',
         args,
-        () => toLosslessJson(runCommitReport(args)),
+        async () => executeReportCommit(args),
         { force: true },
       )
     },

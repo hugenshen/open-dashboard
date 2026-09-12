@@ -215,8 +215,13 @@ export function isAnalysisReportSpawn(args, value) {
 /** Worker persona keys off ANALYSIS_REPORT=1; prepend it when Lead only set description. */
 export function ensureAnalysisReportPrompt(args) {
   if (!args || typeof args !== 'object') return args
-  if (!isAnalysisReportSpawn(args, {})) return args
   const text = spawnArgsText(args)
+  // The report orchestrator uses od_board_worker again for its data-analysis
+  // and final-writing children. Those prompts already carry their own persona
+  // marker and must never be promoted back into a top-level ANALYSIS_REPORT
+  // run, otherwise final writing recursively starts another report plan.
+  if (text.includes('DATA_ANALYSIS_TASK=1') || text.includes('REPORT_GENERATION_TASK=1')) return args
+  if (!isAnalysisReportSpawn(args, {})) return args
   if (text.includes('ANALYSIS_REPORT=1')) return args
   if (typeof args.prompt === 'string') {
     return { ...args, prompt: `ANALYSIS_REPORT=1\n${args.prompt}` }
@@ -303,6 +308,8 @@ export function reportPresentationMeta(value) {
     html: value.html,
     markdown: value.markdown,
     insightCount: value.insightCount,
+    evidence: value.evidence,
+    claims: value.claims,
     dashboardId: null,
     source: value.source || 'analysis-worker',
   }

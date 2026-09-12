@@ -14,6 +14,7 @@ import { boardSessionKey, getBoardSession } from './board-store.js'
 const LAST = '__last__'
 const runs = new Map()
 let seq = 0
+let activeProgressKey = ''
 const PERSIST_VERSION = 1
 
 function progressStoreFile() {
@@ -134,7 +135,9 @@ function actionableIssue(name, result) {
 
 function liveKeys(explicit) {
   const k = explicit || boardSessionKey()
-  return k === LAST ? [LAST] : [k, LAST]
+  if (k === LAST) return [LAST]
+  if (!activeProgressKey || k === activeProgressKey) return [k, LAST]
+  return [k]
 }
 
 function emptyRun(title = '分析报告') {
@@ -175,7 +178,9 @@ function normalizePlanTask(task, index) {
 
 /** JoyAgent PlanningAgent analogue: the PlanView is independent from tool/action nodes. */
 export function setAnalysisPlan(input = {}, opts = {}) {
-  const run = ensureReportRun({ key: opts.key, title: input.reportTitle || input.title })
+  const key = opts.key || boardSessionKey()
+  activeProgressKey = key
+  const run = ensureReportRun({ key, title: input.reportTitle || input.title })
   const tasks = (Array.isArray(input.tasks) ? input.tasks : []).map(normalizePlanTask)
   if (!tasks.length) return { ok: false, error: 'analysis plan requires at least one task' }
   const stages = [...tasks.map((task) => task.title), '生成汇总报告']
@@ -186,7 +191,7 @@ export function setAnalysisPlan(input = {}, opts = {}) {
     taskIds: [...tasks.map((task) => task.id), 'report'],
   }
   if (input.reportTitle || input.title) run.title = String(input.reportTitle || input.title)
-  writeRun(run, opts.key)
+  writeRun(run, key)
   return { ok: true, taskCount: tasks.length, plan: run.plan }
 }
 
@@ -242,7 +247,8 @@ function pushReportFiles(run, result) {
 
 function writeRun(run, key) {
   for (const k of liveKeys(key)) runs.set(k, run)
-  persistRun(run)
+  const k = key || boardSessionKey()
+  if (k === LAST || !activeProgressKey || k === activeProgressKey) persistRun(run)
   return run
 }
 
@@ -261,23 +267,38 @@ export function resetReportProgress(key) {
   if (arguments.length === 0) {
     runs.clear()
     seq = 0
+    activeProgressKey = ''
     clearPersistedRun()
     return
   }
   runs.delete(key)
-  if (key !== LAST) runs.delete(LAST)
-  clearPersistedRun()
+  if (key !== LAST && (!activeProgressKey || key === activeProgressKey)) runs.delete(LAST)
+  if (!activeProgressKey || key === activeProgressKey) {
+    activeProgressKey = ''
+    clearPersistedRun()
+  }
 }
 
 export function ensureReportRun(opts = {}) {
   const key = opts.key || boardSessionKey()
-  const existing = getRun(key)
+  const existing = (key && key !== LAST) ? runs.get(key) : getRun(key)
   if (existing && existing.status === 'running') {
     if (opts.title && existing.title === '分析报告') existing.title = String(opts.title)
     writeRun(existing, key)
     return existing
   }
   return writeRun(emptyRun(opts.title || existing?.title || '分析报告'), key)
+}
+
+export function setReportAuthority(authority = {}, opts = {}) {
+  const key = opts.key || boardSessionKey()
+  const run = ensureReportRun({ key, title: authority.title })
+  run.reportRunId = authority.runId ? String(authority.runId) : run.reportRunId
+  run.conversationId = authority.conversationId ? String(authority.conversationId) : run.conversationId
+  run.planVersion = Number(authority.planVersion || run.planVersion || 0)
+  run.authorityStatus = String(authority.status || run.authorityStatus || '')
+  writeRun(run, key)
+  return run
 }
 
 function pushThought(run, thought) {
@@ -645,6 +666,10 @@ export function snapshotReportProgress(key) {
     narrative: run.thoughts.map((t) => t.md).filter(Boolean).join('\n\n'),
     plan: run.plan || { stages: [], stepStatus: [], steps: [], taskIds: [] },
     files: Array.isArray(run.files) ? run.files : [],
+    reportRunId: run.reportRunId || '',
+    conversationId: run.conversationId || '',
+    planVersion: Number(run.planVersion || 0),
+    authorityStatus: run.authorityStatus || '',
     health,
     tick: run.status === 'running' ? now : Number(run.startedAt || 0),
   }
@@ -732,6 +757,14 @@ export function registerReportProgressRoute(webServer) {
             resetReportProgress()
           } else if (parsed.action === 'begin') {
             ensureReportRun({ title: parsed.title || '分析报告' })
+          } else if (parsed.action === 'authority') {
+            setReportAuthority({
+              runId: parsed.runId,
+              conversationId: parsed.conversationId,
+              planVersion: parsed.planVersion,
+              status: parsed.status,
+              title: parsed.title,
+            })
           }
           sendJson(res, 200, { ok: true, progress: snapshotReportProgress() })
         } catch (err) {

@@ -17,6 +17,6 @@
     "@opendashboard/dsh-od-bi": "workspace:*",
     "@opendashboard/dsh-od-bundle": "workspace:*",
     "@opendashboard/dsh-od-nodes": "workspace:*",
-    "dsh-context": "^0.21.0"
+    "dsh-context": "^0.41.0"
   }
 }

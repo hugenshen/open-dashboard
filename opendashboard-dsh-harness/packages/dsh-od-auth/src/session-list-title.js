@@ -4,7 +4,6 @@
  * @module @opendashboard/dsh-od-auth/session-list-title
  */
 import {
-  collectSessionTitleMessages,
   fallbackSessionTitle,
   foldSessionTitle,
 } from '@deepseek-ai/dsh-session-title'
@@ -26,6 +25,20 @@ export function sessionHasHumanMessage(events) {
   return (Array.isArray(events) ? events : []).some((event) => (
     event?.type === 'user/message' && event?.data?.source?.kind === 'user'
   ))
+}
+
+/** 0.1.2 no longer exports collectSessionTitleMessages; keep the same human-text scan. */
+function collectSessionTitleMessages(events) {
+  const messages = []
+  for (const event of Array.isArray(events) ? events : []) {
+    if (event?.type !== 'user/message' || event?.data?.source?.kind !== 'user') continue
+    const text = (Array.isArray(event?.data?.content) ? event.data.content : [])
+      .filter((block) => block?.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
+    if (String(text || '').trim()) messages.push({ text })
+  }
+  return messages
 }
 
 export function lastEventTime(events, fallback = 0) {

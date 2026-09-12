@@ -4,7 +4,7 @@
  */
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { snapshotJsonValue } from '@deepseek-ai/dsh-session'
+import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
 import {
   BOARD_WORKER_LEAD_DESCRIPTION,
   answerPresentationMeta,
@@ -261,6 +261,16 @@ describe('spawnWorkerPresentationMeta', () => {
     assert.equal(isAnalysisReportSpawn({ description: '生成看板', prompt: '用订单做仪表盘' }, { output: [] }), false)
     const ensured = ensureAnalysisReportPrompt({ description: '写分析报告', prompt: 'datasetId=ds_1\n订单表' })
     assert.match(String(ensured.prompt), /^ANALYSIS_REPORT=1\n/)
+    const reportChild = ensureAnalysisReportPrompt({
+      description: '写分析报告',
+      prompt: 'REPORT_GENERATION_TASK=1\n读取分析文件并成稿',
+    })
+    assert.equal(reportChild.prompt, 'REPORT_GENERATION_TASK=1\n读取分析文件并成稿')
+    const dataChild = ensureAnalysisReportPrompt({
+      description: '写分析报告',
+      prompt: [{ type: 'text', text: 'DATA_ANALYSIS_TASK=1\n执行任务 0' }],
+    })
+    assert.equal(spawnArgsText(dataChild), 'DATA_ANALYSIS_TASK=1\n执行任务 0')
     assert.match(BOARD_WORKER_LEAD_DESCRIPTION, /写分析报告/)
     assert.match(BOARD_WORKER_LEAD_DESCRIPTION, /ANALYSIS_REPORT=1/)
   })

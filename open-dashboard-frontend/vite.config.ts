@@ -51,12 +51,26 @@ function syncUserManual(): Plugin {
   }
 }
 
-/** dsh RPC lives under /api/<method.with.dots> and collides with Java /api. */
+/** dsh RPC lives under /api/<method> and collides with Java /api.
+ * 0.1.1 used dotted methods (events.mux). 0.1.2 typert also uses slashes (settings/describe).
+ * Mux WebSockets (/api/remote.mux, events.*) must NOT match here — Vite's ws proxy owns them. */
 function isDshRpcPath(url = '') {
   const path = url.split('?')[0]
+  if (
+    path === '/api/remote.mux' ||
+    path === '/api/events.mux' ||
+    path === '/api/events.host' ||
+    path.startsWith('/api/remote.mux?') ||
+    path.startsWith('/api/events.mux?') ||
+    path.startsWith('/api/events.host?')
+  ) {
+    return false
+  }
   if (path.startsWith('/api/events.') || path.startsWith('/api/dynamicCordisRunner')) return true
   if (path === '/api/respond' || path.startsWith('/api/respond?')) return true
   const rest = path.startsWith('/api/') ? path.slice(5) : ''
+  if (!rest) return false
+  if (/^(commands|credentials|directoryPicker|fileReferences|session|settings|skills|subagents|workspace)(\/|$)/.test(rest)) return true
   return rest.includes('.') && !rest.includes('/')
 }
 
@@ -67,6 +81,11 @@ function dshApiSplit(): Plugin {
     name: 'dsh-api-split',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
+        // Never treat Upgrade as plain HTTP RPC — leave for Vite ws proxy.
+        if (String(req.headers.upgrade || '').toLowerCase() === 'websocket') {
+          next()
+          return
+        }
         if (!isDshRpcPath(req.url || '')) {
           next()
           return
@@ -99,17 +118,46 @@ function dshApiSplit(): Plugin {
 /** Same-origin /dsh/ iframe talks to this host; rewrite Origin/Host to loopback so dsh's /api trust fence accepts the WS. */
 function dshLoopbackProxy() {
   const target = process.env.OD_DSH_PROXY || 'http://127.0.0.1:3090'
+  const loopback = new URL(target)
+  const host = loopback.host
+  const origin = `http://${host}`
   return {
     target,
     changeOrigin: true,
     configure(proxy: { on: (event: string, cb: (...args: any[]) => void) => void }) {
       const rewrite = (proxyReq: { setHeader: (k: string, v: string) => void }) => {
-        proxyReq.setHeader('origin', 'http://127.0.0.1:3090')
+        proxyReq.setHeader('origin', origin)
         proxyReq.setHeader('sec-fetch-site', 'same-origin')
-        proxyReq.setHeader('host', '127.0.0.1:3090')
+        proxyReq.setHeader('host', host)
       }
       proxy.on('proxyReq', rewrite)
       proxy.on('proxyReqWs', rewrite)
+    },
+  }
+}
+
+/** P017: token exchange 303 Location:/ would leave the iframe on Vue `/`. Keep it under /dsh/. */
+function dshEmbedProxy() {
+  const base = dshLoopbackProxy()
+  return {
+    ...base,
+    ws: true,
+    rewrite: (path: string) => path.replace(/^\/dsh/, ''),
+    configure(proxy: { on: (event: string, cb: (...args: any[]) => void) => void }) {
+      base.configure(proxy)
+      proxy.on('proxyRes', (proxyRes: { headers: Record<string, string | string[] | undefined> }) => {
+        const loc = proxyRes.headers.location
+        const raw = Array.isArray(loc) ? loc[0] : loc
+        if (!raw) return
+        try {
+          const u = /^https?:\/\//i.test(raw) ? new URL(raw) : new URL(raw, 'http://127.0.0.1')
+          if (u.pathname === '/' || u.pathname === '') {
+            proxyRes.headers.location = '/dsh/' + (u.search || '')
+          }
+        } catch {
+          /* keep upstream location */
+        }
+      })
     },
   }
 }
@@ -125,6 +173,8 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
+      // 0.1.2 Gateway remote event stream (was /api/events.mux in 0.1.1).
+      '/api/remote.mux': { ...dshLoopbackProxy(), ws: true },
       '/api/events.mux': { ...dshLoopbackProxy(), ws: true },
       '/api/events.host': { ...dshLoopbackProxy(), ws: true },
       '/api/dynamicCordisRunner': dshLoopbackProxy(),
@@ -156,12 +206,7 @@ export default defineConfig({
         changeOrigin: true
       },
       // P011: DeepSeek Harness Web shell (HTML entry)
-      '/dsh': {
-        target: process.env.OD_DSH_PROXY || 'http://127.0.0.1:3090',
-        changeOrigin: true,
-        ws: true,
-        rewrite: (path) => path.replace(/^\/dsh/, '')
-      }
+      '/dsh': dshEmbedProxy(),
     }
   }
 })
