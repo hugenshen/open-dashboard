@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sevenonic
+      POSTGRES_USER: sevenonic
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sevenonic -d sevenonic"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - sevenonic_pg:/var/lib/postgresql/data
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://sevenonic:${POSTGRES_PASSWORD:-change-me}@postgres:5432/sevenonic
+      ARTIFACT_ROOT: /artifacts
+    ports:
+      - "8091:8091"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - sevenonic_artifacts:/artifacts
+
+  worker:
+    build: .
+    command: ["sevenonic-mail", "run-worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://sevenonic:${POSTGRES_PASSWORD:-change-me}@postgres:5432/sevenonic
+      ARTIFACT_ROOT: /artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - sevenonic_artifacts:/artifacts
+
+volumes:
+  sevenonic_pg:
+  sevenonic_artifacts:

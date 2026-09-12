@@ -19,9 +19,9 @@ items:
     gate: acceptance
     criterion: Webhook 只校验并持久入队，在 3 秒窗口内返回 2xx；定时 sweep 每 10～15 分钟产生同一种 SYNC_MAILBOX 任务；漏通知或停机恢复后可从旧 deltaLink 补齐变化。
     method: integration
-    command_or_path: 待实现补充
+    command_or_path: cd sevenonic-mail-automation && uv run pytest -q tests/test_api.py tests/test_end_to_end.py tests/test_recovery.py
     expected: 关闭 Webhook 后发送测试邮件，恢复定时任务仍能接收；两种触发不会产生两套业务结果。
-    evidence: null
+    evidence: tests/test_api.py、tests/test_end_to_end.py、tests/test_recovery.py；真实租户停 Webhook 补账仍待凭据
     status: pending
     blocker_of_done: true
 
@@ -30,9 +30,9 @@ items:
     gate: acceptance
     criterion: 每个 mailbox+folder 独立保存 Graph 返回的完整 deltaLink，well-known folder 和自定义 folder ID 均有可核对配置；只有所有 nextLink 页面及原件可靠落库后才提交新游标；同邮箱移动不重复归档；token 失效能对该范围全量重建；单封损坏 PDF 被隔离且不阻塞同批其他邮件。
     method: fault-injection
-    command_or_path: 待实现补充
+    command_or_path: cd sevenonic-mail-automation && uv run pytest -q tests/test_graph_client.py tests/test_recovery.py
     expected: 在第二页注入宕机后重跑无漏信；Inbox 移至受管自定义 folder 后仍关联同一 mail_copy；把 Inbox token 用于另一 folder 会被禁止；模拟 syncStateNotFound 后只重建对应 mailbox+folder；毒 PDF 后续邮件仍进入处理队列。
-    evidence: null
+    evidence: tests/test_graph_client.py、tests/test_recovery.py；自定义真实 folder UAT 仍待甲方配置
     status: pending
     blocker_of_done: true
 
@@ -41,9 +41,9 @@ items:
     gate: acceptance
     criterion: 一封邮件 To 主邮箱并 Cc 两个受管邮箱时形成 3 个 mail_copy、1 个 canonical_message、1 个业务事件；重发同 R2 不新增业务事件，同 R2 异值阻断，R3 形成新 revision，parser/prompt 升级只新增 extraction_run。
     method: integration
-    command_or_path: 待实现补充
+    command_or_path: cd sevenonic-mail-automation && uv run pytest -q tests/test_end_to_end.py
     expected: 重放每个输入 10 次仍保持预期对象数，且 monday 不出现重复 item。
-    evidence: null
+    evidence: tests/test_end_to_end.py；真实 3 邮箱各重放10次仍待租户验收
     status: pending
     blocker_of_done: true
 
@@ -63,9 +63,9 @@ items:
     gate: acceptance
     criterion: 写前读取目标 board 真实 schema，并以 event_id 回查；本地 write_operation、固定 Idempotency-Key 和远端 event_id 三层保护 create/update；接口成功但客户端超时时进入 UNKNOWN 并先回查。
     method: integration
-    command_or_path: 待实现补充
+    command_or_path: cd sevenonic-mail-automation && uv run pytest -q tests/test_monday_client.py tests/test_recovery.py tests/test_end_to_end.py
     expected: create_item 响应丢失、跨日重放和 worker 并发场景均只产生一张隔离草稿；schema 漂移时 writer 停止。
-    evidence: null
+    evidence: tests/test_monday_client.py、tests/test_recovery.py、tests/test_end_to_end.py；真实 board 超时回查仍待 token
     status: pending
     blocker_of_done: true
 
@@ -85,9 +85,9 @@ items:
     gate: acceptance
     criterion: 从 monday item 可追溯到 write_operation、review_decision、business_event、extraction_run、canonical_message、各邮箱 mail_copy 和原始 MIME/PDF；任务采用持久租约，失败进入重试/死信并告警。
     method: fault-injection
-    command_or_path: 待实现补充
+    command_or_path: cd sevenonic-mail-automation && uv run pytest -q tests/test_recovery.py tests/test_end_to_end.py
     expected: VPS/worker 重启不丢任务；Graph/monday 429 按服务端重试提示退避；对象存储或数据库不可用时不提前推进游标或正式写入。
-    evidence: null
+    evidence: tests/test_recovery.py、tests/test_end_to_end.py；生产 PostgreSQL/对象存储故障演练未执行
     status: pending
     blocker_of_done: true
 
@@ -107,9 +107,9 @@ items:
     gate: acceptance
     criterion: 邮件中的 XLSX/XLSM 原始字节先以 hash 和不可变路径归档；系统记录 sheet、隐藏状态、公式、外链、宏和图片等 workbook manifest；宏不执行，渲染/重算在无生产凭据的受限沙箱完成，派生 PDF/PNG 不覆盖原件。
     method: security-and-integration
-    command_or_path: 待实现补充
+    command_or_path: cd sevenonic-mail-automation && uv run pytest -q tests/test_excel_and_mime.py tests/test_end_to_end.py
     expected: 正常技术包可从预览追溯到原 Excel；含宏、外链、Zip Bomb、伪装扩展名或损坏 OOXML 的样本被隔离且不阻塞后续邮件；对象 hash 不一致时禁止进入业务流。
-    evidence: null
+    evidence: tests/test_excel_and_mime.py、tests/test_end_to_end.py；LibreOffice 隔离渲染仍未实现
     status: pending
     blocker_of_done: true
 
@@ -118,9 +118,9 @@ items:
     gate: acceptance
     criterion: 对甲方冻结的最多 3 个模板族，系统提取款号、技术包 revision、sheet 语义、量度点、尺码、目标/实测、容差、样衣轮次、评论和审批证据；每个值保留 sheet+cell/range；未知模板、单位冲突、公式缓存失效、同版异值和关键证据缺失不得自动写正式字段；相邻 revision 生成新增、删除、修改差异。
     method: evaluation
-    command_or_path: 待实现补充
+    command_or_path: cd sevenonic-mail-automation && uv run pytest -q tests/test_excel_and_mime.py
     expected: 模板分类 macro-F1>=95%，款号/revision/sheet 类型 exact match>=98%，已支持模板非空量度单元格标准化正确率>=97%，未知模板拒答率=100%，关键误放行=0，冻结版本差异 precision/recall 均>=95%。
-    evidence: null
+    evidence: tests/test_excel_and_mime.py 使用截图结构生成 HMV071 fixture；甲方三模板族金标评测仍未执行
     status: pending
     blocker_of_done: true
 

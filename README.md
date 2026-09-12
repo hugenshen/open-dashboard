@@ -204,6 +204,7 @@ open-dashboard/
 ├── open-dashboard-frontend/      # DataQ Web
 ├── open-dashboard-backend/       # DataQ API / COLA 多模块
 ├── opendashboard-dsh-harness/    # DataQ 对话 Agent 运行时
+├── sevenonic-mail-automation/    # P020 Graph 邮件、服装附件与 monday 自动化服务
 ├── scripts/                      # 启停、冒烟与数据库初始化
 └── .env.example
 ```

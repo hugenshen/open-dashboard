@@ -3428,3 +3428,40 @@ monday：1个workspace、最多6个board、最多8类角色
 - [Dramatiq 官方文档（达到扩容阈值后的候选）](https://dramatiq.io/)
 - [LangChain Structured Output 官方文档（首期不采用的对比依据）](https://docs.langchain.com/oss/python/langchain/structured-output)
 - [DSPy FAQ（与工作流框架的定位差异）](https://github.com/stanfordnlp/dspy/blob/main/docs/docs/faqs.md)
+
+## 35. 当前实现快照（2026-09-12）
+
+代码入口为 [`sevenonic-mail-automation/`](../../../../../sevenonic-mail-automation/)，当前把最先需要联调的“Office 邮件 → 原件/正文/附件 → 服装技术包 → monday 隔离草稿”做成了独立 Python 服务：
+
+```text
+Graph Webhook / 15分钟 sweep
+  -> 持久 SYNC_MAILBOX 任务
+  -> mailbox + folder 独立 Delta
+  -> ImmutableId 下载 MIME
+  -> .eml / XLSX / PDF 按 hash 归档
+  -> mail_copy / canonical_message / business_event / extraction_run
+  -> WRITE_MONDAY outbox
+  -> 查询真实 board schema
+  -> 按 event_id 查重
+  -> 带固定 Idempotency-Key 创建 AI待复核 item
+```
+
+已经实现并通过本地契约/故障测试的部分：
+
+- Graph OAuth client credentials、Subscription 创建/提前续租、URL challenge、基础通知和生命周期通知。
+- `missed` 触发 Delta 补账；`reauthorizationRequired` 排队续授权并补账；`subscriptionRemoved` 排队重建并补账。
+- 每个 mailbox/folder 独立完整 deltaLink、nextLink 分页、410 token 失效只重建当前范围、MIME 下载失败不推进游标。
+- 同一 ImmutableId 从 Inbox 移到受管 Archive 时只更新当前 folder/presence，不重复归档和解析。
+- MIME/HTML/正文/收件人/抄送/附件解析；XLSX/XLSM ZIP 安全门、sheet manifest、Measurement、Graded Specs、PP Comments、Photo Sample Approval、Full Size Measure 和 revision diff。
+- 本地 write_operation、monday `event_id` 查询和 `Idempotency-Key`；真实 group/column/type 不匹配时在写入前停机。
+- SQLite 本地开发、PostgreSQL Docker 目标、FastAPI OpenAPI、常驻 worker、失败退避重试和管理员令牌保护。
+
+验证命令：
+
+```bash
+cd sevenonic-mail-automation
+uv run ruff check .
+uv run pytest -q
+```
+
+当前 23 项测试通过，真实 Uvicorn 进程的健康检查、OpenAPI 与管理员运维接口已冒烟。仍不能把 P020 标为 done：甲方尚未提供 Entra、Exchange Application RBAC、真实受管邮箱、monday token 和真实 board schema；三个 Excel 模板族的原文件和金标评测也未冻结。Docker daemon 在本机未启动，因此镜像构建留到有容器环境时验证。

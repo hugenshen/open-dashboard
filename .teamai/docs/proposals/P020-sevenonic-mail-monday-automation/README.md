@@ -1,27 +1,29 @@
 ---
 id: P020
 title: Sevenonic 多邮箱、服装技术包与 monday 业务自动化
-status: draft
+status: in-progress
 milestone: v0.8
 date: 2026-09-12
 design: [.teamai/docs/proposals/P020-sevenonic-mail-monday-automation/design/design.md]
 acceptance: .teamai/docs/proposals/P020-sevenonic-mail-monday-automation/test/acceptance.yaml
 gates:
-  proposal: draft
+  proposal: accepted
   hi-fi: none
-  code: none
-  acceptance: none
+  code: wip
+  acceptance: blocked
 depends: []
+implementation: [sevenonic-mail-automation/]
 ---
 
 # P020 · Sevenonic 多邮箱、服装技术包与 monday 业务自动化
 
-> **状态** `draft`。本次只提交经讨论形成的业务与技术方案，不修改 Open Dashboard 产品代码，不把方案描述为已实现能力。
+> **状态** `in-progress`。已获用户授权开始实现独立 `sevenonic-mail-automation/` 服务；在 Entra、受管邮箱和 monday 凭据到位并完成真实租户验收前，不标记为 done。
 
 ## 开发入口
 
 | 你要 | 去看 |
 |---|---|
+| 可运行服务、配置、命令和联调步骤 | [sevenonic-mail-automation/README.md](../../../../sevenonic-mail-automation/README.md) |
 | 业务流程、平台边界、组件和数据流 | [design.md](./design/design.md#21-先看完整业务流程业务人员会经历什么) |
 | Graph Subscription、Webhook、Delta 和 ImmutableId | [design.md](./design/design.md#5-graph-subscription-怎么订阅) |
 | 五层身份、跨邮箱归并和幂等 | [design.md](./design/design.md#11-正确的五层身份模型) |
@@ -66,9 +68,9 @@ Sevenonic 当前通过多个 Microsoft 365 邮箱接收 PO、报价、新款、�
 - monday 最多 6 块首期阶段板的 schema registry、角色状态机和跨板任务投影设计。
 - 12～14 周实施基线、WBS、甲乙方责任、上线降级和预算级报价。
 
-**不做**
+**本次实现仍不做**
 
-- 本次不实现可运行 MVP、生产部署或 Entra/monday 真实授权。
+- 不在缺少甲方密钥、Exchange RBAC 和真实 board schema 时伪造生产联调结论；当前先交付可运行服务与模拟契约测试，真实租户验收待凭据到位后完成。
 - 不建设洗水唛生成器、条码打印链路、企微自建应用，也不重建甲方全部正式生产板或面辅料主数据仓库。
 - 不允许模型直接执行 Graph/monday 写操作，不自动执行取消订单、修改银行账户或付款指令。
 - 不假设目标 board 已存在文档中的示例 group/column ID；实施时必须读取真实 schema。
@@ -117,10 +119,18 @@ Sevenonic 当前通过多个 Microsoft 365 邮箱接收 PO、报价、新款、�
 
 唯一验收定义见 [acceptance.yaml](./test/acceptance.yaml)。所有阻塞项通过前，P020 保持 draft/accepted/in-progress，不得标为 done 或回写已实现产品基线。
 
+## 当前代码进度
+
+- 已新增独立服务 `sevenonic-mail-automation/`，包含 FastAPI 回调/运维 API、Graph Subscription/生命周期/Delta/MIME、持久任务、原件归档、服装 Excel/PO PDF 解析、五层身份和 monday 幂等写入。
+- 已用真实 Graph/monday 请求形状做本地契约模拟，并覆盖多邮箱副本归并、分页游标、410 重建、邮件移动、续租、生命周期恢复、解析失败不提交游标、monday schema guard 和重复写入。
+- `uv run pytest -q` 当前通过 23 项测试；Uvicorn 真实进程的 `/healthz`、`/openapi.json` 和带管理员令牌的 `/operations/counts` 已完成本机 HTTP 冒烟。
+- 仍待甲方提供真实 Entra/Exchange/monday 配置后运行 `sevenonic-mail check-connections`、创建 subscriptions、发送真实邮件并完成隔离板 UAT；Docker daemon 当前本机未启动，因此容器镜像构建不作为已验证证据。
+
 ## 修订记录
 
 | 日期 | 说明 |
 |---|---|
+| 2026-09-12 | 用户授权进入实现；新增 `sevenonic-mail-automation/` 独立服务、23项自动化测试、生命周期恢复和凭据到位后的连接检查入口。普通 Outlook message 订阅按微软当前 10,080 分钟上限实现为申请6天、提前24小时续租。 |
 | 2026-09-12 | 根据甲方服装 Excel 和 monday 工作区截图，补充技术包 manifest、量度/放码/样衣轮次/revision diff 数据模型，多角色跨板状态机，生产化部署架构、12～14 周 WBS、甲乙方材料责任、上线运维指标和 32.8 万元预算级首期报价。 |
 | 2026-09-10 | 补充邮件完整归档边界，区分文件夹移动、删除、Outlook 撤回与业务取消；增加客户邮件、Graph、我方平台、monday/人工共 75 类边界与异常处理，以及相应数据状态和验收门禁。 |
 | 2026-09-10 | 补充 deltaLink 对账书签、mailbox/folder 绑定、自定义文件夹枚举、移动/重置案例；逐层列出五层身份的能力边界，并对比每小时 Delta、首期影子交付与 L0～L4 治理框架。 |
