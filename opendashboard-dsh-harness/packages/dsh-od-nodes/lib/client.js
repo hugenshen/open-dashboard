@@ -37,6 +37,7 @@ window.__ModuleLoader__.load({
     /** First /od/bridge dashboardId after load or session switch — do not auto-open. */
     let primedBridgeDash = false
     let seenBridgeDash = ''
+    let odBlankBridge = false
 
     function isEmbedded() {
       try {
@@ -342,6 +343,10 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         let stop = false
         const tick = () => {
+          if (odBlankBridge) {
+            setFromStore(null)
+            return
+          }
           fetch('/od/report-progress', { credentials: 'same-origin' })
             .then((r) => r.json())
             .then((data) => {
@@ -536,6 +541,34 @@ window.__ModuleLoader__.load({
       } catch {
         return null
       }
+    }
+
+    function createdSessionId(result) {
+      if (typeof result === 'string') return result
+      if (typeof result?.sessionId === 'string') return result.sessionId
+      if (typeof result?.value?.sessionId === 'string') return result.value.sessionId
+      return ''
+    }
+
+    async function createOdBlankSession(ctx, workspaceId) {
+      if (!workspaceId || typeof ctx?.sessions?.create !== 'function') return ''
+      const result = await ctx.sessions.create({ workspaceId })
+      return createdSessionId(result)
+    }
+
+    function openDshSession(ctx, sessionId) {
+      const id = String(sessionId || '')
+      if (!id) return false
+      const navigation = workspaceNavigation(ctx)
+      if (navigation && typeof navigation.openSession === 'function') {
+        navigation.openSession(id)
+        return true
+      }
+      if (typeof ctx?.sessions?.open === 'function') {
+        ctx.sessions.open(id)
+        return true
+      }
+      return false
     }
 
     /** New chat / history switch lives inside the iframe — tell OD to fold the right pane. */
@@ -1140,8 +1173,36 @@ window.__ModuleLoader__.load({
 
     function ReportPreviewView({ node }) {
       const data = node?.data || {}
+      const [progress, setProgress] = React.useState(null)
+
+      // The lead agent intentionally stops after delegating the report. Keep
+      // the result card alive with a short business-facing progress summary so
+      // the conversation does not look stalled while child workers continue.
       useEffect(() => {
-        if (!data.html && !data.markdown) return
+        let stopped = false
+        const refresh = () => {
+          fetch('/od/report-progress', { credentials: 'same-origin' })
+            .then((response) => response.ok ? response.json() : null)
+            .then((body) => {
+              if (!stopped && body?.progress?.status && body.progress.status !== 'idle') {
+                setProgress(body.progress)
+              }
+            })
+            .catch(() => {})
+        }
+        refresh()
+        const timer = window.setInterval(refresh, 1000)
+        return () => {
+          stopped = true
+          window.clearInterval(timer)
+        }
+      }, [])
+
+      useEffect(() => {
+        // A replayed/spawn-text report may initially carry only the filename.
+        // The shell will use it as a signal and hydrate the final files from
+        // /od/report-progress, so do not silently drop the open event here.
+        if (!data.filename && !data.html && !data.markdown) return
         notifyOpenReport({
           title: data.title,
           format: data.format,
@@ -1159,7 +1220,11 @@ window.__ModuleLoader__.load({
         `${data.filename || 'analysis-report.html'} · 静态快照 · 非可刷新看板`,
         h('div', { style: { padding: '12px 14px' } },
           h('p', { style: { margin: '0 0 10px', color: '#444' } },
-            '报告已生成。右侧打开的是会话快照文件，刷新不会重新查询。'),
+            progress?.status === 'running'
+              ? `正在分析：${progress.activeNode || '执行分析任务'} · 已完成 ${(progress.steps || []).filter((step) => ['done', 'completed'].includes(step.status)).length} 个节点`
+              : progress?.status === 'error'
+                ? '报告生成遇到问题，可在右侧查看失败步骤和恢复建议。'
+                : '报告已生成。右侧打开的是会话快照文件，刷新不会重新查询。'),
           h('button', {
             type: 'button',
             onClick: () => notifyOpenReport(data),
@@ -1484,15 +1549,25 @@ window.__ModuleLoader__.load({
     function startOdSession(ctx) {
       const id = SessionChromeAction._dshWorkspaceId
       forgetOdLastSession()
-      SessionChromeAction._forceBlankUntil = Date.now() + 5000
+      SessionChromeAction._forceBlankUntil = Date.now() + 60000
+      notifySessionChanged({ blank: true })
       try {
-        const navigation = workspaceNavigation(ctx)
-        if (!navigation) throw new Error('uiWorkspace navigation service unavailable')
-        if (id) navigation.startSession(id)
-        else {
-          const first = ctx?.workspaces?.list?.getSnapshot?.()?.items?.[0]?.workspaceId
-          navigation.startSession(first)
-        }
+        const workspaceId = id || ctx?.workspaces?.list?.getSnapshot?.()?.items?.[0]?.workspaceId
+        createOdBlankSession(ctx, workspaceId)
+          .then((sessionId) => {
+            if (sessionId) {
+              rememberOdLastSession(sessionId)
+              openDshSession(ctx, sessionId)
+              notifySessionChanged({ sessionId, blank: true })
+              return
+            }
+            const navigation = workspaceNavigation(ctx)
+            if (!navigation) throw new Error('uiWorkspace navigation service unavailable')
+            navigation.startSession(workspaceId)
+          })
+          .catch((e) => {
+            console.warn('new session failed', e)
+          })
       } catch (e) {
         console.warn('new session failed', e)
       }
@@ -1500,26 +1575,45 @@ window.__ModuleLoader__.load({
 
     function openOdSession(ctx, sessionId) {
       try {
-        ctx?.sessions?.open(sessionId)
+        openDshSession(ctx, sessionId)
       } catch (e) {
         console.warn('open session failed', e)
       }
     }
 
-    /** Right header: 新对话 + 历史 + 旅程回放. */
-    function SessionChromeAction({ useSessions }) {
+    function useSessionListSnap() {
+      const list = SessionChromeAction._ctx?.sessions?.list
+      return React.useSyncExternalStore(
+        (onStoreChange) => (list && typeof list.subscribe === 'function' ? list.subscribe(onStoreChange) : () => {}),
+        () => (list && typeof list.getSnapshot === 'function' ? list.getSnapshot() : null),
+        () => null,
+      )
+    }
+
+    function isBlankLanding(snap) {
+      if (!snap || !snap.current) return true
+      const row = snap.byId?.[snap.current]
+      return !row || row.blank === true
+    }
+
+    /** Right header: 新对话 + 历史 + 旅程回放. Landing also lists 最近对话. */
+    function SessionChromeAction() {
       const ctx = SessionChromeAction._ctx
+      const snap = useSessionListSnap()
+      const landing = isBlankLanding(snap)
       const [open, setOpen] = React.useState(false)
       const [hover, setHover] = React.useState(null)
       const [tick, setTick] = React.useState(0)
-      const current = useSessions((s) => s.current)
-      const { rows, error } = useOdSessions(open ? tick : -1)
+      const current = snap?.current || ''
+      const { rows, error } = useOdSessions(open || landing ? tick : -1)
 
       React.useEffect(() => {
-        if (!open) return undefined
+        if (!open && !landing) return undefined
         setTick((n) => n + 1)
-        return undefined
-      }, [open])
+        // The session just left may still be flushing its user message.
+        const timer = window.setTimeout(() => setTick((n) => n + 1), 700)
+        return () => window.clearTimeout(timer)
+      }, [open, landing, current])
 
       const paint = (key, active) => ({
         ...btnBase,
@@ -1579,7 +1673,38 @@ window.__ModuleLoader__.load({
         )))
       }
 
-      return h('div', {
+      const recent = (rows || []).filter((row) => row && !row.blank).slice(0, 5)
+      let recentBody
+      if (!landing) recentBody = null
+      else if (error) {
+        recentBody = h('div', { style: { padding: '2px 4px 0', fontSize: 13, color: '#b45309' } }, error)
+      } else if (rows == null) {
+        recentBody = h('div', { style: { padding: '2px 4px 0', fontSize: 13, color: '#9aa3af' } }, '加载中…')
+      } else if (recent.length === 0) {
+        recentBody = h('div', { style: { padding: '2px 4px 0', fontSize: 13, color: '#9aa3af' } }, '暂无历史会话')
+      } else {
+        recentBody = recent.map((row) => h('button', {
+          key: row.id,
+          type: 'button',
+          onClick: () => openOdSession(ctx, row.id),
+          style: {
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            width: '100%', padding: '10px 12px', border: 0, borderRadius: 10, cursor: 'pointer',
+            background: 'transparent', marginBottom: 2, fontSize: 13.5, color: '#3d4450', textAlign: 'left',
+          },
+          onMouseEnter: (e) => { e.currentTarget.style.background = '#f5f6f8'; e.currentTarget.style.color = '#0f1115' },
+          onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#3d4450' },
+        },
+        h('span', {
+          style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+        }, sessionRowTitle(row)),
+        h('span', { style: { fontSize: 12, color: '#9aa3af', flexShrink: 0 } }, formatSessionWhen(row.updatedAt)),
+        ))
+      }
+
+      return h(React.Fragment, null,
+      h('div', {
+        className: 'od-session-chrome',
         style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 },
       },
       h('button', {
@@ -1629,80 +1754,15 @@ window.__ModuleLoader__.load({
         panelBody,
         )
         : null,
-      )
-    }
-
-    /** Landing only: recent list under the hero composer (P014). */
-    function OdRecentConversations({ useSessions }) {
-      const ctx = SessionChromeAction._ctx
-      const blank = useSessions((s) => {
-        const id = s.current
-        if (!id) return true
-        const row = s.byId?.[id]
-        return row ? Boolean(row.blank) : true
-      })
-      const [tick, setTick] = React.useState(0)
-      const { rows, error } = useOdSessions(blank ? tick : -2)
-
-      React.useEffect(() => {
-        if (!blank) return undefined
-        setTick((n) => n + 1)
-        const t = setInterval(() => setTick((n) => n + 1), 12000)
-        return () => clearInterval(t)
-      }, [blank])
-
-      if (!blank) return null
-
-      const recent = (rows || []).filter((r) => !r.blank).slice(0, 5)
-
-      return h('div', {
-        'data-od-recent': '1',
-        style: {
-          order: 10,
-          width: '100%',
-          maxWidth: 'min(calc(var(--dsh-composer-card-max-width, 780px) + 32px), 100%)',
-          alignSelf: 'center',
-          marginTop: 4,
-          padding: '0 12px 8px',
-          boxSizing: 'border-box',
-          textAlign: 'left',
-        },
-      },
-      h('div', {
-        style: {
-          fontSize: 12, fontWeight: 600, color: '#9ca3af',
-          letterSpacing: '0.02em', margin: '8px 4px 6px',
-        },
-      }, '最近对话'),
-      error
-        ? h('div', { style: { padding: '8px 4px', fontSize: 13, color: '#b45309' } }, error)
-        : rows == null
-          ? h('div', { style: { padding: '8px 4px', fontSize: 13, color: '#9ca3af' } }, '加载中…')
-          : recent.length === 0
-            ? h('div', { style: { padding: '8px 4px', fontSize: 13, color: '#9ca3af' } }, '暂无历史会话')
-            : recent.map((row) => h('button', {
-              key: row.id,
-              type: 'button',
-              onClick: () => openOdSession(ctx, row.id),
-              style: {
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                gap: 12, width: '100%', textAlign: 'left',
-                padding: '10px 8px', border: 0, borderRadius: 10, cursor: 'pointer',
-                background: 'transparent', color: '#1f2329', fontSize: 13, lineHeight: 1.35,
-              },
-              onMouseEnter: (e) => { e.currentTarget.style.background = 'rgba(77, 107, 254, 0.05)' },
-              onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent' },
-            },
-            h('span', {
-              style: {
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                fontWeight: 500,
-              },
-            }, sessionRowTitle(row)),
-            h('span', {
-              style: { flex: 'none', fontSize: 12, color: '#9ca3af' },
-            }, formatSessionWhen(row.updatedAt)),
-            )),
+      ),
+      landing
+        ? h('div', { className: 'od-recent-block' },
+          h('h2', {
+            style: { fontSize: 12, fontWeight: 650, color: '#9aa3af', margin: '10px 4px 8px' },
+          }, '最近对话'),
+          recentBody,
+        )
+        : null,
       )
     }
 
@@ -1780,11 +1840,16 @@ window.__ModuleLoader__.load({
         '.od-context-return{position:sticky;top:0;z-index:20;margin:0 0 10px auto;display:flex;align-items:center;gap:6px;border:1px solid #cbd5ff;border-radius:8px;padding:7px 11px;background:#fff;color:#3155e7;box-shadow:0 2px 8px #1f23291f;font:600 12px/1.2 inherit;cursor:pointer}',
         '.od-context-return:hover{background:#f5f7ff}',
         '.od-context-return-highlight{outline:2px solid #4d6bfe!important;outline-offset:6px;border-radius:8px;transition:outline-color .8s ease}',
-        /* Soft blue glow behind hero composer (DeepSeek landing) */
-        '.wSkVaW_heroGlow{opacity:.85!important;filter:saturate(1.05)}',
-        '.wSkVaW_composerHero{padding-bottom:48px!important;display:flex!important;flex-direction:column!important}',
-        '.wSkVaW_composerHero [data-od-recent]{order:10}',
-      ].join('')
+            /* Soft blue glow behind hero composer (DeepSeek landing) */
+            '.wSkVaW_heroGlow{opacity:.85!important;filter:saturate(1.05)}',
+            '.wSkVaW_composerHero{padding-bottom:48px!important;display:flex!important;flex-direction:column!important}',
+        '.wSkVaW_composerHero > [data-slot="conversation.input.dock"]{display:contents!important}',
+        '.od-session-chrome{position:fixed!important;top:8px;right:12px;z-index:40}',
+        '.od-recent-block{order:20;box-sizing:border-box;width:var(--dsh-composer-card-max-width,952px);max-width:100%;align-self:center;margin:2px 0 0;padding:0 14px;text-align:left}',
+        '.wSkVaW_headerCorner{display:none!important}',
+        '.uV2eYG_hero .uV2eYG_card{background:#fff!important;color:#3d4450!important;border:1px dashed #d7dbe3!important;box-shadow:0 10px 40px rgba(15,17,21,.04)!important}',
+        '.uV2eYG_hero .uV2eYG_input{color:#1f2329!important}',
+          ].join('')
       let tag = document.getElementById(STYLE_ID)
       if (!tag) {
         tag = document.createElement('style')
@@ -1975,12 +2040,16 @@ window.__ModuleLoader__.load({
     function pinOdWorkspaceBind(ctx) {
       let boundKey = ''
       let settled = false
+      let blankInflight = false
       const tryBind = () => {
         fetch('/od/bridge', { credentials: 'same-origin' })
           .then((r) => r.json())
           .then((data) => {
             const bridge = data?.bridge || {}
             maybeOpenDashboardFromBridge(bridge)
+            odBlankBridge = !String(bridge.conversationId || '').trim()
+              && !String(bridge.prompt || '').trim()
+              && !String(bridge.dashboardId || '').trim()
             const snap = ctx.workspaces?.list?.getSnapshot?.()
             if (!snap?.baselinesReady || !Array.isArray(snap.items) || !snap.items.length) return
             const preferred = bridge.dshWorkspaceId ? String(bridge.dshWorkspaceId) : ''
@@ -1999,13 +2068,53 @@ window.__ModuleLoader__.load({
             const sessions = ctx.sessions?.list?.getSnapshot?.()
             if (!sessions || sessions.phase !== 'ready') return
 
-            const resumeId = pickResumeSessionId(ctx, id)
             const current = sessions.current
+            const cur = current ? sessions.byId?.[current] : null
+            const onOdWs = Boolean(cur && snap.items.some((item) => (
+              item.workspaceId === id && item.sessionIds?.includes(current)
+            )))
+            const blankRequested = !String(bridge.conversationId || '').trim()
+              && !String(bridge.prompt || '').trim()
+              && !String(bridge.dashboardId || '').trim()
+
+            if (blankRequested) {
+              forgetOdLastSession()
+              SessionChromeAction._forceBlankUntil = Date.now() + 60000
+              notifySessionChanged({ blank: true })
+              if (onOdWs && cur?.blank) {
+                settled = true
+                return
+              }
+              if (blankInflight) return
+              blankInflight = true
+              createOdBlankSession(ctx, id)
+                .then((sessionId) => {
+                  if (sessionId) {
+                    rememberOdLastSession(sessionId)
+                    openDshSession(ctx, sessionId)
+                    notifySessionChanged({ sessionId, blank: true })
+                  } else {
+                    const navigation = workspaceNavigation(ctx)
+                    if (!navigation) throw new Error('uiWorkspace navigation service unavailable')
+                    navigation.startSession(id)
+                  }
+                  settled = true
+                })
+                .catch((e) => {
+                  console.warn('od blank session failed', e)
+                })
+                .finally(() => {
+                  blankInflight = false
+                })
+              return
+            }
+
+            const resumeId = pickResumeSessionId(ctx, id)
 
             if (resumeId) {
               if (current !== resumeId) {
                 try {
-                  ctx.sessions.open(resumeId)
+                  openDshSession(ctx, resumeId)
                 } catch (e) {
                   console.warn('od resume session failed', e)
                 }
@@ -2016,10 +2125,6 @@ window.__ModuleLoader__.load({
               return
             }
 
-            const cur = current ? sessions.byId?.[current] : null
-            const onOdWs = Boolean(cur && snap.items.some((item) => (
-              item.workspaceId === id && item.sessionIds?.includes(current)
-            )))
             if (!onOdWs) {
               try {
                 const navigation = workspaceNavigation(ctx)
@@ -2101,10 +2206,10 @@ window.__ModuleLoader__.load({
       ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({
         name: 'conversation.hero.brand.mark',
       }, OdBrandMark))
-      ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-        name: 'conversation.session.header.utilities',
+      ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+        name: 'conversation.input.dock',
         id: 'od-session-chrome',
-        order: 10,
+        order: 30,
         label: '会话',
       }, SessionChromeAction))
       ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
@@ -2113,12 +2218,6 @@ window.__ModuleLoader__.load({
         order: 11,
         label: '分析过程',
       }, ReportProcessBridge))
-      ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
-        name: 'conversation.input.dock',
-        id: 'od-recent-conversations',
-        order: 20,
-        label: '最近对话',
-      }, OdRecentConversations))
       ctx.uiConversation.events.register(answerTableDefinition)
       ctx.uiConversation.events.register(answerChartDefinition)
       ctx.uiConversation.events.register(boardPreviewDefinition)

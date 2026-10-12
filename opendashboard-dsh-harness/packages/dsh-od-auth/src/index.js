@@ -175,30 +175,39 @@ export function apply(ctx) {
           }
 
           const persist = ctx.sessionPersistence
-          const snapshots = typeof persist.listSnapshots === 'function'
+          // dsh 0.1.2 list() already returns { header, revision }. Wrapping
+          // that again made header.cwd undefined, so every session was dropped.
+          const listed = typeof persist.listSnapshots === 'function'
             ? await persist.listSnapshots()
-            : (await persist.list()).map((header) => ({ header, revision: '' }))
+            : await persist.list()
+          const snapshots = (listed || []).map((item) => {
+            if (item?.header && typeof item.header === 'object' && item.header.id) {
+              return { header: item.header, revision: String(item.revision || '') }
+            }
+            if (item?.id) return { header: item, revision: '' }
+            return null
+          }).filter(Boolean)
           const sessionsSvc = ctx.get?.('sessions')
           const titleSvc = ctx.get?.('sessionTitle')
 
-          /** 0.1.2 dropped Session.events; prefer snapshotEvents / inspect.events. */
-          const readEvents = async (id, live, inspectedHint) => {
+          /** 0.1.2 dropped Session.events and persist.inspect; read the log handle. */
+          const readEvents = async (id, live) => {
             if (live && typeof live.snapshotEvents === 'function') {
               try {
                 const snap = live.snapshotEvents()
-                if (Array.isArray(snap)) return snap
+                if (Array.isArray(snap) && snap.length) return snap
               } catch { /* fall through */ }
             }
-            if (Array.isArray(live?.events)) return live.events
-            if (Array.isArray(inspectedHint?.events)) return inspectedHint.events
+            if (Array.isArray(live?.events) && live.events.length) return live.events
+            if (typeof persist.open !== 'function') return []
+            let handle
             try {
-              const inspected = await persist.inspect(id)
-              if (Array.isArray(inspected?.events)) return inspected.events
-              if (typeof inspected?.snapshotEvents === 'function') {
-                const snap = inspected.snapshotEvents()
-                if (Array.isArray(snap)) return snap
-              }
-            } catch { /* empty */ }
+              handle = await persist.open(id, 'read')
+              const result = await handle.read(0)
+              if (Array.isArray(result?.events)) return result.events
+            } catch { /* empty */ } finally {
+              try { await handle?.close?.() } catch { /* ignore */ }
+            }
             return []
           }
 
@@ -271,7 +280,7 @@ export function apply(ctx) {
       table.push({
         kind: 'script',
         placement: 'head',
-        text: `(function(){try{var h=location.hash||'';var m=h.match(/od_bridge=([^&]+)/);if(!m)return;var b=JSON.parse(decodeURIComponent(m[1]));fetch('/od/bridge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b),credentials:'same-origin'}).catch(function(){})}catch(e){}})();`,
+        text: `(function(){try{var h=location.hash||'';var m=h.match(/od_bridge=([^&]+)/);if(!m)return;var b=JSON.parse(decodeURIComponent(m[1]));if(!String(b.conversationId||'').trim()&&!String(b.prompt||'').trim()&&!String(b.dashboardId||'').trim()){try{localStorage.removeItem('dsh.sessions.current')}catch(_){}}fetch('/od/bridge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b),credentials:'same-origin'}).catch(function(){})}catch(e){}})();`,
       })
     })
   }
@@ -319,8 +328,7 @@ export function apply(ctx) {
           createUserMessage({
             content: [{ type: 'text', text }],
             source: {
-              kind: 'plugin',
-              plugin: name,
+              kind: name,
               form: 'snapshot',
               sections: [{ name, text }],
             },
